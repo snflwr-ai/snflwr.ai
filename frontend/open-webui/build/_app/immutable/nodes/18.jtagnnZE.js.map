@@ -1,1 +1,0 @@
-{"version":3,"file":"18.jtagnnZE.js","sources":["../../../../../../src/routes/(app)/admin/settings/[tab]/+page.svelte"],"sourcesContent":["<script>\n\timport Settings from '$lib/components/admin/Settings.svelte';\n</script>\n\n<Settings />\n"],"names":[],"mappings":"mHAAA,QAEA"}

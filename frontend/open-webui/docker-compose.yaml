@@ -24,7 +24,7 @@ services:
     environment:
       - 'OLLAMA_BASE_URL=http://localhost:11434'
       - 'SNFLWR_API_URL=http://localhost:39150'
-      - 'WEBUI_SECRET_KEY=snflwr-dev-secret'
+      - 'WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-snflwr-dev-secret}'
       # Listen on port 3000 (mapped to host port 3000 via ports above)
       - 'PORT=3000'
       # Model access controlled per-user/group in admin panel

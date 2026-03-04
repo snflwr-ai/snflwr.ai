@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version 1.0.0" />
   <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0 License" />
-  <img src="https://img.shields.io/badge/tests-2200%2B-brightgreen" alt="2200+ Tests" />
+  <img src="https://img.shields.io/badge/tests-2000%2B-brightgreen" alt="2000+ Tests" />
   <img src="https://img.shields.io/badge/COPPA%2FFERPA-compliant-green" alt="COPPA/FERPA Compliant" />
 </p>
 

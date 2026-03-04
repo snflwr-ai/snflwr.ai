@@ -1,0 +1,45 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install system build deps required for some Python packages
+RUN apt-get update \
+     && apt-get install -y --no-install-recommends \
+         build-essential \
+         gcc \
+         libssl-dev \
+         libffi-dev \
+         libjpeg-dev \
+         zlib1g-dev \
+         git \
+         curl \
+         redis-server \
+     && rm -rf /var/lib/apt/lists/*
+
+# Copy and filter requirements to remove system-only pseudo-packages
+COPY requirements.txt ./
+RUN sed -E '/^\s*sqlite3\b/Id; /^\s*tkinter\b/Id' requirements.txt > requirements.filtered.txt
+
+# Upgrade pip and install Python deps
+RUN python -m pip install --upgrade pip setuptools wheel \
+ && python -m pip install -r requirements.filtered.txt
+
+# Copy repository
+COPY . /app
+
+# Make Open WebUI backend and its `test` helpers importable by adding backend paths to PYTHONPATH
+ENV PYTHONPATH=/app/frontend/open-webui/backend:/app/frontend/open-webui/backend/open_webui
+
+# Ensure common infra Python packages are available for integration tests
+# and add test helper libs used by Open WebUI tests
+RUN python -m pip install docker boto3 redis pytest-docker moto typer fastapi pydantic sqlalchemy uvicorn psycopg2-binary authlib markdown peewee peewee_migrate chromadb google-cloud-storage azure-identity azure-storage-blob gcp-storage-emulator
+
+# Copy CI runner and make executable
+COPY ci_run.sh /app/ci_run.sh
+RUN chmod +x /app/ci_run.sh
+
+# Default command: run CI runner (starts redis, then pytest)
+CMD ["/app/ci_run.sh"]

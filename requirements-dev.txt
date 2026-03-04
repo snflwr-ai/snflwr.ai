@@ -1,0 +1,32 @@
+# snflwr.ai - Development Dependencies
+# Install with: pip install -r requirements-dev.txt
+# Updated 2026-02-25
+
+# Production dependencies (includes everything needed to run the app)
+-r requirements.txt
+
+# GUI Framework (for desktop app development)
+# tkinter - Built-in Python module (may require system package: python3-tk)
+Pillow==11.1.0                # Image processing for UI
+customtkinter==5.2.2          # Modern UI components
+
+# Testing & Quality
+pytest==8.3.5                 # Testing framework
+pytest-asyncio==0.24.0        # Async test support (required by pytest.ini asyncio_mode=auto)
+pytest-cov==6.0.0             # Coverage reporting
+pytest-mock==3.14.0           # Mocking utilities
+black==24.10.0                # Code formatter
+pylint==3.3.3                 # Code linter
+mypy==1.14.0                  # Type checking
+
+# Build & Packaging (Desktop)
+PyInstaller==6.11.1           # Executable creation
+py2app==0.28.8                # macOS app bundling
+
+# Development Tools
+ipython==8.27.0               # Enhanced Python shell
+jupyter==1.0.0                # Notebooks for testing (meta-package, version stable)
+
+# Platform-Specific (Install conditionally)
+# Windows: pywin32==306
+# macOS: pyobjc-framework-Cocoa==10.1

@@ -1,0 +1,6 @@
+# Kibana configuration for snflwr.ai
+# See: https://www.elastic.co/guide/en/kibana/current/settings.html
+
+server.name: snflwr-kibana
+server.host: "0.0.0.0"
+elasticsearch.hosts: ["http://elasticsearch:9200"]

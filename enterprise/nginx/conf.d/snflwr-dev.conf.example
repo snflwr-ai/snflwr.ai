@@ -1,0 +1,98 @@
+# snflwr.ai - Development HTTPS Configuration (Self-Signed Certificates)
+# Rename this file to snflwr.conf for development use
+
+# HTTP Server (no redirect in development)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name localhost;
+    server_tokens off;
+
+    # Strip backend server identity headers
+    proxy_hide_header X-Powered-By;
+    proxy_hide_header Server;
+
+    # Proxy to API
+    location /api/ws/ {
+        proxy_pass http://snflwr-api:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+
+    location /api/ {
+        proxy_pass http://snflwr-api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://snflwr-api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# HTTPS Server with Self-Signed Certificate
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name localhost;
+    server_tokens off;
+
+    # Strip backend server identity headers
+    proxy_hide_header X-Powered-By;
+    proxy_hide_header Server;
+
+    # Self-Signed SSL Certificate (generated via script)
+    ssl_certificate /etc/nginx/ssl/self-signed.crt;
+    ssl_certificate_key /etc/nginx/ssl/self-signed.key;
+
+    # SSL Configuration (relaxed for development)
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # Logs
+    access_log /var/log/nginx/snflwr_dev_access.log;
+    error_log /var/log/nginx/snflwr_dev_error.log;
+
+    # WebSocket Support
+    location /api/ws/ {
+        proxy_pass http://snflwr-api:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+
+    # API Proxy
+    location /api/ {
+        proxy_pass http://snflwr-api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Root
+    location / {
+        proxy_pass http://snflwr-api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

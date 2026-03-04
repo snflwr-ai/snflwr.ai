@@ -1,0 +1,4 @@
+# Production requirements - references the main requirements.txt
+# Used by Docker production builds (Dockerfile)
+# Updated 2026-02-25
+-r requirements.txt

@@ -1,0 +1,77 @@
+# Dockerfile to build Ollama image with Snflwr models pre-installed
+# This creates a production-ready Ollama container with all models baked in
+#
+# Build args:
+#
+#   CHAT_MODEL (required) — main chat model, chosen based on server RAM.
+#   Used by admin/parent profiles directly, and as the base for the
+#   student tutor persona:
+#     qwen3.5:0.8b  (~0.5 GB, 2 GB+ RAM)   - Low-resource devices
+#     qwen3.5:2b    (~1.3 GB, 4 GB+ RAM)   - Older laptops
+#     qwen3.5:4b    (~2.5 GB, 6 GB+ RAM)   - Everyday use
+#     qwen3.5:9b    (~5.5 GB, 8 GB+ RAM)   - Mid-range systems (default)
+#     qwen3.5:27b   (~16 GB, 24 GB+ RAM)   - Higher quality
+#     qwen3.5:35b   (~22 GB, 32 GB+ RAM)   - Workstation / server
+#
+#   SAFETY_MODEL (required) — LLM safety classifier (Meta Llama Guard):
+#     llama-guard3:1b   (~1 GB, +2 GB RAM)   - Faster, lighter
+#     llama-guard3:8b   (~4.9 GB, +8 GB RAM) - Higher accuracy
+#
+# Profile → Model mapping:
+#   Student profiles → snflwr-ai:latest (custom tutor persona w/ safety rules)
+#   Admin/Parent profiles → ${CHAT_MODEL} directly (no custom modelfile needed)
+#
+# Usage (both build args are required — choose based on server hardware):
+#   docker build -f docker/Dockerfile.ollama \
+#     --build-arg CHAT_MODEL=qwen3.5:9b \
+#     --build-arg SAFETY_MODEL=llama-guard3:1b \
+#     -t snflwr-ollama .
+#
+# Or use the interactive enterprise build script which detects RAM:
+#   enterprise/build.sh
+
+FROM ollama/ollama:0.16.2
+
+ARG CHAT_MODEL
+ARG SAFETY_MODEL
+
+# Fail fast if build args not provided
+RUN test -n "${CHAT_MODEL}" || { echo "ERROR: --build-arg CHAT_MODEL is required"; exit 1; }
+RUN test -n "${SAFETY_MODEL}" || { echo "ERROR: --build-arg SAFETY_MODEL is required"; exit 1; }
+
+# Copy student tutor modelfile
+COPY models/Snflwr_AI_Kids.modelfile /tmp/Snflwr_AI_Kids.modelfile
+
+# Start Ollama server in background, pull models, create custom models
+RUN ollama serve & \
+    sleep 5 && \
+    \
+    # Pull the admin-selected chat model (used by admin/parent directly,
+    # and as the base for the student tutor persona)
+    echo "Pulling ${CHAT_MODEL} (chat model)..." && \
+    ollama pull ${CHAT_MODEL} && \
+    \
+    # Pull Llama Guard safety classifier (purpose-built for content safety by Meta)
+    echo "Pulling ${SAFETY_MODEL} (safety classifier)..." && \
+    ollama pull ${SAFETY_MODEL} && \
+    \
+    # Build student tutor persona using CHAT_MODEL as base
+    echo "Creating snflwr-ai:latest (student tutor on ${CHAT_MODEL})..." && \
+    sed "s|^FROM .*|FROM ${CHAT_MODEL}|" /tmp/Snflwr_AI_Kids.modelfile > /tmp/student.modelfile && \
+    ollama create snflwr-ai:latest -f /tmp/student.modelfile && \
+    \
+    # Cleanup
+    rm /tmp/*.modelfile && \
+    \
+    # Stop background Ollama
+    pkill ollama
+
+# Models baked into the image at /root/.ollama:
+# - ${CHAT_MODEL}            (admin/parent chat model — used directly)
+# - ${SAFETY_MODEL}          (Llama Guard safety classifier)
+# - snflwr-ai:latest      (student tutor persona, built on ${CHAT_MODEL})
+
+EXPOSE 11434
+
+ENTRYPOINT ["/bin/ollama"]
+CMD ["serve"]

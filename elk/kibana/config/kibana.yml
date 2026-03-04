@@ -1,0 +1,26 @@
+# Kibana Configuration
+# snflwr.ai Visualization & Dashboard
+
+server.name: snflwr-kibana
+server.host: "0.0.0.0"
+server.port: 5601
+
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+
+# Monitoring
+monitoring.ui.container.elasticsearch.enabled: true
+monitoring.kibana.collection.enabled: true
+
+# Logging
+logging.dest: stdout
+logging.silent: false
+logging.quiet: false
+logging.verbose: false
+
+# Dashboard settings
+kibana.index: ".kibana"
+kibana.defaultAppId: "discover"
+
+# Security (disable for development, enable in production)
+xpack.security.enabled: false
+xpack.encryptedSavedObjects.encryptionKey: "${KIBANA_ENCRYPTION_KEY}"

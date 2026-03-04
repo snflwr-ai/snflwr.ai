@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: snflwr-ai
+  labels:
+    name: snflwr-ai
+    environment: production

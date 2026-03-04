@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: snflwr-config
+  namespace: snflwr-ai
+data:
+  # Application Configuration
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+
+  # API Server
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  API_WORKERS: "4"
+
+  # Database
+  DB_TYPE: "postgresql"
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "snflwr_db"
+  POSTGRES_USER: "snflwr"
+
+  # Redis
+  REDIS_ENABLED: "true"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+
+  # Celery (uses REDIS_HOST/REDIS_PORT above for broker/backend)
+  CELERY_ENABLED: "true"
+  CELERY_WORKERS: "4"
+
+  # Ollama
+  OLLAMA_HOST: "http://ollama-service:11434"
+  OLLAMA_TIMEOUT: "60"
+
+  # Safety Monitoring
+  ENABLE_SAFETY_MONITORING: "true"
+
+  # CORS
+  CORS_ORIGINS: "https://app.snflwr.ai"
+
+  # SMTP
+  SMTP_ENABLED: "true"
+  SMTP_HOST: "smtp.sendgrid.net"
+  SMTP_PORT: "587"
+  SMTP_USE_TLS: "true"

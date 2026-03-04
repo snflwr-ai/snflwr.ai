@@ -1,0 +1,302 @@
+# Prometheus AlertManager Rules for snflwr.ai
+# These alerts monitor system health, performance, and safety metrics
+
+groups:
+  - name: system_alerts
+    interval: 30s
+    rules:
+      # System Resource Alerts
+      - alert: HighCPUUsage
+        expr: snflwr_cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value }}% (threshold: 80%) for more than 5 minutes"
+          runbook: "Check for runaway processes, consider scaling horizontally"
+
+      - alert: CriticalCPUUsage
+        expr: snflwr_cpu_usage_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL: CPU usage critically high"
+          description: "CPU usage is {{ $value }}% (threshold: 95%) for more than 2 minutes"
+          runbook: "Immediate action required - system may become unresponsive"
+
+      - alert: HighMemoryUsage
+        expr: snflwr_memory_usage_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value }}% (threshold: 85%) for more than 5 minutes"
+          runbook: "Check for memory leaks, consider increasing instance size"
+
+      - alert: CriticalMemoryUsage
+        expr: snflwr_memory_usage_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL: Memory usage critically high"
+          description: "Memory usage is {{ $value }}% (threshold: 95%) for more than 2 minutes"
+          runbook: "Immediate action required - risk of OOM killer"
+
+      - alert: HighDiskUsage
+        expr: snflwr_disk_usage_percent > 80
+        for: 15m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High disk usage detected"
+          description: "Disk usage is {{ $value }}% (threshold: 80%)"
+          runbook: "Clean up old logs, run database vacuum, consider expanding storage"
+
+      - alert: CriticalDiskUsage
+        expr: snflwr_disk_usage_percent > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL: Disk space critically low"
+          description: "Disk usage is {{ $value }}% (threshold: 95%)"
+          runbook: "Immediate cleanup required - database writes may fail"
+
+  - name: application_alerts
+    interval: 1m
+    rules:
+      # Application Health Alerts
+      - alert: NoActiveSessions
+        expr: snflwr_sessions_active == 0 and snflwr_users_active > 0
+        for: 10m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "No active sessions despite active users"
+          description: "{{ $value }} active sessions with {{ snflwr_users_active }} active users"
+          runbook: "Check session management, verify authentication service"
+
+      - alert: HighMessageVolume
+        expr: rate(snflwr_messages_24h[5m]) > 100
+        for: 10m
+        labels:
+          severity: info
+          component: application
+        annotations:
+          summary: "High message volume detected"
+          description: "Message rate: {{ $value }} messages/sec (sustained for 10 minutes)"
+          runbook: "Monitor for abuse, verify rate limiting is working"
+
+      - alert: LowUserActivity
+        expr: snflwr_users_active == 0 and hour() >= 8 and hour() <= 20
+        for: 1h
+        labels:
+          severity: info
+          component: application
+        annotations:
+          summary: "No active users during typical usage hours"
+          description: "Zero active users between 8 AM and 8 PM for over 1 hour"
+          runbook: "Check if service is reachable, verify marketing campaigns"
+
+  - name: safety_alerts
+    interval: 1m
+    rules:
+      # Safety & Security Alerts
+      - alert: HighSafetyIncidentRate
+        expr: rate(snflwr_safety_incidents_24h[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: safety
+        annotations:
+          summary: "High rate of safety incidents"
+          description: "Safety incident rate: {{ $value }} incidents/sec (threshold: 0.1/sec)"
+          runbook: "Review recent incidents, check for pattern abuse, verify filter effectiveness"
+
+      - alert: CriticalSafetyIncidents
+        expr: snflwr_safety_incidents_by_severity{severity="critical"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: safety
+        annotations:
+          summary: "CRITICAL safety incidents detected"
+          description: "{{ $value }} critical safety incidents in the last minute"
+          runbook: "Immediate review required - notify safety team, review incident details"
+
+      - alert: MajorSafetyIncidents
+        expr: snflwr_safety_incidents_by_severity{severity="major"} > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: safety
+        annotations:
+          summary: "Multiple major safety incidents"
+          description: "{{ $value }} major safety incidents in last 5 minutes"
+          runbook: "Review incidents, check for emerging patterns"
+
+      - alert: UnacknowledgedAlertsBacklog
+        expr: snflwr_alerts_unacknowledged > 10
+        for: 30m
+        labels:
+          severity: warning
+          component: safety
+        annotations:
+          summary: "Large backlog of unacknowledged parent alerts"
+          description: "{{ $value }} unacknowledged alerts (threshold: 10)"
+          runbook: "Send reminder emails to parents, verify notification delivery"
+
+      - alert: CriticalUnacknowledgedAlerts
+        expr: snflwr_alerts_unacknowledged > 50
+        for: 1h
+        labels:
+          severity: critical
+          component: safety
+        annotations:
+          summary: "CRITICAL: Very large alert backlog"
+          description: "{{ $value }} unacknowledged alerts (threshold: 50)"
+          runbook: "Escalate to support team, verify email delivery system"
+
+  - name: performance_alerts
+    interval: 1m
+    rules:
+      # Performance Degradation Alerts
+      - alert: SlowModelResponseTime
+        expr: snflwr_performance_model_response_time_avg_ms > 15000
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "AI model response time degraded"
+          description: "Average model response time: {{ $value }}ms (threshold: 15000ms / 15s)"
+          runbook: "Check Ollama service health, verify GPU availability, check model loading"
+
+      - alert: CriticalModelResponseTime
+        expr: snflwr_performance_model_response_time_avg_ms > 30000
+        for: 2m
+        labels:
+          severity: critical
+          component: performance
+        annotations:
+          summary: "CRITICAL: AI model extremely slow"
+          description: "Average model response time: {{ $value }}ms (threshold: 30000ms / 30s)"
+          runbook: "Immediate action - check Ollama process, restart if necessary"
+
+      - alert: SlowDatabaseQueries
+        expr: snflwr_performance_database_query_time_avg_ms > 500
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "Database queries running slow"
+          description: "Average DB query time: {{ $value }}ms (threshold: 500ms)"
+          runbook: "Check database load, review slow query log, verify indexes"
+
+      - alert: SlowAPIResponses
+        expr: snflwr_performance_api_response_time_avg_ms > 2000
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "API response time degraded"
+          description: "Average API response time: {{ $value }}ms (threshold: 2000ms / 2s)"
+          runbook: "Check system resources, verify database performance, review application logs"
+
+      - alert: SlowSafetyFilters
+        expr: snflwr_performance_safety_filter_time_avg_ms > 1000
+        for: 10m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "Safety filter processing slow"
+          description: "Average safety filter time: {{ $value }}ms (threshold: 1000ms / 1s)"
+          runbook: "Review filter patterns, check for regex inefficiencies, optimize filters"
+
+  - name: availability_alerts
+    interval: 30s
+    rules:
+      # Service Availability Alerts
+      - alert: ServiceDown
+        expr: up{job="snflwr-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: availability
+        annotations:
+          summary: "CRITICAL: Snflwr API service is down"
+          description: "API service has been down for more than 1 minute"
+          runbook: "Check service status, review logs, restart service if necessary"
+
+      - alert: HighRestartRate
+        expr: changes(snflwr_uptime_seconds[15m]) > 3
+        for: 1m
+        labels:
+          severity: critical
+          component: availability
+        annotations:
+          summary: "CRITICAL: Service restarting frequently"
+          description: "Service has restarted {{ $value }} times in 15 minutes"
+          runbook: "Check for crash loops, review error logs, verify resource limits"
+
+      - alert: ServiceRestarted
+        expr: snflwr_uptime_seconds < 300
+        for: 1m
+        labels:
+          severity: info
+          component: availability
+        annotations:
+          summary: "Service recently restarted"
+          description: "Service uptime: {{ $value }}s (less than 5 minutes)"
+          runbook: "Verify restart was intentional, monitor for stability"
+
+  - name: capacity_alerts
+    interval: 5m
+    rules:
+      # Capacity Planning Alerts
+      - alert: HighUserGrowth
+        expr: (snflwr_users_total - snflwr_users_total offset 1d) > 100
+        for: 1h
+        labels:
+          severity: info
+          component: capacity
+        annotations:
+          summary: "Significant user growth detected"
+          description: "{{ $value }} new users in last 24 hours"
+          runbook: "Monitor system resources, plan for scaling if growth continues"
+
+      - alert: HighActiveUserRatio
+        expr: (snflwr_users_active / snflwr_users_total) > 0.8
+        for: 1h
+        labels:
+          severity: info
+          component: capacity
+        annotations:
+          summary: "High percentage of users active"
+          description: "{{ $value }}% of total users are active (threshold: 80%)"
+          runbook: "Good engagement - monitor performance, plan for peak capacity"
+
+      - alert: LowActiveUserRatio
+        expr: (snflwr_users_active / snflwr_users_total) < 0.1 and snflwr_users_total > 50
+        for: 6h
+        labels:
+          severity: info
+          component: capacity
+        annotations:
+          summary: "Low user engagement"
+          description: "Only {{ $value }}% of users active (threshold: 10%)"
+          runbook: "Review user experience, check for onboarding issues"

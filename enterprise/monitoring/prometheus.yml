@@ -1,0 +1,43 @@
+# Prometheus Configuration for snflwr.ai
+# Place this alongside your docker-compose stack or mount into Prometheus container.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # Snflwr API metrics (FastAPI + custom safety metrics)
+  - job_name: 'snflwr-api'
+    static_configs:
+      - targets: ['snflwr-api:8000']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Node exporter (host system metrics)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Redis exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # PostgreSQL exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Nginx stub_status (internal metrics endpoint)
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:8080']
+    metrics_path: /nginx_status

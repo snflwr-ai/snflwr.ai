@@ -1,0 +1,71 @@
+services:
+  open-webui:
+    # Pin to a tested version — the mounted ollama.py router must match
+    # the Open WebUI codebase.  Update this tag together with
+    # docker/compose/docker-compose.yml when upgrading.
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.8.3}
+    container_name: open-webui
+    network_mode: host
+    # ports and extra_hosts are not used with network_mode: host —
+    # the container shares the host network stack directly, so
+    # localhost:3000, localhost:11434, localhost:39150 all work as-is.
+    volumes:
+      - open-webui:/app/backend/data
+      # Mount snflwr.ai safety middleware and the modified router that calls it
+      - ./backend/open_webui/middleware:/app/backend/open_webui/middleware:ro
+      - ./backend/open_webui/routers/ollama.py:/app/backend/open_webui/routers/ollama.py:ro
+      - ./backend/open_webui/env.py:/app/backend/open_webui/env.py:ro
+      - ./backend/open_webui/static/favicon.png:/app/backend/open_webui/static/favicon.png:ro
+      - ./backend/open_webui/static/favicon.ico:/app/backend/open_webui/static/favicon.ico:ro
+      - ./backend/open_webui/static/favicon-96x96.png:/app/backend/open_webui/static/favicon-96x96.png:ro
+      - ./backend/open_webui/static/apple-touch-icon.png:/app/backend/open_webui/static/apple-touch-icon.png:ro
+      # Mount custom-built frontend (hides Data Controls and About from students)
+      - ./build:/app/build:ro
+    environment:
+      - 'OLLAMA_BASE_URL=http://localhost:11434'
+      - 'SNFLWR_API_URL=http://localhost:39150'
+      - 'WEBUI_SECRET_KEY=snflwr-dev-secret'
+      # Listen on port 3000 (mapped to host port 3000 via ports above)
+      - 'PORT=3000'
+      # Model access controlled per-user/group in admin panel
+      - 'INTERNAL_API_KEY=${INTERNAL_API_KEY}'
+      - 'BYPASS_MODEL_ACCESS_CONTROL=false'
+      - 'WEBUI_AUTH=true'
+      - 'DEFAULT_MODELS=snflwr-ai:latest'
+      # Lock down student accounts — chat only, no advanced controls
+      - 'USER_PERMISSIONS_CHAT_CONTROLS=false'
+      - 'USER_PERMISSIONS_CHAT_VALVES=false'
+      - 'USER_PERMISSIONS_CHAT_SYSTEM_PROMPT=false'
+      - 'USER_PERMISSIONS_CHAT_PARAMS=false'
+      - 'USER_PERMISSIONS_CHAT_FILE_UPLOAD=false'
+      - 'USER_PERMISSIONS_CHAT_DELETE=false'
+      - 'USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS=false'
+      - 'USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS=false'
+      - 'USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS=false'
+      - 'USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS=false'
+      - 'USER_PERMISSIONS_FEATURES_WEB_SEARCH=true'
+      - 'USER_PERMISSIONS_FEATURES_IMAGE_GENERATION=false'
+      - 'USER_PERMISSIONS_FEATURES_CODE_INTERPRETER=true'
+      - 'USER_PERMISSIONS_FEATURES_NOTES=false'
+      - 'USER_PERMISSIONS_FEATURES_CHANNELS=false'
+      - 'USER_PERMISSIONS_FEATURES_API_KEYS=false'
+      - 'USER_PERMISSIONS_FEATURES_MEMORIES=false'
+      - 'USER_PERMISSIONS_CHAT_SHARE=false'
+      - 'USER_PERMISSIONS_CHAT_EXPORT=false'
+      - 'USER_PERMISSIONS_CHAT_MULTIPLE_MODELS=false'
+      - 'USER_PERMISSIONS_CHAT_TEMPORARY=false'
+      - 'ENABLE_COMMUNITY_SHARING=false'
+      - 'ENABLE_EVALUATION_ARENA_MODELS=false'
+      # Chat generation features — set globally before locking Interface tab for students
+      - 'ENABLE_TITLE_GENERATION=true'
+      - 'ENABLE_FOLLOW_UP_GENERATION=true'
+      - 'ENABLE_TAGS_GENERATION=true'
+      - 'ENABLE_AUTOCOMPLETE_GENERATION=false'
+      # Branding
+      - 'WEBUI_NAME=snflwr.ai'
+      - 'WEBUI_FAVICON_URL=/static/favicon.png'
+      - 'SHOW_ADMIN_DETAILS=false'
+    restart: unless-stopped
+
+volumes:
+  open-webui: {}

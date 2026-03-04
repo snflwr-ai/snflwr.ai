@@ -1,0 +1,101 @@
+# ELK Stack (Elasticsearch, Logstash, Kibana)
+# Centralized logging and log analysis for production deployments
+# Run with: docker-compose -f docker-compose.elk.yml up -d
+
+services:
+  # Elasticsearch (Search & Analytics Engine)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: snflwr-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"  # Heap size (adjust based on available memory)
+      - xpack.security.enabled=true
+      - xpack.monitoring.collection.enabled=true
+    expose:
+      - "9200"
+      - "9300"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - elk-network
+
+  # Logstash (Log Processing Pipeline)
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.1
+    container_name: snflwr-logstash
+    restart: unless-stopped
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+    ports:
+      - "5000:5000/tcp"   # TCP input
+      - "5000:5000/udp"   # UDP input
+      - "5044:5044"       # Beats input
+      - "9600:9600"       # Monitoring API
+    volumes:
+      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - snflwr-logs:/logs:ro   # Mount application logs
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk-network
+
+  # Kibana (Visualization & Dashboard)
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.1
+    container_name: snflwr-kibana
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_NAME=snflwr-kibana
+      - SERVER_HOST=0.0.0.0
+    ports:
+      - "5601:5601"
+    volumes:
+      - ./elk/kibana/config/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    depends_on:
+      - elasticsearch
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - elk-network
+
+  # Filebeat (Log Shipper - Optional)
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.1
+    container_name: snflwr-filebeat
+    restart: unless-stopped
+    user: "1000"
+    command: filebeat -e -strict.perms=false
+    volumes:
+      - ./elk/filebeat/config/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - snflwr-logs:/logs:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - filebeat-data:/usr/share/filebeat/data
+    depends_on:
+      - elasticsearch
+      - logstash
+    networks:
+      - elk-network
+
+volumes:
+  elasticsearch-data:
+    driver: local
+  filebeat-data:
+    driver: local
+  snflwr-logs:
+    driver: local
+
+networks:
+  elk-network:
+    driver: bridge

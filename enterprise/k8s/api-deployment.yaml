@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snflwr-api
+  namespace: snflwr-ai
+  labels:
+    app: snflwr-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: snflwr-api
+  template:
+    metadata:
+      labels:
+        app: snflwr-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+      - name: snflwr-api
+        image: snflwr-ai/api:v0.1.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: snflwr-config
+        - secretRef:
+            name: snflwr-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: snflwr-api-service
+  namespace: snflwr-ai
+spec:
+  selector:
+    app: snflwr-api
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: snflwr-api-hpa
+  namespace: snflwr-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: snflwr-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

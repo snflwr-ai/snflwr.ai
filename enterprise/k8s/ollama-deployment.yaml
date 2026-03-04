@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: snflwr-ai
+  labels:
+    app: ollama
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      # Node selector for GPU nodes
+      nodeSelector:
+        accelerator: nvidia-gpu
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        env:
+        - name: OLLAMA_HOST
+          value: "0.0.0.0:11434"
+        - name: OLLAMA_NUM_PARALLEL
+          value: "4"
+        - name: OLLAMA_MAX_LOADED_MODELS
+          value: "3"
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+            nvidia.com/gpu: 1  # Request 1 GPU per pod
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+        livenessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: ollama-data
+        emptyDir: {}  # Use persistent volume in production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-service
+  namespace: snflwr-ai
+spec:
+  selector:
+    app: ollama
+  ports:
+  - port: 11434
+    targetPort: 11434
+  type: ClusterIP
+  sessionAffinity: ClientIP  # Sticky sessions for model caching
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600  # 1 hour session affinity
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ollama-hpa
+  namespace: snflwr-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ollama
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

@@ -1,0 +1,66 @@
+# Git
+.git
+.gitignore
+
+# CI/CD
+.github
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+dist
+build
+
+# Virtual environments
+venv
+env
+.venv*
+
+# Testing
+tests
+.pytest_cache
+.coverage
+htmlcov
+coverage.xml
+
+# Development
+requirements-dev.txt
+docs
+*.md
+!README.md
+
+# Environment files and secrets
+.env
+.env.*
+*.key
+*.pem
+secrets/
+credentials/
+
+# Data (runtime-generated, should be mounted as volumes)
+data
+logs
+*.db
+*.sqlite
+*.sqlite3
+dump.rdb
+
+# Frontend source (not needed for API image)
+frontend/open-webui/node_modules
+frontend/open-webui/.svelte-kit
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude

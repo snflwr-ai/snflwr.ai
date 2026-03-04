@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: snflwr-ai
+  labels:
+    app: celery-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: celery-worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+    spec:
+      containers:
+      - name: celery-worker
+        image: snflwr-ai/api:v0.1.0
+        command: ["celery", "-A", "utils.celery_config", "worker", "--loglevel=info", "--concurrency=4"]
+        envFrom:
+        - configMapRef:
+            name: snflwr-config
+        - secretRef:
+            name: snflwr-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: snflwr-ai
+  labels:
+    app: celery-beat
+spec:
+  replicas: 1  # Only 1 beat scheduler needed
+  selector:
+    matchLabels:
+      app: celery-beat
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      containers:
+      - name: celery-beat
+        image: snflwr-ai/api:v0.1.0
+        command: ["celery", "-A", "utils.celery_config", "beat", "--loglevel=info"]
+        envFrom:
+        - configMapRef:
+            name: snflwr-config
+        - secretRef:
+            name: snflwr-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: celery-beat-schedule
+          mountPath: /app/celerybeat-schedule
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: celery-beat-schedule
+        emptyDir: {}

@@ -1,0 +1,20 @@
+# requirements-optional.txt
+# Optional dependencies that require system libraries or are environment-specific
+# Updated 2026-02-25
+
+# Database Encryption (requires SQLCipher system libraries)
+# Install system package first, then: pip install -r requirements-optional.txt
+pysqlcipher3==1.2.0
+
+# Installation instructions:
+# Ubuntu/Debian:
+#   sudo apt-get install libsqlcipher-dev
+#   pip install pysqlcipher3
+#
+# macOS:
+#   brew install sqlcipher
+#   pip install pysqlcipher3
+#
+# Windows:
+#   Pre-built wheels may not be available
+#   Requires manual SQLCipher build

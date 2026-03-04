@@ -1,0 +1,24 @@
+# Filebeat configuration for snflwr.ai
+# Ships application logs and Docker container logs to Elasticsearch
+
+filebeat.inputs:
+  # Application logs (structured JSON from utils/logger.py)
+  - type: log
+    enabled: true
+    paths:
+      - /logs/*.log
+    json.keys_under_root: true
+    json.add_error_key: true
+
+  # Docker container logs
+  - type: container
+    enabled: true
+    paths:
+      - /var/lib/docker/containers/*/*.log
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "snflwr-filebeat-%{+yyyy.MM.dd}"
+
+setup.template.name: "snflwr-filebeat"
+setup.template.pattern: "snflwr-filebeat-*"

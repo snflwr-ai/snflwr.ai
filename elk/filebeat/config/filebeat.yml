@@ -1,0 +1,54 @@
+# Filebeat Configuration
+# snflwr.ai Log Shipper
+
+filebeat.inputs:
+  # Application logs
+  - type: log
+    enabled: true
+    paths:
+      - /logs/*.log
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    tags: ["snflwr", "application"]
+    fields:
+      app: snflwr-ai
+      environment: production
+
+  # Docker container logs (optional)
+  - type: container
+    enabled: false
+    paths:
+      - '/var/lib/docker/containers/*/*.log'
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+
+# Processors
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+
+# Outputs
+output.logstash:
+  hosts: ["logstash:5044"]
+
+# Alternative: Send directly to Elasticsearch
+# output.elasticsearch:
+#   hosts: ["elasticsearch:9200"]
+#   index: "snflwr-ai-%{+yyyy.MM.dd}"
+
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+# Monitoring
+monitoring.enabled: true
+monitoring.elasticsearch:
+  hosts: ["elasticsearch:9200"]

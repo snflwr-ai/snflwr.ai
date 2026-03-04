@@ -1,0 +1,60 @@
+# snflwr.ai - Production Dependencies
+# Python 3.10+ Required
+# Updated 2026-02-25
+
+# Core Dependencies
+python-dotenv==1.0.1          # Environment configuration
+
+# Database
+# sqlite3 - Built-in Python module (no installation needed)
+psycopg2-binary==2.9.10       # PostgreSQL adapter for production deployments
+
+# Cryptography & Security
+cryptography==44.0.3          # Encryption utilities (includes fixes through 44.x line)
+argon2-cffi==25.1.0           # Password hashing (Argon2)
+pynacl==1.6.2                 # Additional cryptographic primitives
+
+# HTTP & API
+fastapi==0.115.12             # Web framework for API server
+pydantic[email]==2.12.5       # Data validation (includes email-validator)
+email-validator==2.3.0        # Required for Pydantic EmailStr
+uvicorn[standard]==0.34.3     # ASGI server for FastAPI
+# starlette pin removed — FastAPI manages its own Starlette dependency
+requests==2.32.3              # HTTP client for auth server
+httpx==0.28.1                 # Async HTTP client (health checks, API probes)
+urllib3==2.3.0                # HTTP library
+
+# System & Hardware Detection
+psutil==6.1.1                 # System and process utilities
+py-cpuinfo==9.0.0             # CPU information
+
+# Open WebUI
+typer==0.24.1                 # CLI framework (Open WebUI dependency)
+
+# AI/ML Integration
+ollama==0.4.7                 # Ollama Python client
+aiohttp==3.11.11              # Async HTTP client for async Ollama client
+
+# Background Task Queue
+celery==5.4.0                 # Distributed task queue
+redis==5.2.1                  # Redis client for Celery broker
+kombu==5.4.2                  # Messaging library for Celery
+flower==2.0.1                 # Celery monitoring UI
+
+# Logging & Monitoring
+structlog==24.4.0             # Structured logging
+python-json-logger==2.0.7     # JSON logging formatter (kept at 2.x; 3.x/4.x have breaking API changes)
+schedule==1.2.2               # Task scheduling for data retention
+sentry-sdk>=2.0.0,<3.0.0      # Error tracking and performance monitoring
+prometheus_client==0.21.1     # Prometheus metrics export
+
+# Build & Packaging
+setuptools==78.1.1            # Package utilities (security patches for CVE-2024-6345)
+wheel==0.46.3                 # Wheel package format (includes fix for CVE-2026-24049)
+
+# Database Encryption (Optional - requires system SQLCipher libraries)
+# Install separately if needed: pip install pysqlcipher3==1.2.0
+# System requirements:
+#   Ubuntu/Debian: sudo apt-get install libsqlcipher-dev
+#   macOS: brew install sqlcipher
+#   Then: pip install pysqlcipher3==1.2.0

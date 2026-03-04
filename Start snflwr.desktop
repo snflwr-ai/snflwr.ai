@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=snflwr.ai
+Comment=Start the snflwr.ai safe learning platform
+Exec=bash -c 'SCRIPT_DIR="$(dirname "$(readlink -f "$1")")" && cd "$SCRIPT_DIR" && if [ -x venv/bin/python3 ] && [ -f launcher/main.py ] && venv/bin/python3 -c "import tkinter" 2>/dev/null; then venv/bin/python3 launcher/main.py & disown; exit 0; elif [ -x venv/bin/python3 ] && [ -f launcher/app.py ] && venv/bin/python3 -c "import tkinter" 2>/dev/null; then venv/bin/python3 launcher/app.py & disown; exit 0; else exec ./start_snflwr.sh; fi' _ %k
+Terminal=true
+Categories=Education;
+StartupNotify=true

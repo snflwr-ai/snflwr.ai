@@ -1,0 +1,37 @@
+# snflwr.ai - USB Deployment (Minimal Dependencies)
+# SQLite-only, no PostgreSQL or background task queue required
+# Install with: pip install --only-binary :all: -r requirements.txt
+
+# Core Dependencies
+python-dotenv==1.0.0          # Environment configuration
+
+# Cryptography & Security
+cryptography==43.0.3          # Encryption utilities
+argon2-cffi==23.1.0           # Password hashing (Argon2)
+
+# HTTP & API
+requests==2.31.0              # HTTP client
+urllib3==2.1.0                # HTTP library
+
+# Web Framework
+fastapi==0.109.0              # API framework
+uvicorn[standard]==0.27.0     # ASGI server
+pydantic==2.5.3               # Data validation
+email-validator==2.2.0        # Required for Pydantic EmailStr
+python-multipart==0.0.6       # Form data parsing
+python-jose[cryptography]==3.3.0  # JWT tokens
+
+# Redis (needed for rate limiter imports even when disabled)
+redis==5.0.1                  # Redis client
+
+# AI/ML Integration
+ollama==0.1.6                 # Ollama Python client
+aiohttp==3.9.1                # Async HTTP client
+
+# Logging
+structlog==23.2.0             # Structured logging
+python-json-logger==2.0.7     # JSON logging formatter
+schedule==1.2.0               # Task scheduling for data retention
+
+# System utilities
+psutil==5.9.6                 # System and process utilities

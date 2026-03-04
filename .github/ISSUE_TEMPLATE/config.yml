@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability (Critical)
+    url: https://github.com/tmartin2113/snflwr-ai/security/policy
+    about: For critical security issues, please report privately. Do not open a public issue.
+  - name: Documentation
+    url: https://github.com/tmartin2113/snflwr-ai#readme
+    about: Check our README for documentation and setup guides.
+  - name: Discussions
+    url: https://github.com/tmartin2113/snflwr-ai/discussions
+    about: Ask questions and discuss ideas with the community.

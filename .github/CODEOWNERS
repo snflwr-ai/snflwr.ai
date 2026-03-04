@@ -1,0 +1,39 @@
+# CODEOWNERS for snflwr.ai
+# These owners will be requested for review when someone opens a pull request
+# that modifies code that they own.
+#
+# Order matters - the last matching pattern takes precedence.
+
+# Default owner for everything
+* @tmartin2113
+
+# Core application code
+/api/ @tmartin2113
+/core/ @tmartin2113
+/storage/ @tmartin2113
+/utils/ @tmartin2113
+
+# Safety-critical code (requires explicit review)
+/safety/ @tmartin2113
+/api/middleware/ @tmartin2113
+
+# Security configuration
+/config.py @tmartin2113
+/.env.example @tmartin2113
+
+# Database schema changes
+/database/ @tmartin2113
+
+# Infrastructure and deployment
+/docker/ @tmartin2113
+/.github/ @tmartin2113
+/start_snflwr.sh @tmartin2113
+
+# Tests
+/tests/ @tmartin2113
+
+# Frontend (Open WebUI integration)
+/frontend/ @tmartin2113
+
+# Documentation
+*.md @tmartin2113

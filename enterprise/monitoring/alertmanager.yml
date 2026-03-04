@@ -1,0 +1,43 @@
+# AlertManager Configuration for snflwr.ai
+# Configure receivers below to route alerts to your notification channels.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'component']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical'
+      group_wait: 10s
+      repeat_interval: 1h
+    - match:
+        component: safety
+      receiver: 'safety-team'
+      group_wait: 10s
+      repeat_interval: 30m
+
+receivers:
+  - name: 'default'
+    # Configure your notification channel:
+    email_configs:
+      - to: '<ops@yourschool.edu>'
+        from: '<alertmanager@yourschool.edu>'
+        smarthost: '<smtp.yourschool.edu:587>'
+
+  - name: 'critical'
+    # Uncomment for urgent notifications:
+    # email_configs:
+    #   - to: 'oncall@yourschool.edu'
+    # pagerduty_configs:
+    #   - service_key: '<your-pagerduty-key>'
+
+  - name: 'safety-team'
+    # Safety incidents route here (content filter spikes, etc.):
+    # email_configs:
+    #   - to: 'safety@yourschool.edu'

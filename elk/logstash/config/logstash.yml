@@ -1,0 +1,15 @@
+# Logstash Configuration
+# snflwr.ai Log Processing Pipeline
+
+http.host: "0.0.0.0"
+xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+xpack.monitoring.enabled: true
+
+# Pipeline settings
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# Queue settings
+queue.type: persisted
+queue.max_bytes: 1gb

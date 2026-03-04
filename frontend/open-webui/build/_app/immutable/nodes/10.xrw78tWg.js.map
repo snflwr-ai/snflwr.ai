@@ -1,1 +1,0 @@
-{"version":3,"file":"10.xrw78tWg.js","sources":["../../../../../../src/routes/(app)/admin/analytics/+page.svelte"],"sourcesContent":["<script>\n\timport Analytics from '$lib/components/admin/Analytics.svelte';\n</script>\n\n<Analytics />\n"],"names":[],"mappings":"mHAAA,QAEA"}

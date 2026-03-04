@@ -1,2 +1,0 @@
-import"../chunks/CWj6FrbW.js";import"../chunks/CN51-NxK.js";import{o as e,p as s,b as p}from"../chunks/Cq_rWCdd.js";import{i as r}from"../chunks/8kT0SYrj.js";import{g as a}from"../chunks/h2Rvv4mb.js";function d(i,t){p(t,!1),e(()=>{const o=new URLSearchParams(window.location.search);if(o.has("v")){const n=o.get("v");a(`/?youtube=${encodeURIComponent(n)}`)}else a("/")}),r(),s()}export{d as component};
-//# sourceMappingURL=50.hU7ZRDa4.js.map

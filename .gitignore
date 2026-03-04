@@ -28,6 +28,9 @@ Thumbs.db
 # Node
 node_modules/
 
+# Built frontend (regenerate with scripts/build-frontend.sh)
+frontend/open-webui/build/
+
 # IDE
 .idea/
 .vscode/

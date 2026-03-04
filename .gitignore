@@ -36,3 +36,4 @@ node_modules/
 # Generated data dirs
 data/
 storage/data/
+*.bak

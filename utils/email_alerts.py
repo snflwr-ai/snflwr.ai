@@ -69,14 +69,14 @@ class EmailTemplate:
     @staticmethod
     def safety_incident_critical(child_name: str, incident_type: str, incident_id: int, timestamp: str) -> tuple:
         """Critical safety incident template"""
-        subject = f"🚨 URGENT: Critical Safety Alert for {child_name}"
+        subject = f"[ALERT] URGENT: Critical Safety Alert for {child_name}"
 
         body = f"""
 <html>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background-color: #dc3545; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-            <h2 style="margin: 0;">🚨 URGENT Safety Alert</h2>
+            <h2 style="margin: 0;">[ALERT] URGENT Safety Alert</h2>
         </div>
 
         <p>Dear Parent/Guardian,</p>
@@ -100,7 +100,7 @@ class EmailTemplate:
         </ul>
 
         <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p style="margin: 0;"><strong>📞 Need Help?</strong></p>
+            <p style="margin: 0;"><strong>[CONTACT] Need Help?</strong></p>
             <p style="margin: 5px 0;">
                 If you're concerned about your child's safety, please contact:
             </p>
@@ -132,7 +132,7 @@ class EmailTemplate:
     @staticmethod
     def safety_incident_major(child_name: str, incident_count: int, incident_types: List[str], period_days: int) -> tuple:
         """Major safety incident template"""
-        subject = f"⚠️ Important Safety Alert for {child_name}"
+        subject = f"[WARN] Important Safety Alert for {child_name}"
 
         types_list = ', '.join(incident_types[:3])  # Show up to 3 types
 
@@ -141,7 +141,7 @@ class EmailTemplate:
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background-color: #ffc107; color: #000; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-            <h2 style="margin: 0;">⚠️ Important Safety Alert</h2>
+            <h2 style="margin: 0;">[WARN] Important Safety Alert</h2>
         </div>
 
         <p>Dear Parent/Guardian,</p>
@@ -184,7 +184,7 @@ class EmailTemplate:
     @staticmethod
     def daily_digest(parent_name: str, summary_data: Dict) -> tuple:
         """Daily activity digest template"""
-        subject = "📊 Daily Activity Summary - snflwr.ai"
+        subject = "[STATS] Daily Activity Summary - snflwr.ai"
 
         total_sessions = summary_data.get('total_sessions', 0)
         total_questions = summary_data.get('total_questions', 0)
@@ -195,7 +195,7 @@ class EmailTemplate:
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background-color: #28a745; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-            <h2 style="margin: 0;">📊 Daily Activity Summary</h2>
+            <h2 style="margin: 0;">[STATS] Daily Activity Summary</h2>
         </div>
 
         <p>Hello {parent_name},</p>
@@ -240,14 +240,14 @@ class EmailTemplate:
     @staticmethod
     def system_error_alert(error_summary: str, error_count: int) -> tuple:
         """System error alert for administrators"""
-        subject = f"🔧 System Alert: {error_count} errors detected"
+        subject = f"[FIX] System Alert: {error_count} errors detected"
 
         body = f"""
 <html>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background-color: #dc3545; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-            <h2 style="margin: 0;">🔧 System Error Alert</h2>
+            <h2 style="margin: 0;">[FIX] System Error Alert</h2>
         </div>
 
         <p>System Administrator,</p>

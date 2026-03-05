@@ -73,7 +73,7 @@ class DatabaseBackup:
 
             # Get backup size
             size_mb = backup_file.stat().st_size / (1024 * 1024)
-            logger.info(f"✅ SQLite backup completed: {backup_file} ({size_mb:.2f} MB)")
+            logger.info(f"[OK] SQLite backup completed: {backup_file} ({size_mb:.2f} MB)")
 
             return True, str(backup_file)
 
@@ -160,7 +160,7 @@ class DatabaseBackup:
 
             # Get backup size
             size_mb = backup_file.stat().st_size / (1024 * 1024)
-            logger.info(f"✅ PostgreSQL backup completed: {backup_file} ({size_mb:.2f} MB)")
+            logger.info(f"[OK] PostgreSQL backup completed: {backup_file} ({size_mb:.2f} MB)")
 
             return True, str(backup_file)
 
@@ -195,7 +195,7 @@ class DatabaseBackup:
 
         if removed_count > 0:
             size_mb = removed_size / (1024 * 1024)
-            logger.info(f"✅ Removed {removed_count} old backups ({size_mb:.2f} MB freed)")
+            logger.info(f"[OK] Removed {removed_count} old backups ({size_mb:.2f} MB freed)")
         else:
             logger.info("No old backups to remove")
 
@@ -264,9 +264,9 @@ class DatabaseBackup:
 
         logger.info("=" * 60)
         if success:
-            logger.info("✅ Backup completed successfully")
+            logger.info("[OK] Backup completed successfully")
         else:
-            logger.error(f"❌ Backup failed: {result}")
+            logger.error(f"[FAIL] Backup failed: {result}")
         logger.info("=" * 60)
 
         return success
@@ -302,7 +302,7 @@ def restore_sqlite(backup_file: Path) -> bool:
         if backup_file.suffix == '.gz':
             temp_file.unlink()
 
-        logger.info("✅ SQLite database restored successfully")
+        logger.info("[OK] SQLite database restored successfully")
         return True
 
     except Exception as e:
@@ -373,7 +373,7 @@ def restore_postgresql(backup_file: Path) -> bool:
             logger.error(f"pg_restore failed: {result.stderr}")
             return False
 
-        logger.info("✅ PostgreSQL database restored successfully")
+        logger.info("[OK] PostgreSQL database restored successfully")
         return True
 
     except Exception as e:

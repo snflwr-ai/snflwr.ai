@@ -224,7 +224,7 @@ async def get_websocket_stats(session: AuthSession = Depends(get_current_session
     Returns:
         Statistics about active WebSocket connections
 
-    🔒 SECURED: Admin only
+    [LOCKED] SECURED: Admin only
     """
     if session.role != 'admin':
         raise HTTPException(status_code=403, detail="Admin access required")

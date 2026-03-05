@@ -236,20 +236,20 @@ def main():
 
     # Initialize database
     if not init_database():
-        print("\n❌ Database initialization FAILED")
+        print("\n[FAIL] Database initialization FAILED")
         return 1
 
     # Verify tables
     if not verify_tables():
-        print("\n❌ Table verification FAILED")
+        print("\n[FAIL] Table verification FAILED")
         return 1
 
     # Add default data
     if not add_default_data():
-        print("\n⚠️  Default data creation had warnings")
+        print("\n[WARN]  Default data creation had warnings")
 
     print("\n" + "=" * 60)
-    print("✓ Database initialization completed successfully")
+    print("[OK] Database initialization completed successfully")
     print("=" * 60)
     print(f"\nDatabase location: {system_config.DB_PATH}")
     print("\nNext steps:")

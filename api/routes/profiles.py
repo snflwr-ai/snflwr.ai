@@ -2,7 +2,7 @@
 Profile Management API Routes
 Child profile CRUD operations
 
-🔒 SECURED: All routes require authentication
+[LOCKED] SECURED: All routes require authentication
 - Parents can only access their own children's profiles
 - Admins can access all profiles
 """
@@ -166,7 +166,7 @@ def create_profile(
     - Birthdate preferred over age for accurate age calculation
     - Consent must be verified before profile activation
 
-    🔒 SECURED: Parent can only create profiles for themselves, admins can create for anyone
+    [LOCKED] SECURED: Parent can only create profiles for themselves, admins can create for anyone
     """
     try:
         # Verify authorization: Parents can only create for themselves
@@ -331,7 +331,7 @@ def get_profile(
     """
     Get child profile by ID
 
-    🔒 SECURED: Parents can only view their own children's profiles, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children's profiles, admins can view all
     """
     try:
         profile_manager = ProfileManager(auth_manager.db)
@@ -366,7 +366,7 @@ def get_profiles_for_parent(
     """
     Get all profiles for a parent
 
-    🔒 SECURED: Parents can only view their own children, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children, admins can view all
     """
     try:
         profile_manager = ProfileManager(auth_manager.db)
@@ -404,7 +404,7 @@ def update_profile(
     """
     Update child profile
 
-    🔒 SECURED: Parents can only update their own children's profiles, admins can update all
+    [LOCKED] SECURED: Parents can only update their own children's profiles, admins can update all
     """
     try:
         profile_manager = ProfileManager(auth_manager.db)
@@ -455,7 +455,7 @@ def deactivate_profile(
     """
     Deactivate child profile (soft delete)
 
-    🔒 SECURED: Parents can only deactivate their own children's profiles, admins can deactivate all
+    [LOCKED] SECURED: Parents can only deactivate their own children's profiles, admins can deactivate all
     """
     try:
         profile_manager = ProfileManager(auth_manager.db)
@@ -490,7 +490,7 @@ def get_profile_statistics(
     """
     Get usage statistics for a profile
 
-    🔒 SECURED: Parents can only view their own children's stats, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children's stats, admins can view all
     """
     try:
         profile_manager = ProfileManager(auth_manager.db)
@@ -543,7 +543,7 @@ def export_profile_data(
     - Usage statistics
     - Export metadata (date, format version)
 
-    🔒 SECURED: Parents can only export their own children's data, admins can export all
+    [LOCKED] SECURED: Parents can only export their own children's data, admins can export all
     """
     try:
         profile_manager = ProfileManager(auth_manager.db)

@@ -178,11 +178,11 @@ class ParentDashboard:
             frame = tk.Frame(self.window, bg="#f0f0f0", relief=tk.RIDGE, bd=2)
         
         tabs = [
-            ("overview", "📊 Overview"),
-            ("profiles", "👥 Profiles"),
-            ("safety", "🛡️ Safety"),
-            ("analytics", "📈 Analytics"),
-            ("settings", "⚙️ Settings")
+            ("overview", "[STATS] Overview"),
+            ("profiles", "[USERS] Profiles"),
+            ("safety", "[SAFE] Safety"),
+            ("analytics", "[CHART] Analytics"),
+            ("settings", "[CONFIG] Settings")
         ]
         
         for tab_id, tab_name in tabs:
@@ -271,10 +271,10 @@ class ParentDashboard:
         
         # Create stat cards
         stats = [
-            ("👥 Total Children", str(total_profiles)),
-            ("✅ Active Today", str(active_today)),
-            ("📚 Sessions Today", str(total_sessions)),
-            ("⚠️ Safety Alerts", str(pending_incidents))
+            ("[USERS] Total Children", str(total_profiles)),
+            ("[OK] Active Today", str(active_today)),
+            ("[DOCS] Sessions Today", str(total_sessions)),
+            ("[WARN] Safety Alerts", str(pending_incidents))
         ]
         
         for i, (label, value) in enumerate(stats):
@@ -917,10 +917,10 @@ class ParentDashboard:
         else:
             # For scrolledtext, just insert text
             severity_color = {
-                'critical': '🔴',
-                'major': '🟠',
-                'minor': '🟡'
-            }.get(incident.severity, '⚪')
+                'critical': '',
+                'major': '',
+                'minor': ''
+            }.get(incident.severity, '')
             
             text = (
                 f"{severity_color} {incident.severity.upper()} - "
@@ -1001,11 +1001,11 @@ class ParentDashboard:
         message = (
             "Detailed learning analytics coming soon!\n\n"
             "This section will show:\n"
-            "• Time spent by subject\n"
-            "• Questions asked per topic\n"
-            "• Learning progress over time\n"
-            "• Engagement metrics\n"
-            "• Recommended focus areas"
+            "- Time spent by subject\n"
+            "- Questions asked per topic\n"
+            "- Learning progress over time\n"
+            "- Engagement metrics\n"
+            "- Recommended focus areas"
         )
         
         if ctk:

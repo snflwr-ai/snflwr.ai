@@ -24,9 +24,9 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-info()    { echo -e "${GREEN}✓${NC} $1"; }
-warn()    { echo -e "${YELLOW}⚠${NC} $1"; }
-error()   { echo -e "${RED}✗${NC} $1"; }
+info()    { echo -e "${GREEN}[OK]${NC} $1"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error()   { echo -e "${RED}[FAIL]${NC} $1"; }
 heading() { echo -e "\n${BOLD}$1${NC}"; }
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
@@ -395,7 +395,7 @@ echo "   ───────────────────────�
 echo ""
 
 echo "======================================"
-echo -e "  ${GREEN}✓ Build Complete!${NC}"
+echo -e "  ${GREEN}[OK] Build Complete!${NC}"
 echo "======================================"
 echo ""
 echo "  Chat model:    ${CHAT_MODEL} (~${CHAT_RAM} GB runtime)"

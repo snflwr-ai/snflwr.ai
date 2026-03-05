@@ -300,14 +300,14 @@ class LauncherWindow:
         if ctk:
             error_title = ctk.CTkLabel(
                 frame,
-                text="⚠️ Setup Required",
+                text="[WARN] Setup Required",
                 font=("Arial", 16, "bold"),
                 text_color="#c62828"
             )
         else:
             error_title = tk.Label(
                 frame,
-                text="⚠️ Setup Required",
+                text="[WARN] Setup Required",
                 font=("Arial", 16, "bold"),
                 bg="#ffebee",
                 fg="#c62828"
@@ -500,7 +500,7 @@ class LauncherWindow:
                 # Update error message
                 for widget in self.error_frame.winfo_children():
                     if isinstance(widget, (tk.Label, ctk.CTkLabel)):
-                        if "⚠️" not in widget.cget("text"):
+                        if "[WARN]" not in widget.cget("text"):
                             error_text = (
                                 f"{error_message}\n\n"
                                 "Please:\n"

@@ -69,7 +69,7 @@ class USBImageBuilder:
         # Package as ZIP
         zip_path = self.create_zip_package()
 
-        print_success(f"\n✓ USB image built successfully!")
+        print_success(f"\n[OK] USB image built successfully!")
         print(f"\nUSB Image Location: {self.usb_root}")
         print(f"ZIP Package: {zip_path}")
         print(f"\nTo deploy:")
@@ -651,7 +651,7 @@ read -p "Press Enter to exit..."
 
         readme_content = """# snflwr.ai - USB Deployment
 
-## 🚀 Quick Start
+## [START] Quick Start
 
 ### Windows:
 1. Double-click `run_snflwr.bat`
@@ -663,7 +663,7 @@ read -p "Press Enter to exit..."
 2. Run: `./run_snflwr.sh`
 3. Open browser to http://localhost:8000
 
-## 📁 What's Included
+## [DIR] What's Included
 
 - **app/** - snflwr.ai application code
 - **data/** - Your SQLite database (KEEP THIS SAFE!)
@@ -671,7 +671,7 @@ read -p "Press Enter to exit..."
 - **backups/** - Database backup location
 - **docs/** - Additional documentation
 
-## 🔒 Privacy & Security
+## [LOCKED] Privacy & Security
 
 ### Your Data Stays Local
 - All data stored on THIS USB drive
@@ -685,7 +685,7 @@ read -p "Press Enter to exit..."
 3. Dashboard password is in `DASHBOARD_PASSWORD.txt`
 4. Create your first child profile
 
-## 💡 Usage Tips
+## [TIP] Usage Tips
 
 ### Moving to Another Computer
 1. Stop the server (Ctrl+C)
@@ -709,7 +709,7 @@ cp data/snflwr.db backups/snflwr_backup_$(date +%Y%m%d).db
 - 100MB free space on USB
 - Internet connection (for AI model access)
 
-## 🆘 Troubleshooting
+## [HELP] Troubleshooting
 
 ### "Python not found"
 Install Python 3.8+ from https://www.python.org/downloads/
@@ -731,22 +731,22 @@ Make launcher executable:
 chmod +x run_snflwr.sh
 ```
 
-## 📚 Additional Resources
+## [DOCS] Additional Resources
 
 - Full documentation: https://github.com/yourusername/snflwr-ai
 - Report issues: https://github.com/yourusername/snflwr-ai/issues
 - Database guide: See `docs/DATABASE_GUIDE.md` in main repository
 
-## 🔐 Security Reminders
+## [SECURE] Security Reminders
 
-⚠ **IMPORTANT:**
+[WARN] **IMPORTANT:**
 - This USB contains COPPA-protected child data
 - Keep the USB in a secure location
 - Never share your dashboard password
 - Regularly backup `data/snflwr.db`
 - The dashboard password is in `DASHBOARD_PASSWORD.txt`
 
-## 📊 What Data is Stored?
+## [STATS] What Data is Stored?
 
 - Child profiles (names, ages, grades)
 - Learning conversations and questions

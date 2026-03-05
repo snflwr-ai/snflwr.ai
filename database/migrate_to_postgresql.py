@@ -61,11 +61,11 @@ class DatabaseMigrator:
 
         self.sqlite_conn = sqlite3.connect(str(self.sqlite_path))
         self.sqlite_conn.row_factory = sqlite3.Row
-        print(f"✓ Connected to SQLite: {self.sqlite_path}")
+        print(f"[OK] Connected to SQLite: {self.sqlite_path}")
 
         # Connect to PostgreSQL
         self.pg_conn = psycopg2.connect(**self.pg_config)
-        print(f"✓ Connected to PostgreSQL: {self.pg_config['user']}@{self.pg_config['host']}:{self.pg_config['port']}/{self.pg_config['database']}")
+        print(f"[OK] Connected to PostgreSQL: {self.pg_config['user']}@{self.pg_config['host']}:{self.pg_config['port']}/{self.pg_config['database']}")
 
     def convert_value(self, value, column_name: str):
         """Convert SQLite values to PostgreSQL format"""
@@ -145,11 +145,11 @@ class DatabaseMigrator:
             execute_batch(pg_cursor, insert_sql, converted_rows, page_size=100)
             self.pg_conn.commit()
 
-            print(f"  ✓ Migrated {len(converted_rows)} rows successfully")
+            print(f"  [OK] Migrated {len(converted_rows)} rows successfully")
 
         except Exception as e:
             self.pg_conn.rollback()
-            print(f"  ✗ Error migrating table {table_name}: {e}")
+            print(f"  [FAIL] Error migrating table {table_name}: {e}")
             raise
 
     def verify_migration(self):
@@ -185,7 +185,7 @@ class DatabaseMigrator:
                 if not match:
                     all_match = False
 
-                status = "✓" if match else "✗"
+                status = "[OK]" if match else "[FAIL]"
                 results.append({
                     'table': table,
                     'sqlite': sqlite_count,
@@ -211,7 +211,7 @@ class DatabaseMigrator:
             self.sqlite_conn.close()
         if self.pg_conn:
             self.pg_conn.close()
-        print("\n✓ Connections closed")
+        print("\n[OK] Connections closed")
 
 
 def main():
@@ -241,13 +241,13 @@ def main():
 
     # Validate
     if not pg_config['password']:
-        print("\n❌ Error: POSTGRES_PASSWORD not set")
+        print("\n[FAIL] Error: POSTGRES_PASSWORD not set")
         print("Set it in .env.production or export POSTGRES_PASSWORD=your_password")
         sys.exit(1)
 
     # Confirm
     print("\n" + "=" * 70)
-    print("⚠️  WARNING: This will DELETE all existing data in PostgreSQL")
+    print("[WARN]  WARNING: This will DELETE all existing data in PostgreSQL")
     print("=" * 70)
     response = input("\nContinue with migration? (yes/no): ")
     if response.lower() != 'yes':
@@ -275,9 +275,9 @@ def main():
         # Summary
         print("\n" + "=" * 70)
         if all_match:
-            print("✓ Migration Completed Successfully!")
+            print("[OK] Migration Completed Successfully!")
         else:
-            print("⚠️  Migration Completed with Warnings")
+            print("[WARN]  Migration Completed with Warnings")
             print("Some table counts don't match. Review the verification table above.")
         print("=" * 70)
 
@@ -290,7 +290,7 @@ def main():
 
     except Exception as e:
         print("\n" + "=" * 70)
-        print("❌ Migration Failed")
+        print("[FAIL] Migration Failed")
         print("=" * 70)
         print(f"\nError: {e}")
         print("\nThe PostgreSQL database may be in an inconsistent state.")

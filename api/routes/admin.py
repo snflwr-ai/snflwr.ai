@@ -4,7 +4,7 @@ Handles syncing Open WebUI admins to Snflwr database and
 provides admin dashboard API endpoints for managing accounts,
 profiles, alerts, activity, and audit logs.
 
-🔒 SECURED: All routes require admin authentication
+[LOCKED] SECURED: All routes require admin authentication
 - Only admins can access these endpoints
 - Prevents unauthorized admin account creation
 """
@@ -438,7 +438,7 @@ async def sync_admin(
     """
     Sync Open WebUI admin to Snflwr database
 
-    🔒 SECURED: Admin-only access to prevent unauthorized admin creation
+    [LOCKED] SECURED: Admin-only access to prevent unauthorized admin creation
 
     This endpoint is called when a user logs into Open WebUI to ensure
     they exist in Snflwr's users table. If they don't exist, creates them.
@@ -1500,7 +1500,7 @@ async def get_admin(
     """
     Get admin information by ID
 
-    🔒 SECURED: Admin-only access
+    [LOCKED] SECURED: Admin-only access
     NOTE: This route MUST be defined last so /stats, /accounts etc. match first.
     """
     try:

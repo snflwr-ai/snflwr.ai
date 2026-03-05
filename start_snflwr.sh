@@ -133,9 +133,9 @@ if [ "${REDIS_ENABLED:-false}" = "true" ]; then
         echo "Redis is recommended for authentication rate limiting and caching."
         echo ""
         echo "To start Redis:"
-        echo "  • Linux: sudo systemctl start redis"
-        echo "  • macOS: brew services start redis"
-        echo "  • Manual: redis-server --daemonize yes"
+        echo "  - Linux: sudo systemctl start redis"
+        echo "  - macOS: brew services start redis"
+        echo "  - Manual: redis-server --daemonize yes"
         echo ""
         echo "Continuing without Redis (using in-memory fallback)..."
         echo "Set REDIS_ENABLED=false in .env to suppress this warning."
@@ -279,7 +279,7 @@ if [ "${ENABLE_SAFETY_MODEL:-false}" = "true" ]; then
 fi
 
 echo ""
-echo -e "${GREEN}✓ Prerequisites check complete${NC}"
+echo -e "${GREEN}[OK] Prerequisites check complete${NC}"
 echo ""
 
 # Kill any leftover API server from a previous run
@@ -351,7 +351,7 @@ echo "API server PID: $API_PID"
 echo "Waiting for API to be ready..."
 for i in {1..30}; do
     if curl -s http://localhost:39150/health >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ API server is running${NC}"
+        echo -e "${GREEN}[OK] API server is running${NC}"
         break
     fi
     sleep 1
@@ -497,7 +497,7 @@ elif [ $docker_rc -ne 0 ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✓ Docker is running${NC}"
+echo -e "${GREEN}[OK] Docker is running${NC}"
 
 # Start Open WebUI via Docker Compose
 COMPOSE_FILE="$SCRIPT_DIR/frontend/open-webui/docker-compose.yaml"
@@ -598,7 +598,7 @@ if [ "$COMPOSE_OK" = true ]; then
     WEBUI_READY=false
     for i in {1..60}; do
         if curl -s http://localhost:3000 >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ Open WebUI is running${NC}"
+            echo -e "${GREEN}[OK] Open WebUI is running${NC}"
             WEBUI_READY=true
             break
         fi
@@ -625,14 +625,14 @@ fi
 
 echo ""
 echo "=========================================="
-echo -e "${GREEN}✓ snflwr.ai is running!${NC}"
+echo -e "${GREEN}[OK] snflwr.ai is running!${NC}"
 echo "=========================================="
 echo ""
 echo -e "  Chat UI:          ${GREEN}http://localhost:3000${NC}"
 echo -e "  Admin dashboard:  ${GREEN}http://localhost:39150/admin${NC}"
 echo ""
 echo "To stop:"
-echo "  • Press Ctrl+C"
+echo "  - Press Ctrl+C"
 echo ""
 echo "Logs: $SCRIPT_DIR/logs/api.log"
 echo ""

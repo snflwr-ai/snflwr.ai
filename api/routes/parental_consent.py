@@ -65,7 +65,7 @@ async def request_parental_consent(
 
     Sends verification email to parent with consent form link
 
-    🔒 SECURED: Parents can only request consent for their own children
+    [LOCKED] SECURED: Parents can only request consent for their own children
     """
     try:
         age_manager = AgeVerificationManager(auth_manager.db)
@@ -195,7 +195,7 @@ async def verify_parental_consent(
     This endpoint is called when parent clicks the link in verification email
     and completes the consent form
 
-    🔓 PUBLIC: Accessible via token (no auth required)
+    [UNLOCKED] PUBLIC: Accessible via token (no auth required)
     """
     try:
         age_manager = AgeVerificationManager(auth_manager.db)
@@ -322,7 +322,7 @@ async def revoke_parental_consent(
 
     This will deactivate the child profile until new consent is obtained
 
-    🔒 SECURED: Parents can only revoke consent for their own children
+    [LOCKED] SECURED: Parents can only revoke consent for their own children
     """
     try:
         age_manager = AgeVerificationManager(auth_manager.db)
@@ -386,7 +386,7 @@ async def get_consent_status(
     """
     Get current parental consent status for a profile
 
-    🔒 SECURED: Parents can only view status for their own children
+    [LOCKED] SECURED: Parents can only view status for their own children
     """
     try:
         age_manager = AgeVerificationManager(auth_manager.db)

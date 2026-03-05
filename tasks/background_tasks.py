@@ -158,7 +158,7 @@ def send_safety_alert(
         True if sent successfully
     """
     try:
-        subject = f"🚨 Safety Alert for {child_name}"
+        subject = f"[ALERT] Safety Alert for {child_name}"
 
         # Escape user-controlled values to prevent stored XSS in email
         safe_child_name = html_escape(child_name)

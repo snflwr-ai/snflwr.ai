@@ -834,7 +834,7 @@ def setup_encryption_interactive():
             confirm = input("Confirm passphrase: ").strip()
 
             if passphrase != confirm:
-                print("❌ Passphrases don't match. Try again.\n")
+                print("[FAIL] Passphrases don't match. Try again.\n")
                 continue
 
             try:
@@ -842,20 +842,20 @@ def setup_encryption_interactive():
                     passphrase,
                     save_backup=True
                 )
-                print("\n✅ Encryption key derived from passphrase")
-                print(f"✅ Metadata saved to {key_manager.metadata_file}")
-                print("\n⚠️  IMPORTANT: Remember your passphrase! It's needed to recover your key.")
+                print("\n[OK] Encryption key derived from passphrase")
+                print(f"[OK] Metadata saved to {key_manager.metadata_file}")
+                print("\n[WARN]  IMPORTANT: Remember your passphrase! It's needed to recover your key.")
                 return key
 
             except KeyStrengthError as e:
-                print(f"❌ {e}\n")
+                print(f"[FAIL] {e}\n")
                 continue
 
     elif choice == "2":
         print("\n" + "-"*60)
         print("RANDOM KEY GENERATION")
         print("-"*60)
-        print("⚠️  WARNING: Store this key securely!")
+        print("[WARN]  WARNING: Store this key securely!")
         print("Lost key = permanent data loss\n")
 
         confirm = input("Type 'I UNDERSTAND' to continue: ").strip()
@@ -866,15 +866,15 @@ def setup_encryption_interactive():
 
         key = key_manager.initialize_from_random_key(save_backup=True)
 
-        print("\n✅ Random encryption key generated and saved to key file.")
-        print(f"\n🔑 ENCRYPTION KEY (first 8 chars): {key[:8]}...")
-        print("\n⚠️  The full key is stored in the key file. To export it:")
+        print("\n[OK] Random encryption key generated and saved to key file.")
+        print(f"\n[KEY] ENCRYPTION KEY (first 8 chars): {key[:8]}...")
+        print("\n[WARN]  The full key is stored in the key file. To export it:")
         print("   cat <data-dir>/.encryption_key")
-        print("\n⚠️  CRITICAL: Back up this key to a secure location:")
+        print("\n[WARN]  CRITICAL: Back up this key to a secure location:")
         print("   - Password manager (1Password, Bitwarden, etc.)")
         print("   - Hardware security key")
         print("   - Encrypted USB drive (store separately from database)")
-        print("\n❌ DO NOT save this key in plain text files or code!")
+        print("\n[FAIL] DO NOT save this key in plain text files or code!")
 
         input("\nPress Enter after you've securely saved the key...")
 
@@ -889,6 +889,6 @@ if __name__ == "__main__":
     # Run interactive setup
     key = setup_encryption_interactive()
     if key:
-        print("\n✅ Setup complete!")
+        print("\n[OK] Setup complete!")
         print("\nTo use this key, set environment variable:")
         print("export DB_ENCRYPTION_KEY='<contents of your key file>'")

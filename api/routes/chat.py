@@ -2,7 +2,7 @@
 Chat API Routes
 Handles chat requests with integrated safety monitoring
 
-🔒 SECURED: All routes require authentication
+[LOCKED] SECURED: All routes require authentication
 - Parents can only chat for their own children's profiles
 - Admins can chat for any profile
 """
@@ -155,7 +155,7 @@ async def send_chat_message(
     """
     Process chat message through 4-layer safety pipeline
 
-    🔒 SECURED: Parents can only send messages for their own children, admins can send for any child
+    [LOCKED] SECURED: Parents can only send messages for their own children, admins can send for any child
 
     This is the main endpoint called by Open WebUI middleware.
     It cannot be bypassed by students.
@@ -499,7 +499,7 @@ async def end_session(
     """
     End a conversation session
 
-    🔒 SECURED: Parents can only end their own children's sessions, admins can end any
+    [LOCKED] SECURED: Parents can only end their own children's sessions, admins can end any
     """
     try:
         # Session ownership verified by VerifySessionAccess dependency

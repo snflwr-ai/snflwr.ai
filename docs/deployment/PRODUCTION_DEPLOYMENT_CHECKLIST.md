@@ -447,4 +447,4 @@ sudo journalctl -u snflwr-api -n 100
    - Enhanced analytics
    - Mobile optimization
 
-snflwr.ai is production-ready! 🌻
+snflwr.ai is production-ready!

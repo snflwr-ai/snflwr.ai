@@ -30,7 +30,7 @@ Uses an Open WebUI Pipeline to automatically ask onboarding questions.
 ```
 Student: Can you help me with fractions?
 
-Snflwr: Hi there! I'm Snflwr, your friendly STEM tutor! 🌻
+Snflwr: Hi there! I'm Snflwr, your friendly STEM tutor!
 
 Before we start learning together, I'd love to get to know you a bit:
 
@@ -74,7 +74,7 @@ ONBOARDING (FIRST INTERACTION)
 
 When a student starts their FIRST conversation with you (no prior messages):
 
-1. Greet warmly: "Hi there! I'm Snflwr, your friendly STEM tutor! 🌻"
+1. Greet warmly: "Hi there! I'm Snflwr, your friendly STEM tutor!"
 
 2. Ask qualifying questions:
    - "What grade are you in? (For example: '3rd grade' or 'I'm 10 years old')"
@@ -248,7 +248,7 @@ You can modify what Snflwr asks:
 When students first start chatting with Snflwr, they'll be greeted with:
 
 ```
-Hi there! I'm Snflwr, your friendly STEM tutor! 🌻
+Hi there! I'm Snflwr, your friendly STEM tutor!
 
 Before we start learning together, I'd love to get to know you a bit:
 
@@ -329,4 +329,4 @@ After setting up onboarding:
 4. **Adjust questions** based on what works best
 5. **Train parents/teachers** on what students will experience
 
-The onboarding experience makes Snflwr more personalized and effective! 🌻
+The onboarding experience makes Snflwr more personalized and effective!

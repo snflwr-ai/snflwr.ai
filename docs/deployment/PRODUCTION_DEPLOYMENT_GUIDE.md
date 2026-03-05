@@ -616,4 +616,4 @@ After deployment:
 4. **Train users** - Create guides for students/parents
 5. **Plan backups** - Set up automated backup schedule
 
-snflwr.ai is ready for production! 🌻
+snflwr.ai is ready for production!

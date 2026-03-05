@@ -540,7 +540,7 @@ You now have a **production-grade K-12 tutoring platform** with:
 6. ✅ **Freemium Business Model** - Subscription tiers ready
 7. ✅ **Production Architecture** - Scalable, maintainable codebase
 
-**All running locally. Full privacy. No cloud required.** 🌻
+**All running locally. Full privacy. No cloud required.**
 
 ---
 

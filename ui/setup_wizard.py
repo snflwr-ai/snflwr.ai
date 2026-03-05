@@ -243,13 +243,13 @@ class SetupWizard:
         if ctk:
             title = ctk.CTkLabel(
                 self.content_frame,
-                text="Welcome to snflwr.ai! 🌻",
+                text="Welcome to snflwr.ai!",
                 font=("Arial", 28, "bold")
             )
         else:
             title = tk.Label(
                 self.content_frame,
-                text="Welcome to snflwr.ai! 🌻",
+                text="Welcome to snflwr.ai!",
                 font=("Arial", 28, "bold"),
                 bg="white"
             )
@@ -722,7 +722,7 @@ class SetupWizard:
                 logger.info(f"Child profile created: {profile.profile_id}")
 
             # Update progress
-            self._update_progress("Setup complete! 🌻")
+            self._update_progress("Setup complete!")
             
             # Wait a moment then close
             self.window.after(1500, lambda: self._complete_setup(True))

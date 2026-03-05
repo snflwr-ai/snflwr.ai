@@ -146,7 +146,7 @@ class Function:
                     return body
 
         # Age not set and not found in message - prompt for it
-        age_prompt = """Welcome to snflwr.ai! 🌻
+        age_prompt = """Welcome to snflwr.ai!
 
 Before we start learning together, I need to know your age so I can provide the best help for you.
 

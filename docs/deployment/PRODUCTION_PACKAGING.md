@@ -443,4 +443,4 @@ grafana:
 2. Test deployment locally
 3. Deploy to staging environment
 4. Get feedback from beta users
-5. Launch! 🌻
+5. Launch!

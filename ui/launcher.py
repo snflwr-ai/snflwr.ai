@@ -558,7 +558,7 @@ class LauncherWindow:
             self._hide_login_form()
             self._hide_browser_button()
             self._update_status(
-                "Welcome to snflwr.ai! 🌻",
+                "Welcome to snflwr.ai!",
                 "Let's set up your family's account (takes about 3 minutes)"
             )
 
@@ -575,7 +575,7 @@ class LauncherWindow:
         """Show inline login form — same window, same visual style as launcher"""
         def show():
             self._update_status(
-                "Welcome Back! 🌻",
+                "Welcome Back!",
                 "Sign in to start snflwr.ai"
             )
 
@@ -755,7 +755,7 @@ class LauncherWindow:
         """Post-login: tear down login form, show launch and browser buttons"""
         self._hide_login_form()
         self._update_status(
-            "Ready to Go! 🌻",
+            "Ready to Go!",
             "snflwr.ai is ready to launch"
         )
 

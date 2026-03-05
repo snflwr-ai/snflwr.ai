@@ -146,7 +146,7 @@ class StudentInterface:
             frame = tk.Frame(self.window, bg="white")
         
         # Profile name
-        welcome_text = f"Hi {self.profile.name}! 🌻"
+        welcome_text = f"Hi {self.profile.name}!"
         if ctk:
             name_label = ctk.CTkLabel(
                 frame,
@@ -209,13 +209,13 @@ class StudentInterface:
         if ctk:
             title = ctk.CTkLabel(
                 frame,
-                text="Chat with Snflwr 🌻",
+                text="Chat with Snflwr",
                 font=("Arial", 16, "bold")
             )
         else:
             title = tk.Label(
                 frame,
-                text="Chat with Snflwr 🌻",
+                text="Chat with Snflwr",
                 font=("Arial", 16, "bold"),
                 bg="white"
             )
@@ -417,7 +417,7 @@ class StudentInterface:
         
         if age_group == "K-2":
             message = (
-                "Hi! I'm Snflwr, your friendly learning helper! 🌻\n\n"
+                "Hi! I'm Snflwr, your friendly learning helper!\n\n"
                 "I can help you with:\n"
                 "• Math problems\n"
                 "• Science questions\n"
@@ -427,7 +427,7 @@ class StudentInterface:
             )
         elif age_group == "Elementary":
             message = (
-                "Hello! I'm Snflwr, your AI learning assistant! 🌻\n\n"
+                "Hello! I'm Snflwr, your AI learning assistant!\n\n"
                 "I'm here to help you with:\n"
                 "• Math homework and practice\n"
                 "• Science experiments and concepts\n"
@@ -437,7 +437,7 @@ class StudentInterface:
             )
         elif age_group == "Middle":
             message = (
-                "Welcome! I'm Snflwr, your STEM tutor! 🌻\n\n"
+                "Welcome! I'm Snflwr, your STEM tutor!\n\n"
                 "I can assist you with:\n"
                 "• Advanced math concepts\n"
                 "• Physical and life sciences\n"
@@ -447,7 +447,7 @@ class StudentInterface:
             )
         else:  # High School
             message = (
-                "Welcome back! I'm Snflwr, your advanced STEM tutor! 🌻\n\n"
+                "Welcome back! I'm Snflwr, your advanced STEM tutor!\n\n"
                 "I'm ready to help with:\n"
                 "• AP-level mathematics and sciences\n"
                 "• Advanced programming concepts\n"

@@ -878,14 +878,14 @@ class ParentDashboard:
                 if ctk:
                     no_incidents = ctk.CTkLabel(
                         self.content_frame,
-                        text="No safety incidents in the last 30 days. Great job! 🌻",
+                        text="No safety incidents in the last 30 days. Great job!",
                         font=("Arial", 14),
                         text_color="green"
                     )
                 else:
                     no_incidents = tk.Label(
                         self.content_frame,
-                        text="No safety incidents in the last 30 days. Great job! 🌻",
+                        text="No safety incidents in the last 30 days. Great job!",
                         font=("Arial", 14),
                         bg="white",
                         fg="green"

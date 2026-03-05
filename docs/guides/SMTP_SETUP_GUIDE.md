@@ -532,4 +532,4 @@ After SMTP setup:
    - Track delivery rates
    - Monitor rate limits
 
-Email notifications are now configured! 🌻
+Email notifications are now configured!

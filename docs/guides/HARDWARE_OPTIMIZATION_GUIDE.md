@@ -481,4 +481,4 @@ TUTOR_MODEL=snflwr-ai:standard  # Use 3B instead of 8B
 - School computer lab → Fast, excellent quality
 - University server → Fast, exceptional quality
 
-**Everyone gets the best experience their hardware can provide!** 🌻
+**Everyone gets the best experience their hardware can provide!**

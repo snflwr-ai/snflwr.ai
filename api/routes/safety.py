@@ -8,6 +8,7 @@ Safety alerts and incident management
 """
 
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 
 from safety.safety_monitor import safety_monitor
 from safety.incident_logger import incident_logger
@@ -142,4 +143,49 @@ async def get_safety_stats(
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
         logger.exception(f"Unexpected error retrieving safety stats: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+class FalsePositiveSubmission(BaseModel):
+    profile_id: str
+    message_text: str
+    block_reason: str
+    triggered_keywords: list[str] = []
+    educator_note: str = ""
+
+
+@router.post("/false-positive")
+async def submit_false_positive(
+    body: FalsePositiveSubmission,
+    session: AuthSession = Depends(get_current_session),
+):
+    """
+    Submit a false positive report for a blocked message.
+
+    [LOCKED] SECURED: Must be authenticated as parent or admin.
+    """
+    import json
+    try:
+        # Verify caller is parent or admin (not a student session)
+        if session.role not in ("parent", "admin"):
+            raise HTTPException(status_code=403, detail="Parent or admin access required")
+
+        fp_id = auth_manager.db.insert_false_positive(
+            profile_id=body.profile_id,
+            message_text=body.message_text,
+            block_reason=body.block_reason,
+            triggered_keywords=json.dumps(body.triggered_keywords),
+            educator_note=body.educator_note or None,
+        )
+
+        audit_log('create', 'false_positive_report', body.profile_id, session)
+
+        return {"success": True, "id": fp_id}
+    except HTTPException:
+        raise
+    except DB_ERRORS as e:
+        logger.error(f"Database error submitting false positive: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected error submitting false positive: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

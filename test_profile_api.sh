@@ -44,7 +44,7 @@ CREATE_RESPONSE_1=$(curl -s -X POST "$BASE_URL/api/profiles/" \
 echo "Response: $CREATE_RESPONSE_1"
 
 if echo "$CREATE_RESPONSE_1" | grep -q "profile_id"; then
-  echo "✓ Profile created successfully!"
+  echo "[OK] Profile created successfully!"
   PROFILE_ID_1=$(echo "$CREATE_RESPONSE_1" | grep -o '"profile_id":"[^"]*"' | cut -d'"' -f4)
   echo "  Profile ID: $PROFILE_ID_1"
 else
@@ -69,7 +69,7 @@ CREATE_RESPONSE_2=$(curl -s -X POST "$BASE_URL/api/profiles/" \
 echo "Response: $CREATE_RESPONSE_2"
 
 if echo "$CREATE_RESPONSE_2" | grep -q "profile_id"; then
-  echo "✓ Profile created successfully!"
+  echo "[OK] Profile created successfully!"
   PROFILE_ID_2=$(echo "$CREATE_RESPONSE_2" | grep -o '"profile_id":"[^"]*"' | cut -d'"' -f4)
   echo "  Profile ID: $PROFILE_ID_2"
 fi
@@ -92,7 +92,7 @@ CREATE_RESPONSE_FAIL=$(curl -s -X POST "$BASE_URL/api/profiles/" \
 echo "Response: $CREATE_RESPONSE_FAIL"
 
 if echo "$CREATE_RESPONSE_FAIL" | grep -q "0 and 18\|CHECK constraint"; then
-  echo "✓ Correctly rejected age 25!"
+  echo "[OK] Correctly rejected age 25!"
 else
   echo "Note: Response - $CREATE_RESPONSE_FAIL"
 fi
@@ -107,7 +107,7 @@ echo "Response: $GET_PROFILES_RESPONSE"
 
 if echo "$GET_PROFILES_RESPONSE" | grep -q "profiles"; then
   PROFILE_COUNT=$(echo "$GET_PROFILES_RESPONSE" | grep -o '"profile_id"' | wc -l)
-  echo "✓ Retrieved profiles successfully! Count: $PROFILE_COUNT"
+  echo "[OK] Retrieved profiles successfully! Count: $PROFILE_COUNT"
 else
   echo "Note: $GET_PROFILES_RESPONSE"
 fi
@@ -122,7 +122,7 @@ if [ ! -z "$PROFILE_ID_1" ]; then
   echo "Response: $GET_PROFILE_RESPONSE"
 
   if echo "$GET_PROFILE_RESPONSE" | grep -q "Emma"; then
-    echo "✓ Retrieved specific profile successfully!"
+    echo "[OK] Retrieved specific profile successfully!"
   fi
 fi
 
@@ -141,7 +141,7 @@ if [ ! -z "$PROFILE_ID_1" ]; then
   echo "Response: $UPDATE_RESPONSE"
 
   if echo "$UPDATE_RESPONSE" | grep -q "success"; then
-    echo "✓ Profile updated successfully!"
+    echo "[OK] Profile updated successfully!"
   else
     echo "Note: $UPDATE_RESPONSE"
   fi
@@ -157,7 +157,7 @@ if [ ! -z "$PROFILE_ID_2" ]; then
   echo "Response: $DEACTIVATE_RESPONSE"
 
   if echo "$DEACTIVATE_RESPONSE" | grep -q "success"; then
-    echo "✓ Profile deactivated successfully!"
+    echo "[OK] Profile deactivated successfully!"
   else
     echo "Note: $DEACTIVATE_RESPONSE"
   fi
@@ -165,5 +165,5 @@ fi
 
 echo ""
 echo "============================================================"
-echo "✅ Profile API Tests Completed!"
+echo "[OK] Profile API Tests Completed!"
 echo "============================================================"

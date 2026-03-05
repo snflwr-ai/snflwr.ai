@@ -2,7 +2,7 @@
 Admin Dashboard Routes
 Serves the self-contained admin dashboard SPA for platform management.
 
-🔒 SECURED: Both routes require admin authentication.
+[LOCKED] SECURED: Both routes require admin authentication.
 """
 
 from fastapi import APIRouter

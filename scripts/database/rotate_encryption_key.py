@@ -208,9 +208,9 @@ def verify_data_integrity(
             new_count = new_cursor.fetchone()[0]
 
             if original_count == new_count:
-                print(f"✅ {table}: {original_count} rows")
+                print(f"[OK] {table}: {original_count} rows")
             else:
-                print(f"❌ {table}: {original_count} rows (original) vs {new_count} rows (new)")
+                print(f"[FAIL] {table}: {original_count} rows (original) vs {new_count} rows (new)")
                 all_match = False
 
         original_conn.close()
@@ -230,7 +230,7 @@ def rotate_encryption_key():
     print("\n" + "="*70)
     print("DATABASE ENCRYPTION KEY ROTATION")
     print("="*70)
-    print("\n⚠️  This script will rotate your database encryption key.")
+    print("\n[WARN]  This script will rotate your database encryption key.")
     print("Your data will remain safe, but this is a critical operation.\n")
 
     # Get current database path
@@ -241,7 +241,7 @@ def rotate_encryption_key():
     db_path = Path(db_path_str)
 
     if not db_path.exists():
-        print(f"\n❌ Database not found: {db_path}")
+        print(f"\n[FAIL] Database not found: {db_path}")
         return False
 
     # Get current encryption key
@@ -252,7 +252,7 @@ def rotate_encryption_key():
     current_key = os.getenv('DB_ENCRYPTION_KEY')
 
     if current_key:
-        print(f"✅ Found DB_ENCRYPTION_KEY in environment")
+        print(f"[OK] Found DB_ENCRYPTION_KEY in environment")
         use_env = input("Use this key? (y/n): ").strip().lower()
         if use_env != 'y':
             current_key = input("Enter current encryption key: ").strip()
@@ -262,13 +262,13 @@ def rotate_encryption_key():
     # Validate current key
     is_valid, error = validate_key_strength(current_key)
     if not is_valid:
-        print(f"\n❌ Current key validation failed: {error}")
+        print(f"\n[FAIL] Current key validation failed: {error}")
         return False
 
     # Verify we can connect with current key
     print("\nVerifying database connection...")
     if not verify_database_connection(db_path, current_key):
-        print("❌ Cannot connect to database with provided key")
+        print("[FAIL] Cannot connect to database with provided key")
         return False
 
     # Create backup
@@ -284,7 +284,7 @@ def rotate_encryption_key():
 
     print(f"Creating backup: {backup_path}")
     shutil.copy2(db_path, backup_path)
-    print(f"✅ Backup created")
+    print(f"[OK] Backup created")
 
     # Generate new key
     print("\n" + "-"*70)
@@ -304,15 +304,15 @@ def rotate_encryption_key():
             confirm = input("Confirm new passphrase: ").strip()
 
             if new_passphrase != confirm:
-                print("❌ Passphrases don't match. Try again.")
+                print("[FAIL] Passphrases don't match. Try again.")
                 continue
 
             try:
                 old_key, new_key = key_manager.rotate_key(current_key, new_passphrase)
-                print("\n✅ New key generated from passphrase")
+                print("\n[OK] New key generated from passphrase")
                 break
             except Exception as e:
-                print(f"❌ {e}")
+                print(f"[FAIL] {e}")
                 continue
 
     elif choice == "2":
@@ -322,8 +322,8 @@ def rotate_encryption_key():
             return False
 
         old_key, new_key = key_manager.rotate_key(current_key, None)
-        print(f"\n🔑 YOUR NEW ENCRYPTION KEY:\n{new_key}\n")
-        print("⚠️  CRITICAL: Save this key securely before continuing!")
+        print(f"\n[KEY] YOUR NEW ENCRYPTION KEY:\n{new_key}\n")
+        print("[WARN]  CRITICAL: Save this key securely before continuing!")
         input("Press Enter after you've saved the key...")
 
     else:
@@ -358,7 +358,7 @@ def rotate_encryption_key():
         if not verify_data_integrity(db_path, current_key, new_db_path, new_key):
             raise KeyRotationError("Data integrity verification failed")
 
-        print("\n✅ Data integrity verified")
+        print("\n[OK] Data integrity verified")
 
         # Step 4: Replace old database
         print("\n4. Replacing old database...")
@@ -370,7 +370,7 @@ def rotate_encryption_key():
         # Replace
         shutil.move(str(new_db_path), str(db_path))
 
-        print("✅ Database replaced with newly encrypted version")
+        print("[OK] Database replaced with newly encrypted version")
 
         # Step 5: Cleanup
         print("\n5. Cleaning up temporary files...")
@@ -380,11 +380,11 @@ def rotate_encryption_key():
         print("\n" + "="*70)
         print("KEY ROTATION SUCCESSFUL")
         print("="*70)
-        print(f"\n✅ Database encrypted with new key")
-        print(f"✅ Backups saved:")
+        print(f"\n[OK] Database encrypted with new key")
+        print(f"[OK] Backups saved:")
         print(f"   - {backup_path}")
         print(f"   - {final_backup}")
-        print(f"\n⚠️  IMPORTANT NEXT STEPS:")
+        print(f"\n[WARN]  IMPORTANT NEXT STEPS:")
         print(f"1. Update DB_ENCRYPTION_KEY environment variable with new key")
         print(f"2. Restart the application")
         print(f"3. Verify application can connect to database")
@@ -393,8 +393,8 @@ def rotate_encryption_key():
         return True
 
     except Exception as e:
-        print(f"\n❌ KEY ROTATION FAILED: {e}")
-        print(f"\n✅ Your original database is safe at: {backup_path}")
+        print(f"\n[FAIL] KEY ROTATION FAILED: {e}")
+        print(f"\n[OK] Your original database is safe at: {backup_path}")
         print(f"No changes were made to the production database.")
         logger.exception("Key rotation failed")
         return False
@@ -405,9 +405,9 @@ if __name__ == "__main__":
         success = rotate_encryption_key()
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
-        print("\n\n❌ Operation cancelled by user")
+        print("\n\n[FAIL] Operation cancelled by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\n[FAIL] Unexpected error: {e}")
         logger.exception("Unexpected error during key rotation")
         sys.exit(1)

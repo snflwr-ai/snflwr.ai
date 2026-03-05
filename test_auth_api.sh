@@ -24,11 +24,11 @@ REGISTER_RESPONSE=$(curl -s -X POST "$BASE_URL/api/auth/register" \
 echo "Response: $REGISTER_RESPONSE"
 
 if echo "$REGISTER_RESPONSE" | grep -q "success"; then
-  echo "✓ Registration successful!"
+  echo "[OK] Registration successful!"
   USER_ID=$(echo "$REGISTER_RESPONSE" | grep -o '"user_id":"[^"]*"' | cut -d'"' -f4)
   echo "  User ID: $USER_ID"
 else
-  echo "✓ User might already exist (expected on rerun)"
+  echo "[OK] User might already exist (expected on rerun)"
 fi
 
 # Test 2: Login
@@ -44,11 +44,11 @@ LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/api/auth/login" \
 echo "Response: $LOGIN_RESPONSE"
 
 if echo "$LOGIN_RESPONSE" | grep -q "token"; then
-  echo "✓ Login successful!"
+  echo "[OK] Login successful!"
   TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
   echo "  Token: ${TOKEN:0:32}..."
 else
-  echo "✗ Login failed"
+  echo "[FAIL] Login failed"
   exit 1
 fi
 
@@ -60,9 +60,9 @@ VALIDATE_RESPONSE=$(curl -s -X GET "$BASE_URL/api/auth/validate/$TOKEN")
 echo "Response: $VALIDATE_RESPONSE"
 
 if echo "$VALIDATE_RESPONSE" | grep -q "valid"; then
-  echo "✓ Session validation successful!"
+  echo "[OK] Session validation successful!"
 else
-  echo "✗ Session validation failed"
+  echo "[FAIL] Session validation failed"
 fi
 
 # Test 4: Login with wrong password (should fail)
@@ -76,9 +76,9 @@ WRONG_LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/api/auth/login" \
   }')
 
 if echo "$WRONG_LOGIN_RESPONSE" | grep -q "detail"; then
-  echo "✓ Correctly rejected wrong password!"
+  echo "[OK] Correctly rejected wrong password!"
 else
-  echo "✗ Should have rejected wrong password"
+  echo "[FAIL] Should have rejected wrong password"
 fi
 
 # Test 5: Logout
@@ -89,14 +89,14 @@ LOGOUT_RESPONSE=$(curl -s -X POST "$BASE_URL/api/auth/logout?session_id=$TOKEN")
 echo "Response: $LOGOUT_RESPONSE"
 
 if echo "$LOGOUT_RESPONSE" | grep -q "success"; then
-  echo "✓ Logout successful!"
+  echo "[OK] Logout successful!"
 else
   echo "Note: Logout response: $LOGOUT_RESPONSE"
 fi
 
 echo ""
 echo "============================================================"
-echo "✅ API Authentication Tests Completed!"
+echo "[OK] API Authentication Tests Completed!"
 echo "============================================================"
 echo ""
 echo "To start the API server:"

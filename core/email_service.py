@@ -2,7 +2,7 @@
 Email Service for Parent Safety Alerts
 Handles SMTP email delivery for safety notifications
 
-🔒 COPPA Compliant:
+[LOCKED] COPPA Compliant:
 - Uses encrypted parent emails from database
 - Only sends to verified parent accounts
 - Includes opt-out mechanism
@@ -73,7 +73,7 @@ class EmailTemplate:
         safe_parent_name = html_escape(parent_name)
         safe_child_name = html_escape(child_name)
 
-        subject = f"🚨 URGENT: Safety Alert for {safe_child_name}"
+        subject = f"[ALERT] URGENT: Safety Alert for {safe_child_name}"
         safe_severity = html_escape(severity.upper())
         safe_incident_count = html_escape(str(incident_count))
         safe_description = html_escape(description)
@@ -98,7 +98,7 @@ class EmailTemplate:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚨 Urgent Safety Alert</h1>
+            <h1>[ALERT] Urgent Safety Alert</h1>
         </div>
 
         <div class="content">
@@ -108,17 +108,17 @@ class EmailTemplate:
 
             <div class="alert-box">
                 <strong>Alert Details:</strong><br>
-                • Child Profile: {safe_child_name}<br>
-                • Severity: {safe_severity}<br>
-                • Incident Count: {safe_incident_count}<br>
-                • Time: {datetime.now(timezone.utc).strftime('%B %d, %Y at %I:%M %p')}<br>
+                - Child Profile: {safe_child_name}<br>
+                - Severity: {safe_severity}<br>
+                - Incident Count: {safe_incident_count}<br>
+                - Time: {datetime.now(timezone.utc).strftime('%B %d, %Y at %I:%M %p')}<br>
             </div>
 
             <p><strong>Reason:</strong> {safe_description}</p>
 
             {'<div class="snippet"><strong>Conversation Excerpt:</strong><br>' + safe_snippet + '</div>' if safe_snippet else ''}
 
-            <p><strong>⚠️ Recommended Action:</strong></p>
+            <p><strong>[WARN] Recommended Action:</strong></p>
             <ul>
                 <li>Review your child's recent activity in the parent dashboard</li>
                 <li>Have a conversation with your child about safe AI use</li>
@@ -156,7 +156,7 @@ class EmailTemplate:
         Returns:
             tuple: (subject, html_body)
         """
-        subject = f"⚠️ Safety Notice for {html_escape(child_name)}"
+        subject = f"[WARN] Safety Notice for {html_escape(child_name)}"
 
         # Escape user-controlled values to prevent stored XSS in email
         safe_parent_name = html_escape(parent_name)
@@ -183,7 +183,7 @@ class EmailTemplate:
 <body>
     <div class="container">
         <div class="header">
-            <h1>⚠️ Safety Notice</h1>
+            <h1>[WARN] Safety Notice</h1>
         </div>
 
         <div class="content">
@@ -193,10 +193,10 @@ class EmailTemplate:
 
             <div class="info-box">
                 <strong>Notice Details:</strong><br>
-                • Child Profile: {safe_child_name}<br>
-                • Severity: {safe_severity}<br>
-                • Incident Count: {safe_incident_count}<br>
-                • Time: {datetime.now(timezone.utc).strftime('%B %d, %Y at %I:%M %p')}<br>
+                - Child Profile: {safe_child_name}<br>
+                - Severity: {safe_severity}<br>
+                - Incident Count: {safe_incident_count}<br>
+                - Time: {datetime.now(timezone.utc).strftime('%B %d, %Y at %I:%M %p')}<br>
             </div>
 
             <p><strong>Details:</strong> {safe_description}</p>
@@ -272,7 +272,7 @@ class EmailTemplate:
             <a href="{verification_url}" class="action">Verify Email Address</a>
 
             <div class="info-box">
-                <strong>⏱️ Important:</strong> This verification link expires in <strong>24 hours</strong> for security purposes.
+                <strong>[TIMER] Important:</strong> This verification link expires in <strong>24 hours</strong> for security purposes.
             </div>
 
             <p><strong>Why verify?</strong></p>
@@ -340,7 +340,7 @@ class EmailTemplate:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔒 Password Reset Request</h1>
+            <h1>[LOCKED] Password Reset Request</h1>
         </div>
 
         <div class="content">
@@ -351,11 +351,11 @@ class EmailTemplate:
             <a href="{reset_url}" class="action">Reset Password</a>
 
             <div class="warning-box">
-                <strong>⏱️ Time Sensitive:</strong> This reset link expires in <strong>1 hour</strong> for security purposes.
+                <strong>[TIMER] Time Sensitive:</strong> This reset link expires in <strong>1 hour</strong> for security purposes.
             </div>
 
             <div class="security-box">
-                <strong>🔒 Security Notice:</strong>
+                <strong>[LOCKED] Security Notice:</strong>
                 <ul style="margin: 5px 0;">
                     <li>Your current password will remain active until you complete the reset</li>
                     <li>After reset, you'll be logged out of all devices</li>
@@ -630,7 +630,7 @@ class EmailService:
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 28px;">🛡️ Parental Consent Required</h1>
+        <h1 style="color: white; margin: 0; font-size: 28px;">[SAFE] Parental Consent Required</h1>
     </div>
 
     <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
@@ -644,7 +644,7 @@ class EmailService:
 
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <p style="margin: 0; font-size: 14px; color: #856404;">
-                <strong>⚠️ COPPA Compliance Notice</strong><br>
+                <strong>[WARN] COPPA Compliance Notice</strong><br>
                 Under the Children's Online Privacy Protection Act (COPPA), we require verifiable parental consent
                 before activating profiles for children under 13 years of age.
             </p>
@@ -658,7 +658,7 @@ class EmailService:
             <a href="{_safe_url(consent_url)}"
                style="display: inline-block; background: #28a745; color: white; padding: 15px 40px;
                       text-decoration: none; border-radius: 5px; font-size: 16px; font-weight: bold;">
-                ✓ Verify Parental Consent
+                [OK] Verify Parental Consent
             </a>
         </div>
 
@@ -696,7 +696,7 @@ class EmailService:
 
         <p style="font-size: 12px; color: #999; text-align: center;">
             snflwr.ai - K-12 Safe AI Learning Platform<br>
-            Privacy-First • COPPA Compliant • Offline Operation
+            Privacy-First - COPPA Compliant - Offline Operation
         </p>
 
         <p style="font-size: 11px; color: #999; text-align: center; margin-top: 20px;">

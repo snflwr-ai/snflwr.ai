@@ -23,7 +23,7 @@ def migrate_sqlite():
     )
 
     if result:
-        print("✓ auth_tokens table already exists")
+        print("[OK] auth_tokens table already exists")
         return
 
     # Create table
@@ -48,7 +48,7 @@ def migrate_sqlite():
     db_manager.execute_write("CREATE INDEX idx_tokens_expires ON auth_tokens(expires_at)")
     db_manager.execute_write("CREATE INDEX idx_tokens_valid ON auth_tokens(is_valid) WHERE is_valid = 1")
 
-    print("✓ auth_tokens table created successfully")
+    print("[OK] auth_tokens table created successfully")
 
 def migrate_postgresql():
     """Add auth_tokens table to PostgreSQL database"""
@@ -60,7 +60,7 @@ def migrate_postgresql():
     )
 
     if result:
-        print("✓ auth_tokens table already exists")
+        print("[OK] auth_tokens table already exists")
         return
 
     # Create table
@@ -85,7 +85,7 @@ def migrate_postgresql():
     db_manager.execute_write("CREATE INDEX idx_tokens_expires ON auth_tokens(expires_at)")
     db_manager.execute_write("CREATE INDEX idx_tokens_valid ON auth_tokens(is_valid) WHERE is_valid = TRUE")
 
-    print("✓ auth_tokens table created successfully")
+    print("[OK] auth_tokens table created successfully")
 
 def main():
     print("=" * 60)
@@ -102,12 +102,12 @@ def main():
             migrate_sqlite()
 
         print("\n" + "=" * 60)
-        print("✓ Migration completed successfully!")
+        print("[OK] Migration completed successfully!")
         print("=" * 60)
 
     except Exception as e:
         print("\n" + "=" * 60)
-        print("✗ Migration failed!")
+        print("[FAIL] Migration failed!")
         print("=" * 60)
         print(f"\nError: {e}")
         sys.exit(1)

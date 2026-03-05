@@ -183,7 +183,7 @@ class RedisCache:
         self._client = redis.Redis(connection_pool=self.pool)
         # Test connection
         self._client.ping()
-        logger.info(f"✅ Redis cache connected: {self.host}:{self.port} (db: {self.db})")
+        logger.info(f"[OK] Redis cache connected: {self.host}:{self.port} (db: {self.db})")
 
     def _initialize_sentinel(self):
         """Initialize Redis Sentinel connection for high availability"""
@@ -212,10 +212,10 @@ class RedisCache:
         # Get master info
         master_info = self._sentinel.discover_master(self.sentinel_master)
         logger.info(
-            f"✅ Redis Sentinel connected: master={self.sentinel_master} "
+            f"[OK] Redis Sentinel connected: master={self.sentinel_master} "
             f"at {master_info[0]}:{master_info[1]} (db: {self.db})"
         )
-        logger.info(f"✅ Sentinel nodes: {len(self.sentinel_hosts)} configured")
+        logger.info(f"[OK] Sentinel nodes: {len(self.sentinel_hosts)} configured")
 
     def _maybe_reconnect(self) -> bool:
         """Attempt to reconnect if in degraded mode and enough time has elapsed.

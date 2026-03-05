@@ -648,7 +648,7 @@ class ConversationStore:
                 ]
                 
                 for msg in conversation.messages:
-                    role_emoji = "👤" if msg.role == "user" else "🤖" if msg.role == "assistant" else "ℹ️"
+                    role_emoji = "[USER]" if msg.role == "user" else "[AI]" if msg.role == "assistant" else "[INFO]"
                     lines.append(f"### {role_emoji} {msg.role.title()} - {msg.timestamp.strftime('%H:%M')}")
                     lines.append(f"")
                     lines.append(msg.content)

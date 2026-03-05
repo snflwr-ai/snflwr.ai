@@ -366,9 +366,9 @@ class SetupWizard:
         # Password requirements
         requirements = (
             "Password requirements:\n"
-            "• At least 8 characters\n"
-            "• Include uppercase and lowercase letters\n"
-            "• Include at least one number"
+            "- At least 8 characters\n"
+            "- Include uppercase and lowercase letters\n"
+            "- Include at least one number"
         )
         
         if ctk:

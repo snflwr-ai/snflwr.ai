@@ -264,11 +264,11 @@ class StudentInterface:
         
         # Subject buttons
         subjects = [
-            ("general", "📚 General"),
-            ("math", "🔢 Math"),
-            ("science", "🔬 Science"),
-            ("technology", "💻 Technology"),
-            ("engineering", "⚙️ Engineering")
+            ("general", "[DOCS] General"),
+            ("math", "[MATH] Math"),
+            ("science", "[SCIENCE] Science"),
+            ("technology", "[CODE] Technology"),
+            ("engineering", "[CONFIG] Engineering")
         ]
         
         for subject_id, subject_name in subjects:
@@ -293,14 +293,14 @@ class StudentInterface:
         if ctk:
             help_btn = ctk.CTkButton(
                 frame,
-                text="❓ Help",
+                text="[?] Help",
                 width=180,
                 command=self._show_help
             )
         else:
             help_btn = tk.Button(
                 frame,
-                text="❓ Help",
+                text="[?] Help",
                 width=20,
                 command=self._show_help
             )
@@ -419,40 +419,40 @@ class StudentInterface:
             message = (
                 "Hi! I'm Snflwr, your friendly learning helper!\n\n"
                 "I can help you with:\n"
-                "• Math problems\n"
-                "• Science questions\n"
-                "• Reading and writing\n"
-                "• And lots more!\n\n"
+                "- Math problems\n"
+                "- Science questions\n"
+                "- Reading and writing\n"
+                "- And lots more!\n\n"
                 "Just ask me anything you want to learn about!"
             )
         elif age_group == "Elementary":
             message = (
                 "Hello! I'm Snflwr, your AI learning assistant!\n\n"
                 "I'm here to help you with:\n"
-                "• Math homework and practice\n"
-                "• Science experiments and concepts\n"
-                "• Technology and coding basics\n"
-                "• Engineering projects\n\n"
+                "- Math homework and practice\n"
+                "- Science experiments and concepts\n"
+                "- Technology and coding basics\n"
+                "- Engineering projects\n\n"
                 "Ask me any question about your studies!"
             )
         elif age_group == "Middle":
             message = (
                 "Welcome! I'm Snflwr, your STEM tutor!\n\n"
                 "I can assist you with:\n"
-                "• Advanced math concepts\n"
-                "• Physical and life sciences\n"
-                "• Computer science and programming\n"
-                "• Engineering principles\n\n"
+                "- Advanced math concepts\n"
+                "- Physical and life sciences\n"
+                "- Computer science and programming\n"
+                "- Engineering principles\n\n"
                 "What would you like to learn about today?"
             )
         else:  # High School
             message = (
                 "Welcome back! I'm Snflwr, your advanced STEM tutor!\n\n"
                 "I'm ready to help with:\n"
-                "• AP-level mathematics and sciences\n"
-                "• Advanced programming concepts\n"
-                "• Engineering design and analysis\n"
-                "• College preparation\n\n"
+                "- AP-level mathematics and sciences\n"
+                "- Advanced programming concepts\n"
+                "- Engineering design and analysis\n"
+                "- College preparation\n\n"
                 "What challenging topic can I help you with today?"
             )
         
@@ -701,10 +701,10 @@ class StudentInterface:
             "3. Wait for Snflwr to respond\n"
             "4. Continue the conversation!\n\n"
             "Tips:\n"
-            "• Ask clear, specific questions\n"
-            "• Use the subject buttons to focus on a topic\n"
-            "• You can ask follow-up questions\n"
-            "• Ask Snflwr to explain things differently if needed\n\n"
+            "- Ask clear, specific questions\n"
+            "- Use the subject buttons to focus on a topic\n"
+            "- You can ask follow-up questions\n"
+            "- Ask Snflwr to explain things differently if needed\n\n"
             "If you need help from your parents, click the 'Exit' button."
         )
         

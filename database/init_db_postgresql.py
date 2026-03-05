@@ -55,9 +55,9 @@ def create_database_if_not_exists(
             cursor.execute(sql.SQL("CREATE DATABASE {}").format(
                 sql.Identifier(database)
             ))
-            print(f"✓ Database '{database}' created successfully")
+            print(f"[OK] Database '{database}' created successfully")
         else:
-            print(f"✓ Database '{database}' already exists")
+            print(f"[OK] Database '{database}' already exists")
 
     except Exception as e:
         print(f"Error creating database: {e}")
@@ -103,7 +103,7 @@ def initialize_schema(
         cursor.execute(schema_sql)
         conn.commit()
 
-        print("✓ Schema initialized successfully")
+        print("[OK] Schema initialized successfully")
 
         # Verify tables were created
         cursor.execute("""
@@ -114,7 +114,7 @@ def initialize_schema(
         """)
 
         tables = cursor.fetchall()
-        print(f"\n✓ Created {len(tables)} tables:")
+        print(f"\n[OK] Created {len(tables)} tables:")
         for table in tables:
             print(f"  - {table[0]}")
 
@@ -148,7 +148,7 @@ def main():
 
     # Validate configuration
     if not password:
-        print("\n❌ Error: POSTGRES_PASSWORD not set in environment")
+        print("\n[FAIL] Error: POSTGRES_PASSWORD not set in environment")
         print("Set it in .env.production or export POSTGRES_PASSWORD=your_password")
         sys.exit(1)
 
@@ -167,7 +167,7 @@ def main():
 
         # Success
         print("\n" + "=" * 70)
-        print("✓ PostgreSQL Database Initialization Complete!")
+        print("[OK] PostgreSQL Database Initialization Complete!")
         print("=" * 70)
         print("\nNext steps:")
         print("  1. If migrating from SQLite, run: python database/migrate_to_postgresql.py")
@@ -177,7 +177,7 @@ def main():
 
     except Exception as e:
         print("\n" + "=" * 70)
-        print("❌ Database Initialization Failed")
+        print("[FAIL] Database Initialization Failed")
         print("=" * 70)
         print(f"\nError: {e}")
         print("\nTroubleshooting:")

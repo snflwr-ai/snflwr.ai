@@ -78,12 +78,12 @@ def migrate_emails():
     status = check_schema_version()
 
     if status['already_encrypted']:
-        print("   ✓ Database already using encrypted emails!")
+        print("   [OK] Database already using encrypted emails!")
         print("   No migration needed.")
         return True
 
     if not status['needs_migration']:
-        print("   ⚠️  Unable to determine schema state")
+        print("   [WARN]  Unable to determine schema state")
         print(f"   Columns found: {', '.join(status['columns'])}")
         return False
 
@@ -92,7 +92,7 @@ def migrate_emails():
     # Step 2: Backup database
     print("\n2. Creating database backup...")
     backup_path = backup_database()
-    print(f"   ✓ Backup created: {backup_path}")
+    print(f"   [OK] Backup created: {backup_path}")
 
     # Step 3: Read existing emails
     print("\n3. Reading existing user emails...")
@@ -107,14 +107,14 @@ def migrate_emails():
         print(f"   → Found {len(users)} users")
 
         if len(users) == 0:
-            print("   ℹ️  No users to migrate")
+            print("   [INFO]  No users to migrate")
 
         # Step 4: Add new columns
         print("\n4. Adding encrypted email columns...")
 
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN email_hash TEXT")
-            print("   ✓ Added email_hash column")
+            print("   [OK] Added email_hash column")
         except sqlite3.OperationalError as e:
             if "duplicate column" in str(e).lower():
                 print("   → email_hash column already exists")
@@ -123,7 +123,7 @@ def migrate_emails():
 
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN encrypted_email TEXT")
-            print("   ✓ Added encrypted_email column")
+            print("   [OK] Added encrypted_email column")
         except sqlite3.OperationalError as e:
             if "duplicate column" in str(e).lower():
                 print("   → encrypted_email column already exists")
@@ -159,7 +159,7 @@ def migrate_emails():
             print(f"   → Migrated {role}: [email redacted]")
 
         conn.commit()
-        print(f"\n   ✓ Encrypted {migrated_count} email addresses")
+        print(f"\n   [OK] Encrypted {migrated_count} email addresses")
 
         # Step 6: Verify migration
         print("\n6. Verifying encrypted emails...")
@@ -169,23 +169,23 @@ def migrate_emails():
         all_encrypted = True
         for row in verification:
             if not row['encrypted_email']:
-                print(f"   ❌ User {row['user_id']} has no encrypted_email!")
+                print(f"   [FAIL] User {row['user_id']} has no encrypted_email!")
                 all_encrypted = False
             else:
                 # Verify we can decrypt
                 try:
                     decrypted = encryption.decrypt_string(row['encrypted_email'])
                     if decrypted != row['email']:
-                        print(f"   ❌ Decryption mismatch for {row['user_id']}")
+                        print(f"   [FAIL] Decryption mismatch for {row['user_id']}")
                         all_encrypted = False
                 except Exception as e:
-                    print(f"   ❌ Failed to decrypt {row['user_id']}: {e}")
+                    print(f"   [FAIL] Failed to decrypt {row['user_id']}: {e}")
                     all_encrypted = False
 
         if all_encrypted:
-            print("   ✓ All emails encrypted and verified!")
+            print("   [OK] All emails encrypted and verified!")
         else:
-            print("   ❌ Verification failed - keeping plaintext column")
+            print("   [FAIL] Verification failed - keeping plaintext column")
             return False
 
         # Step 7: Create unique index on email_hash
@@ -193,24 +193,24 @@ def migrate_emails():
         try:
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_hash_new ON users(email_hash)")
             conn.commit()
-            print("   ✓ Index created")
+            print("   [OK] Index created")
         except sqlite3.IntegrityError as e:
-            print(f"   ❌ Index creation failed: {e}")
+            print(f"   [FAIL] Index creation failed: {e}")
             print("   This might indicate duplicate emails in the database")
             return False
 
         # Step 8: Drop old plaintext email column (SQLite limitation workaround)
         print("\n8. Removing plaintext email column...")
-        print("   ℹ️  SQLite doesn't support DROP COLUMN directly")
+        print("   [INFO]  SQLite doesn't support DROP COLUMN directly")
         print("   Recommendation: Recreate table or leave as deprecated")
         print("   For now, we'll set plaintext emails to empty string")
 
         cursor.execute("UPDATE users SET email = ''")
         conn.commit()
-        print("   ✓ Plaintext emails cleared (column remains for compatibility)")
+        print("   [OK] Plaintext emails cleared (column remains for compatibility)")
 
         print("\n" + "=" * 70)
-        print("✓ MIGRATION COMPLETED SUCCESSFULLY")
+        print("[OK] MIGRATION COMPLETED SUCCESSFULLY")
         print("=" * 70)
         print(f"\nMigrated: {migrated_count} users")
         print(f"Backup: {backup_path}")
@@ -224,7 +224,7 @@ def migrate_emails():
     except Exception as e:
         conn.rollback()
         logger.error(f"Migration failed: {e}")
-        print(f"\n❌ Migration failed: {e}")
+        print(f"\n[FAIL] Migration failed: {e}")
         print(f"\nDatabase backup available at: {backup_path}")
         print("You can restore from backup if needed")
         return False
@@ -256,7 +256,7 @@ def verify_encryption():
             return
 
         if not user['encrypted_email']:
-            print("   ❌ User has no encrypted_email")
+            print("   [FAIL] User has no encrypted_email")
             return
 
         # Decrypt email
@@ -270,12 +270,12 @@ def verify_encryption():
         # Verify hash matches
         calculated_hash = hash_email(decrypted_email)
         if calculated_hash == user['email_hash']:
-            print("\n   ✓ Hash verification passed!")
+            print("\n   [OK] Hash verification passed!")
         else:
-            print("\n   ❌ Hash verification failed!")
+            print("\n   [FAIL] Hash verification failed!")
             return
 
-        print("\n✓ Encryption system working correctly!")
+        print("\n[OK] Encryption system working correctly!")
 
     finally:
         conn.close()

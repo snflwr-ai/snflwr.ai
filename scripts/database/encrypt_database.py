@@ -52,7 +52,7 @@ def backup_database(source_path: Path) -> Path:
     
     print(f"Creating backup: {backup_path}")
     shutil.copy2(source_path, backup_path)
-    print(f"✓ Backup created successfully")
+    print(f"[OK] Backup created successfully")
     
     return backup_path
 
@@ -110,14 +110,14 @@ def migrate_to_encrypted(
         tables = [row[0] for row in cursor.fetchall()]
         cursor.close()
         
-        print(f"✓ Found {len(tables)} tables: {', '.join(tables)}")
+        print(f"[OK] Found {len(tables)} tables: {', '.join(tables)}")
         
         # Count total rows
         total_rows = {}
         for table in tables:
             total_rows[table] = get_table_count(source_conn, table)
         
-        print(f"✓ Total rows to migrate: {sum(total_rows.values()):,}")
+        print(f"[OK] Total rows to migrate: {sum(total_rows.values()):,}")
         
         # Create encrypted database
         print("\n[2/5] Creating encrypted database...")
@@ -131,7 +131,7 @@ def migrate_to_encrypted(
         dest_conn.execute("PRAGMA cipher_hmac_algorithm = HMAC_SHA512")
         dest_conn.execute("PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512")
         
-        print("✓ Encrypted database created")
+        print("[OK] Encrypted database created")
         
         # Migrate schema
         print("\n[3/5] Migrating database schema...")
@@ -148,7 +148,7 @@ def migrate_to_encrypted(
                 logger.debug(f"Schema migration note: {e}")
         
         dest_conn.commit()
-        print(f"✓ Migrated {len(schema_statements)} schema statements")
+        print(f"[OK] Migrated {len(schema_statements)} schema statements")
         
         # Migrate data
         print("\n[4/5] Migrating table data...")
@@ -176,9 +176,9 @@ def migrate_to_encrypted(
                 dest_conn.executemany(insert_sql, [tuple(row) for row in rows])
                 dest_conn.commit()
             
-            print("✓")
+            print("[OK]")
         
-        print(f"✓ All data migrated successfully")
+        print(f"[OK] All data migrated successfully")
         
         # Verify data if requested
         if verify:
@@ -190,13 +190,13 @@ def migrate_to_encrypted(
                 dest_count = get_table_count(dest_conn, table)
                 
                 if source_count == dest_count:
-                    print(f"  ✓ {table}: {source_count:,} rows (verified)")
+                    print(f"  [OK] {table}: {source_count:,} rows (verified)")
                 else:
-                    print(f"  ✗ {table}: Source={source_count:,}, Dest={dest_count:,} (MISMATCH!)")
+                    print(f"  [FAIL] {table}: Source={source_count:,}, Dest={dest_count:,} (MISMATCH!)")
                     all_verified = False
             
             if not all_verified:
-                print("\n✗ DATA VERIFICATION FAILED!")
+                print("\n[FAIL] DATA VERIFICATION FAILED!")
                 print("  Rolling back migration...")
                 dest_conn.close()
                 source_conn.close()
@@ -204,7 +204,7 @@ def migrate_to_encrypted(
                 print("  Encrypted database deleted")
                 return False
             
-            print("✓ Data integrity verified")
+            print("[OK] Data integrity verified")
         
         # Close connections
         source_conn.close()
@@ -214,18 +214,18 @@ def migrate_to_encrypted(
         print("\n[6/6] Replacing original database...")
         source_db.unlink()  # Delete original
         encrypted_db.rename(source_db)  # Rename encrypted to original name
-        print(f"✓ Database encryption complete: {source_db}")
+        print(f"[OK] Database encryption complete: {source_db}")
         
-        print(f"\n✅ Migration successful!")
+        print(f"\n[OK] Migration successful!")
         print(f"   Backup saved to: {backup_path}")
         print(f"   Original database is now encrypted")
-        print(f"\n⚠️  IMPORTANT: Set DB_ENCRYPTION_KEY environment variable:")
+        print(f"\n[WARN]  IMPORTANT: Set DB_ENCRYPTION_KEY environment variable:")
         print(f"   export DB_ENCRYPTION_KEY='{encryption_key}'")
         
         return True
         
     except Exception as e:
-        print(f"\n✗ ERROR during migration: {e}")
+        print(f"\n[FAIL] ERROR during migration: {e}")
         logger.exception("Migration failed")
         
         # Clean up temporary file

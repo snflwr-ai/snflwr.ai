@@ -2,7 +2,7 @@
 Safety Monitoring API Routes
 Safety alerts and incident management
 
-🔒 SECURED: All routes require authentication
+[LOCKED] SECURED: All routes require authentication
 - Parents can only access their own children's safety data
 - Admins can access all safety data
 """
@@ -35,7 +35,7 @@ async def get_parent_alerts(
     """
     Get safety alerts for a parent
 
-    🔒 SECURED: Parents can only view their own alerts, admins can view all
+    [LOCKED] SECURED: Parents can only view their own alerts, admins can view all
     """
     try:
         alerts = safety_monitor.get_pending_alerts(parent_id)
@@ -65,7 +65,7 @@ async def acknowledge_alert(
     """
     Acknowledge a safety alert
 
-    🔒 SECURED: Parents can only acknowledge their own alerts, admins can acknowledge all
+    [LOCKED] SECURED: Parents can only acknowledge their own alerts, admins can acknowledge all
     """
     try:
         # Alert ownership verified by VerifyAlertAccess dependency
@@ -96,7 +96,7 @@ async def get_profile_incidents(
     """
     Get safety incidents for a profile
 
-    🔒 SECURED: Parents can only view their own children's incidents, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children's incidents, admins can view all
     """
     try:
         incidents = incident_logger.get_profile_incidents(profile_id, days=days)
@@ -126,7 +126,7 @@ async def get_safety_stats(
     """
     Get safety statistics for a profile
 
-    🔒 SECURED: Parents can only view their own children's stats, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children's stats, admins can view all
     """
     try:
         stats = safety_monitor.get_profile_statistics(profile_id)

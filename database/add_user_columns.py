@@ -31,7 +31,7 @@ def migrate_sqlite():
     has_notifications = 'email_notifications_enabled' in existing_columns
 
     if has_name and has_notifications:
-        print("✓ Both columns already exist - no migration needed")
+        print("[OK] Both columns already exist - no migration needed")
         return
 
     # Add name column if missing
@@ -41,12 +41,12 @@ def migrate_sqlite():
             db_manager.execute_write(
                 "ALTER TABLE users ADD COLUMN name TEXT DEFAULT 'User'"
             )
-            print("✓ 'name' column added successfully")
+            print("[OK] 'name' column added successfully")
         except Exception as e:
-            print(f"✗ Failed to add 'name' column: {e}")
+            print(f"[FAIL] Failed to add 'name' column: {e}")
             return
     else:
-        print("✓ 'name' column already exists")
+        print("[OK] 'name' column already exists")
 
     # Add email_notifications_enabled column if missing
     if not has_notifications:
@@ -55,16 +55,16 @@ def migrate_sqlite():
             db_manager.execute_write(
                 "ALTER TABLE users ADD COLUMN email_notifications_enabled INTEGER DEFAULT 1"
             )
-            print("✓ 'email_notifications_enabled' column added successfully")
+            print("[OK] 'email_notifications_enabled' column added successfully")
         except Exception as e:
-            print(f"✗ Failed to add 'email_notifications_enabled' column: {e}")
+            print(f"[FAIL] Failed to add 'email_notifications_enabled' column: {e}")
             return
     else:
-        print("✓ 'email_notifications_enabled' column already exists")
+        print("[OK] 'email_notifications_enabled' column already exists")
 
     print()
     print("="*60)
-    print("✓ Migration completed successfully!")
+    print("[OK] Migration completed successfully!")
     print("="*60)
     print()
     print("Fixed blockers:")

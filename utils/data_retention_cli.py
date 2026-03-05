@@ -113,7 +113,7 @@ Examples:
             return commands[parsed_args.command](parsed_args)
         except Exception as e:
             logger.error(f"Command failed: {e}")
-            print(f"❌ Error: {e}", file=sys.stderr)
+            print(f"[FAIL] Error: {e}", file=sys.stderr)
             return 1
 
     def cmd_status(self, args) -> int:
@@ -127,13 +127,13 @@ Examples:
             summary = self.manager.get_retention_summary()
 
             # Configuration status
-            print("📋 Configuration:")
-            print(f"   Cleanup Enabled: {'✅ Yes' if summary['cleanup_enabled'] else '❌ No'}")
+            print("[LIST] Configuration:")
+            print(f"   Cleanup Enabled: {'[OK] Yes' if summary['cleanup_enabled'] else '[FAIL] No'}")
             print(f"   Cleanup Schedule: {summary['cleanup_schedule']}")
             print()
 
             # Data volumes
-            print("📊 Current Data Volumes:")
+            print("[STATS] Current Data Volumes:")
             print()
             for table_info in summary['data_volumes']:
                 table_name = table_info['table']
@@ -159,7 +159,7 @@ Examples:
 
         except Exception as e:
             logger.error(f"Failed to get status: {e}")
-            print(f"❌ Failed to retrieve status: {e}", file=sys.stderr)
+            print(f"[FAIL] Failed to retrieve status: {e}", file=sys.stderr)
             return 1
 
     def cmd_policy(self, args) -> int:
@@ -174,15 +174,15 @@ Examples:
 
             # Compliance framework
             compliance = policy.get('compliance', {})
-            print("🔒 Compliance Framework:")
+            print("[LOCKED] Compliance Framework:")
             print(f"   Standard: {compliance.get('framework', 'N/A')}")
-            print(f"   Data Minimization: {'✅ Enabled' if compliance.get('data_minimization') else '❌ Disabled'}")
-            print(f"   Automatic Cleanup: {'✅ Enabled' if compliance.get('automatic_cleanup') else '❌ Disabled'}")
-            print(f"   Parent Controls: {'✅ Enabled' if compliance.get('parent_controls') else '❌ Disabled'}")
+            print(f"   Data Minimization: {'[OK] Enabled' if compliance.get('data_minimization') else '[FAIL] Disabled'}")
+            print(f"   Automatic Cleanup: {'[OK] Enabled' if compliance.get('automatic_cleanup') else '[FAIL] Disabled'}")
+            print(f"   Parent Controls: {'[OK] Enabled' if compliance.get('parent_controls') else '[FAIL] Disabled'}")
             print()
 
             # Retention periods by category
-            print("📅 Retention Periods:")
+            print("[DATE] Retention Periods:")
             print()
 
             for category, details in policy.items():
@@ -203,21 +203,21 @@ Examples:
 
             print("=" * 70)
             print()
-            print("ℹ️  Note: Resolved incidents are automatically deleted after retention period")
-            print("ℹ️  Parents can export data before deletion through the dashboard")
+            print("[INFO]  Note: Resolved incidents are automatically deleted after retention period")
+            print("[INFO]  Parents can export data before deletion through the dashboard")
             print()
 
             return 0
 
         except Exception as e:
             logger.error(f"Failed to get policy: {e}")
-            print(f"❌ Failed to retrieve policy: {e}", file=sys.stderr)
+            print(f"[FAIL] Failed to retrieve policy: {e}", file=sys.stderr)
             return 1
 
     def cmd_cleanup(self, args) -> int:
         """Run data retention cleanup"""
         if args.dry_run:
-            print("🔍 DRY RUN MODE - No data will be deleted")
+            print("[SEARCH] DRY RUN MODE - No data will be deleted")
             print()
 
         print("=" * 70)
@@ -228,7 +228,7 @@ Examples:
         print()
 
         if not safety_config.DATA_CLEANUP_ENABLED:
-            print("⚠️  Warning: Data cleanup is disabled in configuration")
+            print("[WARN]  Warning: Data cleanup is disabled in configuration")
             if not args.dry_run:
                 print("   Cleanup will not run. Enable DATA_CLEANUP_ENABLED in config.py")
                 return 1
@@ -241,13 +241,13 @@ Examples:
             results = self.manager.run_all_cleanup_tasks()
 
             # Display results
-            print("📋 Cleanup Results:")
+            print("[LIST] Cleanup Results:")
             print()
 
             total_deleted = 0
             for task_name, task_result in results['tasks'].items():
                 status = task_result.get('status', 'unknown')
-                status_icon = '✅' if status == 'success' else '❌'
+                status_icon = '[OK]' if status == 'success' else '[FAIL]'
 
                 print(f"   {status_icon} {task_name}:")
 
@@ -273,7 +273,7 @@ Examples:
 
         except Exception as e:
             logger.error(f"Cleanup failed: {e}")
-            print(f"❌ Cleanup failed: {e}", file=sys.stderr)
+            print(f"[FAIL] Cleanup failed: {e}", file=sys.stderr)
             return 1
 
     def _dry_run_cleanup(self) -> int:
@@ -315,7 +315,7 @@ Examples:
             },
         ]
 
-        print("📋 Records that would be deleted:")
+        print("[LIST] Records that would be deleted:")
         print()
 
         total = 0
@@ -332,19 +332,19 @@ Examples:
                 count = 0
 
             total += count
-            icon = '🗑️ ' if count > 0 else '   '
+            icon = '[DELETE] ' if count > 0 else '   '
             retention_info = f"(>{cat['retention_days']}d old)" if cat['retention_days'] > 0 else "(expired)"
             print(f"   {icon}{cat['name']}: {count:,} records {retention_info}")
 
         print()
         print(f"   Total: {total:,} records would be deleted")
         print()
-        print("ℹ️  Run without --dry-run to execute cleanup")
+        print("[INFO]  Run without --dry-run to execute cleanup")
         return 0
 
     def cmd_export(self, args) -> int:
         """Export retention summary to JSON"""
-        print(f"📤 Exporting retention summary to {args.output}...")
+        print(f"[EXPORT] Exporting retention summary to {args.output}...")
         print()
 
         try:
@@ -363,7 +363,7 @@ Examples:
             with open(args.output, 'w') as f:
                 json.dump(export_data, f, indent=2)
 
-            print(f"✅ Successfully exported to {args.output}")
+            print(f"[OK] Successfully exported to {args.output}")
             print()
             print(f"   File size: {len(json.dumps(export_data))} bytes")
             print()
@@ -372,7 +372,7 @@ Examples:
 
         except Exception as e:
             logger.error(f"Export failed: {e}")
-            print(f"❌ Export failed: {e}", file=sys.stderr)
+            print(f"[FAIL] Export failed: {e}", file=sys.stderr)
             return 1
 
     def cmd_stats(self, args) -> int:
@@ -390,7 +390,7 @@ Examples:
                 retention_days = table_info['retention_days']
                 total = table_info['total_records']
 
-                print(f"📊 {table_name.replace('_', ' ').title()}")
+                print(f"[STATS] {table_name.replace('_', ' ').title()}")
                 print(f"   {'─' * 60}")
                 print(f"   Total Records: {total:,}")
                 print(f"   Retention Period: {retention_days} days")
@@ -415,12 +415,12 @@ Examples:
                 print()
 
             # Compliance summary
-            print("🔒 Compliance Status:")
+            print("[LOCKED] Compliance Status:")
             print(f"   {'─' * 60}")
             print(f"   Framework: COPPA/FERPA")
-            print(f"   Data Minimization: ✅ Active")
-            print(f"   Automatic Cleanup: {'✅ Enabled' if safety_config.DATA_CLEANUP_ENABLED else '❌ Disabled'}")
-            print(f"   Audit Logging: {'✅ Enabled' if safety_config.ENABLE_AUDIT_LOGGING else '❌ Disabled'}")
+            print(f"   Data Minimization: [OK] Active")
+            print(f"   Automatic Cleanup: {'[OK] Enabled' if safety_config.DATA_CLEANUP_ENABLED else '[FAIL] Disabled'}")
+            print(f"   Audit Logging: {'[OK] Enabled' if safety_config.ENABLE_AUDIT_LOGGING else '[FAIL] Disabled'}")
             print()
 
             print("=" * 70)
@@ -428,7 +428,7 @@ Examples:
 
         except Exception as e:
             logger.error(f"Failed to get statistics: {e}")
-            print(f"❌ Failed to retrieve statistics: {e}", file=sys.stderr)
+            print(f"[FAIL] Failed to retrieve statistics: {e}", file=sys.stderr)
             return 1
 
 

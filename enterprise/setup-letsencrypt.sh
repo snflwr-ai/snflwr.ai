@@ -95,7 +95,7 @@ if [ -d "$CERT_PATH" ]; then
     chmod 600 "$SSL_DIR/privkey.pem"
     chmod 644 "$SSL_DIR/chain.pem"
 
-    echo -e "${GREEN}✅ Certificates installed successfully!${NC}"
+    echo -e "${GREEN}[OK] Certificates installed successfully!${NC}"
 else
     echo -e "${RED}Error: Certificate directory not found${NC}"
     exit 1
@@ -116,7 +116,7 @@ EOF
 
 chmod +x /etc/cron.daily/certbot-renew
 
-echo -e "${GREEN}✅ Auto-renewal configured!${NC}"
+echo -e "${GREEN}[OK] Auto-renewal configured!${NC}"
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}SSL Setup Complete!${NC}"
@@ -137,4 +137,4 @@ echo "  Fullchain: $SSL_DIR/fullchain.pem"
 echo "  Private Key: $SSL_DIR/privkey.pem"
 echo "  Chain: $SSL_DIR/chain.pem"
 echo ""
-echo -e "${YELLOW}⚠️  Important: Update the cron job path in /etc/cron.daily/certbot-renew${NC}"
+echo -e "${YELLOW}[WARN]  Important: Update the cron job path in /etc/cron.daily/certbot-renew${NC}"

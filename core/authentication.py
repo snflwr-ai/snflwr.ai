@@ -105,11 +105,11 @@ class AuthenticationManager:
             from utils.cache import cache
             if cache.enabled and cache._client:
                 self._redis = cache._client
-                logger.info("✅ Session cache using Redis (distributed mode)")
+                logger.info("[OK] Session cache using Redis (distributed mode)")
             else:
-                logger.warning("⚠️ Session cache using in-memory fallback (single-instance only)")
+                logger.warning("[WARN] Session cache using in-memory fallback (single-instance only)")
         except (ImportError, RedisError) as e:
-            logger.warning(f"⚠️ Session cache Redis init failed, using fallback: {e}")
+            logger.warning(f"[WARN] Session cache Redis init failed, using fallback: {e}")
 
     def _get_session_from_cache(self, session_token: str) -> Optional[dict]:
         """Get session from Redis or fallback cache, checking expiry"""

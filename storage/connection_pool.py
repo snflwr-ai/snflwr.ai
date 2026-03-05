@@ -93,7 +93,7 @@ class PostgreSQLConnectionPool:
 
                 self._stats['connections_created'] = self.min_connections
 
-                logger.info("✅ PostgreSQL connection pool initialized successfully")
+                logger.info("[OK] PostgreSQL connection pool initialized successfully")
                 return True
 
         except psycopg2.Error as e:

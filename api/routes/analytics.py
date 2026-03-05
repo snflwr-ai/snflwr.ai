@@ -2,7 +2,7 @@
 Analytics API Routes
 Usage analytics and reporting for parent dashboard
 
-🔒 SECURED: All routes require authentication
+[LOCKED] SECURED: All routes require authentication
 - Parents can only access their own children's analytics
 - Admins can access all analytics
 """
@@ -34,7 +34,7 @@ async def get_usage_stats(
     """
     Get usage statistics for a profile
 
-    🔒 SECURED: Parents can only view their own children's usage, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children's usage, admins can view all
     """
     try:
         stats = session_manager.get_usage_stats(profile_id, days)
@@ -62,7 +62,7 @@ async def get_activity_log(
     """
     Get activity log for a profile
 
-    🔒 SECURED: Parents can only view their own children's activity, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children's activity, admins can view all
     """
     try:
         sessions = session_manager.get_session_history(profile_id, limit)
@@ -92,7 +92,7 @@ async def get_session_messages(
     """
     Get all messages in a session
 
-    🔒 SECURED: Parents can only view their own children's messages, admins can view all
+    [LOCKED] SECURED: Parents can only view their own children's messages, admins can view all
     """
     try:
         # Session ownership verified by VerifySessionAccess dependency

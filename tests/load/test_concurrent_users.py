@@ -154,21 +154,21 @@ class LoadTestMetrics:
             print(f"\nOverall Error Rate: {error_rate:.2f}%")
 
             if error_rate > 10:
-                print("❌ HIGH ERROR RATE - System is not stable under load")
+                print("[FAIL] HIGH ERROR RATE - System is not stable under load")
             elif error_rate > 1:
-                print("⚠️  MODERATE ERROR RATE - Some issues detected")
+                print("[WARN]  MODERATE ERROR RATE - Some issues detected")
             else:
-                print("✅ LOW ERROR RATE - System is stable")
+                print("[OK] LOW ERROR RATE - System is stable")
 
         # Check response times
         chat_stats = self.get_stats('chat')
         if chat_stats['count'] > 0:
             if chat_stats['p95'] > 5:
-                print(f"❌ SLOW RESPONSE TIMES - P95 chat response: {chat_stats['p95']*1000:.0f}ms (target: <2000ms)")
+                print(f"[FAIL] SLOW RESPONSE TIMES - P95 chat response: {chat_stats['p95']*1000:.0f}ms (target: <2000ms)")
             elif chat_stats['p95'] > 2:
-                print(f"⚠️  ACCEPTABLE RESPONSE TIMES - P95 chat response: {chat_stats['p95']*1000:.0f}ms")
+                print(f"[WARN]  ACCEPTABLE RESPONSE TIMES - P95 chat response: {chat_stats['p95']*1000:.0f}ms")
             else:
-                print(f"✅ FAST RESPONSE TIMES - P95 chat response: {chat_stats['p95']*1000:.0f}ms")
+                print(f"[OK] FAST RESPONSE TIMES - P95 chat response: {chat_stats['p95']*1000:.0f}ms")
 
 
 class UserSimulator:
@@ -424,11 +424,11 @@ def cleanup_test_data(num_users: int):
         conn.commit()
         conn.close()
 
-        print(f"✓ Deleted {deleted_users} test users")
-        print(f"✓ Deleted {deleted_profiles} test profiles")
+        print(f"[OK] Deleted {deleted_users} test users")
+        print(f"[OK] Deleted {deleted_profiles} test profiles")
 
     except Exception as e:
-        print(f"✗ Cleanup failed: {e}")
+        print(f"[FAIL] Cleanup failed: {e}")
 
 
 def main():

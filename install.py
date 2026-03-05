@@ -1590,10 +1590,10 @@ def setup_family_deployment():
 
     print("""
 This mode is perfect for:
-  • Individual families and homeschools
-  • Privacy-focused parents who want data control
-  • Offline operation (no internet required)
-  • Simple plug-and-play deployment
+  - Individual families and homeschools
+  - Privacy-focused parents who want data control
+  - Offline operation (no internet required)
+  - Simple plug-and-play deployment
     """)
 
     config = {}
@@ -1676,10 +1676,10 @@ def setup_enterprise_deployment():
 
     print("""
 This mode is perfect for:
-  • School districts and institutions
-  • Multi-user deployments (100+ students)
-  • Cloud hosting platforms
-  • Advanced analytics needs
+  - School districts and institutions
+  - Multi-user deployments (100+ students)
+  - Cloud hosting platforms
+  - Advanced analytics needs
     """)
 
     config = {}

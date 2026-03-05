@@ -292,30 +292,30 @@ def on_test_stop(environment, **kwargs):
         checks = []
 
         if messages_per_minute >= 1000:
-            checks.append(("✓", f"Messages/min ≥ 1000 ({messages_per_minute:.2f})"))
+            checks.append(("[OK]", f"Messages/min ≥ 1000 ({messages_per_minute:.2f})"))
         else:
-            checks.append(("✗", f"Messages/min < 1000 ({messages_per_minute:.2f})"))
+            checks.append(("[FAIL]", f"Messages/min < 1000 ({messages_per_minute:.2f})"))
 
         if failure_rate < 5:
-            checks.append(("✓", f"Failure rate < 5% ({failure_rate:.2f}%)"))
+            checks.append(("[OK]", f"Failure rate < 5% ({failure_rate:.2f}%)"))
         else:
-            checks.append(("✗", f"Failure rate ≥ 5% ({failure_rate:.2f}%)"))
+            checks.append(("[FAIL]", f"Failure rate ≥ 5% ({failure_rate:.2f}%)"))
 
         if avg_safety_check_time < 1000:
-            checks.append(("✓", f"Safety checks < 1s ({avg_safety_check_time:.2f}ms)"))
+            checks.append(("[OK]", f"Safety checks < 1s ({avg_safety_check_time:.2f}ms)"))
         else:
-            checks.append(("✗", f"Safety checks ≥ 1s ({avg_safety_check_time:.2f}ms)"))
+            checks.append(("[FAIL]", f"Safety checks ≥ 1s ({avg_safety_check_time:.2f}ms)"))
 
         for symbol, msg in checks:
             print(f"{symbol} {msg}")
 
         # Overall result
-        all_passed = all(symbol == "✓" for symbol, _ in checks)
+        all_passed = all(symbol == "[OK]" for symbol, _ in checks)
         print("\n" + "="*60)
         if all_passed:
-            print("✓ LOAD TEST PASSED - System meets production requirements")
+            print("[OK] LOAD TEST PASSED - System meets production requirements")
         else:
-            print("✗ LOAD TEST FAILED - Performance issues detected")
+            print("[FAIL] LOAD TEST FAILED - Performance issues detected")
         print("="*60 + "\n")
 
 

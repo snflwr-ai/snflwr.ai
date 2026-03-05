@@ -175,7 +175,7 @@ def logout(session: AuthSession = Depends(get_current_session)):
     """
     Logout current session
 
-    🔒 SECURED: Requires authentication - users can only logout their own session
+    [LOCKED] SECURED: Requires authentication - users can only logout their own session
     """
     try:
         # Logout the authenticated session

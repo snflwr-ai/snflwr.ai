@@ -26,7 +26,7 @@ if ! curl -s "$API_URL/health" >/dev/null 2>&1; then
     echo "Start it with: python -m api.server"
     exit 1
 fi
-echo -e "${GREEN}✓ API server is running${NC}"
+echo -e "${GREEN}[OK] API server is running${NC}"
 echo ""
 
 # Test 1: Keyword Filter (Layer 1)
@@ -45,11 +45,11 @@ RESPONSE=$(curl -s -X POST "$API_URL/api/chat/send" \
 BLOCKED=$(echo "$RESPONSE" | grep -o '"blocked":[^,]*' | cut -d':' -f2)
 
 if [ "$BLOCKED" = "true" ]; then
-    echo -e "${GREEN}✓ PASS: Message was blocked${NC}"
+    echo -e "${GREEN}[OK] PASS: Message was blocked${NC}"
     REASON=$(echo "$RESPONSE" | grep -o '"block_reason":"[^"]*"' | cut -d'"' -f4)
     echo "  Reason: $REASON"
 else
-    echo -e "${RED}✗ FAIL: Message was not blocked${NC}"
+    echo -e "${RED}[FAIL] FAIL: Message was not blocked${NC}"
     echo "  Response: $RESPONSE"
 fi
 echo ""
@@ -70,9 +70,9 @@ RESPONSE=$(curl -s -X POST "$API_URL/api/chat/send" \
 BLOCKED=$(echo "$RESPONSE" | grep -o '"blocked":[^,]*' | cut -d':' -f2)
 
 if [ "$BLOCKED" = "true" ]; then
-    echo -e "${GREEN}✓ PASS: Self-harm message blocked${NC}"
+    echo -e "${GREEN}[OK] PASS: Self-harm message blocked${NC}"
 else
-    echo -e "${RED}✗ FAIL: Self-harm message not blocked${NC}"
+    echo -e "${RED}[FAIL] FAIL: Self-harm message not blocked${NC}"
 fi
 echo ""
 
@@ -92,12 +92,12 @@ RESPONSE=$(curl -s -X POST "$API_URL/api/chat/send" \
 BLOCKED=$(echo "$RESPONSE" | grep -o '"blocked":[^,]*' | cut -d':' -f2)
 
 if [ "$BLOCKED" = "false" ]; then
-    echo -e "${GREEN}✓ PASS: Educational query allowed${NC}"
+    echo -e "${GREEN}[OK] PASS: Educational query allowed${NC}"
     # Extract first 100 chars of message
     MESSAGE=$(echo "$RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4 | head -c 100)
     echo "  Response preview: $MESSAGE..."
 else
-    echo -e "${RED}✗ FAIL: Educational query was blocked${NC}"
+    echo -e "${RED}[FAIL] FAIL: Educational query was blocked${NC}"
     echo "  Response: $RESPONSE"
 fi
 echo ""
@@ -118,9 +118,9 @@ RESPONSE=$(curl -s -X POST "$API_URL/api/chat/send" \
 BLOCKED=$(echo "$RESPONSE" | grep -o '"blocked":[^,]*' | cut -d':' -f2)
 
 if [ "$BLOCKED" = "true" ]; then
-    echo -e "${GREEN}✓ PASS: Adult content blocked${NC}"
+    echo -e "${GREEN}[OK] PASS: Adult content blocked${NC}"
 else
-    echo -e "${RED}✗ FAIL: Adult content not blocked${NC}"
+    echo -e "${RED}[FAIL] FAIL: Adult content not blocked${NC}"
 fi
 echo ""
 
@@ -141,9 +141,9 @@ BLOCKED=$(echo "$RESPONSE" | grep -o '"blocked":[^,]*' | cut -d':' -f2)
 
 # Off-topic should be blocked or redirected
 if [ "$BLOCKED" = "true" ] || echo "$RESPONSE" | grep -q "redirect"; then
-    echo -e "${GREEN}✓ PASS: Off-topic handled${NC}"
+    echo -e "${GREEN}[OK] PASS: Off-topic handled${NC}"
 else
-    echo -e "${YELLOW}⚠ WARNING: Off-topic not clearly redirected${NC}"
+    echo -e "${YELLOW}[WARN] WARNING: Off-topic not clearly redirected${NC}"
 fi
 echo ""
 
@@ -152,11 +152,11 @@ echo "  Test Summary"
 echo "=========================================="
 echo ""
 echo "Safety pipeline layers tested:"
-echo "  1. ✓ Keyword filtering"
-echo "  2. ✓ Self-harm detection"
-echo "  3. ✓ Adult content blocking"
-echo "  4. ✓ Educational content allowed"
-echo "  5. ✓ Off-topic redirection"
+echo "  1. [OK] Keyword filtering"
+echo "  2. [OK] Self-harm detection"
+echo "  3. [OK] Adult content blocking"
+echo "  4. [OK] Educational content allowed"
+echo "  5. [OK] Off-topic redirection"
 echo ""
 echo "To view detailed API documentation:"
 echo "  Open http://localhost:39150/docs"

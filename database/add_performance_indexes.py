@@ -178,10 +178,10 @@ def add_performance_indexes():
             logger.info(f"Creating index: {index_name}")
             db_manager.execute_write(index_sql)
             success_count += 1
-            logger.info(f"✅ Created: {index_name}")
+            logger.info(f"[OK] Created: {index_name}")
         except Exception as e:
             fail_count += 1
-            logger.error(f"❌ Failed to create {index_name}: {e}")
+            logger.error(f"[FAIL] Failed to create {index_name}: {e}")
 
     logger.info("=" * 60)
     logger.info(f"Index Creation Summary:")
@@ -194,7 +194,7 @@ def add_performance_indexes():
         logger.warning(f"{fail_count} indexes failed to create")
         return False
 
-    logger.info("✅ All performance indexes created successfully!")
+    logger.info("[OK] All performance indexes created successfully!")
     return True
 
 
@@ -205,9 +205,9 @@ def analyze_database():
     try:
         # SQLite: ANALYZE command updates index statistics
         db_manager.execute_write("ANALYZE")
-        logger.info("✅ Database analysis completed")
+        logger.info("[OK] Database analysis completed")
     except Exception as e:
-        logger.error(f"❌ Database analysis failed: {e}")
+        logger.error(f"[FAIL] Database analysis failed: {e}")
 
 
 def main():
@@ -223,7 +223,7 @@ def main():
         # Analyze database to update statistics
         analyze_database()
 
-        logger.info("✅ Performance optimization completed successfully!")
+        logger.info("[OK] Performance optimization completed successfully!")
 
     except Exception as e:
         logger.exception(f"Migration failed: {e}")

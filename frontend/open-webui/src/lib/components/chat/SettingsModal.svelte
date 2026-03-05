@@ -1,3 +1,8 @@
+<!--
+  Copyright (c) 2023- Open WebUI Inc. [Created by Timothy Jaeryang Baek]
+  Licensed under the Open WebUI License. See frontend/open-webui/LICENSE for details.
+  This file is a modified version of the original Open WebUI SettingsModal component.
+-->
 <script lang="ts">
 	import { getContext, onMount, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';

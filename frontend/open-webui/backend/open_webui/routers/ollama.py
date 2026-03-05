@@ -1,3 +1,7 @@
+# Copyright (c) 2023- Open WebUI Inc. [Created by Timothy Jaeryang Baek]
+# Licensed under the Open WebUI License. See frontend/open-webui/LICENSE for details.
+# This file is a modified version of the original Open WebUI ollama router.
+#
 # TODO: Implement a more intelligent load balancing mechanism for distributing requests among multiple backend instances.
 # Current implementation uses a simple round-robin approach (random.choice). Consider incorporating algorithms like weighted round-robin,
 # least connections, or least response time for better resource utilization and performance optimization.

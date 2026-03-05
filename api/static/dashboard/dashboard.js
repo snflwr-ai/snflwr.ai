@@ -99,9 +99,10 @@
 
         var logo = document.createElement('div');
         logo.className = 'login-logo';
-        var logoIcon = document.createElement('span');
+        var logoIcon = document.createElement('img');
+        logoIcon.src = '/dashboard/static/icon.png';
+        logoIcon.alt = 'snflwr.ai';
         logoIcon.className = 'logo-icon';
-        logoIcon.textContent = '\u{1F33B}';
         var logoH1 = document.createElement('h1');
         logoH1.textContent = 'snflwr.ai';
         var logoP = document.createElement('p');
@@ -241,7 +242,7 @@
             '  <aside class="sidebar">',
             '    <div class="sidebar-header">',
             '      <div class="brand">',
-            '        <span class="brand-icon">\u{1F33B}</span>',
+            '        <img class="brand-icon" src="/dashboard/static/icon.png" alt="snflwr.ai">',
             '        <span class="brand-name">snflwr.ai</span>',
             '      </div>',
             '      <div class="brand-sub">Parent Dashboard</div>',

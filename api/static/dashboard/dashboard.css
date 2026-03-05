@@ -77,7 +77,8 @@ body {
 }
 
 .login-logo .logo-icon {
-    font-size: 2.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
     display: block;
     margin-bottom: 0.5rem;
 }
@@ -262,7 +263,8 @@ body {
 }
 
 .sidebar-header .brand-icon {
-    font-size: 1.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
 }
 
 .sidebar-header .brand-name {

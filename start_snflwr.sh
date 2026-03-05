@@ -166,6 +166,9 @@ fi
 
 # Bind Ollama to all interfaces so Docker containers can reach it
 export OLLAMA_HOST=0.0.0.0
+# Explicit client URL so the snflwr API uses the correct scheme+port
+# (OLLAMA_HOST above is the bind address; OLLAMA_BASE_URL is the client URL)
+export OLLAMA_BASE_URL=http://localhost:11434
 
 # Check if Ollama is running, start if not
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
@@ -511,7 +514,7 @@ fi
 
 # On Linux, use host networking to avoid firewall issues with Docker bridge.
 # On macOS, use bridge networking with host.docker.internal (host mode doesn't work).
-COMPOSE_FILES=(-f "$COMPOSE_FILE")
+COMPOSE_FILES=(--env-file "$SCRIPT_DIR/.env" -f "$COMPOSE_FILE")
 if [[ "$(uname)" == "Linux" ]] && [ -f "$COMPOSE_HOSTNET" ]; then
     COMPOSE_FILES+=(-f "$COMPOSE_HOSTNET")
     echo -e "${YELLOW}Using host networking (Linux)${NC}"

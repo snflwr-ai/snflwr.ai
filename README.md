@@ -19,9 +19,10 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version 1.0.0" />
-  <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11" />
+  <img src="https://img.shields.io/badge/python-3.12-blue" alt="Python 3.12" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0 License" />
-  <img src="https://img.shields.io/badge/tests-2000%2B-brightgreen" alt="2000+ Tests" />
+  <img src="https://img.shields.io/badge/tests-2590%2B-brightgreen" alt="2590+ Tests" />
+  <img src="https://img.shields.io/badge/coverage-86%25-brightgreen" alt="86% Test Coverage" />
   <img src="https://img.shields.io/badge/COPPA%2FFERPA-designed-green" alt="Designed for COPPA/FERPA compliance" />
 </p>
 
@@ -37,7 +38,7 @@ It runs entirely on your hardware -- no cloud accounts, no data leaving your net
 |----------|---------------|
 | **Parents & families** | Plug-and-play AI tutor on a USB drive. AES-256 encrypted, fully offline. |
 | **Schools & districts** | PostgreSQL, Celery, Prometheus/Grafana, horizontal scaling, COPPA/FERPA audit trail. |
-| **Developers** | FastAPI + Pydantic, 400+ pytest tests, typed config, structured logging with correlation IDs. |
+| **Developers** | FastAPI + Pydantic, 2,590+ pytest tests at 86% coverage, typed config, structured logging with correlation IDs. |
 
 ---
 
@@ -240,7 +241,7 @@ See [DATABASE_ENCRYPTION.md](docs/guides/DATABASE_ENCRYPTION.md) for the complet
 pytest tests/ -v -m "not integration"
 ```
 
-2200+ tests across 40+ test files covering authentication, profiles, safety pipeline, encryption, database operations, API routes, middleware, WebSockets, caching, error tracking, and model management.
+2,590+ tests across 71 test files at 86% coverage, covering authentication, profiles, safety pipeline, encryption, database operations, API routes, middleware, WebSockets, caching, error tracking, and model management.
 
 ---
 
@@ -275,7 +276,7 @@ Contributions welcome in these areas:
 - Documentation
 - UI/UX enhancements
 
-Please open an issue or pull request on GitHub.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), then open an issue or pull request on GitHub.
 
 ---
 

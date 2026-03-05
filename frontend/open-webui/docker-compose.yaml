@@ -14,13 +14,6 @@ services:
       # Mount snflwr.ai safety middleware and the modified router that calls it
       - ./backend/open_webui/middleware:/app/backend/open_webui/middleware:ro
       - ./backend/open_webui/routers/ollama.py:/app/backend/open_webui/routers/ollama.py:ro
-      - ./backend/open_webui/env.py:/app/backend/open_webui/env.py:ro
-      - ./backend/open_webui/static/favicon.png:/app/backend/open_webui/static/favicon.png:ro
-      - ./backend/open_webui/static/favicon.ico:/app/backend/open_webui/static/favicon.ico:ro
-      - ./backend/open_webui/static/favicon-96x96.png:/app/backend/open_webui/static/favicon-96x96.png:ro
-      - ./backend/open_webui/static/apple-touch-icon.png:/app/backend/open_webui/static/apple-touch-icon.png:ro
-      # Mount custom-built frontend (hides Data Controls and About from students)
-      - ./build:/app/build:ro
     environment:
       - 'OLLAMA_BASE_URL=http://localhost:11434'
       - 'SNFLWR_API_URL=http://localhost:39150'
@@ -61,9 +54,6 @@ services:
       - 'ENABLE_FOLLOW_UP_GENERATION=true'
       - 'ENABLE_TAGS_GENERATION=true'
       - 'ENABLE_AUTOCOMPLETE_GENERATION=false'
-      # Branding
-      - 'WEBUI_NAME=snflwr.ai'
-      - 'WEBUI_FAVICON_URL=/static/favicon.png'
       - 'SHOW_ADMIN_DETAILS=false'
     restart: unless-stopped
 

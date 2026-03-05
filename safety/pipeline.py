@@ -909,6 +909,12 @@ def _stage_age_gate(original: str, age: Optional[int]) -> Optional[SafetyResult]
             topic_keywords = _REDIRECT_KEYWORDS.get(topic, [topic])
             for kw in topic_keywords:
                 if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
+                    # Exempt if the message has a clear civics / social-studies
+                    # educational context (e.g. "civics class", "world history",
+                    # "religious studies"). Bare "class" or "school" alone is
+                    # NOT sufficient — see _CIVICS_INDICATORS for the full list.
+                    if any(ind in text_lower for ind in _CIVICS_INDICATORS):
+                        continue
                     return _block(
                         Severity.MINOR,
                         Category.TOPIC_REDIRECT,
@@ -974,6 +980,28 @@ def _stage_age_gate(original: str, age: Optional[int]) -> Optional[SafetyResult]
             stage="age_gate",
         )
 
+
+# Indicators of legitimate civics, government, world-history, or
+# religious-studies educational context. Used by _stage_age_gate() to
+# exempt topic redirects when the student is clearly doing coursework.
+# Intentionally multi-word or subject-specific to prevent bypass with
+# generic words like "class" or "school" alone.
+_CIVICS_INDICATORS = (
+    # Government / civics courses
+    "civics", "civic",
+    "social studies",
+    "government class", "government course", "government lesson",
+    "how government works", "how laws work",
+    "electoral college", "constitution", "amendment",
+    "bill of rights", "branches of government",
+    # History courses (specific — "history" alone is too broad)
+    "history class", "history lesson", "history homework",
+    "world history", "us history", "american history",
+    # Religion in academic context
+    "world religion", "world religions",
+    "religious studies", "comparative religion",
+    "history of religion", "cultural studies",
+)
 
 # Keyword lists for redirect topics
 _REDIRECT_KEYWORDS: Dict[str, list] = {

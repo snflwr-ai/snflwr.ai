@@ -65,22 +65,15 @@ tuning prioritizes usability over strictness for this category.
 
 ---
 
-## 4. Politics and Religion Topic Redirects Cause False Positives in Civics Education
+## 4. ~~Politics/Religion Redirects Cause False Positives~~ — RESOLVED
 
-**Affected component:** `safety/pipeline.py` → `_stage_age_gate()`
+A `_CIVICS_INDICATORS` exemption was added to `_stage_age_gate()` in March 2026.
+Messages containing a politics or religion keyword now pass through the redirect
+if the text also contains a specific civics/social-studies indicator (e.g., `"civics"`,
+`"social studies"`, `"world history"`, `"religious studies"`, `"electoral college"`).
 
-**Description:**
-The age gate redirects all messages containing politics- or religion-related keywords
-(e.g., `politics`, `election`, `church`, `religion`) regardless of context. This correctly
-prevents partisan political discussions, but also blocks legitimate civics and social studies
-questions like `"explain how the electoral college works"` or `"what did Martin Luther King Jr believe?"`.
-
-**Risk level:** Low — the redirect provides a suggested alternative topic. Students are not
-silently blocked; they receive guidance to rephrase toward curriculum-appropriate framing.
-
-**Planned fix:** Add a civics/social-studies educational indicator exemption similar to the
-one used for violence and drug keywords, so `"electoral college"` + `"history class"` passes
-while bare `"politics"` still redirects.
+Bare words like `"class"` or `"school"` alone are **not** sufficient to bypass —
+a multi-word or subject-specific indicator is required to prevent gaming.
 
 ---
 

@@ -1126,6 +1126,72 @@ class TestAgeGate:
         assert result is not None
         assert result.category == Category.TOPIC_REDIRECT
 
+    # -- Civics / social-studies exemption ----------------------------------------
+
+    def test_civics_class_electoral_college_passes(self):
+        """Civics class + electoral college — educational context exempts the redirect."""
+        from safety.pipeline import _stage_age_gate
+        result = _stage_age_gate(
+            "In civics class, how does the electoral college work?", age=12
+        )
+        assert result is None  # passes through
+
+    def test_government_class_senator_passes(self):
+        """Government class context — 'senator' keyword should not redirect."""
+        from safety.pipeline import _stage_age_gate
+        result = _stage_age_gate(
+            "For social studies, what is the difference between a senator and a representative?",
+            age=11,
+        )
+        assert result is None
+
+    def test_world_history_religion_passes(self):
+        """World history context — 'religion' keyword should not redirect."""
+        from safety.pipeline import _stage_age_gate
+        result = _stage_age_gate(
+            "In world history, how did religion influence the Roman Empire?", age=14
+        )
+        assert result is None
+
+    def test_religious_studies_class_passes(self):
+        """Religious studies class — religion keyword should not redirect."""
+        from safety.pipeline import _stage_age_gate
+        result = _stage_age_gate(
+            "We are studying world religions in our religious studies class.", age=13
+        )
+        assert result is None
+
+    def test_constitution_amendment_history_class_passes(self):
+        """History class + constitution — should pass."""
+        from safety.pipeline import _stage_age_gate
+        result = _stage_age_gate(
+            "Can you explain the constitution and its amendments for history class?", age=12
+        )
+        assert result is None
+
+    # -- Still redirected (no civics indicator present) ----------------------------
+
+    def test_partisan_vote_question_still_redirects(self):
+        """No educational context — bare vote question should still redirect."""
+        from safety.pipeline import _stage_age_gate, Category
+        result = _stage_age_gate("Who should I vote for?", age=14)
+        assert result is not None
+        assert result.category == Category.TOPIC_REDIRECT
+
+    def test_bare_religion_question_still_redirects(self):
+        """No educational context — bare religion question should still redirect."""
+        from safety.pipeline import _stage_age_gate, Category
+        result = _stage_age_gate("What religion is best?", age=12)
+        assert result is not None
+        assert result.category == Category.TOPIC_REDIRECT
+
+    def test_bare_politics_question_still_redirects(self):
+        """'class' alone is not enough — must be a civics-specific indicator."""
+        from safety.pipeline import _stage_age_gate, Category
+        result = _stage_age_gate("Tell me about politics for my class.", age=13)
+        assert result is not None
+        assert result.category == Category.TOPIC_REDIRECT
+
     # -- Elementary (<10) --------------------------------------------------
 
     def test_elementary_dating_blocked(self):

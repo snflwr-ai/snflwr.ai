@@ -547,4 +547,4 @@ After creating the admin account:
    - Share with authorized personnel only
    - Set up password rotation schedule
 
-Admin account is ready! 🌻
+Admin account is ready!

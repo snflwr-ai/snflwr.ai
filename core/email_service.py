@@ -132,7 +132,7 @@ class EmailTemplate:
         </div>
 
         <div class="footer">
-            <p>🌻 snflwr.ai - K-12 Safe Learning Platform</p>
+            <p>snflwr.ai - K-12 Safe Learning Platform</p>
             <p>This is an automated safety alert. Do not reply to this email.</p>
             <p><a href="{_safe_url(system_config.BASE_URL + '/preferences/email')}">Manage email preferences</a></p>
         </div>
@@ -210,7 +210,7 @@ class EmailTemplate:
         </div>
 
         <div class="footer">
-            <p>🌻 snflwr.ai - K-12 Safe Learning Platform</p>
+            <p>snflwr.ai - K-12 Safe Learning Platform</p>
             <p>This is an automated safety notification. Do not reply to this email.</p>
             <p><a href="{_safe_url(system_config.BASE_URL + '/preferences/email')}">Manage email preferences</a></p>
         </div>
@@ -261,7 +261,7 @@ class EmailTemplate:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🌻 Welcome to snflwr.ai!</h1>
+            <h1>Welcome to snflwr.ai!</h1>
         </div>
 
         <div class="content">
@@ -289,7 +289,7 @@ class EmailTemplate:
         </div>
 
         <div class="footer">
-            <p>🌻 snflwr.ai - K-12 Safe Learning Platform</p>
+            <p>snflwr.ai - K-12 Safe Learning Platform</p>
             <p>This is an automated email. Please do not reply.</p>
         </div>
     </div>
@@ -373,7 +373,7 @@ class EmailTemplate:
         </div>
 
         <div class="footer">
-            <p>🌻 snflwr.ai - K-12 Safe Learning Platform</p>
+            <p>snflwr.ai - K-12 Safe Learning Platform</p>
             <p>This is an automated security email. Please do not reply.</p>
         </div>
     </div>

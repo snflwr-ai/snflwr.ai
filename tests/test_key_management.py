@@ -388,3 +388,88 @@ class TestCheckEnvironmentKey:
             found, key, error = check_environment_key()
             assert found is True
             assert error is not None  # Validation warning
+
+
+# ==========================================================================
+# Error path coverage — IOError in KeyAuditLogger
+# ==========================================================================
+
+class TestKeyAuditLoggerErrorPaths:
+
+    def test_log_operation_ioerror_does_not_raise(self, tmp_dir):
+        """IOError when writing audit log should be swallowed silently."""
+        logger = KeyAuditLogger(audit_dir=tmp_dir / "audit")
+        # Force an IOError by making the audit file a directory
+        logger.audit_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.audit_file.mkdir()  # directory where file expected → IOError on open
+        # Should not raise
+        logger.log_operation("op", success=True)
+
+    def test_get_recent_operations_ioerror_returns_empty(self, tmp_dir):
+        """IOError when reading audit log should return empty list."""
+        logger = KeyAuditLogger(audit_dir=tmp_dir / "audit")
+        logger.audit_dir.mkdir(parents=True, exist_ok=True)
+        # Create the file so exists() returns True, then make it unreadable via mock
+        logger.audit_file.write_text("")
+        with patch("builtins.open", side_effect=IOError("permission denied")):
+            ops = logger.get_recent_operations()
+        assert ops == []
+
+    def test_get_recent_operations_json_decode_error_skips_line(self, tmp_dir):
+        """Malformed JSON line in audit log is skipped gracefully."""
+        logger = KeyAuditLogger(audit_dir=tmp_dir / "audit")
+        logger.audit_dir.mkdir(parents=True, exist_ok=True)
+        # Write one valid and one invalid JSON line
+        logger.audit_file.write_text('{"operation": "good", "success": true, "admin_id": "a", "details": {}}\nbad-json\n')
+        ops = logger.get_recent_operations()
+        assert len(ops) == 1
+        assert ops[0]["operation"] == "good"
+
+
+# ==========================================================================
+# KeyManager private method error paths
+# ==========================================================================
+
+class TestKeyManagerPrivateErrorPaths:
+
+    @pytest.fixture
+    def km(self, tmp_dir):
+        return KeyManager(config_dir=tmp_dir)
+
+    def test_get_next_version_ioerror_returns_one(self, km):
+        """_get_next_version returns 1 when metadata file cannot be read."""
+        km.metadata_file.write_text("")  # file exists but empty → JSONDecodeError
+        result = km._get_next_version()
+        assert result == 1
+
+    def test_get_next_version_bad_json_returns_one(self, km):
+        """_get_next_version returns 1 when metadata file has bad JSON."""
+        km.metadata_file.write_text("not-json")
+        result = km._get_next_version()
+        assert result == 1
+
+    def test_get_rotation_history_ioerror_returns_empty(self, km):
+        """_get_rotation_history returns [] when metadata file cannot be read."""
+        km.metadata_file.write_text("not-json")
+        result = km._get_rotation_history()
+        assert result == []
+
+    def test_recover_key_from_passphrase_json_error(self, km):
+        """If metadata file contains bad JSON, recovery raises KeyManagementError."""
+        km.metadata_file.write_text("not json at all!")
+        with pytest.raises(KeyManagementError, match="Failed to recover key"):
+            km.recover_key_from_passphrase("any-passphrase-long")
+
+    def test_recover_key_from_passphrase_missing_salt_raises(self, km):
+        """If metadata file is missing the 'salt' key, recovery raises KeyManagementError."""
+        km.metadata_file.write_text(
+            '{"method": "pbkdf2_passphrase", "iterations": 600000, "key_version": 1}'
+        )
+        with pytest.raises(KeyManagementError, match="Failed to recover key"):
+            km.recover_key_from_passphrase("any-passphrase-long")
+
+    def test_initialize_from_random_no_backup(self, km):
+        """initialize_from_random_key with save_backup=False does not write metadata."""
+        key = km.initialize_from_random_key(save_backup=False)
+        assert key is not None
+        assert not km.metadata_file.exists()

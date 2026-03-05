@@ -1173,3 +1173,324 @@ class TestPubSubPaths:
 
         # Should not raise
         await manager._publish_to_redis("parent", "p1", {"type": "test"})
+
+
+# ============================================================================
+# Additional coverage for uncovered paths
+# ============================================================================
+
+class TestGetWebsocketSession:
+    """Cover get_websocket_session legacy wrapper (lines 480-483)."""
+
+    async def test_get_websocket_session_valid_token(self):
+        """get_websocket_session reads token from query params and authenticates."""
+        from api.websocket_server import get_websocket_session
+        session = make_auth_session()
+
+        mock_ws = MagicMock()
+        mock_ws.query_params = {"token": "valid-token"}
+
+        with patch("api.websocket_server.auth_manager") as mock_auth:
+            mock_auth.validate_session.return_value = (True, session)
+            result = await get_websocket_session(mock_ws)
+
+        assert result is session
+
+    async def test_get_websocket_session_missing_token_returns_none(self):
+        """get_websocket_session with no token query param returns None."""
+        from api.websocket_server import get_websocket_session
+
+        mock_ws = MagicMock()
+        mock_ws.query_params = {}  # no token
+
+        with patch("api.websocket_server.auth_manager") as mock_auth:
+            mock_auth.validate_session.return_value = (False, None)
+            result = await get_websocket_session(mock_ws)
+
+        assert result is None
+
+
+class TestAuthenticateWebsocketConnectionError:
+    """Cover lines 472-474 (ConnectionError path in authenticate_websocket)."""
+
+    async def test_authenticate_websocket_connection_error_returns_none(self):
+        """ConnectionError from validate_session returns None."""
+        with patch("api.websocket_server.auth_manager") as mock_auth:
+            mock_auth.validate_session.side_effect = ConnectionError("Redis gone")
+            result = await authenticate_websocket("some-token")
+
+        assert result is None
+
+
+class TestStartPubsubWithRedis:
+    """Cover lines 93-106: start_pubsub when Redis IS available."""
+
+    async def test_start_pubsub_redis_available_creates_task(self):
+        """start_pubsub with enabled Redis creates a pubsub task."""
+        manager = ConnectionManager()
+
+        import sys
+        import types
+
+        mock_pubsub = MagicMock()
+        mock_client = MagicMock()
+        mock_client.pubsub.return_value = mock_pubsub
+
+        mock_cache = MagicMock()
+        mock_cache.enabled = True
+        mock_cache._client = mock_client
+
+        fake_cache_module = types.ModuleType("utils.cache")
+        fake_cache_module.cache = mock_cache
+
+        with patch("api.websocket_server.REDIS_PUBSUB_ENABLED", True), \
+             patch.dict(sys.modules, {"utils.cache": fake_cache_module}):
+            # subscribe is called in executor — mock run_in_executor to call it directly
+            async def fake_run_in_executor(executor, func, *args):
+                func(*args)
+            with patch("asyncio.get_event_loop") as mock_loop:
+                mock_loop.return_value.run_in_executor = fake_run_in_executor
+                await manager.start_pubsub()
+
+        # Task should be created (or at minimum pubsub handle set)
+        assert manager._redis_pubsub is mock_pubsub
+
+    async def test_start_pubsub_redis_error_resets_pubsub(self):
+        """ConnectionError during start_pubsub sets _redis_pubsub to None."""
+        import sys
+        import types
+
+        manager = ConnectionManager()
+
+        mock_cache = MagicMock()
+        mock_cache.enabled = True
+        mock_cache._client = MagicMock()
+        mock_cache._client.pubsub.side_effect = ConnectionError("connection error")
+
+        fake_cache_module = types.ModuleType("utils.cache")
+        fake_cache_module.cache = mock_cache
+
+        with patch("api.websocket_server.REDIS_PUBSUB_ENABLED", True), \
+             patch.dict(sys.modules, {"utils.cache": fake_cache_module}):
+            await manager.start_pubsub()
+
+        assert manager._redis_pubsub is None
+
+
+class TestStopPubsubWithTask:
+    """Cover lines 110-122: stop_pubsub with a running task."""
+
+    async def test_stop_pubsub_cancels_running_task(self):
+        """stop_pubsub cancels the pubsub task and cleans up."""
+        manager = ConnectionManager()
+
+        # Create a real task that stays alive until cancelled
+        async def forever():
+            await asyncio.sleep(9999)
+
+        task = asyncio.ensure_future(forever())
+        manager._pubsub_task = task
+
+        mock_pubsub = MagicMock()
+        manager._redis_pubsub = mock_pubsub
+
+        await manager.stop_pubsub()
+
+        assert task.cancelled()
+        mock_pubsub.unsubscribe.assert_called_once()
+        mock_pubsub.close.assert_called_once()
+
+    async def test_stop_pubsub_handles_unsubscribe_error(self):
+        """stop_pubsub swallows errors from unsubscribe/close."""
+        manager = ConnectionManager()
+
+        mock_pubsub = MagicMock()
+        mock_pubsub.unsubscribe.side_effect = OSError("already closed")
+        manager._redis_pubsub = mock_pubsub
+
+        # Should not raise
+        await manager.stop_pubsub()
+
+
+class TestPubsubListener:
+    """Cover _pubsub_listener logic (lines 138-179)."""
+
+    async def test_pubsub_listener_routes_parent_message(self):
+        """_pubsub_listener with a 'parent' target calls _local_broadcast_to_parent."""
+        manager = ConnectionManager()
+        ws = make_mock_websocket()
+        await manager.connect(ws, "parent-pubsub")
+        ws.send_json.reset_mock()
+
+        call_count = 0
+
+        async def get_message_sequence(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                import json as _json
+                return {
+                    "type": "message",
+                    "data": _json.dumps({
+                        "instance_id": "other-instance",
+                        "target_type": "parent",
+                        "target_id": "parent-pubsub",
+                        "message": {"type": "test_broadcast"}
+                    })
+                }
+            # After first message, raise CancelledError to stop the loop
+            raise asyncio.CancelledError()
+
+        mock_pubsub = MagicMock()
+        manager._redis_pubsub = mock_pubsub
+
+        async def fake_run_in_executor(executor, func, *args):
+            return get_message_sequence.__wrapped__(*args) if hasattr(get_message_sequence, "__wrapped__") else None
+
+        # Directly test _pubsub_listener by mocking run_in_executor
+        # Use a counter to produce a message then cancel
+        iteration = 0
+
+        async def mock_run_in_executor(executor, func, *args):
+            nonlocal iteration
+            iteration += 1
+            if iteration == 1:
+                return {
+                    "type": "message",
+                    "data": json.dumps({
+                        "instance_id": "other-instance",
+                        "target_type": "parent",
+                        "target_id": "parent-pubsub",
+                        "message": {"type": "test_broadcast"}
+                    })
+                }
+            raise asyncio.CancelledError()
+
+        with patch("asyncio.get_event_loop") as mock_loop, \
+             patch("asyncio.sleep", new_callable=lambda: lambda *a, **k: asyncio.coroutine(lambda: None)()):
+            mock_loop.return_value.run_in_executor = mock_run_in_executor
+            try:
+                await manager._pubsub_listener()
+            except asyncio.CancelledError:
+                pass
+
+        # The parent should have received the broadcast message
+        ws.send_json.assert_called()
+
+    async def test_pubsub_listener_skips_own_instance_messages(self):
+        """_pubsub_listener ignores messages from the same instance_id."""
+        manager = ConnectionManager()
+        ws = make_mock_websocket()
+        await manager.connect(ws, "parent-self")
+        ws.send_json.reset_mock()
+
+        iteration = 0
+
+        async def mock_run_in_executor(executor, func, *args):
+            nonlocal iteration
+            iteration += 1
+            if iteration == 1:
+                return {
+                    "type": "message",
+                    "data": json.dumps({
+                        "instance_id": manager._instance_id,  # Same instance — should skip
+                        "target_type": "parent",
+                        "target_id": "parent-self",
+                        "message": {"type": "should_be_skipped"}
+                    })
+                }
+            raise asyncio.CancelledError()
+
+        with patch("asyncio.get_event_loop") as mock_loop, \
+             patch("asyncio.sleep", new_callable=lambda: lambda *a, **k: asyncio.coroutine(lambda: None)()):
+            mock_loop.return_value.run_in_executor = mock_run_in_executor
+            try:
+                await manager._pubsub_listener()
+            except asyncio.CancelledError:
+                pass
+
+        # Own-instance message should NOT have been forwarded
+        ws.send_json.assert_not_called()
+
+    async def test_pubsub_listener_handles_json_decode_error(self):
+        """_pubsub_listener handles invalid JSON in message data gracefully."""
+        manager = ConnectionManager()
+        manager._redis_pubsub = MagicMock()
+
+        iteration = 0
+
+        async def mock_run_in_executor(executor, func, *args):
+            nonlocal iteration
+            iteration += 1
+            if iteration == 1:
+                return {
+                    "type": "message",
+                    "data": "not-valid-json"
+                }
+            raise asyncio.CancelledError()
+
+        with patch("asyncio.get_event_loop") as mock_loop, \
+             patch("asyncio.sleep", new_callable=lambda: lambda *a, **k: asyncio.coroutine(lambda: None)()):
+            mock_loop.return_value.run_in_executor = mock_run_in_executor
+            try:
+                await manager._pubsub_listener()
+            except asyncio.CancelledError:
+                pass  # Expected — loop was cancelled
+
+
+class TestPublishToRedisWithPubsub:
+    """Cover _publish_to_redis when _redis_pubsub is set (lines 193-209)."""
+
+    async def test_publish_to_redis_with_active_pubsub(self):
+        """_publish_to_redis calls cache._client.publish when pubsub is active."""
+        import sys
+        import types
+
+        manager = ConnectionManager()
+        mock_pubsub = MagicMock()
+        manager._redis_pubsub = mock_pubsub
+
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        mock_cache._client = mock_client
+
+        fake_cache_module = types.ModuleType("utils.cache")
+        fake_cache_module.cache = mock_cache
+
+        async def fake_run_in_executor(executor, func, *args):
+            func(*args)
+
+        with patch.dict(sys.modules, {"utils.cache": fake_cache_module}), \
+             patch("asyncio.get_event_loop") as mock_loop:
+            mock_loop.return_value.run_in_executor = fake_run_in_executor
+            await manager._publish_to_redis("parent", "parent-123", {"type": "alert"})
+
+        mock_client.publish.assert_called_once()
+        call_args = mock_client.publish.call_args
+        assert call_args[0][0] == "snflwr:websocket:broadcast"
+
+    async def test_publish_to_redis_redis_error_logged(self):
+        """_publish_to_redis swallows RedisError without raising."""
+        import sys
+        import types
+        from api.websocket_server import RedisError as WsRedisError
+
+        manager = ConnectionManager()
+        mock_pubsub = MagicMock()
+        manager._redis_pubsub = mock_pubsub
+
+        mock_client = MagicMock()
+        mock_cache = MagicMock()
+        mock_cache._client = mock_client
+
+        fake_cache_module = types.ModuleType("utils.cache")
+        fake_cache_module.cache = mock_cache
+
+        async def fake_run_in_executor_error(executor, func, *args):
+            raise ConnectionError("redis gone")
+
+        with patch.dict(sys.modules, {"utils.cache": fake_cache_module}), \
+             patch("asyncio.get_event_loop") as mock_loop:
+            mock_loop.return_value.run_in_executor = fake_run_in_executor_error
+            # Should not raise
+            await manager._publish_to_redis("all", None, {"type": "broadcast"})

@@ -301,3 +301,222 @@ class TestSaveLoadKeyEdgeCases:
             from storage.encryption import EncryptionManager
             mgr = EncryptionManager(key_dir=new_dir)
             assert new_dir.exists()
+
+
+class TestEncryptFile:
+    """Test encrypt_file / decrypt_file."""
+
+    def test_encrypt_file_basic(self, enc_manager, tmp_path):
+        input_path = tmp_path / "plain.txt"
+        output_path = tmp_path / "encrypted.bin"
+        input_path.write_bytes(b"Hello, file encryption!")
+        result = enc_manager.encrypt_file(input_path, output_path)
+        assert result is True
+        assert output_path.exists()
+        assert output_path.read_bytes() != b"Hello, file encryption!"
+
+    def test_decrypt_file_basic(self, enc_manager, tmp_path):
+        input_path = tmp_path / "plain.txt"
+        encrypted_path = tmp_path / "encrypted.bin"
+        decrypted_path = tmp_path / "decrypted.txt"
+        input_path.write_bytes(b"Round trip file test")
+        enc_manager.encrypt_file(input_path, encrypted_path)
+        result = enc_manager.decrypt_file(encrypted_path, decrypted_path)
+        assert result is True
+        assert decrypted_path.read_bytes() == b"Round trip file test"
+
+    def test_encrypt_file_missing_source(self, enc_manager, tmp_path):
+        missing = tmp_path / "does_not_exist.txt"
+        output = tmp_path / "out.bin"
+        result = enc_manager.encrypt_file(missing, output)
+        assert result is False
+
+    def test_decrypt_file_missing_source(self, enc_manager, tmp_path):
+        missing = tmp_path / "does_not_exist.bin"
+        output = tmp_path / "out.txt"
+        result = enc_manager.decrypt_file(missing, output)
+        assert result is False
+
+    def test_decrypt_file_invalid_ciphertext(self, enc_manager, tmp_path):
+        bad_file = tmp_path / "bad.bin"
+        bad_file.write_bytes(b"this is not real ciphertext")
+        output = tmp_path / "out.txt"
+        result = enc_manager.decrypt_file(bad_file, output)
+        assert result is False
+
+
+class TestHmacToken:
+    """Test hmac_token method."""
+
+    def test_hmac_token_returns_hex_string(self, enc_manager):
+        result = enc_manager.hmac_token("test_token")
+        assert isinstance(result, str)
+        assert len(result) == 64  # SHA-256 hex digest
+
+    def test_hmac_token_deterministic(self, enc_manager):
+        t1 = enc_manager.hmac_token("same_token")
+        t2 = enc_manager.hmac_token("same_token")
+        assert t1 == t2
+
+    def test_hmac_different_tokens_differ(self, enc_manager):
+        t1 = enc_manager.hmac_token("token_A")
+        t2 = enc_manager.hmac_token("token_B")
+        assert t1 != t2
+
+    def test_hmac_token_with_null_master_key(self, enc_manager):
+        """hmac_token should still return a result even if master key is None."""
+        enc_manager._master_key = None
+        result = enc_manager.hmac_token("test")
+        assert isinstance(result, str)
+
+
+class TestGenerateSecureToken:
+    """Test generate_secure_token."""
+
+    def test_returns_hex_string(self, enc_manager):
+        token = enc_manager.generate_secure_token()
+        assert isinstance(token, str)
+        # Default length=32 -> 64 hex chars
+        assert len(token) == 64
+
+    def test_custom_length(self, enc_manager):
+        token = enc_manager.generate_secure_token(length=16)
+        assert len(token) == 32  # 16 bytes -> 32 hex chars
+
+    def test_tokens_are_unique(self, enc_manager):
+        t1 = enc_manager.generate_secure_token()
+        t2 = enc_manager.generate_secure_token()
+        assert t1 != t2
+
+
+class TestGenerateDeviceId:
+    """Test generate_device_id."""
+
+    def test_returns_string(self, enc_manager):
+        device_id = enc_manager.generate_device_id()
+        assert isinstance(device_id, str)
+        assert len(device_id) == 32
+
+    def test_with_additional_entropy(self, enc_manager):
+        device_id = enc_manager.generate_device_id(additional_entropy="extra123")
+        assert isinstance(device_id, str)
+        assert len(device_id) == 32
+
+    def test_unique_per_call(self, enc_manager):
+        """Each call should produce a unique device ID due to random component."""
+        id1 = enc_manager.generate_device_id()
+        id2 = enc_manager.generate_device_id()
+        assert id1 != id2
+
+
+class TestSecureStorage:
+    """Test SecureStorage class."""
+
+    @pytest.fixture
+    def secure_store(self, tmp_path):
+        """Create a SecureStorage instance backed by in-memory DB mock."""
+        from storage.encryption import SecureStorage
+        from unittest.mock import MagicMock
+        db_mock = MagicMock()
+        # Use separate subdirs for storage and keys
+        storage_dir = tmp_path / "store"
+        key_dir = tmp_path / "keys"
+        storage_dir.mkdir()
+        key_dir.mkdir()
+        return SecureStorage(db=db_mock, storage_dir=storage_dir, key_dir=key_dir)
+
+    def test_store_and_retrieve_dict(self, secure_store):
+        data = {"user": "alice", "score": 42}
+        result = secure_store.store("mykey", data)
+        assert result is True
+        retrieved = secure_store.retrieve("mykey")
+        # Should come back as either dict or decrypted string
+        assert retrieved is not None
+
+    def test_store_and_delete(self, secure_store):
+        data = {"x": 1}
+        secure_store.store("delkey", data)
+        deleted = secure_store.delete("delkey")
+        assert deleted is True
+        # File should no longer exist
+        retrieved = secure_store.retrieve("delkey")
+        assert retrieved is None
+
+    def test_delete_nonexistent_returns_false(self, secure_store):
+        result = secure_store.delete("no_such_key")
+        assert result is False
+
+    def test_retrieve_nonexistent_returns_none(self, secure_store):
+        result = secure_store.retrieve("no_such_key")
+        assert result is None
+
+    def test_store_string_data(self, secure_store):
+        """store() should handle non-dict (string) data."""
+        result = secure_store.store("strkey", "plain string value")
+        assert result is True
+
+    def test_store_creates_enc_file(self, secure_store, tmp_path):
+        secure_store.store("filekey", {"a": "b"})
+        enc_file = secure_store.storage_dir / "filekey.enc"
+        assert enc_file.exists()
+
+
+class TestEncryptWrappers:
+    """Test encrypt() and decrypt() convenience aliases."""
+
+    def test_encrypt_alias_returns_string(self, enc_manager):
+        result = enc_manager.encrypt("hello")
+        assert isinstance(result, str)
+
+    def test_decrypt_alias_returns_string(self, enc_manager):
+        cipher = enc_manager.encrypt("hello world")
+        result = enc_manager.decrypt(cipher)
+        assert result == "hello world"
+
+    def test_encrypt_alias_none_returns_none(self, enc_manager):
+        result = enc_manager.encrypt(None)
+        assert result is None
+
+    def test_decrypt_alias_none_returns_none(self, enc_manager):
+        result = enc_manager.decrypt(None)
+        assert result is None
+
+    def test_decrypt_alias_bad_data_returns_none(self, enc_manager):
+        result = enc_manager.decrypt("totally-invalid-data")
+        assert result is None
+
+
+class TestVerifyPasswordEdgeCases:
+    """Test verify_password edge cases."""
+
+    def test_verify_no_dollar_sign_no_salt_returns_false(self, enc_manager):
+        """hash without '$' and no separate salt should return False."""
+        result = enc_manager.verify_password("password", "nodollarsign")
+        assert result is False
+
+    def test_verify_with_separate_salt(self, enc_manager):
+        """Verify using separate salt parameter."""
+        import base64, secrets
+        salt = secrets.token_bytes(32)
+        salt_b64 = base64.b64encode(salt).decode()
+        hashed = enc_manager.hash_password("MyPass!", salt=salt)
+        # The combined hash format is salt$hash; extract just the key part
+        _, key_b64 = hashed.split('$', 1)
+        result = enc_manager.verify_password("MyPass!", key_b64, salt=salt_b64)
+        assert result is True
+
+    def test_verify_wrong_password_with_separate_salt(self, enc_manager):
+        import base64, secrets
+        salt = secrets.token_bytes(32)
+        salt_b64 = base64.b64encode(salt).decode()
+        hashed = enc_manager.hash_password("correct", salt=salt)
+        _, key_b64 = hashed.split('$', 1)
+        result = enc_manager.verify_password("wrong", key_b64, salt=salt_b64)
+        assert result is False
+
+    def test_hash_password_with_explicit_salt(self, enc_manager):
+        import secrets
+        salt = secrets.token_bytes(32)
+        hashed1 = enc_manager.hash_password("samepass", salt=salt)
+        hashed2 = enc_manager.hash_password("samepass", salt=salt)
+        assert hashed1 == hashed2  # Same salt -> same hash

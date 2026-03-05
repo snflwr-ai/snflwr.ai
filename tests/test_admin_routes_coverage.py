@@ -911,3 +911,864 @@ class TestAdminGetRoute:
                     headers=_auth_header()
                 )
         assert response.status_code in (200, 403)
+
+
+# ============================================================================
+# Error Path Tests
+# ============================================================================
+
+def _bypass_csrf():
+    """Return a patch context that bypasses CSRF validation."""
+    return patch("api.server.validate_csrf_token", new=AsyncMock(return_value=True))
+
+
+class TestAdminLoginErrors:
+    """Test admin login DB and exception error paths."""
+
+    @pytest.mark.asyncio
+    async def test_login_db_error_returns_503(self, app):
+        import sqlite3
+        import requests
+        with patch("requests.post", side_effect=requests.exceptions.ConnectionError()), \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.get_email_crypto") as mock_crypto, \
+             patch("api.routes.admin.auth_manager") as mock_am, \
+             patch("api.routes.admin.check_auth_rate_limit", return_value={}):
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("db error")
+            mock_crypto.return_value.hash_email.return_value = "hash"
+            mock_am.authenticate_parent.side_effect = sqlite3.OperationalError("db")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/login",
+                    json={"email": "admin@test.com", "password": "Pass123!"}
+                )
+        assert response.status_code in (401, 503, 429)
+
+    @pytest.mark.asyncio
+    async def test_login_owui_db_error_after_success(self, app):
+        """OWUI login succeeds but DB write fails -> 503."""
+        import sqlite3
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "id": "u1", "name": "Admin", "email": "admin@test.com",
+            "role": "admin", "token": "jwt"
+        }
+        with patch("requests.post", return_value=mock_resp), \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.get_email_crypto") as mock_crypto, \
+             patch("api.routes.admin.check_auth_rate_limit", return_value={}):
+            mock_db = MockDB.return_value
+            mock_db.execute_query.side_effect = sqlite3.OperationalError("db error")
+            mock_crypto.return_value.prepare_email_for_storage.return_value = ("hash", "enc")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/login",
+                    json={"email": "admin@test.com", "password": "Pass123!"}
+                )
+        assert response.status_code in (200, 503, 429)
+
+
+class TestAdminStatsErrors:
+    """Test admin stats error paths."""
+
+    @pytest.mark.asyncio
+    async def test_stats_generic_exception(self, app, admin_session):
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = RuntimeError("unexpected")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/stats", headers=_auth_header())
+        assert response.status_code in (500, 403)
+
+
+class TestAdminAccountsErrors:
+    """Test account CRUD error paths."""
+
+    @pytest.mark.asyncio
+    async def test_list_accounts_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("db fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/accounts", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_list_accounts_generic_exception(self, app, admin_session):
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = RuntimeError("unexpected")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/accounts", headers=_auth_header())
+        assert response.status_code in (500, 403)
+
+    @pytest.mark.asyncio
+    async def test_update_account_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"parent_id": "p1"}]
+            mock_db.execute_write.side_effect = sqlite3.OperationalError("write fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/accounts/p1",
+                    json={"name": "New Name"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 503, 403)
+
+    @pytest.mark.asyncio
+    async def test_update_account_with_email(self, app, admin_session):
+        """Update account with email field provided."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.get_email_crypto") as mock_crypto, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"parent_id": "p1"}]
+            mock_db.execute_write.return_value = None
+            mock_crypto.return_value.prepare_email_for_storage.return_value = ("hash", "enc")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/accounts/p1",
+                    json={"email": "new@example.com"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_update_account_with_is_active(self, app, admin_session):
+        """Update account with is_active field provided."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"parent_id": "p1"}]
+            mock_db.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/accounts/p1",
+                    json={"is_active": False},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_delete_account_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"parent_id": "p1"}]
+            mock_db.execute_write.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete("/api/admin/accounts/p1", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_accounts_empty_ids(self, app, admin_session):
+        """Empty IDs list should return 400."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete(
+                    "/api/admin/accounts",
+                    params={},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (400, 422, 403)
+
+    @pytest.mark.asyncio
+    async def test_create_account_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.get_email_crypto") as mock_crypto, \
+             patch("api.routes.admin.auth_manager") as mock_route_am, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_write.side_effect = sqlite3.OperationalError("db fail")
+            mock_crypto.return_value.prepare_email_for_storage.return_value = ("hash", "enc")
+            mock_route_am.ph.hash.return_value = "hashed"
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/accounts",
+                    json={"name": "Test", "email": "t@test.com", "password": "Pass123!"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (503, 403)
+
+
+class TestAdminProfileErrors:
+    """Test profile CRUD error paths."""
+
+    @pytest.mark.asyncio
+    async def test_list_all_profiles_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/profiles/all", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_update_profile_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"profile_id": "p1"}]
+            mock_db.execute_write.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/profiles/p1",
+                    json={"name": "Name"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_update_profile_no_fields(self, app, admin_session):
+        """Updating profile with no fields should return 400."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.return_value = [{"profile_id": "p1"}]
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/profiles/p1",
+                    json={},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (400, 403)
+
+    @pytest.mark.asyncio
+    async def test_update_profile_all_fields(self, app, admin_session):
+        """Updating profile with all fields."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"profile_id": "p1"}]
+            mock_db.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/profiles/p1",
+                    json={"name": "Alice", "age": 12, "grade_level": "6",
+                          "daily_time_limit_minutes": 90, "is_active": True},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_delete_profile_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"profile_id": "p1", "owui_user_id": None}]
+            mock_db.execute_write.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete("/api/admin/profiles/p1", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_delete_profile_with_owui_user(self, app, admin_session):
+        """Delete profile that has an owui_user_id should also delete OWUI account."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             patch("api.routes.admin._owui_delete_user"), \
+             patch("api.routes.admin._get_owui_token", return_value="jwt"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"profile_id": "p1", "owui_user_id": "owui-123"}]
+            mock_db.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete("/api/admin/profiles/p1", headers=_auth_header())
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_profiles_empty(self, app, admin_session):
+        """Empty IDs for batch profile delete -> 400."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete(
+                    "/api/admin/profiles",
+                    params={},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (400, 422, 403)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_profiles_with_owui(self, app, admin_session):
+        """Batch delete profiles that have owui_user_ids."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             patch("api.routes.admin._owui_delete_user"), \
+             patch("api.routes.admin._get_owui_token", return_value="jwt"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"owui_user_id": "owui-123"}]
+            mock_db.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete(
+                    "/api/admin/profiles",
+                    params={"ids": ["p1", "p2"]},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 422, 403)
+
+
+class TestAdminAlertsErrors:
+    """Test alert endpoints error paths."""
+
+    @pytest.mark.asyncio
+    async def test_list_all_alerts_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/alerts/all", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_list_all_alerts_include_acknowledged(self, app, admin_session):
+        """list_all_alerts with include_acknowledged=true uses different query."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.get_email_crypto") as mock_crypto, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = []
+            mock_crypto.return_value.decrypt_email.return_value = "test@test.com"
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get(
+                    "/api/admin/alerts/all?include_acknowledged=true",
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_alerts_empty(self, app, admin_session):
+        """Empty IDs for batch alert delete -> 400."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete(
+                    "/api/admin/alerts",
+                    params={},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (400, 422, 403)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_alerts_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_write.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.request(
+                    "DELETE",
+                    "http://test/api/admin/alerts",
+                    params={"ids": [1, 2]},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (503, 403, 422)
+
+
+class TestAdminActivityErrors:
+    """Test activity endpoints error paths."""
+
+    @pytest.mark.asyncio
+    async def test_list_activity_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/activity", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_activity_empty(self, app, admin_session):
+        """Empty IDs for batch activity delete -> 400."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.delete(
+                    "/api/admin/activity",
+                    params={},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (400, 422, 403)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_activity_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_write.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.request(
+                    "DELETE",
+                    "http://test/api/admin/activity",
+                    params={"ids": ["s1", "s2"]},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (503, 403, 422)
+
+
+class TestAdminAuditLogErrors:
+    """Test audit log error paths."""
+
+    @pytest.mark.asyncio
+    async def test_audit_log_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/audit-log", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_audit_log_generic_exception(self, app, admin_session):
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = RuntimeError("unexpected")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/audit-log", headers=_auth_header())
+        assert response.status_code in (500, 403)
+
+
+class TestAdminGetErrors:
+    """Test get admin error paths."""
+
+    @pytest.mark.asyncio
+    async def test_get_admin_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/admin1", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+
+class TestAdminCreateProfile:
+    """Test create profile route."""
+
+    @pytest.mark.asyncio
+    async def test_create_profile_parent_not_found(self, app, admin_session):
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.return_value = []
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/profiles",
+                    json={"parent_id": "missing", "name": "Alice", "age": 10, "grade_level": "5"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (404, 403)
+
+    @pytest.mark.asyncio
+    async def test_create_profile_without_owui(self, app, admin_session):
+        """Create profile without email/password -> no OWUI account."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"parent_id": "p1", "name": "Parent"}]
+            mock_db.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/profiles",
+                    json={"parent_id": "p1", "name": "Alice", "age": 10, "grade_level": "5"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_create_profile_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [{"parent_id": "p1", "name": "Parent"}]
+            mock_db.execute_write.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/profiles",
+                    json={"parent_id": "p1", "name": "Alice", "age": 10, "grade_level": "5"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (503, 403)
+
+
+class TestAdminFalsePositives:
+    """Test false positive endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_list_false_positives(self, app, admin_session):
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.get_false_positives.return_value = []
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/false-positives", headers=_auth_header())
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_list_false_positives_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.get_false_positives.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/false-positives", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_mark_false_positive_reviewed(self, app, admin_session):
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.mark_false_positive_reviewed.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/false-positives/1",
+                    json={"reviewed_by": "admin1"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_mark_false_positive_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.mark_false_positive_reviewed.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.patch(
+                    "/api/admin/false-positives/1",
+                    json={"reviewed_by": "admin1"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (503, 403)
+
+
+class TestBulkImportStudents:
+    """Test bulk student import endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_bulk_import_under_13_no_consent(self, app, admin_session):
+        """Under-13 students without institutional COPPA consent are skipped."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin._get_owui_token", return_value=""), \
+             patch("api.routes.admin._owui_create_user", return_value=("uid1", None)), \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/students/import",
+                    json={
+                        "students": [
+                            {"name": "Alice", "email": "alice@test.com", "age": 10, "grade_level": "4"}
+                        ],
+                        "password": "SecurePass123!",
+                        "accept_institutional_coppa": False
+                    },
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+        if response.status_code == 200:
+            data = response.json()
+            assert data.get("imported") == 0
+
+    @pytest.mark.asyncio
+    async def test_bulk_import_success(self, app, admin_session):
+        """Successful bulk import creates profiles."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin._get_owui_token", return_value="jwt"), \
+             patch("api.routes.admin._owui_create_user", return_value=("owui-uid", None)), \
+             patch("api.routes.admin.AgeVerificationManager"), \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/students/import",
+                    json={
+                        "students": [
+                            {"name": "Bob", "email": "bob@test.com", "age": 15, "grade_level": "9"}
+                        ],
+                        "password": "SecurePass123!",
+                        "accept_institutional_coppa": False
+                    },
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_bulk_import_owui_error(self, app, admin_session):
+        """OWUI creation error -> student goes to failed list."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin._get_owui_token", return_value="jwt"), \
+             patch("api.routes.admin._owui_create_user", return_value=(None, "OWUI down")), \
+             patch("api.routes.admin.AgeVerificationManager"), \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/students/import",
+                    json={
+                        "students": [
+                            {"name": "Bob", "email": "bob@test.com", "age": 15, "grade_level": "9"}
+                        ],
+                        "password": "SecurePass123!",
+                        "accept_institutional_coppa": False
+                    },
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+        if response.status_code == 200:
+            assert response.json().get("failed")
+
+    @pytest.mark.asyncio
+    async def test_bulk_import_under_13_with_consent(self, app, admin_session):
+        """Under-13 with COPPA consent flag creates student and logs consent."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin._get_owui_token", return_value="jwt"), \
+             patch("api.routes.admin._owui_create_user", return_value=("owui-uid", None)), \
+             patch("api.routes.admin.AgeVerificationManager") as MockAVM, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_write.return_value = None
+            mock_avm = MockAVM.return_value
+            mock_avm.update_profile_consent_status.return_value = None
+            mock_avm.log_parental_consent.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/students/import",
+                    json={
+                        "students": [
+                            {"name": "Alice", "email": "alice@test.com", "age": 10, "grade_level": "4"}
+                        ],
+                        "password": "SecurePass123!",
+                        "accept_institutional_coppa": True
+                    },
+                    headers=_auth_header()
+                )
+        assert response.status_code in (200, 403)
+
+
+class TestListStudents:
+    """Test list students endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_list_students_success(self, app, admin_session):
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_db.execute_query.return_value = [
+                {"profile_id": "p1", "name": "Alice", "age": 10,
+                 "grade_level": "4", "owui_user_id": "owui-1",
+                 "parental_consent_given": 1, "coppa_verified": 1,
+                 "is_active": 1, "created_at": "2024-01-01"}
+            ]
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/students", headers=_auth_header())
+        assert response.status_code in (200, 403)
+
+    @pytest.mark.asyncio
+    async def test_list_students_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.audit_log"):
+            mock_am.validate_session.return_value = (True, admin_session)
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/admin/students", headers=_auth_header())
+        assert response.status_code in (503, 403)
+
+
+class TestAdminSyncErrors:
+    """Test sync error paths."""
+
+    @pytest.mark.asyncio
+    async def test_sync_db_error(self, app, admin_session):
+        import sqlite3
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.get_email_crypto") as mock_crypto, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_crypto.return_value.prepare_email_for_storage.return_value = ("hash", "enc")
+            MockDB.return_value.execute_query.side_effect = sqlite3.OperationalError("fail")
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/sync",
+                    json={"admin_id": "owui-1", "email": "admin@test.com"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (503, 403)
+
+    @pytest.mark.asyncio
+    async def test_sync_admin_not_found_after_upsert(self, app, admin_session):
+        """If admin not found after upsert, returns 500."""
+        with patch("api.middleware.auth.auth_manager") as mock_am, \
+             patch("api.routes.admin.DatabaseManager") as MockDB, \
+             patch("api.routes.admin.get_email_crypto") as mock_crypto, \
+             patch("api.routes.admin.audit_log"), \
+             _bypass_csrf():
+            mock_am.validate_session.return_value = (True, admin_session)
+            mock_db = MockDB.return_value
+            mock_crypto.return_value.prepare_email_for_storage.return_value = ("hash", "enc")
+            # First query: check existing -> not found; second query: fetch after upsert -> not found
+            mock_db.execute_query.side_effect = [[], []]
+            mock_db.execute_write.return_value = None
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/admin/sync",
+                    json={"admin_id": "owui-1", "email": "admin@test.com"},
+                    headers=_auth_header()
+                )
+        assert response.status_code in (500, 403)

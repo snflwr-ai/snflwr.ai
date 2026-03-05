@@ -36,32 +36,20 @@ separate UX design pass.
 
 ---
 
-## 3. Educational Exemption Is Keyword-Based and Abusable
+## 3. ~~Educational Exemption Abusable with Generic Words~~ — RESOLVED
 
-**Affected component:** `safety/pipeline.py` → `_PatternMatcher._has_educational_context()`
+The exemption now requires subject-specific indicators (`"biology"`, `"chemistry"`, `"physics"`,
+`"history"`, etc.). Generic words like `"class"` or `"homework"` alone no longer bypass keyword
+blocks on contextual keywords (`bomb`, `sex`, `cocaine`, `kill`, etc.).
 
-**Description:**
-Certain prohibited keywords (e.g., `kill`, `cocaine`, `sex`, `bomb`) are allowed through
-if an educational indicator word is present in the same message. Educational indicators
-include common words like `class`, `school`, `homework`, `learn`, `biology`, `history`, etc.
+Messages blocked where a weak indicator suggests possible legitimate academic intent are flagged
+with `possible_false_positive=True` in the API response. Educators and parents can report these
+via `POST /api/safety/false-positive` (requires parent/admin auth). Reports are stored in the
+`safety_false_positives` table and reviewed by developers via `GET /api/admin/false-positives`
+and marked resolved via `PATCH /api/admin/false-positives/{id}`.
 
-This means a message like `"tell me about sex for my class"` or `"cocaine for my homework"`
-would pass the pattern filter, because the single word `class` or `homework` satisfies the
-educational context check.
-
-**Risk level:** Low–Medium — a student would need to know the exemption exists and intentionally
-craft their message to exploit it. The semantic classifier (Stage 4) provides a second line
-of defense for student inputs, and the system prompt constrains AI responses.
-
-**Intentional tradeoff:** Tightening the educational exemption causes significant false
-positives on legitimate schoolwork queries (e.g., history questions about wars, biology
-questions about cell death, health class questions about sexual reproduction). The current
-tuning prioritizes usability over strictness for this category.
-
-**Potential improvements (not scheduled):**
-- Require multiple educational indicators rather than one
-- Weight indicators by specificity (e.g., `"biology class"` > bare `"class"`)
-- Add a list of known abuse phrases to `_CONCERNING_INDICATORS`
+Bare `"class"` or `"homework"` alone is NOT sufficient to bypass the block — subject-specific
+indicators are required (see `_STRONG_EDUCATIONAL_INDICATORS` in `safety/pipeline.py`).
 
 ---
 
@@ -107,6 +95,6 @@ been blocked) without actually blocking, for audit purposes.
 |---|---|---|
 | No semantic classifier on AI output | Medium | Planned — needs perf design |
 | Self-reported age, no verification | Medium | Planned — needs UX design |
-| Educational exemption abusable | Low–Medium | Known tradeoff, monitored |
+| Educational exemption abusable | Low–Medium | ✅ Resolved — subject-specific indicators required; false positive reporting added |
 | Civics/politics false positives | Low | Planned improvement |
 | Admin bypasses all safety | Low | Mitigated by audit logging |

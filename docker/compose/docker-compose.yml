@@ -28,11 +28,6 @@ services:
       - open-webui-data:/app/backend/data
       # Mount Snflwr middleware
       - ../../frontend/open-webui/backend/open_webui/middleware:/app/backend/custom_middleware:ro
-      # Mount custom-built frontend (removes Open WebUI admin panel link)
-      - ../../frontend/open-webui/build:/app/build:ro
-      # Branding patches
-      - ../../frontend/open-webui/backend/open_webui/env.py:/app/backend/open_webui/env.py:ro
-      - ../../frontend/open-webui/backend/open_webui/static/favicon.png:/app/backend/open_webui/static/favicon.png:ro
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
@@ -67,9 +62,6 @@ services:
       - ENABLE_FOLLOW_UP_GENERATION=true
       - ENABLE_TAGS_GENERATION=true
       - ENABLE_AUTOCOMPLETE_GENERATION=false
-      # Branding
-      - WEBUI_NAME=snflwr.ai
-      - WEBUI_FAVICON_URL=/static/favicon.png
       - SHOW_ADMIN_DETAILS=false
       # Point to Snflwr API for safety pipeline
       - SNFLWR_API_URL=http://snflwr-api:8000

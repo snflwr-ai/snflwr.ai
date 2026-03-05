@@ -481,7 +481,7 @@ class EmailService:
 
             return success, error
 
-        except (smtplib.SMTPException, DB_ERRORS) as e:
+        except (smtplib.SMTPException, *DB_ERRORS) as e:
             logger.exception(f"Failed to send safety alert: {e}")
             return False, str(e)
 
@@ -534,7 +534,7 @@ class EmailService:
 
             return success, error
 
-        except (smtplib.SMTPException, DB_ERRORS) as e:
+        except (smtplib.SMTPException, *DB_ERRORS) as e:
             logger.exception(f"Failed to send verification email: {e}")
             return False, str(e)
 
@@ -587,7 +587,7 @@ class EmailService:
 
             return success, error
 
-        except (smtplib.SMTPException, DB_ERRORS) as e:
+        except (smtplib.SMTPException, *DB_ERRORS) as e:
             logger.exception(f"Failed to send password reset email: {e}")
             return False, str(e)
 

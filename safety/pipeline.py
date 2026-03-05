@@ -375,6 +375,10 @@ class _PatternMatcher:
         "die", "death", "dying", "kill", "killed", "killing",
         "bomb", "explosive", "gun", "knife", "poison",
         "meth", "drug", "drugs", "weed", "cocaine",
+        # Sexual keywords: blocked by default, exempt in clear educational contexts
+        # (e.g., health class / biology). Also prevents "sextant" false positive
+        # since the normalized-text substring check has no word boundaries.
+        "sex", "sexual", "sexting", "grooming",
     })
 
     # Phrases indicating an educational / academic context
@@ -394,8 +398,6 @@ class _PatternMatcher:
         "trigonometry", "equation", "fraction", "multiplication",
         "reading", "writing", "spelling", "grammar", "vocabulary",
         "literature", "essay", "book report", "novel",
-        "help me with", "can you help", "i need help",
-        "how do i", "explain", "what is", "teach me",
     )
 
     # Phrases indicating concerning (non-educational) intent
@@ -427,6 +429,7 @@ class _PatternMatcher:
         raw: list[Tuple[str, Category, str]] = [
             # VIOLENCE
             (r"\bhow\s+to\s+make\s+a\s+bomb\b", Category.VIOLENCE, "bomb-making request"),
+            (r"\b(make|build|create)\s+(a\s+)?(fertilizer\s+)?bomb\b", Category.VIOLENCE, "bomb-making request"),
             (r"\bhow\s+to\s+build\s+a\s+weapon\b", Category.VIOLENCE, "weapon-building request"),
             (r"\b(kill|murder|attack)\s+(someone|people|a\s+person)\b", Category.VIOLENCE, "violent intent toward people"),
             (r"\bbest\s+way\s+to\s+(kill|hurt)\b", Category.VIOLENCE, "seeking methods to harm"),
@@ -447,6 +450,8 @@ class _PatternMatcher:
             (r"\bsuicid(?:e|al)\b", Category.SELF_HARM, "suicide reference"),
             # WEAPONS
             (r"\bhow\s+to\s+(make|create|build)\s+(explosives?|a?\s*bombs?|poisons?|chemical\s+weapons?)\b",
+             Category.WEAPONS, "weapon/explosive creation request"),
+            (r"\b(help\s+me|can\s+you\s+help\s+me|i\s+need\s+help|show\s+me)\s+(to\s+)?(make|create|build)\s+(a\s+)?(bomb|explosive|weapon|poison|grenade|molotov)\b",
              Category.WEAPONS, "weapon/explosive creation request"),
             (r"\bhow\s+to\s+synthesize\b.+\bat\s+home\b", Category.WEAPONS, "home synthesis request"),
             # BYPASS ATTEMPTS
@@ -492,6 +497,7 @@ class _PatternMatcher:
             "sexual": [
                 "porn", "pornography", "nude", "naked", "xxx", "sexual",
                 "masturbate", "escort", "explicit", "rape",
+                "sex", "sexting", "grooming",
             ],
             "drugs": [
                 "cocaine", "heroin", "meth", "marijuana", "cannabis", "weed",
@@ -1083,7 +1089,7 @@ class SafetyPipeline:
             )
 
     # ------------------------------------------------------------------ #
-    # check_output  (stages 3 + 5 only, with normalization)
+    # check_output  (stages 3, 4, + 5, with normalization)
     # ------------------------------------------------------------------ #
 
     def check_output(
@@ -1093,9 +1099,16 @@ class SafetyPipeline:
         profile_id: str = "",
     ) -> SafetyResult:
         """
-        Run output validation (stages 3 + 5) on AI-generated text.
+        Run output validation (stages 3, 4, + 5) on AI-generated text.
 
-        Attaches a modified_content fallback when content is blocked.
+        Stages:
+            3 — Pattern Matcher (keyword + regex, CRITICAL/MAJOR)
+            4 — Semantic Classifier (LLM-based; skipped if Ollama unavailable)
+            5 — Age Gate + Topic Redirects
+
+        Unlike check_input(), there is no educational context override here.
+        If the classifier flags AI-generated content, it is blocked unconditionally.
+        Attaches a modified_content fallback on every block.
         """
         try:
             self._stats["outputs_checked"] += 1
@@ -1106,6 +1119,23 @@ class SafetyPipeline:
 
             # Stage 3: Pattern Matcher
             result = self._pattern_matcher.check(sanitized, normalized)
+            if result is not None:
+                fallback = self._output_fallback(result.category)
+                result = SafetyResult(
+                    is_safe=result.is_safe,
+                    severity=result.severity,
+                    category=result.category,
+                    reason=result.reason,
+                    triggered_keywords=result.triggered_keywords,
+                    suggested_redirection=result.suggested_redirection,
+                    stage=result.stage,
+                    modified_content=fallback,
+                )
+                self._log_block(result, text, profile_id, is_output=True)
+                return result
+
+            # Stage 4: Semantic Classifier (no educational override for AI output)
+            result = self._classifier.classify(text, age)
             if result is not None:
                 fallback = self._output_fallback(result.category)
                 result = SafetyResult(

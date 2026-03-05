@@ -93,3 +93,58 @@ class TestFalsePositiveEndpoint:
             },
         )
         assert response.status_code in (401, 403)
+
+
+class TestAdminFalsePositiveEndpoints:
+    """Tests for GET/PATCH /api/admin/false-positives."""
+
+    def test_list_false_positives_route_registered(self):
+        """GET /api/admin/false-positives route is registered."""
+        from api.server import app
+        routes = [r.path for r in app.routes]
+        assert any("false-positives" in r and "admin" in r for r in routes)
+
+    def test_patch_false_positive_route_registered(self):
+        """PATCH /api/admin/false-positives/{fp_id} route is registered."""
+        from api.server import app
+        routes = [r.path for r in app.routes]
+        assert any("false-positives" in r and "fp_id" in r for r in routes)
+
+    def test_list_false_positives_requires_admin(self):
+        """Unauthenticated request to list false positives is rejected."""
+        from fastapi.testclient import TestClient
+        from api.server import app
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/api/admin/false-positives")
+        assert response.status_code in (401, 403)
+
+    def test_mark_reviewed_requires_admin(self):
+        """Unauthenticated PATCH is rejected."""
+        from fastapi.testclient import TestClient
+        from api.server import app
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.patch(
+            "/api/admin/false-positives/1",
+            json={"reviewed_by": "admin@test.com"},
+        )
+        assert response.status_code in (401, 403)
+
+    def test_db_roundtrip_via_methods(self, tmp_path):
+        """Full roundtrip: insert → list unreviewed → mark reviewed → gone from unreviewed."""
+        from storage.database import DatabaseManager
+        db = DatabaseManager(db_path=tmp_path / "test.db")
+        db.initialize_database()
+        db.execute_write("PRAGMA foreign_keys = OFF")
+        fp_id = db.insert_false_positive(
+            profile_id="prof-1",
+            message_text="test",
+            block_reason="reason",
+            triggered_keywords='["bomb"]',
+        )
+        unreviewed = db.get_false_positives(reviewed=False)
+        assert any(r["id"] == fp_id for r in unreviewed)
+        db.mark_false_positive_reviewed(fp_id, "admin@school.edu")
+        unreviewed_after = db.get_false_positives(reviewed=False)
+        assert not any(r["id"] == fp_id for r in unreviewed_after)
+        all_rows = db.get_false_positives(reviewed=True)
+        assert any(r["id"] == fp_id and r["reviewed_by"] == "admin@school.edu" for r in all_rows)

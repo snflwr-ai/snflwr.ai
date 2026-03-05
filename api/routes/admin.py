@@ -1488,6 +1488,56 @@ async def get_audit_log_entries(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+class FalsePositiveReview(BaseModel):
+    reviewed_by: str
+
+
+@router.get("/false-positives")
+async def list_false_positives(
+    session: AuthSession = Depends(require_admin),
+):
+    """
+    List unreviewed false positive reports from educators/parents.
+
+    [LOCKED] SECURED: Admin only.
+    """
+    try:
+        db = DatabaseManager()
+        rows = db.get_false_positives(reviewed=False)
+        audit_log('read', 'false_positives', 'all', session)
+        return {"false_positives": rows, "count": len(rows)}
+    except DB_ERRORS as e:
+        logger.error(f"Database error listing false positives: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected error listing false positives: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.patch("/false-positives/{fp_id}")
+async def mark_false_positive_reviewed(
+    fp_id: int,
+    body: FalsePositiveReview,
+    session: AuthSession = Depends(require_admin),
+):
+    """
+    Mark a false positive report as reviewed.
+
+    [LOCKED] SECURED: Admin only.
+    """
+    try:
+        db = DatabaseManager()
+        db.mark_false_positive_reviewed(fp_id, body.reviewed_by)
+        audit_log('update', 'false_positive', str(fp_id), session)
+        return {"success": True}
+    except DB_ERRORS as e:
+        logger.error(f"Database error marking false positive reviewed: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected error marking false positive reviewed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 # ============================================================================
 # Catch-all route — MUST be last to avoid shadowing specific routes
 # ============================================================================

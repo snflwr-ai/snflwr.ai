@@ -140,6 +140,7 @@ class ChatResponse(BaseModel):
     blocked: bool = False
     block_reason: Optional[str] = None
     block_category: Optional[str] = None
+    possible_false_positive: bool = False
     safety_metadata: Dict[str, Any] = {}
     model: str = system_config.OLLAMA_DEFAULT_MODEL
     timestamp: str
@@ -317,6 +318,7 @@ async def send_chat_message(
                     "stage": filter_result.stage,
                     "suggested_redirection": filter_result.suggested_redirection,
                 },
+                possible_false_positive=filter_result.possible_false_positive,
                 model=request.model,
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 session_id=session.session_id
@@ -434,6 +436,7 @@ async def send_chat_message(
                 response_text = response_filter.modified_content or safety_pipeline.get_safe_response(response_filter)
         else:
             response_filter = None
+            audit_log('chat_admin', 'message', request.profile_id, auth_session)
 
         # Store messages in conversation history (skipped for admin test)
         if not is_admin_test:
@@ -468,8 +471,10 @@ async def send_chat_message(
                 session_id=session.session_id
             )
 
-        # Audit log
-        audit_log('chat', 'message', request.profile_id, auth_session)
+        # Audit log — admin requests are already logged above with 'chat_admin' scope;
+        # only log the generic 'chat' event for non-admin (student) requests.
+        if not skip_safety:
+            audit_log('chat', 'message', request.profile_id, auth_session)
 
         # Return successful response
         return ChatResponse(

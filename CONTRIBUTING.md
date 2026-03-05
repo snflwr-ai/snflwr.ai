@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing. snflwr.ai is a children's safety product, so contributions are held to a higher standard around security, privacy, and test coverage.
 
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+
 ## Development Setup
 
 ### Prerequisites

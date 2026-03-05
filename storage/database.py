@@ -307,6 +307,32 @@ class DatabaseManager:
                 )
             """)
 
+            # False positive reports table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS safety_false_positives (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_id TEXT NOT NULL,
+                    message_text TEXT NOT NULL,
+                    block_reason TEXT NOT NULL,
+                    triggered_keywords TEXT NOT NULL,
+                    educator_note TEXT,
+                    created_at TEXT NOT NULL,
+                    reviewed_at TEXT,
+                    reviewed_by TEXT,
+                    FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
+                )
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_false_positives_profile
+                ON safety_false_positives(profile_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_false_positives_unreviewed
+                ON safety_false_positives(reviewed_at) WHERE reviewed_at IS NULL
+            """)
+
             # Parent alerts table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS parent_alerts (
@@ -1065,6 +1091,61 @@ class DatabaseManager:
         except DB_ERRORS as e:
             logger.error(f"Data cleanup failed: {e}")
             raise
+
+    def insert_false_positive(
+        self,
+        profile_id: str,
+        message_text: str,
+        block_reason: str,
+        triggered_keywords: str,  # JSON string e.g. '["bomb"]'
+        educator_note: Optional[str] = None,
+    ) -> int:
+        """Insert a false positive report. Returns the new row id."""
+        from datetime import datetime, timezone
+        self.execute_write(
+            """
+            INSERT INTO safety_false_positives
+                (profile_id, message_text, block_reason, triggered_keywords, educator_note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                profile_id,
+                message_text,
+                block_reason,
+                triggered_keywords,
+                educator_note,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        rows = self.execute_query(
+            "SELECT id FROM safety_false_positives WHERE profile_id = ? ORDER BY id DESC LIMIT 1",
+            (profile_id,),
+        )
+        return int(rows[0]["id"])
+
+    def get_false_positives(self, reviewed: bool = False) -> List[Dict[str, Any]]:
+        """Return false positive reports. If reviewed=False, return only unreviewed."""
+        if reviewed:
+            rows = self.execute_query(
+                "SELECT * FROM safety_false_positives ORDER BY created_at DESC"
+            )
+        else:
+            rows = self.execute_query(
+                "SELECT * FROM safety_false_positives WHERE reviewed_at IS NULL ORDER BY created_at DESC"
+            )
+        return [dict(row) for row in rows]
+
+    def mark_false_positive_reviewed(self, fp_id: int, reviewed_by: str) -> None:
+        """Mark a false positive report as reviewed."""
+        from datetime import datetime, timezone
+        self.execute_write(
+            """
+            UPDATE safety_false_positives
+            SET reviewed_at = ?, reviewed_by = ?
+            WHERE id = ?
+            """,
+            (datetime.now(timezone.utc).isoformat(), reviewed_by, fp_id),
+        )
 
     def get_database_stats(self) -> Dict[str, Any]:
         """Get database statistics"""

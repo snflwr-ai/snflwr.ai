@@ -380,7 +380,8 @@ async def send_chat_message(
                 'temperature': 0.7,
                 'num_predict': _resources.num_predict,
                 'num_ctx': _resources.num_ctx,
-            }
+            },
+            think=False,
         )
 
         if not success:

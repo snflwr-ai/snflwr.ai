@@ -362,17 +362,20 @@ class OllamaClient:
         model: str,
         messages: List[Dict],
         options: Optional[Dict] = None,
-        stream: bool = False
+        stream: bool = False,
+        think: Optional[bool] = None
     ) -> Tuple[bool, Optional[str], Optional[Dict]]:
         """
         Chat with model using message history
-        
+
         Args:
             model: Model name
             messages: List of message dictionaries
             options: Optional model parameters
             stream: Whether to stream response
-            
+            think: Enable/disable chain-of-thought thinking (Qwen3 models).
+                   Pass False to disable thinking mode and get faster responses.
+
         Returns:
             Tuple of (success, response or None, metadata or None)
         """
@@ -382,9 +385,12 @@ class OllamaClient:
                 'messages': messages,
                 'stream': stream
             }
-            
+
             if options:
                 request_data['options'] = options
+
+            if think is not None:
+                request_data['think'] = think
             
             start_time = time.time()
             

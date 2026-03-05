@@ -164,6 +164,14 @@ if ! command -v ollama &>/dev/null; then
     fi
 fi
 
+# Detect NVIDIA GPU (Ollama auto-uses GPU when running natively; this is informational)
+if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "NVIDIA GPU")
+    echo -e "${GREEN}GPU detected: ${GPU_NAME} — Ollama will use GPU acceleration automatically.${NC}"
+else
+    echo -e "${YELLOW}No NVIDIA GPU detected — Ollama will use CPU inference.${NC}"
+fi
+
 # Bind Ollama to all interfaces so Docker containers can reach it
 export OLLAMA_HOST=0.0.0.0
 # Explicit client URL so the snflwr API uses the correct scheme+port

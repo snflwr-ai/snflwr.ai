@@ -96,6 +96,21 @@ else
 fi
 info "Docker Compose found: $($COMPOSE version 2>&1 | head -1)"
 
+# Detect NVIDIA GPU
+USE_GPU=false
+if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "NVIDIA GPU")
+    if docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu20.04 nvidia-smi &>/dev/null 2>&1; then
+        USE_GPU=true
+        info "GPU detected: ${GPU_NAME} (nvidia-container-toolkit confirmed)"
+    else
+        warn "GPU detected (${GPU_NAME}) but nvidia-container-toolkit not configured — using CPU."
+        warn "To enable: sudo apt install nvidia-container-toolkit && sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
+    fi
+else
+    warn "No NVIDIA GPU detected — Ollama will run CPU inference."
+fi
+
 # Check for .env file
 if [ ! -f .env.production ]; then
     error ".env.production not found!"
@@ -403,10 +418,18 @@ echo "  Safety model:  ${SAFETY_MODEL} (~${SAFETY_RAM} GB runtime)"
 echo "  Combined:      ~${TOTAL_REQUIRED} GB (models + services)"
 echo "  Safety filter:  ENABLED (enterprise mandatory)"
 echo ""
+if [ "$USE_GPU" = true ]; then
+    START_CMD="$COMPOSE -f docker/compose/docker-compose.yml -f docker/compose/docker-compose.gpu.yml up -d"
+else
+    START_CMD="$COMPOSE -f docker/compose/docker-compose.yml up -d"
+fi
+
+echo "  GPU acceleration: $([ "$USE_GPU" = true ] && echo "ENABLED" || echo "CPU only")"
+echo ""
 echo "  Next steps:"
 echo "  1. Review .env.production"
 echo "  2. Set up SSL: enterprise/nginx/ssl/"
-echo "  3. Start:  $COMPOSE -f docker/compose/docker-compose.yml up -d"
+echo "  3. Start:  ${START_CMD}"
 echo ""
 echo "  Full guide: enterprise/README.md"
 echo ""

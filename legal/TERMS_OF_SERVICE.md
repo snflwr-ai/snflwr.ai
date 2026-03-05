@@ -147,25 +147,17 @@ Parents agree to:
 
 ---
 
-## 6. Subscription and Payment
+## 6. Licensing and Cost
 
-### 6.1 Tier Levels
+### 6.1 Open Source Software
 
-**Free Tier:** Basic model (limited features)
-**Standard Tier:** $4.99/month - Standard model
-**Premium Tier:** $9.99/month - Advanced model
+snflwr.ai is free, open-source software licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Self-hosted deployments are free of charge.
 
-**Billing:**
-- Monthly subscription (auto-renew)
-- Cancel anytime (no refunds for partial months)
-- Price changes: 30-day notice
+Source code is available at: https://github.com/tmartin2113/snflwr-ai
 
-### 6.2 Refund Policy
+### 6.2 Commercial Licensing
 
-**Refunds:**
-- 14-day money-back guarantee (new users only)
-- No refunds after 14 days
-- Technical issues: Contact support for resolution
+For organizations that require a commercial license (e.g., to distribute modified versions without AGPL obligations), contact: licensing@snflwr.ai
 
 ---
 
@@ -176,7 +168,7 @@ Parents agree to:
 Our Privacy Policy governs data collection and use:
 - Incorporated by reference
 - COPPA and FERPA compliant
-- Available at: [Privacy Policy Link]
+- Available at: [Privacy Policy](PRIVACY_POLICY.md)
 
 ### 7.2 Parental Rights
 

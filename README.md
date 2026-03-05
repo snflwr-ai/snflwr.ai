@@ -22,7 +22,7 @@
   <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0 License" />
   <img src="https://img.shields.io/badge/tests-2000%2B-brightgreen" alt="2000+ Tests" />
-  <img src="https://img.shields.io/badge/COPPA%2FFERPA-compliant-green" alt="COPPA/FERPA Compliant" />
+  <img src="https://img.shields.io/badge/COPPA%2FFERPA-designed-green" alt="Designed for COPPA/FERPA compliance" />
 </p>
 
 ---
@@ -228,9 +228,9 @@ See [DATABASE_ENCRYPTION.md](docs/guides/DATABASE_ENCRYPTION.md) for the complet
 - **Encryption:** AES-256 at rest (SQLCipher), TLS 1.3 in transit
 - **Authentication:** Argon2id with PBKDF2 fallback, JWT tokens
 - **Privacy:** All data stored locally -- never sent to external APIs. USB deployment for complete physical data control.
-- **COPPA:** Verifiable parental consent, data minimization, automated retention cleanup
-- **FERPA:** Student records protected, parent/guardian access controls
-- **GDPR:** Data deletion and export endpoints available
+- **COPPA:** Built-in parental consent flow, data minimization, automated retention cleanup — designed to support COPPA compliance. Operators are responsible for verifying their specific deployment meets all applicable requirements.
+- **FERPA:** Student record protections and parent/guardian access controls — designed to support FERPA compliance for school deployments.
+- **GDPR:** Data deletion and export endpoints available to support GDPR rights obligations.
 
 ---
 

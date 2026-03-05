@@ -155,6 +155,27 @@ if ! "$PYTHON_CMD" -c "import venv" &>/dev/null; then
     fi
 fi
 
+# Ensure tkinter is available (required for the GUI launcher)
+if ! "$PYTHON_CMD" -c "import tkinter" &>/dev/null; then
+    echo -e "${YELLOW}Installing python3-tk (required for GUI launcher)...${NC}"
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get install -y python3-tk
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y python3-tkinter
+    elif command -v yum &>/dev/null; then
+        sudo yum install -y python3-tkinter
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -S --noconfirm tk
+    elif command -v zypper &>/dev/null; then
+        sudo zypper install -y python3-tk
+    elif command -v apk &>/dev/null; then
+        sudo apk add py3-tkinter
+    else
+        echo -e "${YELLOW}Could not install tkinter automatically. GUI launcher will fall back to terminal mode.${NC}"
+        echo "  Install manually: sudo apt install python3-tk"
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}Python is ready. Launching snflwr.ai installer...${NC}"
 echo ""

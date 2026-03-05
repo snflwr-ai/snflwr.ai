@@ -2177,13 +2177,42 @@ def create_desktop_shortcut():
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
 
+        if not has_tkinter:
+            print_warning("tkinter not available — attempting to install python3-tk...")
+            try:
+                pkg_cmds = []
+                if shutil.which("apt-get"):
+                    pkg_cmds = ["sudo", "apt-get", "install", "-y", "python3-tk"]
+                elif shutil.which("dnf"):
+                    pkg_cmds = ["sudo", "dnf", "install", "-y", "python3-tkinter"]
+                elif shutil.which("yum"):
+                    pkg_cmds = ["sudo", "yum", "install", "-y", "python3-tkinter"]
+                elif shutil.which("pacman"):
+                    pkg_cmds = ["sudo", "pacman", "-S", "--noconfirm", "tk"]
+                elif shutil.which("zypper"):
+                    pkg_cmds = ["sudo", "zypper", "install", "-y", "python3-tk"]
+                elif shutil.which("apk"):
+                    pkg_cmds = ["sudo", "apk", "add", "py3-tkinter"]
+
+                if pkg_cmds:
+                    subprocess.run(pkg_cmds, check=True, timeout=60)
+                    check = subprocess.run(
+                        [str(venv_python), "-c", "import tkinter"],
+                        capture_output=True, timeout=10,
+                    )
+                    has_tkinter = (check.returncode == 0)
+
+            except (subprocess.SubprocessError, OSError):
+                pass
+
+            if not has_tkinter:
+                print_warning("Could not install tkinter — GUI launcher will fall back to terminal.")
+                print_info("  To enable the GUI later: sudo apt install python3-tk")
+
         if has_tkinter:
             exec_line = f'Exec="{venv_python}" "{launcher_py}"'
             use_terminal = "false"
         else:
-            print_warning("tkinter not available in the venv Python")
-            print_info("  The GUI launcher requires tkinter. Shortcuts will use the terminal startup instead.")
-            print_info("  To enable the GUI later: sudo apt install python3-tk (Debian/Ubuntu)")
             exec_line = f'Exec=bash "{install_dir}/start_snflwr.sh"'
             use_terminal = "true"
 

@@ -398,6 +398,13 @@ async def send_chat_message(
         import re as _re
         response_text = _re.sub(r'<think>.*?</think>', '', response_text, flags=_re.DOTALL).strip()
 
+        if not response_text:
+            logger.error("Model returned empty response after stripping thinking tokens")
+            raise HTTPException(
+                status_code=503,
+                detail="AI model unavailable: empty response"
+            )
+
         # Response validation via safety pipeline (skipped for admins)
         if not skip_safety:
             response_filter = safety_pipeline.check_output(

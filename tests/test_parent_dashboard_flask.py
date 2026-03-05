@@ -46,12 +46,14 @@ def mock_db():
         yield mock
 
 
+_TEST_DASHBOARD_PASSWORD = "test-secret-password-32chars!!"
+
+
 @pytest.fixture
 def auth_headers():
     """HTTP Basic auth headers using the test password."""
     import base64
-    password = os.environ.get("PARENT_DASHBOARD_PASSWORD", "test-secret-password-32chars!!")
-    credentials = base64.b64encode(f"admin:{password}".encode()).decode()
+    credentials = base64.b64encode(f"admin:{_TEST_DASHBOARD_PASSWORD}".encode()).decode()
     return {"Authorization": f"Basic {credentials}"}
 
 
@@ -60,8 +62,9 @@ def client(mock_incident_logger, mock_db):
     """Create Flask test client."""
     from safety.parent_dashboard import app
     app.config['TESTING'] = True
-    with app.test_client() as c:
-        yield c
+    with patch("safety.parent_dashboard.ADMIN_PASSWORD", _TEST_DASHBOARD_PASSWORD):
+        with app.test_client() as c:
+            yield c
 
 
 class TestDashboard:

@@ -1,0 +1,168 @@
+# snflwr.ai - Home Server / Self-Hosted Stack
+#
+# Single-command deployment for home servers and personal VPS.
+# No model baking, no PostgreSQL, no nginx. Just run:
+#
+#   ./deploy.sh                  (auto-detects GPU, generates secrets)
+#
+# Or manually:
+#   docker compose -f docker/compose/docker-compose.home.yml up -d
+#   docker compose -f docker/compose/docker-compose.home.yml \
+#                  -f docker/compose/docker-compose.gpu.yml up -d   (with GPU)
+#
+# For enterprise deployments (school/district) with PostgreSQL, Redis,
+# nginx, and SSL, see docker/compose/docker-compose.yml instead.
+
+services:
+
+  # Ollama - AI inference engine (models pulled on first start)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: snflwr-ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - snflwr-home-net
+    expose:
+      - "11434"
+    # GPU acceleration: add -f docker-compose.gpu.yml (handled automatically by deploy.sh)
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # snflwr.ai Safety API - FastAPI backend with content filtering
+  snflwr-api:
+    image: snflwr-api:latest
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    container_name: snflwr-api
+    volumes:
+      - snflwr-home-data:/app/data
+      - snflwr-home-logs:/app/logs
+    environment:
+      - ENVIRONMENT=production
+      # Ollama (internal service URL)
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_DEFAULT_MODEL=${OLLAMA_MODEL:-qwen3.5:9b}
+      # Database - SQLite, no external dependency
+      - DB_TYPE=sqlite
+      - SNFLWR_DATA_DIR=/app/data
+      - LOG_PATH=/app/logs
+      # Redis disabled for home use (rate limiting falls back to in-memory)
+      - REDIS_ENABLED=false
+      # Security
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - PARENT_DASHBOARD_PASSWORD=${PARENT_DASHBOARD_PASSWORD}
+      - ENCRYPT_CONVERSATIONS=true
+      # API config
+      - API_PORT=39150
+      - API_HOST=0.0.0.0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # CORS - Open WebUI is on the same host
+      - CORS_ORIGINS=http://localhost:${WEBUI_PORT:-3000},http://127.0.0.1:${WEBUI_PORT:-3000}
+      # SMTP (optional - for parent alert emails)
+      - SMTP_ENABLED=${SMTP_ENABLED:-false}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - snflwr-home-net
+    expose:
+      - "39150"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:39150/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Open WebUI - Chat interface
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.8.3
+    container_name: snflwr-frontend
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+      # Snflwr safety middleware
+      - ../../frontend/open-webui/backend/open_webui/middleware:/app/backend/custom_middleware:ro
+      # Custom frontend build (removes Open WebUI admin panel link for students)
+      - ../../frontend/open-webui/build:/app/build:ro
+      # Branding
+      - ../../frontend/open-webui/backend/open_webui/env.py:/app/backend/open_webui/env.py:ro
+      - ../../frontend/open-webui/backend/open_webui/static/favicon.png:/app/backend/open_webui/static/favicon.png:ro
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
+      - DEFAULT_USER_ROLE=user
+      - DEFAULT_MODELS=${OLLAMA_MODEL:-qwen3.5:9b}
+      # Lock down student accounts - chat only
+      - USER_PERMISSIONS_CHAT_CONTROLS=false
+      - USER_PERMISSIONS_CHAT_VALVES=false
+      - USER_PERMISSIONS_CHAT_SYSTEM_PROMPT=false
+      - USER_PERMISSIONS_CHAT_PARAMS=false
+      - USER_PERMISSIONS_CHAT_FILE_UPLOAD=false
+      - USER_PERMISSIONS_CHAT_DELETE=false
+      - USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS=false
+      - USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS=false
+      - USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS=false
+      - USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS=false
+      - USER_PERMISSIONS_FEATURES_WEB_SEARCH=true
+      - USER_PERMISSIONS_FEATURES_IMAGE_GENERATION=false
+      - USER_PERMISSIONS_FEATURES_CODE_INTERPRETER=true
+      - USER_PERMISSIONS_FEATURES_NOTES=false
+      - USER_PERMISSIONS_FEATURES_CHANNELS=false
+      - USER_PERMISSIONS_FEATURES_API_KEYS=false
+      - USER_PERMISSIONS_FEATURES_MEMORIES=false
+      - USER_PERMISSIONS_CHAT_SHARE=false
+      - USER_PERMISSIONS_CHAT_EXPORT=false
+      - USER_PERMISSIONS_CHAT_MULTIPLE_MODELS=false
+      - USER_PERMISSIONS_CHAT_TEMPORARY=false
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_EVALUATION_ARENA_MODELS=false
+      - ENABLE_TITLE_GENERATION=true
+      - ENABLE_FOLLOW_UP_GENERATION=true
+      - ENABLE_TAGS_GENERATION=true
+      - ENABLE_AUTOCOMPLETE_GENERATION=false
+      # Branding
+      - WEBUI_NAME=snflwr.ai
+      - WEBUI_FAVICON_URL=/static/favicon.png
+      - SHOW_ADMIN_DETAILS=false
+      # Point to snflwr safety API
+      - SNFLWR_API_URL=http://snflwr-api:39150
+    depends_on:
+      snflwr-api:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - snflwr-home-net
+
+volumes:
+  ollama-data:
+    driver: local
+  open-webui-data:
+    driver: local
+  snflwr-home-data:
+    driver: local
+  snflwr-home-logs:
+    driver: local
+
+networks:
+  snflwr-home-net:
+    driver: bridge

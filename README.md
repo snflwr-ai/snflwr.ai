@@ -111,21 +111,45 @@ snflwr.ai uses a multi-layer content filtering pipeline (input validation, norma
 
 ## Deployment
 
-### Family / USB (SQLite)
+| I want to... | Command |
+|---|---|
+| Run from a USB drive, no internet needed | `./start_snflwr.sh` |
+| Self-host on a home server or VPS | `./deploy.sh` |
+| Deploy for a school or organization | `enterprise/build.sh` |
 
-Best for individual families, homeschools, and offline use. Data is stored locally with AES-256 encryption at rest.
+### Family / USB (no Docker required)
+
+Best for individual families, homeschools, and offline use. Runs entirely from the USB — no Docker or internet connection needed.
 
 ```bash
 ./setup.sh && ./start_snflwr.sh
 ```
 
-### Enterprise / School (PostgreSQL)
+Data is stored locally with AES-256 encryption at rest. Double-click the platform launcher (`Start snflwr.bat` / `Start snflwr.command` / `Start snflwr.desktop`) for a GUI with service indicators.
+
+### Home Server / Self-Hosted (Docker)
+
+Best for home labs, VPS hosting, and anyone who wants a persistent always-on deployment. Requires Docker. Automatically detects your GPU.
+
+```bash
+./deploy.sh
+```
+
+That's it. `deploy.sh` handles secrets generation, GPU detection, image building, model download, and browser launch. On a headless server (no display) it skips the browser automatically.
+
+```bash
+./deploy.sh --stop      # stop all services
+./deploy.sh --update    # pull latest updates
+./deploy.sh --logs      # tail logs
+./deploy.sh --model qwen3.5:4b   # use a smaller model (low-RAM machines)
+```
+
+### Enterprise / School (PostgreSQL + full stack)
 
 Best for school districts, multi-user deployments, and cloud hosting. Includes PostgreSQL, Redis, Celery, Prometheus, and Grafana.
 
 ```bash
-python scripts/setup_production.py          # generate secrets + .env.production
-enterprise/build.sh                         # build Docker images
+enterprise/build.sh                         # interactive setup: secrets, model, SSL
 docker compose -f docker/compose/docker-compose.yml up -d
 ```
 

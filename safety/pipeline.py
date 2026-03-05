@@ -78,6 +78,7 @@ class SafetyResult:
     suggested_redirection: Optional[str] = None
     stage: Optional[str] = None
     modified_content: Optional[str] = None
+    possible_false_positive: bool = False
 
 
 def _block(
@@ -89,6 +90,7 @@ def _block(
     keywords: Tuple[str, ...] = (),
     redirection: Optional[str] = None,
     modified_content: Optional[str] = None,
+    possible_false_positive: bool = False,
 ) -> SafetyResult:
     """Convenience constructor for a BLOCK result."""
     return SafetyResult(
@@ -100,6 +102,7 @@ def _block(
         suggested_redirection=redirection,
         stage=stage,
         modified_content=modified_content,
+        possible_false_positive=possible_false_positive,
     )
 
 
@@ -423,7 +426,7 @@ class _PatternMatcher:
         logger.info("PatternMatcher initialized (%d danger, %d prohibited, %d PII patterns)",
                      len(self._danger_phrases), len(self._prohibited_patterns), len(self._pii_patterns))
 
-    # -- Danger phrases (CRITICAL, no exemption) ------------------------------
+    # -- Danger phrases (CRITICAL, pfp-flagged but never exempted) ------------
 
     @staticmethod
     def _build_danger_phrases():
@@ -589,14 +592,20 @@ class _PatternMatcher:
         """
         try:
             # 1. Danger phrases (CRITICAL, checked on original AND normalized text)
+            original_lower_danger = original.lower()
             for pat, category, description in self._danger_phrases:
                 if pat.search(original) or pat.search(normalized):
+                    pfp_danger = (
+                        any(ind in original_lower_danger for ind in self._WEAK_EDUCATIONAL_INDICATORS)
+                        and not any(ind in original_lower_danger for ind in self._CONCERNING_INDICATORS)
+                    )
                     return _block(
                         Severity.CRITICAL,
                         category,
                         description,
                         stage="pattern",
                         keywords=(pat.pattern,),
+                        possible_false_positive=pfp_danger,
                     )
 
             # 2. Prohibited keywords (MAJOR, with educational exemption)
@@ -614,13 +623,18 @@ class _PatternMatcher:
                     # Educational exemption for contextual keywords
                     if kw in self._CONTEXTUAL_KEYWORDS:
                         if self._has_educational_context(original_lower):
-                            continue  # allow through
+                            continue  # strong indicator → exempt
+                        # Check weak indicator → possible false positive
+                        pfp = any(ind in original_lower for ind in self._WEAK_EDUCATIONAL_INDICATORS)
+                    else:
+                        pfp = False
                     return _block(
                         Severity.MAJOR,
                         category,
                         f"Prohibited keyword detected: {kw}",
                         stage="pattern",
                         keywords=(kw,),
+                        possible_false_positive=pfp,
                     )
 
             # 3. PII patterns (MAJOR, checked on original text)
@@ -1164,6 +1178,7 @@ class SafetyPipeline:
                     suggested_redirection=result.suggested_redirection,
                     stage=result.stage,
                     modified_content=fallback,
+                    possible_false_positive=result.possible_false_positive,
                 )
                 self._log_block(result, text, profile_id, is_output=True)
                 return result
@@ -1181,6 +1196,7 @@ class SafetyPipeline:
                     suggested_redirection=result.suggested_redirection,
                     stage=result.stage,
                     modified_content=fallback,
+                    possible_false_positive=result.possible_false_positive,
                 )
                 self._log_block(result, text, profile_id, is_output=True)
                 return result
@@ -1198,6 +1214,7 @@ class SafetyPipeline:
                     suggested_redirection=result.suggested_redirection,
                     stage=result.stage,
                     modified_content=fallback,
+                    possible_false_positive=result.possible_false_positive,
                 )
                 self._log_block(result, text, profile_id, is_output=True)
                 return result

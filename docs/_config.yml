@@ -1,0 +1,11 @@
+title: snflwr.ai Documentation
+description: K-12 Safe AI Learning Platform — privacy-first AI tutoring with backend-enforced child safety
+theme: jekyll-theme-cayman
+url: "https://snflwr-ai.github.io"
+baseurl: "/snflwr.ai"
+
+markdown: kramdown
+highlighter: rouge
+
+exclude:
+  - plans/

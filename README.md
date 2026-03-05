@@ -14,10 +14,11 @@
   <a href="#safety">Safety</a>&nbsp;&bull;
   <a href="#deployment">Deployment</a>&nbsp;&bull;
   <a href="#configuration">Configuration</a>&nbsp;&bull;
-  <a href="docs/guides/SETUP.md">Full Docs</a>
+  <a href="https://snflwr-ai.github.io/snflwr.ai/">Full Docs</a>
 </p>
 
 <p align="center">
+  <a href="https://snflwr-ai.github.io/snflwr.ai/"><img src="https://img.shields.io/badge/docs-snflwr--ai.github.io-blue" alt="Documentation" /></a>
   <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version 1.0.0" />
   <img src="https://img.shields.io/badge/python-3.12-blue" alt="Python 3.12" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0 License" />
@@ -282,8 +283,8 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/tmartin2113/snflwr-ai/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/tmartin2113/snflwr-ai/discussions)
+- **Issues:** [GitHub Issues](https://github.com/snflwr-ai/snflwr.ai/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/snflwr-ai/snflwr.ai/discussions)
 - **Open WebUI Community:** [Discord](https://discord.gg/5rJgQTnV4s)
 
 ---

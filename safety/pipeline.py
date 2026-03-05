@@ -676,8 +676,15 @@ class _SemanticClassifier:
         self._client = None
 
         try:
-            from utils.ollama_client import ollama_client as _oc, OllamaError as _OE  # noqa: F811
-            self._client = _oc
+            from utils.ollama_client import OllamaClient as _OllamaClient, OllamaError as _OE  # noqa: F811
+            # Use a dedicated short-timeout client for the classifier.
+            # The global ollama_client has a 300s timeout (same as the middleware's
+            # httpx timeout), so a slow first-inference on a freshly-pulled model
+            # would cause a ReadTimeout race that surfaces as "Safety pipeline
+            # unavailable" instead of a graceful blocked/skip response.
+            # 45s is enough for a warm model; on cold load it will fail-closed
+            # (block the message) and recover on the next request once loaded.
+            self._client = _OllamaClient(timeout=45, max_retries=1)
             self._OllamaError = _OE
 
             ok, _version = self._client.check_connection()

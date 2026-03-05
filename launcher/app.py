@@ -62,12 +62,16 @@ class LauncherApp:
         self.root.resizable(False, False)
         self.root.configure(bg=COLOR_BG)
 
-        # Try to set window icon
+        # Try to set window icon and keep a display-sized copy for the header
         icon_path = BASE_DIR / "assets" / "icon.png"
+        self._icon = None
+        self._header_icon = None
         if icon_path.exists():
             try:
                 self._icon = tk.PhotoImage(file=str(icon_path))
                 self.root.iconphoto(True, self._icon)
+                # icon.png is 256×256 — subsample(3) → ~85×85 for the header
+                self._header_icon = self._icon.subsample(3, 3)
             except Exception:
                 pass
 
@@ -80,9 +84,14 @@ class LauncherApp:
         except Exception:
             hfont = tkfont.Font(size=28, weight="bold")
 
-        tk.Label(
-            header_frame, text="\U0001f33b", font=("", 40), bg=COLOR_BG
-        ).pack()
+        if self._header_icon:
+            tk.Label(
+                header_frame, image=self._header_icon, bg=COLOR_BG
+            ).pack()
+        else:
+            tk.Label(
+                header_frame, text="\U0001f33b", font=("", 40), bg=COLOR_BG
+            ).pack()
         tk.Label(
             header_frame, text="snflwr.ai",
             font=hfont, fg=COLOR_HEADER, bg=COLOR_BG,
@@ -228,7 +237,91 @@ class LauncherApp:
             activebackground="#b91c1c",
         )
 
+    def _close_browser_tabs(self):
+        """Best-effort: close browser tabs for localhost:3000 and localhost:39150.
+        Runs synchronously but each subprocess call has a short timeout, so it
+        returns quickly even when the tool is unavailable or nothing matches."""
+        system = platform.system()
+        if system == "Linux":
+            self._close_tabs_xdotool()
+        elif system == "Darwin":
+            self._close_tabs_applescript()
+        # Windows: no built-in equivalent without extra deps — skip silently
+
+    def _close_tabs_xdotool(self):
+        import shutil
+        if not shutil.which("xdotool"):
+            return  # xdotool not installed — skip silently
+        # Window titles that identify snflwr/Open WebUI browser tabs
+        keywords = ["Open WebUI", "snflwr", "localhost:3000", "localhost:39150"]
+        seen = set()
+        try:
+            for kw in keywords:
+                result = subprocess.run(
+                    ["xdotool", "search", "--name", kw],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if result.returncode != 0 or not result.stdout.strip():
+                    continue
+                for wid in result.stdout.strip().splitlines():
+                    if not wid or wid in seen:
+                        continue
+                    seen.add(wid)
+                    # Activate the window, then send Ctrl+W to close its active tab
+                    subprocess.run(
+                        ["xdotool", "windowactivate", "--sync", wid],
+                        capture_output=True, timeout=2,
+                    )
+                    subprocess.run(
+                        ["xdotool", "key", "--clearmodifiers", "ctrl+w"],
+                        capture_output=True, timeout=2,
+                    )
+        except Exception:
+            pass
+
+    def _close_tabs_applescript(self):
+        script = """
+        set snflwr_urls to {"localhost:3000", "localhost:39150"}
+        repeat with browser_name in {"Google Chrome", "Chromium", "Microsoft Edge"}
+            try
+                tell application browser_name
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            repeat with u in snflwr_urls
+                                if URL of t contains u then close t
+                            end repeat
+                        end repeat
+                    end repeat
+                end tell
+            end try
+        end repeat
+        try
+            tell application "Firefox"
+                activate
+            end tell
+            tell application "System Events"
+                tell process "firefox"
+                    repeat with w in windows
+                        set wTitle to name of w
+                        repeat with kw in {"Open WebUI", "snflwr", "localhost:3000", "localhost:39150"}
+                            if wTitle contains kw then
+                                keystroke "w" using command down
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end tell
+        end try
+        """
+        try:
+            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+        except Exception:
+            pass
+
     def _stop(self):
+        # Close browser tabs before killing services (while ports are still reachable)
+        self._close_browser_tabs()
+
         if self.process and self.process.poll() is None:
             try:
                 system = platform.system()

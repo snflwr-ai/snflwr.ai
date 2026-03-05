@@ -381,8 +381,8 @@ class _PatternMatcher:
         "sex", "sexual", "sexting", "grooming",
     })
 
-    # Phrases indicating an educational / academic context
-    _EDUCATIONAL_INDICATORS = (
+    # Subject-specific indicators sufficient on their own to grant exemption
+    _STRONG_EDUCATIONAL_INDICATORS = (
         "stars die", "dinosaurs", "chemical formula", "life cycle",
         "biology", "science", "history", "geography", "astronomy",
         "physics", "chemistry", "ecosystem", "photosynthesis",
@@ -390,14 +390,20 @@ class _PatternMatcher:
         "world war", "civil war", "revolution", "ancient",
         "medieval", "nuclear energy", "atoms", "molecules",
         "periodic table", "experiment", "hypothesis", "research",
-        "textbook", "homework", "class", "lesson", "teacher",
-        "assignment", "project", "study", "learn", "school",
         "natural disaster", "earthquake", "volcano", "tornado",
         "food chain", "predator", "prey", "habitat",
         "math", "algebra", "geometry", "calculus", "arithmetic",
         "trigonometry", "equation", "fraction", "multiplication",
         "reading", "writing", "spelling", "grammar", "vocabulary",
         "literature", "essay", "book report", "novel",
+        "health class", "health education",
+    )
+
+    # Generic words that are not sufficient alone to grant exemption;
+    # preserved here for use in possible_false_positive detection (Task 2).
+    _WEAK_EDUCATIONAL_INDICATORS = (
+        "textbook", "homework", "class", "lesson", "teacher",
+        "assignment", "project", "study", "learn", "school",
     )
 
     # Phrases indicating concerning (non-educational) intent
@@ -648,7 +654,7 @@ class _PatternMatcher:
         Returns True (exempt) only if educational indicators are present
         AND no concerning indicators are found.
         """
-        has_educational = any(ind in text_lower for ind in self._EDUCATIONAL_INDICATORS)
+        has_educational = any(ind in text_lower for ind in self._STRONG_EDUCATIONAL_INDICATORS)
         has_concerning = any(ind in text_lower for ind in self._CONCERNING_INDICATORS)
 
         return has_educational and not has_concerning

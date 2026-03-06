@@ -53,8 +53,13 @@ def print_warning(text):
     print(f"  [WARN] {text}")
 
 
+def _sanitize_for_log(text: str) -> str:
+    """Strip non-printable characters from diagnostic text before logging."""
+    return ''.join(c for c in str(text) if c.isprintable())
+
+
 def print_error(text):
-    print(f"  [ERROR] {text}")
+    print(f"  [ERROR] {_sanitize_for_log(text)}")
 
 
 def _mask_email(email: str) -> str:

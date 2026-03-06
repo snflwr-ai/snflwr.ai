@@ -19,8 +19,11 @@ pytest.importorskip("email_validator")
 pytest.importorskip("uvicorn")
 
 # Disable rate limiting for integration tests
-from utils.rate_limiter import _local_limiter
-_local_limiter.check_rate_limit = lambda *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
+from utils import rate_limiter as _rl_mod
+_always_allow = lambda *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
+_rl_mod._local_limiter.check_rate_limit = _always_allow
+_rl_mod.rate_limiter.check_rate_limit = _always_allow
+_rl_mod.check_rate_limit = lambda *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
 
 from api.server import app
 from starlette.testclient import TestClient

@@ -39,8 +39,8 @@ except ImportError:
     RedisError = OSError  # Fallback so except RedisError still works
 
 # Redis Pub/Sub configuration
-REDIS_PUBSUB_ENABLED = os.getenv('REDIS_ENABLED', 'false').lower() == 'true'
-WEBSOCKET_CHANNEL = 'snflwr:websocket:broadcast'
+REDIS_PUBSUB_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+WEBSOCKET_CHANNEL = "snflwr:websocket:broadcast"
 
 
 class ConnectionManager:
@@ -85,16 +85,17 @@ class ConnectionManager:
 
         try:
             from utils.cache import cache
+
             if not cache.enabled or not cache._client:
-                logger.warning("Redis not available - WebSocket broadcasts are local only")
+                logger.warning(
+                    "Redis not available - WebSocket broadcasts are local only"
+                )
                 return
 
             # Create a dedicated connection for pub/sub
             self._redis_pubsub = cache._client.pubsub()
             await asyncio.get_event_loop().run_in_executor(
-                None,
-                self._redis_pubsub.subscribe,
-                WEBSOCKET_CHANNEL
+                None, self._redis_pubsub.subscribe, WEBSOCKET_CHANNEL
             )
 
             # Start listener task
@@ -141,31 +142,33 @@ class ConnectionManager:
                     None,
                     self._redis_pubsub.get_message,
                     True,  # ignore_subscribe_messages
-                    0.1    # timeout
+                    0.1,  # timeout
                 )
 
-                if message and message['type'] == 'message':
+                if message and message["type"] == "message":
                     try:
-                        data = json.loads(message['data'])
+                        data = json.loads(message["data"])
 
                         # Skip messages from this instance
-                        if data.get('instance_id') == self._instance_id:
+                        if data.get("instance_id") == self._instance_id:
                             continue
 
                         # Route message to local connections
-                        target_type = data.get('target_type')
-                        payload = data.get('message')
+                        target_type = data.get("target_type")
+                        payload = data.get("message")
 
-                        if target_type == 'parent':
-                            target_id = data.get('target_id')
+                        if target_type == "parent":
+                            target_id = data.get("target_id")
                             await self._local_broadcast_to_parent(target_id, payload)
-                        elif target_type == 'all':
+                        elif target_type == "all":
                             await self._local_broadcast_all(payload)
 
                     except json.JSONDecodeError:
                         logger.error("Invalid JSON in Pub/Sub message")
                     except (ConnectionError, RuntimeError) as e:
-                        logger.error(f"Connection error processing Pub/Sub message: {e}")
+                        logger.error(
+                            f"Connection error processing Pub/Sub message: {e}"
+                        )
                     except Exception as e:
                         logger.error(f"Error processing Pub/Sub message: {e}")
 
@@ -178,7 +181,9 @@ class ConnectionManager:
         except Exception as e:
             logger.exception(f"Unexpected Pub/Sub listener error: {e}")
 
-    async def _publish_to_redis(self, target_type: str, target_id: Optional[str], message: Dict[str, Any]):
+    async def _publish_to_redis(
+        self, target_type: str, target_id: Optional[str], message: Dict[str, Any]
+    ):
         """
         Publish a message to Redis for other instances.
 
@@ -192,27 +197,24 @@ class ConnectionManager:
 
         try:
             from utils.cache import cache
-            payload = json.dumps({
-                'instance_id': self._instance_id,
-                'target_type': target_type,
-                'target_id': target_id,
-                'message': message
-            })
+
+            payload = json.dumps(
+                {
+                    "instance_id": self._instance_id,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "message": message,
+                }
+            )
 
             await asyncio.get_event_loop().run_in_executor(
-                None,
-                cache._client.publish,
-                WEBSOCKET_CHANNEL,
-                payload
+                None, cache._client.publish, WEBSOCKET_CHANNEL, payload
             )
         except (RedisError, ConnectionError) as e:
             logger.error(f"Redis error publishing message: {e}")
 
     async def connect(
-        self,
-        websocket: WebSocket,
-        parent_id: str,
-        connection_id: Optional[str] = None
+        self, websocket: WebSocket, parent_id: str, connection_id: Optional[str] = None
     ) -> str:
         """
         Register an already-accepted WebSocket connection.
@@ -242,21 +244,25 @@ class ConnectionManager:
                 "connection_id": connection_id,
                 "parent_id": parent_id,
                 "connected_at": datetime.now(timezone.utc),
-                "last_heartbeat": datetime.now(timezone.utc)
+                "last_heartbeat": datetime.now(timezone.utc),
             }
 
             # Store connection ID mapping
             self.connection_ids[connection_id] = websocket
 
-        logger.info(f"WebSocket connected: parent={parent_id}, connection_id={connection_id}")
+        logger.info(
+            f"WebSocket connected: parent={parent_id}, connection_id={connection_id}"
+        )
 
         # Send connection confirmation
-        await websocket.send_json({
-            "type": "connection_established",
-            "connection_id": connection_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "message": "Real-time monitoring active"
-        })
+        await websocket.send_json(
+            {
+                "type": "connection_established",
+                "connection_id": connection_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "message": "Real-time monitoring active",
+            }
+        )
 
         return connection_id
 
@@ -291,9 +297,13 @@ class ConnectionManager:
             if connection_id in self.connection_ids:
                 del self.connection_ids[connection_id]
 
-        logger.info(f"WebSocket disconnected: parent={parent_id}, connection_id={connection_id}")
+        logger.info(
+            f"WebSocket disconnected: parent={parent_id}, connection_id={connection_id}"
+        )
 
-    async def send_personal_message(self, websocket: WebSocket, message: Dict[str, Any]):
+    async def send_personal_message(
+        self, websocket: WebSocket, message: Dict[str, Any]
+    ):
         """
         Send message to a specific WebSocket connection
 
@@ -331,7 +341,9 @@ class ConnectionManager:
                 else:
                     disconnected.append(websocket)
             except (ConnectionError, RuntimeError) as e:
-                logger.error(f"Connection error broadcasting to parent {parent_id}: {e}")
+                logger.error(
+                    f"Connection error broadcasting to parent {parent_id}: {e}"
+                )
                 disconnected.append(websocket)
             except Exception as e:
                 logger.error(f"Error broadcasting to parent {parent_id}: {e}")
@@ -358,9 +370,11 @@ class ConnectionManager:
             local_count = 0
 
         # Publish to Redis for other instances
-        await self._publish_to_redis('parent', parent_id, message)
+        await self._publish_to_redis("parent", parent_id, message)
 
-        logger.debug(f"Broadcasted message to {local_count} local connections for parent {parent_id}")
+        logger.debug(
+            f"Broadcasted message to {local_count} local connections for parent {parent_id}"
+        )
 
     async def _local_broadcast_all(self, message: Dict[str, Any]):
         """
@@ -403,9 +417,11 @@ class ConnectionManager:
         local_count = await self._local_broadcast_all(message)
 
         # Publish to Redis for other instances
-        await self._publish_to_redis('all', None, message)
+        await self._publish_to_redis("all", None, message)
 
-        logger.debug(f"Broadcasted message to {local_count} local connections (all parents)")
+        logger.debug(
+            f"Broadcasted message to {local_count} local connections (all parents)"
+        )
 
     def get_active_connections(self, parent_id: Optional[str] = None) -> int:
         """
@@ -432,7 +448,10 @@ class ConnectionManager:
         Returns:
             True if parent has at least one active connection
         """
-        return parent_id in self.parent_connections and len(self.parent_connections[parent_id]) > 0
+        return (
+            parent_id in self.parent_connections
+            and len(self.parent_connections[parent_id]) > 0
+        )
 
 
 # Global connection manager instance
@@ -442,6 +461,7 @@ websocket_manager = ConnectionManager()
 # ============================================================================
 # WEBSOCKET ENDPOINTS
 # ============================================================================
+
 
 async def authenticate_websocket(token: str) -> Optional[AuthSession]:
     """
@@ -507,29 +527,35 @@ async def handle_websocket_message(websocket: WebSocket, data: Dict[str, Any]):
 
     if message_type == "ping":
         await handle_heartbeat(websocket)
-        await websocket_manager.send_personal_message(websocket, {
-            "type": "pong",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        await websocket_manager.send_personal_message(
+            websocket,
+            {"type": "pong", "timestamp": datetime.now(timezone.utc).isoformat()},
+        )
 
     elif message_type == "subscribe_profile":
         # Handle profile-specific subscription (future feature)
         profile_id = data.get("profile_id")
-        await websocket_manager.send_personal_message(websocket, {
-            "type": "subscribed",
-            "profile_id": profile_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        await websocket_manager.send_personal_message(
+            websocket,
+            {
+                "type": "subscribed",
+                "profile_id": profile_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     elif message_type == "get_status":
         # Send connection status
         metadata = websocket_manager.connection_metadata.get(websocket)
-        await websocket_manager.send_personal_message(websocket, {
-            "type": "status",
-            "connected": True,
-            "connection_id": metadata.get("connection_id") if metadata else None,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        await websocket_manager.send_personal_message(
+            websocket,
+            {
+                "type": "status",
+                "connected": True,
+                "connection_id": metadata.get("connection_id") if metadata else None,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     else:
         logger.warning(f"Unknown WebSocket message type: {message_type}")
@@ -538,6 +564,7 @@ async def handle_websocket_message(websocket: WebSocket, data: Dict[str, Any]):
 # ============================================================================
 # BROADCAST HELPERS
 # ============================================================================
+
 
 async def broadcast_safety_incident(parent_id: str, incident_data: Dict[str, Any]):
     """
@@ -550,7 +577,7 @@ async def broadcast_safety_incident(parent_id: str, incident_data: Dict[str, Any
     message = {
         "type": "safety_incident",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "data": incident_data
+        "data": incident_data,
     }
 
     await websocket_manager.broadcast_to_parent(parent_id, message)
@@ -569,14 +596,16 @@ async def broadcast_safety_alert(parent_id: str, alert_data: Dict[str, Any]):
         "type": "safety_alert",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": alert_data,
-        "priority": "high"
+        "priority": "high",
     }
 
     await websocket_manager.broadcast_to_parent(parent_id, message)
     logger.warning(f"Safety alert broadcasted to parent {parent_id}")
 
 
-async def broadcast_profile_activity(parent_id: str, profile_id: str, activity_data: Dict[str, Any]):
+async def broadcast_profile_activity(
+    parent_id: str, profile_id: str, activity_data: Dict[str, Any]
+):
     """
     Broadcast profile activity update to parent
 
@@ -589,20 +618,20 @@ async def broadcast_profile_activity(parent_id: str, profile_id: str, activity_d
         "type": "profile_activity",
         "profile_id": profile_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "data": activity_data
+        "data": activity_data,
     }
 
     await websocket_manager.broadcast_to_parent(parent_id, message)
 
 
 __all__ = [
-    'websocket_manager',
-    'ConnectionManager',
-    'authenticate_websocket',
-    'get_websocket_session',
-    'handle_websocket_message',
-    'broadcast_safety_incident',
-    'broadcast_safety_alert',
-    'broadcast_profile_activity',
-    'REDIS_PUBSUB_ENABLED'
+    "websocket_manager",
+    "ConnectionManager",
+    "authenticate_websocket",
+    "get_websocket_session",
+    "handle_websocket_message",
+    "broadcast_safety_incident",
+    "broadcast_safety_alert",
+    "broadcast_profile_activity",
+    "REDIS_PUBSUB_ENABLED",
 ]

@@ -47,6 +47,7 @@ logger = get_logger(__name__)
 
 class SecretStatus(Enum):
     """Status of a rotatable secret"""
+
     ACTIVE = "active"
     PENDING_ROTATION = "pending_rotation"
     ROTATING = "rotating"
@@ -57,6 +58,7 @@ class SecretStatus(Enum):
 @dataclass
 class SecretVersion:
     """Represents a version of a secret"""
+
     value: str
     created_at: datetime
     activated_at: Optional[datetime] = None
@@ -67,12 +69,14 @@ class SecretVersion:
     def to_dict(self) -> dict:
         """Convert to dictionary (without exposing the value)"""
         return {
-            'version': self.version,
-            'created_at': self.created_at.isoformat(),
-            'activated_at': self.activated_at.isoformat() if self.activated_at else None,
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
-            'is_active': self.is_active,
-            'value_hash': hashlib.sha256(self.value.encode()).hexdigest()[:16],
+            "version": self.version,
+            "created_at": self.created_at.isoformat(),
+            "activated_at": (
+                self.activated_at.isoformat() if self.activated_at else None
+            ),
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "is_active": self.is_active,
+            "value_hash": hashlib.sha256(self.value.encode()).hexdigest()[:16],
         }
 
 
@@ -84,6 +88,7 @@ class RotatableSecret:
     Supports dual-active mode during rotation where both old and new
     secrets are valid for a configurable overlap period.
     """
+
     name: str
     current_version: Optional[SecretVersion] = None
     previous_version: Optional[SecretVersion] = None
@@ -111,7 +116,10 @@ class RotatableSecret:
             values.append(self.current_version.value)
 
         if self.previous_version:
-            if self.previous_version.expires_at and self.previous_version.expires_at > now:
+            if (
+                self.previous_version.expires_at
+                and self.previous_version.expires_at > now
+            ):
                 values.append(self.previous_version.value)
 
         return values
@@ -196,10 +204,10 @@ class SecretManager:
             logger.info(
                 f"Registered secret",
                 extra={
-                    'secret_name': name,
-                    'has_initial_value': initial_value is not None,
-                    'overlap_seconds': overlap_seconds,
-                }
+                    "secret_name": name,
+                    "has_initial_value": initial_value is not None,
+                    "overlap_seconds": overlap_seconds,
+                },
             )
 
             return secret
@@ -318,9 +326,7 @@ class SecretManager:
 
                 # Set new as current
                 new_version_num = (
-                    secret.current_version.version + 1
-                    if secret.current_version
-                    else 1
+                    secret.current_version.version + 1 if secret.current_version else 1
                 )
 
                 secret.current_version = SecretVersion(
@@ -334,11 +340,13 @@ class SecretManager:
                 secret.status = SecretStatus.ACTIVE
 
                 # Record rotation in history
-                secret.rotation_history.append({
-                    'rotated_at': now.isoformat(),
-                    'old_version': new_version_num - 1,
-                    'new_version': new_version_num,
-                })
+                secret.rotation_history.append(
+                    {
+                        "rotated_at": now.isoformat(),
+                        "old_version": new_version_num - 1,
+                        "new_version": new_version_num,
+                    }
+                )
 
                 # Keep only last N rotations in history
                 if len(secret.rotation_history) > 10:
@@ -353,14 +361,14 @@ class SecretManager:
             logger.info(
                 f"Secret rotated successfully",
                 extra={
-                    'secret_name': name,
-                    'new_version': new_version_num,
-                    'old_expires_at': (
+                    "secret_name": name,
+                    "new_version": new_version_num,
+                    "old_expires_at": (
                         secret.previous_version.expires_at.isoformat()
                         if secret.previous_version
                         else None
                     ),
-                }
+                },
             )
 
             return True
@@ -400,9 +408,9 @@ class SecretManager:
             secret.previous_version = old_current
             if secret.previous_version:
                 secret.previous_version.is_active = False
-                secret.previous_version.expires_at = datetime.now(timezone.utc) + timedelta(
-                    seconds=secret.overlap_seconds
-                )
+                secret.previous_version.expires_at = datetime.now(
+                    timezone.utc
+                ) + timedelta(seconds=secret.overlap_seconds)
 
             secret.status = SecretStatus.ACTIVE
 
@@ -412,9 +420,9 @@ class SecretManager:
         logger.warning(
             f"Secret rolled back",
             extra={
-                'secret_name': name,
-                'rolled_back_to_version': secret.current_version.version,
-            }
+                "secret_name": name,
+                "rolled_back_to_version": secret.current_version.version,
+            },
         )
 
         return True
@@ -447,20 +455,18 @@ class SecretManager:
                 return None
 
             return {
-                'name': secret.name,
-                'status': secret.status.value,
-                'overlap_seconds': secret.overlap_seconds,
-                'current_version': (
-                    secret.current_version.to_dict()
-                    if secret.current_version
-                    else None
+                "name": secret.name,
+                "status": secret.status.value,
+                "overlap_seconds": secret.overlap_seconds,
+                "current_version": (
+                    secret.current_version.to_dict() if secret.current_version else None
                 ),
-                'previous_version': (
+                "previous_version": (
                     secret.previous_version.to_dict()
                     if secret.previous_version
                     else None
                 ),
-                'rotation_count': len(secret.rotation_history),
+                "rotation_count": len(secret.rotation_history),
             }
 
     def list_secrets(self) -> list[dict]:
@@ -471,10 +477,7 @@ class SecretManager:
             List of secret metadata dictionaries
         """
         with self._lock:
-            return [
-                self.get_secret_info(name)
-                for name in self._secrets.keys()
-            ]
+            return [self.get_secret_info(name) for name in self._secrets.keys()]
 
     async def _persist_to_redis(self, name: str, secret: RotatableSecret):
         """Persist secret metadata to Redis (values are NOT stored in Redis)"""
@@ -484,9 +487,11 @@ class SecretManager:
         try:
             key = f"{self._redis_prefix}{name}:meta"
             meta = {
-                'status': secret.status.value,
-                'current_version': secret.current_version.version if secret.current_version else None,
-                'last_rotated': datetime.now(timezone.utc).isoformat(),
+                "status": secret.status.value,
+                "current_version": (
+                    secret.current_version.version if secret.current_version else None
+                ),
+                "last_rotated": datetime.now(timezone.utc).isoformat(),
             }
             self._redis.setex(key, timedelta(days=7), json.dumps(meta))
         except (ValueError, OSError) as e:
@@ -532,7 +537,7 @@ def init_secret_manager(redis_client=None) -> SecretManager:
 
 
 # Convenience decorators
-def uses_secret(secret_name: str, param_name: str = 'secret'):
+def uses_secret(secret_name: str, param_name: str = "secret"):
     """
     Decorator to inject a secret value into a function.
 
@@ -546,6 +551,7 @@ def uses_secret(secret_name: str, param_name: str = 'secret'):
             # key will be the current value of 'api_key' secret
             pass
     """
+
     def decorator(func):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
@@ -566,11 +572,11 @@ def uses_secret(secret_name: str, param_name: str = 'secret'):
 
 # Export public interface
 __all__ = [
-    'SecretStatus',
-    'SecretVersion',
-    'RotatableSecret',
-    'SecretManager',
-    'get_secret_manager',
-    'init_secret_manager',
-    'uses_secret',
+    "SecretStatus",
+    "SecretVersion",
+    "RotatableSecret",
+    "SecretManager",
+    "get_secret_manager",
+    "init_secret_manager",
+    "uses_secret",
 ]

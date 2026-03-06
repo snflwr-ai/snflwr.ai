@@ -28,6 +28,7 @@ except ImportError:
 # AUTHENTICATION - Verify Session
 # ============================================================================
 
+
 async def get_current_session(authorization: str = Header(None)) -> AuthSession:
     """
     Verify authentication token and return session
@@ -85,7 +86,9 @@ async def get_current_session(authorization: str = Header(None)) -> AuthSession:
     return session
 
 
-async def get_optional_session(authorization: str = Header(None)) -> Optional[AuthSession]:
+async def get_optional_session(
+    authorization: str = Header(None),
+) -> Optional[AuthSession]:
     """
     Get session if provided, but don't require it
 
@@ -108,7 +111,10 @@ async def get_optional_session(authorization: str = Header(None)) -> Optional[Au
 # AUTHORIZATION - Role-Based Access Control (RBAC)
 # ============================================================================
 
-async def require_admin(session: AuthSession = Depends(get_current_session)) -> AuthSession:
+
+async def require_admin(
+    session: AuthSession = Depends(get_current_session),
+) -> AuthSession:
     """
     Require user to be an admin
 
@@ -121,17 +127,20 @@ async def require_admin(session: AuthSession = Depends(get_current_session)) -> 
     Raises:
         HTTPException: 403 if not admin
     """
-    if session.role != 'admin':
-        logger.warning(f"Access denied: User {session.user_id} (role: {session.role}) attempted admin action")
+    if session.role != "admin":
+        logger.warning(
+            f"Access denied: User {session.user_id} (role: {session.role}) attempted admin action"
+        )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
 
     return session
 
 
-async def require_parent(session: AuthSession = Depends(get_current_session)) -> AuthSession:
+async def require_parent(
+    session: AuthSession = Depends(get_current_session),
+) -> AuthSession:
     """
     Require user to be a parent or admin
 
@@ -144,11 +153,12 @@ async def require_parent(session: AuthSession = Depends(get_current_session)) ->
     Raises:
         HTTPException: 403 if not parent or admin
     """
-    if session.role not in ('parent', 'admin'):
-        logger.warning(f"Access denied: User {session.user_id} (role: {session.role}) not a parent or admin")
+    if session.role not in ("parent", "admin"):
+        logger.warning(
+            f"Access denied: User {session.user_id} (role: {session.role}) not a parent or admin"
+        )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Parent access required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Parent access required"
         )
 
     return session
@@ -158,13 +168,13 @@ async def require_parent(session: AuthSession = Depends(get_current_session)) ->
 # RESOURCE AUTHORIZATION - Verify Ownership
 # ============================================================================
 
+
 class ResourceAuthorization:
     """Helper class for resource-level authorization"""
 
     @staticmethod
     async def verify_parent_access(
-        parent_id: str,
-        session: AuthSession = Depends(get_current_session)
+        parent_id: str, session: AuthSession = Depends(get_current_session)
     ) -> AuthSession:
         """
         Verify user can access parent data
@@ -183,7 +193,7 @@ class ResourceAuthorization:
             HTTPException: 403 if not authorized
         """
         # Admins can access everything
-        if session.role == 'admin':
+        if session.role == "admin":
             logger.info(f"Admin {session.user_id} accessing parent {parent_id}")
             return session
 
@@ -195,7 +205,7 @@ class ResourceAuthorization:
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You can only access your own data"
+                detail="Access denied: You can only access your own data",
             )
 
         logger.info(f"Parent {session.user_id} accessing own data")
@@ -203,8 +213,7 @@ class ResourceAuthorization:
 
     @staticmethod
     async def verify_profile_access(
-        profile_id: str,
-        session: AuthSession = Depends(get_current_session)
+        profile_id: str, session: AuthSession = Depends(get_current_session)
     ) -> AuthSession:
         """
         Verify user can access child profile
@@ -223,7 +232,7 @@ class ResourceAuthorization:
             HTTPException: 403 if not authorized, 404 if profile not found
         """
         # Admins can access everything
-        if session.role == 'admin':
+        if session.role == "admin":
             logger.info(f"Admin {session.user_id} accessing profile {profile_id}")
             return session
 
@@ -234,8 +243,7 @@ class ResourceAuthorization:
         if not profile:
             logger.warning(f"Profile not found: {profile_id}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Profile not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
             )
 
         # Verify parent owns this profile
@@ -246,16 +254,17 @@ class ResourceAuthorization:
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: This is not your child's profile"
+                detail="Access denied: This is not your child's profile",
             )
 
-        logger.info(f"Parent {session.user_id} accessing own child's profile {profile_id}")
+        logger.info(
+            f"Parent {session.user_id} accessing own child's profile {profile_id}"
+        )
         return session
 
     @staticmethod
     async def verify_session_access(
-        session_id: str,
-        session: AuthSession = Depends(get_current_session)
+        session_id: str, session: AuthSession = Depends(get_current_session)
     ) -> AuthSession:
         """
         Verify user can access a conversation session
@@ -271,19 +280,19 @@ class ResourceAuthorization:
             HTTPException: 403 if not authorized
         """
         # Admins can access everything
-        if session.role == 'admin':
+        if session.role == "admin":
             logger.info(f"Admin {session.user_id} accessing session {session_id}")
             return session
 
         # Get session to check which profile it belongs to
         from core.session_manager import session_manager
+
         conv_session = session_manager.get_session(session_id)
 
         if not conv_session:
             logger.warning(f"Session not found: {session_id}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
             )
 
         # Get the profile to check parent ownership
@@ -293,8 +302,7 @@ class ResourceAuthorization:
         if not profile:
             logger.warning(f"Profile not found for session: {session_id}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Profile not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
             )
 
         # Verify parent owns this profile
@@ -305,16 +313,17 @@ class ResourceAuthorization:
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You can only access your own child's sessions"
+                detail="Access denied: You can only access your own child's sessions",
             )
 
-        logger.info(f"Parent {session.user_id} accessing own child's session {session_id}")
+        logger.info(
+            f"Parent {session.user_id} accessing own child's session {session_id}"
+        )
         return session
 
     @staticmethod
     async def verify_alert_access(
-        alert_id: str,
-        session: AuthSession = Depends(get_current_session)
+        alert_id: str, session: AuthSession = Depends(get_current_session)
     ) -> AuthSession:
         """
         Verify user can access a safety alert
@@ -330,19 +339,19 @@ class ResourceAuthorization:
             HTTPException: 403 if not authorized
         """
         # Admins can access everything
-        if session.role == 'admin':
+        if session.role == "admin":
             logger.info(f"Admin {session.user_id} accessing alert {alert_id}")
             return session
 
         # Get alert to check which parent it belongs to
         from safety.safety_monitor import safety_monitor
+
         alert = safety_monitor.get_alert(alert_id)
 
         if not alert:
             logger.warning(f"Alert not found: {alert_id}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Alert not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
             )
 
         # Verify parent owns this alert
@@ -353,7 +362,7 @@ class ResourceAuthorization:
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You can only access your own alerts"
+                detail="Access denied: You can only access your own alerts",
             )
 
         logger.info(f"Parent {session.user_id} accessing own alert {alert_id}")
@@ -391,6 +400,7 @@ def _get_audit_failure_count() -> int:
     """Get the current consecutive audit failure count."""
     try:
         from utils.cache import cache
+
         if cache.enabled and cache._client:
             val = cache._client.get(_AUDIT_REDIS_KEY)
             return int(val) if val else 0
@@ -404,6 +414,7 @@ def _increment_audit_failure_count() -> int:
     global _audit_failure_count_local
     try:
         from utils.cache import cache
+
         if cache.enabled and cache._client:
             return cache._client.incr(_AUDIT_REDIS_KEY)
     except Exception:
@@ -418,6 +429,7 @@ def _reset_audit_failure_count():
     _audit_failure_count_local = 0
     try:
         from utils.cache import cache
+
         if cache.enabled and cache._client:
             cache._client.delete(_AUDIT_REDIS_KEY)
     except Exception:
@@ -428,8 +440,10 @@ def _send_audit_failure_alert(failure_count: int, error):
     """Send alert email to admin about audit log failures."""
     try:
         from config import system_config
-        if hasattr(system_config, 'ADMIN_EMAIL') and system_config.ADMIN_EMAIL:
+
+        if hasattr(system_config, "ADMIN_EMAIL") and system_config.ADMIN_EMAIL:
             from tasks.background_tasks import send_email, safe_dispatch
+
             safe_dispatch(
                 send_email,
                 to_email=system_config.ADMIN_EMAIL,
@@ -446,7 +460,9 @@ def _send_audit_failure_alert(failure_count: int, error):
         logger.error(f"Failed to send audit failure alert: {alert_error}")
 
 
-def audit_log(action: str, resource_type: str, resource_id: str, session: AuthSession) -> bool:
+def audit_log(
+    action: str, resource_type: str, resource_id: str, session: AuthSession
+) -> bool:
     """
     Log security-sensitive actions for audit trail
 
@@ -472,15 +488,17 @@ def audit_log(action: str, resource_type: str, resource_id: str, session: AuthSe
             """,
             (
                 datetime.now(timezone.utc).isoformat(),
-                'resource_access',
+                "resource_access",
                 session.user_id,
                 session.role,
                 action,
                 f"{action} {resource_type}: {resource_id}",
-                True
-            )
+                True,
+            ),
         )
-        logger.debug(f"Audit: {sanitize_log_value(session.user_id)!r} ({sanitize_log_value(session.role)!r}) {sanitize_log_value(action)!r} {sanitize_log_value(resource_type)!r} {sanitize_log_value(resource_id)!r}")
+        logger.debug(
+            f"Audit: {sanitize_log_value(session.user_id)!r} ({sanitize_log_value(session.role)!r}) {sanitize_log_value(action)!r} {sanitize_log_value(resource_type)!r} {sanitize_log_value(resource_id)!r}"
+        )
         _reset_audit_failure_count()
         return True
     except Exception as e:
@@ -510,6 +528,7 @@ from datetime import datetime, timedelta, timezone
 _metrics_available = False
 try:
     from utils.metrics import record_rate_limit_check
+
     _metrics_available = True
 except ImportError:
     pass
@@ -524,9 +543,9 @@ class RedisRateLimiter:
 
     def __init__(self):
         self.limits = {
-            'default': (100, 60),  # 100 requests per 60 seconds
-            'auth': (10, 60),      # 10 login attempts per 60 seconds
-            'api': (1000, 60),     # 1000 API calls per 60 seconds
+            "default": (100, 60),  # 100 requests per 60 seconds
+            "auth": (10, 60),  # 10 login attempts per 60 seconds
+            "api": (1000, 60),  # 1000 API calls per 60 seconds
         }
         self._redis = None
         self._fallback_requests = {}  # In-memory fallback if Redis unavailable
@@ -537,15 +556,18 @@ class RedisRateLimiter:
         """Initialize Redis connection for rate limiting"""
         try:
             from utils.cache import cache
+
             if cache.enabled and cache._client:
                 self._redis = cache._client
                 logger.info("Rate limiter using Redis (distributed mode)")
             else:
-                logger.warning("Rate limiter using in-memory fallback (single-instance only)")
+                logger.warning(
+                    "Rate limiter using in-memory fallback (single-instance only)"
+                )
         except (RedisError, ImportError) as e:
             logger.warning(f"Rate limiter Redis init failed, using fallback: {e}")
 
-    def check_rate_limit(self, key: str, limit_type: str = 'default') -> bool:
+    def check_rate_limit(self, key: str, limit_type: str = "default") -> bool:
         """
         Check if request is within rate limit using Redis sliding window.
 
@@ -556,12 +578,18 @@ class RedisRateLimiter:
         Returns:
             True if within limit, False if exceeded
         """
-        max_requests, window_seconds = self.limits.get(limit_type, self.limits['default'])
+        max_requests, window_seconds = self.limits.get(
+            limit_type, self.limits["default"]
+        )
 
         if self._redis:
-            result = self._check_redis_rate_limit(key, limit_type, max_requests, window_seconds)
+            result = self._check_redis_rate_limit(
+                key, limit_type, max_requests, window_seconds
+            )
         else:
-            result = self._check_fallback_rate_limit(key, limit_type, max_requests, window_seconds)
+            result = self._check_fallback_rate_limit(
+                key, limit_type, max_requests, window_seconds
+            )
 
         # Record metrics
         if _metrics_available:
@@ -570,11 +598,7 @@ class RedisRateLimiter:
         return result
 
     def _check_redis_rate_limit(
-        self,
-        key: str,
-        limit_type: str,
-        max_requests: int,
-        window_seconds: int
+        self, key: str, limit_type: str, max_requests: int, window_seconds: int
     ) -> bool:
         """Redis-based rate limiting with atomic increment"""
         try:
@@ -604,11 +628,7 @@ class RedisRateLimiter:
             return True
 
     def _check_fallback_rate_limit(
-        self,
-        key: str,
-        limit_type: str,
-        max_requests: int,
-        window_seconds: int
+        self, key: str, limit_type: str, max_requests: int, window_seconds: int
     ) -> bool:
         # Note: per-process only; use Redis for cross-worker rate limiting in production
         """In-memory fallback for when Redis is unavailable"""
@@ -620,7 +640,8 @@ class RedisRateLimiter:
             cutoff = now - timedelta(seconds=window_seconds)
             if cache_key in self._fallback_requests:
                 self._fallback_requests[cache_key] = [
-                    req_time for req_time in self._fallback_requests[cache_key]
+                    req_time
+                    for req_time in self._fallback_requests[cache_key]
                     if req_time > cutoff
                 ]
             else:
@@ -628,16 +649,20 @@ class RedisRateLimiter:
 
             # Check limit
             if len(self._fallback_requests[cache_key]) >= max_requests:
-                logger.warning(f"Rate limit exceeded for {key} (limit: {max_requests}/{window_seconds}s)")
+                logger.warning(
+                    f"Rate limit exceeded for {key} (limit: {max_requests}/{window_seconds}s)"
+                )
                 return False
 
             # Record request
             self._fallback_requests[cache_key].append(now)
             return True
 
-    def get_remaining(self, key: str, limit_type: str = 'default') -> int:
+    def get_remaining(self, key: str, limit_type: str = "default") -> int:
         """Get remaining requests in current window"""
-        max_requests, window_seconds = self.limits.get(limit_type, self.limits['default'])
+        max_requests, window_seconds = self.limits.get(
+            limit_type, self.limits["default"]
+        )
 
         if self._redis:
             try:
@@ -655,7 +680,7 @@ class RedisRateLimiter:
                 current = len(self._fallback_requests.get(cache_key, []))
             return max(0, max_requests - current)
 
-    def reset(self, key: str, limit_type: str = 'default') -> bool:
+    def reset(self, key: str, limit_type: str = "default") -> bool:
         """Reset rate limit counter for a key (admin use)"""
         if self._redis:
             try:
@@ -677,8 +702,7 @@ _rate_limiter = RedisRateLimiter()
 
 
 async def check_rate_limit(
-    session: AuthSession = Depends(get_current_session),
-    limit_type: str = 'api'
+    session: AuthSession = Depends(get_current_session), limit_type: str = "api"
 ):
     """
     Check rate limit for current user
@@ -693,7 +717,7 @@ async def check_rate_limit(
     if not _rate_limiter.check_rate_limit(session.user_id, limit_type):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded. Please try again later."
+            detail="Rate limit exceeded. Please try again later.",
         )
 
 
@@ -702,17 +726,17 @@ async def check_rate_limit(
 # ============================================================================
 
 __all__ = [
-    'get_current_session',
-    'get_optional_session',
-    'require_admin',
-    'require_parent',
-    'ResourceAuthorization',
-    'VerifyParentAccess',
-    'VerifyProfileAccess',
-    'audit_log',
-    'check_rate_limit',
-    'CurrentSession',
-    'OptionalSession',
-    'AdminOnly',
-    'ParentOnly',
+    "get_current_session",
+    "get_optional_session",
+    "require_admin",
+    "require_parent",
+    "ResourceAuthorization",
+    "VerifyParentAccess",
+    "VerifyProfileAccess",
+    "audit_log",
+    "check_rate_limit",
+    "CurrentSession",
+    "OptionalSession",
+    "AdminOnly",
+    "ParentOnly",
 ]

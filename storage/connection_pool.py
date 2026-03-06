@@ -47,11 +47,11 @@ class PostgreSQLConnectionPool:
         self._pool: Optional[pool.ThreadedConnectionPool] = None
         self._lock = threading.Lock()
         self._stats = {
-            'connections_created': 0,
-            'connections_closed': 0,
-            'connections_active': 0,
-            'queries_executed': 0,
-            'errors': 0,
+            "connections_created": 0,
+            "connections_closed": 0,
+            "connections_active": 0,
+            "queries_executed": 0,
+            "errors": 0,
         }
 
         logger.info(f"Initializing PostgreSQL connection pool:")
@@ -70,28 +70,28 @@ class PostgreSQLConnectionPool:
 
                 # Build connection parameters
                 connection_params = {
-                    'host': system_config.POSTGRES_HOST,
-                    'port': system_config.POSTGRES_PORT,
-                    'database': system_config.POSTGRES_DB,
-                    'user': system_config.POSTGRES_USER,
-                    'password': system_config.POSTGRES_PASSWORD,
-                    'sslmode': system_config.POSTGRES_SSLMODE,
-                    'connect_timeout': self.connection_timeout,
-                    'options': f'-c statement_timeout={self.connection_timeout * 1000}',  # milliseconds
+                    "host": system_config.POSTGRES_HOST,
+                    "port": system_config.POSTGRES_PORT,
+                    "database": system_config.POSTGRES_DB,
+                    "user": system_config.POSTGRES_USER,
+                    "password": system_config.POSTGRES_PASSWORD,
+                    "sslmode": system_config.POSTGRES_SSLMODE,
+                    "connect_timeout": self.connection_timeout,
+                    "options": f"-c statement_timeout={self.connection_timeout * 1000}",  # milliseconds
                 }
 
                 # Create threaded connection pool
                 self._pool = pool.ThreadedConnectionPool(
                     minconn=self.min_connections,
                     maxconn=self.max_connections,
-                    **connection_params
+                    **connection_params,
                 )
 
                 # Test connection (verify pool works by getting and returning)
                 test_conn = self._pool.getconn()
                 self._pool.putconn(test_conn)
 
-                self._stats['connections_created'] = self.min_connections
+                self._stats["connections_created"] = self.min_connections
 
                 logger.info("[OK] PostgreSQL connection pool initialized successfully")
                 return True
@@ -118,7 +118,7 @@ class PostgreSQLConnectionPool:
             # Get connection from pool
             conn = self._pool.getconn()
             with self._lock:
-                self._stats['connections_active'] += 1
+                self._stats["connections_active"] += 1
 
             # Set connection to autocommit=False for transaction control
             conn.autocommit = False
@@ -136,7 +136,7 @@ class PostgreSQLConnectionPool:
                 except Exception:
                     pass
             with self._lock:
-                self._stats['errors'] += 1
+                self._stats["errors"] += 1
             logger.error(f"Database error: {e}")
             raise
 
@@ -145,14 +145,14 @@ class PostgreSQLConnectionPool:
             if conn:
                 self._pool.putconn(conn)
                 with self._lock:
-                    self._stats['connections_active'] -= 1
+                    self._stats["connections_active"] -= 1
 
     def execute_query(
         self,
         query: str,
         params: tuple = None,
         fetch: bool = True,
-        dict_cursor: bool = True
+        dict_cursor: bool = True,
     ) -> Optional[list]:
         """
         Execute a query with automatic connection management
@@ -173,7 +173,7 @@ class PostgreSQLConnectionPool:
             try:
                 # Execute query
                 cursor.execute(query, params)
-                self._stats['queries_executed'] += 1
+                self._stats["queries_executed"] += 1
 
                 # Fetch results if needed
                 if fetch:
@@ -185,11 +185,7 @@ class PostgreSQLConnectionPool:
             finally:
                 cursor.close()
 
-    def execute_many(
-        self,
-        query: str,
-        params_list: list
-    ) -> int:
+    def execute_many(self, query: str, params_list: list) -> int:
         """
         Execute query multiple times with different parameters
 
@@ -205,7 +201,7 @@ class PostgreSQLConnectionPool:
 
             try:
                 cursor.executemany(query, params_list)
-                self._stats['queries_executed'] += len(params_list)
+                self._stats["queries_executed"] += len(params_list)
                 return cursor.rowcount
 
             finally:
@@ -216,7 +212,7 @@ class PostgreSQLConnectionPool:
         with self._lock:
             if self._pool is not None:
                 self._pool.closeall()
-                self._stats['connections_closed'] = self._stats['connections_created']
+                self._stats["connections_closed"] = self._stats["connections_created"]
                 logger.info("Connection pool closed")
                 self._pool = None
 
@@ -224,8 +220,8 @@ class PostgreSQLConnectionPool:
         """Get pool statistics"""
         return {
             **self._stats,
-            'pool_size': self.max_connections,
-            'min_connections': self.min_connections,
+            "pool_size": self.max_connections,
+            "min_connections": self.min_connections,
         }
 
     def health_check(self) -> bool:
@@ -287,7 +283,7 @@ def close_connection_pool():
 
 # Export public interface
 __all__ = [
-    'PostgreSQLConnectionPool',
-    'get_connection_pool',
-    'close_connection_pool',
+    "PostgreSQLConnectionPool",
+    "get_connection_pool",
+    "close_connection_pool",
 ]

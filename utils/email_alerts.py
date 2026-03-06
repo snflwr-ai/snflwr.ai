@@ -54,20 +54,24 @@ class EmailConfig:
         """Load configuration from environment variables"""
         import os
 
-        cls.SMTP_HOST = os.getenv('SMTP_HOST', cls.SMTP_HOST)
-        cls.SMTP_PORT = int(os.getenv('SMTP_PORT', cls.SMTP_PORT))
-        cls.SMTP_USERNAME = os.getenv('SMTP_USERNAME', cls.SMTP_USERNAME)
-        cls.SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', cls.SMTP_PASSWORD)
-        cls.FROM_EMAIL = os.getenv('FROM_EMAIL', cls.FROM_EMAIL)
-        cls.FROM_NAME = os.getenv('FROM_NAME', cls.FROM_NAME)
-        cls.ENABLE_EMAIL_ALERTS = os.getenv('ENABLE_EMAIL_ALERTS', 'false').lower() == 'true'
+        cls.SMTP_HOST = os.getenv("SMTP_HOST", cls.SMTP_HOST)
+        cls.SMTP_PORT = int(os.getenv("SMTP_PORT", cls.SMTP_PORT))
+        cls.SMTP_USERNAME = os.getenv("SMTP_USERNAME", cls.SMTP_USERNAME)
+        cls.SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", cls.SMTP_PASSWORD)
+        cls.FROM_EMAIL = os.getenv("FROM_EMAIL", cls.FROM_EMAIL)
+        cls.FROM_NAME = os.getenv("FROM_NAME", cls.FROM_NAME)
+        cls.ENABLE_EMAIL_ALERTS = (
+            os.getenv("ENABLE_EMAIL_ALERTS", "false").lower() == "true"
+        )
 
 
 class EmailTemplate:
     """Email templates for different alert types"""
 
     @staticmethod
-    def safety_incident_critical(child_name: str, incident_type: str, incident_id: int, timestamp: str) -> tuple:
+    def safety_incident_critical(
+        child_name: str, incident_type: str, incident_id: int, timestamp: str
+    ) -> tuple:
         """Critical safety incident template"""
         subject = f"[ALERT] URGENT: Critical Safety Alert for {child_name}"
 
@@ -130,11 +134,16 @@ class EmailTemplate:
         return subject, body
 
     @staticmethod
-    def safety_incident_major(child_name: str, incident_count: int, incident_types: List[str], period_days: int) -> tuple:
+    def safety_incident_major(
+        child_name: str,
+        incident_count: int,
+        incident_types: List[str],
+        period_days: int,
+    ) -> tuple:
         """Major safety incident template"""
         subject = f"[WARN] Important Safety Alert for {child_name}"
 
-        types_list = ', '.join(incident_types[:3])  # Show up to 3 types
+        types_list = ", ".join(incident_types[:3])  # Show up to 3 types
 
         body = f"""
 <html>
@@ -186,9 +195,9 @@ class EmailTemplate:
         """Daily activity digest template"""
         subject = "[STATS] Daily Activity Summary - snflwr.ai"
 
-        total_sessions = summary_data.get('total_sessions', 0)
-        total_questions = summary_data.get('total_questions', 0)
-        incidents = summary_data.get('incidents', 0)
+        total_sessions = summary_data.get("total_sessions", 0)
+        total_questions = summary_data.get("total_questions", 0)
+        incidents = summary_data.get("incidents", 0)
 
         body = f"""
 <html>
@@ -295,7 +304,9 @@ class EmailAlertSystem:
         self.worker_thread: Optional[threading.Thread] = None
         self.running = False
 
-        logger.info(f"Email Alert System initialized (enabled: {self.config.ENABLE_EMAIL_ALERTS})")
+        logger.info(
+            f"Email Alert System initialized (enabled: {self.config.ENABLE_EMAIL_ALERTS})"
+        )
 
     def start_worker(self):
         """Start background email worker thread"""
@@ -305,9 +316,7 @@ class EmailAlertSystem:
 
         self.running = True
         self.worker_thread = threading.Thread(
-            target=self._process_queue,
-            daemon=True,
-            name="EmailWorker"
+            target=self._process_queue, daemon=True, name="EmailWorker"
         )
         self.worker_thread.start()
 
@@ -343,7 +352,7 @@ class EmailAlertSystem:
         incident_type: str,
         severity: str,
         incident_id: int,
-        timestamp: Optional[str] = None
+        timestamp: Optional[str] = None,
     ):
         """
         Send safety incident alert to parent
@@ -360,10 +369,12 @@ class EmailAlertSystem:
             logger.info("Email alerts disabled, skipping send")
             return
 
-        timestamp = timestamp or datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = timestamp or datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
         # Generate appropriate template
-        if severity == 'critical':
+        if severity == "critical":
             subject, body = EmailTemplate.safety_incident_critical(
                 child_name, incident_type, incident_id, timestamp
             )
@@ -375,17 +386,19 @@ class EmailAlertSystem:
 
         # Queue email
         email_data = {
-            'to_email': parent_email,
-            'subject': subject,
-            'body': body,
-            'is_html': True,
-            'priority': 'high' if severity == 'critical' else 'normal'
+            "to_email": parent_email,
+            "subject": subject,
+            "body": body,
+            "is_html": True,
+            "priority": "high" if severity == "critical" else "normal",
         }
 
         self.email_queue.put(email_data)
         logger.info(f"Safety alert queued for {parent_email} (incident #{incident_id})")
 
-    def send_daily_digest(self, parent_email: str, parent_name: str, summary_data: Dict):
+    def send_daily_digest(
+        self, parent_email: str, parent_name: str, summary_data: Dict
+    ):
         """Send daily activity digest"""
         if not self.config.ENABLE_EMAIL_ALERTS:
             return
@@ -393,11 +406,11 @@ class EmailAlertSystem:
         subject, body = EmailTemplate.daily_digest(parent_name, summary_data)
 
         email_data = {
-            'to_email': parent_email,
-            'subject': subject,
-            'body': body,
-            'is_html': True,
-            'priority': 'low'
+            "to_email": parent_email,
+            "subject": subject,
+            "body": body,
+            "is_html": True,
+            "priority": "low",
         }
 
         self.email_queue.put(email_data)
@@ -411,11 +424,11 @@ class EmailAlertSystem:
         subject, body = EmailTemplate.system_error_alert(error_summary, error_count)
 
         email_data = {
-            'to_email': admin_email,
-            'subject': subject,
-            'body': body,
-            'is_html': True,
-            'priority': 'high'
+            "to_email": admin_email,
+            "subject": subject,
+            "body": body,
+            "is_html": True,
+            "priority": "high",
         }
 
         self.email_queue.put(email_data)
@@ -426,10 +439,10 @@ class EmailAlertSystem:
         for attempt in range(self.config.MAX_RETRIES):
             try:
                 success = self._send_email(
-                    to_email=email_data['to_email'],
-                    subject=email_data['subject'],
-                    body=email_data['body'],
-                    is_html=email_data.get('is_html', True)
+                    to_email=email_data["to_email"],
+                    subject=email_data["subject"],
+                    body=email_data["body"],
+                    is_html=email_data.get("is_html", True),
                 )
 
                 if success:
@@ -442,10 +455,14 @@ class EmailAlertSystem:
                 if attempt < self.config.MAX_RETRIES - 1:
                     time.sleep(self.config.RETRY_DELAY)
 
-        logger.error(f"Failed to send email to {email_data['to_email']} after {self.config.MAX_RETRIES} attempts")
+        logger.error(
+            f"Failed to send email to {email_data['to_email']} after {self.config.MAX_RETRIES} attempts"
+        )
         return False
 
-    def _send_email(self, to_email: str, subject: str, body: str, is_html: bool = True) -> bool:
+    def _send_email(
+        self, to_email: str, subject: str, body: str, is_html: bool = True
+    ) -> bool:
         """
         Send individual email via SMTP
 
@@ -460,31 +477,45 @@ class EmailAlertSystem:
         """
         try:
             # Create message
-            message = MIMEMultipart('alternative')
-            message['From'] = formataddr((self.config.FROM_NAME, self.config.FROM_EMAIL))
-            message['To'] = to_email
-            message['Subject'] = subject
+            message = MIMEMultipart("alternative")
+            message["From"] = formataddr(
+                (self.config.FROM_NAME, self.config.FROM_EMAIL)
+            )
+            message["To"] = to_email
+            message["Subject"] = subject
 
             # Add body
             if is_html:
-                message.attach(MIMEText(body, 'html'))
+                message.attach(MIMEText(body, "html"))
             else:
-                message.attach(MIMEText(body, 'plain'))
+                message.attach(MIMEText(body, "plain"))
 
             # Create secure connection and send
             if self.config.SMTP_USE_SSL:
                 context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(self.config.SMTP_HOST, self.config.SMTP_PORT, context=context) as server:
+                with smtplib.SMTP_SSL(
+                    self.config.SMTP_HOST, self.config.SMTP_PORT, context=context
+                ) as server:
                     if self.config.SMTP_USERNAME and self.config.SMTP_PASSWORD:
-                        server.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
-                    server.sendmail(self.config.FROM_EMAIL, to_email, message.as_string())
+                        server.login(
+                            self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD
+                        )
+                    server.sendmail(
+                        self.config.FROM_EMAIL, to_email, message.as_string()
+                    )
             else:
-                with smtplib.SMTP(self.config.SMTP_HOST, self.config.SMTP_PORT) as server:
+                with smtplib.SMTP(
+                    self.config.SMTP_HOST, self.config.SMTP_PORT
+                ) as server:
                     if self.config.SMTP_USE_TLS:
                         server.starttls()
                     if self.config.SMTP_USERNAME and self.config.SMTP_PASSWORD:
-                        server.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
-                    server.sendmail(self.config.FROM_EMAIL, to_email, message.as_string())
+                        server.login(
+                            self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD
+                        )
+                    server.sendmail(
+                        self.config.FROM_EMAIL, to_email, message.as_string()
+                    )
 
             return True
 
@@ -497,15 +528,23 @@ class EmailAlertSystem:
         try:
             if self.config.SMTP_USE_SSL:
                 context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(self.config.SMTP_HOST, self.config.SMTP_PORT, context=context) as server:
+                with smtplib.SMTP_SSL(
+                    self.config.SMTP_HOST, self.config.SMTP_PORT, context=context
+                ) as server:
                     if self.config.SMTP_USERNAME and self.config.SMTP_PASSWORD:
-                        server.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
+                        server.login(
+                            self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD
+                        )
             else:
-                with smtplib.SMTP(self.config.SMTP_HOST, self.config.SMTP_PORT) as server:
+                with smtplib.SMTP(
+                    self.config.SMTP_HOST, self.config.SMTP_PORT
+                ) as server:
                     if self.config.SMTP_USE_TLS:
                         server.starttls()
                     if self.config.SMTP_USERNAME and self.config.SMTP_PASSWORD:
-                        server.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
+                        server.login(
+                            self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD
+                        )
 
             logger.info("SMTP connection test successful")
             return True
@@ -520,9 +559,4 @@ email_alert_system = EmailAlertSystem()
 
 
 # Export public interface
-__all__ = [
-    'EmailAlertSystem',
-    'EmailConfig',
-    'EmailTemplate',
-    'email_alert_system'
-]
+__all__ = ["EmailAlertSystem", "EmailConfig", "EmailTemplate", "email_alert_system"]

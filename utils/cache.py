@@ -26,8 +26,9 @@ try:
         record_cache_operation,
         cache_connection_pool_size,
         redis_sentinel_failovers_total,
-        redis_sentinel_slaves
+        redis_sentinel_slaves,
     )
+
     _metrics_available = True
 except ImportError:
     pass
@@ -46,7 +47,7 @@ class RedisCache:
     """
 
     # Seconds between automatic reconnection attempts in degraded mode
-    RECONNECT_INTERVAL = int(os.getenv('REDIS_RECONNECT_INTERVAL', '30'))
+    RECONNECT_INTERVAL = int(os.getenv("REDIS_RECONNECT_INTERVAL", "30"))
 
     def __init__(
         self,
@@ -58,7 +59,7 @@ class RedisCache:
         default_ttl: int = 300,  # 5 minutes
         use_sentinel: bool = None,
         sentinel_hosts: List[Tuple[str, int]] = None,
-        sentinel_master: str = None
+        sentinel_master: str = None,
     ):
         """
         Initialize Redis cache with optional Sentinel support
@@ -74,7 +75,7 @@ class RedisCache:
             sentinel_hosts: List of (host, port) tuples for Sentinel nodes
             sentinel_master: Name of the Sentinel master
         """
-        self.enabled = enabled and os.getenv('REDIS_ENABLED', 'false').lower() == 'true'
+        self.enabled = enabled and os.getenv("REDIS_ENABLED", "false").lower() == "true"
         self.default_ttl = default_ttl
 
         # Degraded mode: Redis was configured but the connection failed.
@@ -83,48 +84,54 @@ class RedisCache:
         self._last_reconnect_attempt = 0.0  # epoch timestamp
 
         if not self.enabled:
-            logger.warning("Redis caching is disabled - authentication rate limiting will be unavailable")
+            logger.warning(
+                "Redis caching is disabled - authentication rate limiting will be unavailable"
+            )
             self._client = None
             self._sentinel = None
             return
 
         # Sentinel configuration
-        self.use_sentinel = use_sentinel if use_sentinel is not None else (
-            os.getenv('REDIS_SENTINEL_ENABLED', 'false').lower() == 'true'
+        self.use_sentinel = (
+            use_sentinel
+            if use_sentinel is not None
+            else (os.getenv("REDIS_SENTINEL_ENABLED", "false").lower() == "true")
         )
-        self.sentinel_master = sentinel_master or os.getenv('REDIS_SENTINEL_MASTER', 'mymaster')
+        self.sentinel_master = sentinel_master or os.getenv(
+            "REDIS_SENTINEL_MASTER", "mymaster"
+        )
         self.sentinel_hosts = sentinel_hosts or self._parse_sentinel_hosts()
 
         # Standard Redis configuration
-        self.host = host or os.getenv('REDIS_HOST', 'localhost')
-        self.port = port or int(os.getenv('REDIS_PORT', '6379'))
+        self.host = host or os.getenv("REDIS_HOST", "localhost")
+        self.port = port or int(os.getenv("REDIS_PORT", "6379"))
         self.db = db
-        self.password = password or os.getenv('REDIS_PASSWORD', None)
+        self.password = password or os.getenv("REDIS_PASSWORD", None)
 
         self._client: Optional[redis.Redis] = None
         self._sentinel: Optional[Sentinel] = None
         self._stats = {
-            'hits': 0,
-            'misses': 0,
-            'sets': 0,
-            'deletes': 0,
-            'errors': 0,
-            'failovers': 0
+            "hits": 0,
+            "misses": 0,
+            "sets": 0,
+            "deletes": 0,
+            "errors": 0,
+            "failovers": 0,
         }
 
         self._initialize_connection()
 
     def _parse_sentinel_hosts(self) -> List[Tuple[str, int]]:
         """Parse Sentinel hosts from environment variable"""
-        hosts_str = os.getenv('REDIS_SENTINEL_HOSTS', '')
+        hosts_str = os.getenv("REDIS_SENTINEL_HOSTS", "")
         if not hosts_str:
             return []
 
         hosts = []
-        for host_port in hosts_str.split(','):
+        for host_port in hosts_str.split(","):
             host_port = host_port.strip()
-            if ':' in host_port:
-                host, port = host_port.split(':')
+            if ":" in host_port:
+                host, port = host_port.split(":")
                 hosts.append((host.strip(), int(port.strip())))
             else:
                 hosts.append((host_port, 26379))  # Default Sentinel port
@@ -153,7 +160,9 @@ class RedisCache:
                 self._degraded = False
         except (RedisError, ConnectionError, OSError) as e:
             logger.error(f"Redis connection failed: {e}")
-            logger.error("Redis is required for authentication rate limiting and Celery tasks")
+            logger.error(
+                "Redis is required for authentication rate limiting and Celery tasks"
+            )
             logger.warning(
                 "Entering DEGRADED MODE — cache operations will return defaults. "
                 "The cache will attempt to reconnect every %ds.",
@@ -166,6 +175,7 @@ class RedisCache:
     def _initialize_standalone(self):
         """Initialize standalone Redis connection"""
         from resource_detection import get_resource_profile
+
         detected_max = get_resource_profile().redis_max_connections
 
         # Connection pool for better performance
@@ -177,13 +187,15 @@ class RedisCache:
             max_connections=detected_max,
             decode_responses=True,
             socket_timeout=5,
-            socket_connect_timeout=5
+            socket_connect_timeout=5,
         )
 
         self._client = redis.Redis(connection_pool=self.pool)
         # Test connection
         self._client.ping()
-        logger.info(f"[OK] Redis cache connected: {self.host}:{self.port} (db: {self.db})")
+        logger.info(
+            f"[OK] Redis cache connected: {self.host}:{self.port} (db: {self.db})"
+        )
 
     def _initialize_sentinel(self):
         """Initialize Redis Sentinel connection for high availability"""
@@ -194,7 +206,7 @@ class RedisCache:
             self.sentinel_hosts,
             socket_timeout=5,
             password=self.password,
-            sentinel_kwargs={'password': self.password} if self.password else {}
+            sentinel_kwargs={"password": self.password} if self.password else {},
         )
 
         # Get master connection
@@ -203,7 +215,7 @@ class RedisCache:
             socket_timeout=5,
             password=self.password,
             db=self.db,
-            decode_responses=True
+            decode_responses=True,
         )
 
         # Test connection
@@ -227,6 +239,7 @@ class RedisCache:
             return self.enabled
 
         import time as _time
+
         now = _time.time()
         if now - self._last_reconnect_attempt < self.RECONNECT_INTERVAL:
             return False
@@ -253,7 +266,7 @@ class RedisCache:
                 "master": f"{master[0]}:{master[1]}",
                 "slave_count": len(slaves),
                 "slaves": [f"{s[0]}:{s[1]}" for s in slaves],
-                "sentinel_master": self.sentinel_master
+                "sentinel_master": self.sentinel_master,
             }
         except (RedisError, ConnectionError, OSError) as e:
             logger.error(f"Failed to get master info: {e}")
@@ -261,12 +274,12 @@ class RedisCache:
 
     def _handle_connection_error(self, e: Exception):
         """Handle connection errors with automatic reconnection"""
-        self._stats['errors'] += 1
+        self._stats["errors"] += 1
         logger.error(f"Redis connection error: {e}")
 
         if self.use_sentinel and self._sentinel:
             # Sentinel will handle failover automatically
-            self._stats['failovers'] += 1
+            self._stats["failovers"] += 1
             logger.warning("Redis master may have failed over. Sentinel will redirect.")
             if _metrics_available:
                 redis_sentinel_failovers_total.inc()
@@ -277,7 +290,7 @@ class RedisCache:
                     socket_timeout=5,
                     password=self.password,
                     db=self.db,
-                    decode_responses=True
+                    decode_responses=True,
                 )
                 logger.info("Successfully reconnected to new master")
                 # Update slave count metric after failover
@@ -306,18 +319,18 @@ class RedisCache:
     def _serialize(self, value: Any) -> str:
         """Serialize value to JSON string"""
         # Handle objects with to_dict() method - store type info for reconstruction
-        if hasattr(value, 'to_dict') and callable(getattr(value, 'to_dict')):
+        if hasattr(value, "to_dict") and callable(getattr(value, "to_dict")):
             type_name = f"{value.__class__.__module__}.{value.__class__.__name__}"
-            value = {
-                '__type__': type_name,
-                '__data__': value.to_dict()
-            }
+            value = {"__type__": type_name, "__data__": value.to_dict()}
         # Handle lists of objects with to_dict()
-        elif isinstance(value, list) and value and hasattr(value[0], 'to_dict'):
+        elif isinstance(value, list) and value and hasattr(value[0], "to_dict"):
             type_name = f"{value[0].__class__.__module__}.{value[0].__class__.__name__}"
             value = {
-                '__type__': f"List[{type_name}]",
-                '__data__': [item.to_dict() if hasattr(item, 'to_dict') else item for item in value]
+                "__type__": f"List[{type_name}]",
+                "__data__": [
+                    item.to_dict() if hasattr(item, "to_dict") else item
+                    for item in value
+                ],
             }
         return json.dumps(value)
 
@@ -327,18 +340,20 @@ class RedisCache:
             data = json.loads(value)
 
             # Handle custom serialized objects with type information
-            if isinstance(data, dict) and '__type__' in data and '__data__' in data:
-                type_name = data['__type__']
-                obj_data = data['__data__']
+            if isinstance(data, dict) and "__type__" in data and "__data__" in data:
+                type_name = data["__type__"]
+                obj_data = data["__data__"]
 
                 # Reconstruct ChildProfile objects
-                if 'ChildProfile' in type_name:
+                if "ChildProfile" in type_name:
                     from core.profile_manager import ChildProfile
+
                     return ChildProfile(**obj_data)
 
                 # Reconstruct lists of ChildProfile objects
-                elif type_name.startswith('List[') and 'ChildProfile' in type_name:
+                elif type_name.startswith("List[") and "ChildProfile" in type_name:
                     from core.profile_manager import ChildProfile
+
                     return [ChildProfile(**item) for item in obj_data]
 
             return data
@@ -362,6 +377,7 @@ class RedisCache:
                 return None
 
         import time
+
         start_time = time.time()
 
         try:
@@ -370,31 +386,27 @@ class RedisCache:
             duration = time.time() - start_time
 
             if value is not None:
-                self._stats['hits'] += 1
+                self._stats["hits"] += 1
                 logger.debug(f"Cache HIT: {cache_key}")
                 if _metrics_available:
-                    record_cache_operation('get', 'hit', duration)
+                    record_cache_operation("get", "hit", duration)
                 return self._deserialize(value)
             else:
-                self._stats['misses'] += 1
+                self._stats["misses"] += 1
                 logger.debug(f"Cache MISS: {cache_key}")
                 if _metrics_available:
-                    record_cache_operation('get', 'miss', duration)
+                    record_cache_operation("get", "miss", duration)
                 return None
 
         except RedisError as e:
-            self._stats['errors'] += 1
+            self._stats["errors"] += 1
             logger.error(f"Redis get error: {e}")
             if _metrics_available:
-                record_cache_operation('get', 'error', time.time() - start_time)
+                record_cache_operation("get", "error", time.time() - start_time)
             return None
 
     def set(
-        self,
-        key: str,
-        value: Any,
-        ttl: int = None,
-        namespace: str = "snflwr"
+        self, key: str, value: Any, ttl: int = None, namespace: str = "snflwr"
     ) -> bool:
         """
         Set value in cache
@@ -414,6 +426,7 @@ class RedisCache:
                 return False
 
         import time
+
         start_time = time.time()
 
         try:
@@ -422,17 +435,17 @@ class RedisCache:
             ttl = ttl or self.default_ttl
 
             self._client.setex(cache_key, ttl, serialized_value)
-            self._stats['sets'] += 1
+            self._stats["sets"] += 1
             logger.debug(f"Cache SET: {cache_key} (TTL: {ttl}s)")
             if _metrics_available:
-                record_cache_operation('set', 'success', time.time() - start_time)
+                record_cache_operation("set", "success", time.time() - start_time)
             return True
 
         except RedisError as e:
-            self._stats['errors'] += 1
+            self._stats["errors"] += 1
             logger.error(f"Redis set error: {e}")
             if _metrics_available:
-                record_cache_operation('set', 'error', time.time() - start_time)
+                record_cache_operation("set", "error", time.time() - start_time)
             return False
 
     def delete(self, key: str, namespace: str = "snflwr") -> bool:
@@ -452,22 +465,23 @@ class RedisCache:
                 return False
 
         import time
+
         start_time = time.time()
 
         try:
             cache_key = self._make_key(key, namespace)
             result = self._client.delete(cache_key)
-            self._stats['deletes'] += 1
+            self._stats["deletes"] += 1
             logger.debug(f"Cache DELETE: {sanitize_log_value(cache_key)!r}")
             if _metrics_available:
-                record_cache_operation('delete', 'success', time.time() - start_time)
+                record_cache_operation("delete", "success", time.time() - start_time)
             return result > 0
 
         except RedisError as e:
-            self._stats['errors'] += 1
+            self._stats["errors"] += 1
             logger.error(f"Redis delete error: {e}")
             if _metrics_available:
-                record_cache_operation('delete', 'error', time.time() - start_time)
+                record_cache_operation("delete", "error", time.time() - start_time)
             return False
 
     def delete_pattern(self, pattern: str, namespace: str = "snflwr") -> int:
@@ -492,14 +506,14 @@ class RedisCache:
 
             if keys:
                 deleted = self._client.delete(*keys)
-                self._stats['deletes'] += deleted
+                self._stats["deletes"] += deleted
                 logger.info(f"Cache DELETE pattern: {cache_pattern} ({deleted} keys)")
                 return deleted
 
             return 0
 
         except RedisError as e:
-            self._stats['errors'] += 1
+            self._stats["errors"] += 1
             logger.error(f"Redis delete pattern error: {e}")
             return 0
 
@@ -517,7 +531,9 @@ class RedisCache:
             logger.error(f"Redis exists error: {e}")
             return False
 
-    def increment(self, key: str, amount: int = 1, namespace: str = "snflwr") -> Optional[int]:
+    def increment(
+        self, key: str, amount: int = 1, namespace: str = "snflwr"
+    ) -> Optional[int]:
         """
         Increment a counter
 
@@ -558,32 +574,32 @@ class RedisCache:
     def get_stats(self) -> dict:
         """Get cache statistics including Sentinel and degraded-mode info"""
         stats = self._stats.copy()
-        stats['degraded'] = self._degraded
+        stats["degraded"] = self._degraded
 
         if self.enabled and self._client:
             try:
-                info = self._client.info('stats')
-                stats['redis_hits'] = info.get('keyspace_hits', 0)
-                stats['redis_misses'] = info.get('keyspace_misses', 0)
-                stats['total_connections'] = info.get('total_connections_received', 0)
+                info = self._client.info("stats")
+                stats["redis_hits"] = info.get("keyspace_hits", 0)
+                stats["redis_misses"] = info.get("keyspace_misses", 0)
+                stats["total_connections"] = info.get("total_connections_received", 0)
             except RedisError:
                 pass
 
         # Calculate hit rate
-        total = stats['hits'] + stats['misses']
-        stats['hit_rate'] = (stats['hits'] / total * 100) if total > 0 else 0
+        total = stats["hits"] + stats["misses"]
+        stats["hit_rate"] = (stats["hits"] / total * 100) if total > 0 else 0
 
         # Add Sentinel info if available
         if self._sentinel:
-            stats['mode'] = 'sentinel'
-            stats['sentinel_master'] = self.sentinel_master
+            stats["mode"] = "sentinel"
+            stats["sentinel_master"] = self.sentinel_master
             master_info = self.get_master_info()
             if master_info:
-                stats['master'] = master_info.get('master')
-                stats['slave_count'] = master_info.get('slave_count', 0)
+                stats["master"] = master_info.get("master")
+                stats["slave_count"] = master_info.get("slave_count", 0)
         else:
-            stats['mode'] = 'standalone'
-            stats['master'] = f"{self.host}:{self.port}"
+            stats["mode"] = "standalone"
+            stats["master"] = f"{self.host}:{self.port}"
 
         return stats
 
@@ -633,24 +649,24 @@ class RedisCache:
                 result["healthy"] = True
 
             # Get connection info
-            info = self._client.info('server')
-            result["redis_version"] = info.get('redis_version', 'unknown')
-            result["uptime_seconds"] = info.get('uptime_in_seconds', 0)
+            info = self._client.info("server")
+            result["redis_version"] = info.get("redis_version", "unknown")
+            result["uptime_seconds"] = info.get("uptime_in_seconds", 0)
 
             # Sentinel-specific info
             if self._sentinel:
                 master_info = self.get_master_info()
                 if master_info:
-                    result["master"] = master_info.get('master')
-                    result["slave_count"] = master_info.get('slave_count', 0)
-                    result["slaves"] = master_info.get('slaves', [])
+                    result["master"] = master_info.get("master")
+                    result["slave_count"] = master_info.get("slave_count", 0)
+                    result["slaves"] = master_info.get("slaves", [])
                     result["sentinel_nodes"] = len(self.sentinel_hosts)
             else:
                 result["host"] = f"{self.host}:{self.port}"
 
             result["stats"] = {
-                "failovers": self._stats.get('failovers', 0),
-                "errors": self._stats.get('errors', 0)
+                "failovers": self._stats.get("failovers", 0),
+                "errors": self._stats.get("errors", 0),
             }
 
         except RedisError as e:
@@ -665,7 +681,7 @@ def cached(
     ttl: int = 300,
     namespace: str = "snflwr",
     key_prefix: str = None,
-    make_key: Callable = None
+    make_key: Callable = None,
 ):
     """
     Decorator to cache function results
@@ -682,6 +698,7 @@ def cached(
             # Expensive operation
             return fetch_user_from_db(user_id)
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -720,6 +737,7 @@ def cached(
             return result
 
         return wrapper
+
     return decorator
 
 
@@ -728,8 +746,4 @@ cache = RedisCache()
 
 
 # Export public interface
-__all__ = [
-    'RedisCache',
-    'cache',
-    'cached'
-]
+__all__ = ["RedisCache", "cache", "cached"]

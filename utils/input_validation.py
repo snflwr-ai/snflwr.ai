@@ -30,14 +30,18 @@ logger = get_logger(__name__)
 # ==============================================================================
 
 # ID Patterns (hex UUID format)
-UUID_HEX_PATTERN = re.compile(r'^[a-f0-9]{32}$')
-UUID_HYPHENATED_PATTERN = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
-SESSION_TOKEN_PATTERN = re.compile(r'^[a-f0-9]{64}$')  # secrets.token_hex(32)
+UUID_HEX_PATTERN = re.compile(r"^[a-f0-9]{32}$")
+UUID_HYPHENATED_PATTERN = re.compile(
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+)
+SESSION_TOKEN_PATTERN = re.compile(r"^[a-f0-9]{64}$")  # secrets.token_hex(32)
 
 # Name constraints
 MIN_NAME_LENGTH = 1
 MAX_NAME_LENGTH = 100
-NAME_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-\'\.]+$')  # Alphanumeric, space, hyphen, apostrophe, period
+NAME_PATTERN = re.compile(
+    r"^[a-zA-Z0-9\s\-\'\.]+$"
+)  # Alphanumeric, space, hyphen, apostrophe, period
 
 # Message constraints
 MIN_MESSAGE_LENGTH = 1
@@ -45,15 +49,55 @@ MAX_MESSAGE_LENGTH = 10000  # 10K characters max per message
 
 # Grade levels allowed
 VALID_GRADE_LEVELS = {
-    'pre-k', 'kindergarten', 'k',
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12',
-    '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th',
-    'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth',
-    'elementary', 'middle', 'high', 'college', 'university', 'graduate'
+    "pre-k",
+    "kindergarten",
+    "k",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "1st",
+    "2nd",
+    "3rd",
+    "4th",
+    "5th",
+    "6th",
+    "7th",
+    "8th",
+    "9th",
+    "10th",
+    "11th",
+    "12th",
+    "first",
+    "second",
+    "third",
+    "fourth",
+    "fifth",
+    "sixth",
+    "seventh",
+    "eighth",
+    "ninth",
+    "tenth",
+    "eleventh",
+    "twelfth",
+    "elementary",
+    "middle",
+    "high",
+    "college",
+    "university",
+    "graduate",
 }
 
 # Model roles
-VALID_MODEL_ROLES = {'student', 'tutor', 'teacher', 'assistant', 'researcher'}
+VALID_MODEL_ROLES = {"student", "tutor", "teacher", "assistant", "researcher"}
 
 # Age constraints (COPPA)
 MIN_AGE = 3
@@ -63,6 +107,7 @@ MAX_AGE = 25
 # ==============================================================================
 # Validators
 # ==============================================================================
+
 
 def validate_profile_id(profile_id: str) -> Tuple[bool, Optional[str]]:
     """
@@ -105,7 +150,9 @@ def validate_parent_id(parent_id: str) -> Tuple[bool, Optional[str]]:
     if not isinstance(parent_id, str):
         return False, "Parent ID must be a string"
 
-    if not (UUID_HEX_PATTERN.match(parent_id) or UUID_HYPHENATED_PATTERN.match(parent_id)):
+    if not (
+        UUID_HEX_PATTERN.match(parent_id) or UUID_HYPHENATED_PATTERN.match(parent_id)
+    ):
         logger.warning(f"Invalid parent ID format: {parent_id[:20]}...")
         return False, "Invalid parent ID format"
 
@@ -129,7 +176,11 @@ def validate_session_id(session_id: str) -> Tuple[bool, Optional[str]]:
         return False, "Session ID must be a string"
 
     # Session IDs can be 32-byte hex (64 chars), UUID hex (32 chars), or hyphenated UUID (36 chars)
-    if not (UUID_HEX_PATTERN.match(session_id) or SESSION_TOKEN_PATTERN.match(session_id) or UUID_HYPHENATED_PATTERN.match(session_id)):
+    if not (
+        UUID_HEX_PATTERN.match(session_id)
+        or SESSION_TOKEN_PATTERN.match(session_id)
+        or UUID_HYPHENATED_PATTERN.match(session_id)
+    ):
         logger.warning(f"Invalid session ID format: {session_id[:20]}...")
         return False, "Invalid session ID format"
 
@@ -163,7 +214,10 @@ def validate_name(name: str, field_name: str = "Name") -> Tuple[bool, Optional[s
         return False, f"{field_name} must be at most {MAX_NAME_LENGTH} characters"
 
     if not NAME_PATTERN.match(name):
-        return False, f"{field_name} contains invalid characters. Only letters, numbers, spaces, hyphens, apostrophes, and periods are allowed."
+        return (
+            False,
+            f"{field_name} contains invalid characters. Only letters, numbers, spaces, hyphens, apostrophes, and periods are allowed.",
+        )
 
     return True, None
 
@@ -191,7 +245,10 @@ def validate_message(message: str) -> Tuple[bool, Optional[str]]:
         return False, "Message cannot be empty"
 
     if len(message) > MAX_MESSAGE_LENGTH:
-        return False, f"Message exceeds maximum length of {MAX_MESSAGE_LENGTH} characters"
+        return (
+            False,
+            f"Message exceeds maximum length of {MAX_MESSAGE_LENGTH} characters",
+        )
 
     return True, None
 
@@ -238,7 +295,10 @@ def validate_grade_level(grade_level: str) -> Tuple[bool, Optional[str]]:
         return False, "Grade level must be a string"
 
     if grade_level.lower().strip() not in VALID_GRADE_LEVELS:
-        return False, f"Invalid grade level. Allowed values: {', '.join(sorted(VALID_GRADE_LEVELS))}"
+        return (
+            False,
+            f"Invalid grade level. Allowed values: {', '.join(sorted(VALID_GRADE_LEVELS))}",
+        )
 
     return True, None
 
@@ -260,7 +320,10 @@ def validate_model_role(model_role: str) -> Tuple[bool, Optional[str]]:
         return False, "Model role must be a string"
 
     if model_role.lower().strip() not in VALID_MODEL_ROLES:
-        return False, f"Invalid model role. Allowed values: {', '.join(sorted(VALID_MODEL_ROLES))}"
+        return (
+            False,
+            f"Invalid model role. Allowed values: {', '.join(sorted(VALID_MODEL_ROLES))}",
+        )
 
     return True, None
 
@@ -290,7 +353,7 @@ def sanitize_string(value: str, max_length: int = 1000) -> str:
         value = value[:max_length]
 
     # Remove null bytes
-    value = value.replace('\x00', '')
+    value = value.replace("\x00", "")
 
     return value
 
@@ -304,27 +367,33 @@ from pydantic import field_validator, ValidationInfo
 
 def create_id_validator(field_name: str):
     """Create a Pydantic field validator for ID fields."""
+
     def validator(cls, v: str) -> str:
         if not v:
             raise ValueError(f"{field_name} is required")
         if not UUID_HEX_PATTERN.match(v):
             raise ValueError(f"Invalid {field_name} format")
         return v
-    return field_validator(field_name, mode='before')(validator)
+
+    return field_validator(field_name, mode="before")(validator)
 
 
 def create_name_validator(field_name: str):
     """Create a Pydantic field validator for name fields."""
+
     def validator(cls, v: str) -> str:
         if not v:
             raise ValueError(f"{field_name} is required")
         v = v.strip()
         if len(v) < MIN_NAME_LENGTH or len(v) > MAX_NAME_LENGTH:
-            raise ValueError(f"{field_name} must be {MIN_NAME_LENGTH}-{MAX_NAME_LENGTH} characters")
+            raise ValueError(
+                f"{field_name} must be {MIN_NAME_LENGTH}-{MAX_NAME_LENGTH} characters"
+            )
         if not NAME_PATTERN.match(v):
             raise ValueError(f"{field_name} contains invalid characters")
         return v
-    return field_validator(field_name, mode='before')(validator)
+
+    return field_validator(field_name, mode="before")(validator)
 
 
 # ==============================================================================
@@ -333,29 +402,27 @@ def create_name_validator(field_name: str):
 
 __all__ = [
     # Validators
-    'validate_profile_id',
-    'validate_parent_id',
-    'validate_session_id',
-    'validate_name',
-    'validate_message',
-    'validate_age',
-    'validate_grade_level',
-    'validate_model_role',
-    'sanitize_string',
-
+    "validate_profile_id",
+    "validate_parent_id",
+    "validate_session_id",
+    "validate_name",
+    "validate_message",
+    "validate_age",
+    "validate_grade_level",
+    "validate_model_role",
+    "sanitize_string",
     # Constants
-    'UUID_HEX_PATTERN',
-    'SESSION_TOKEN_PATTERN',
-    'MIN_NAME_LENGTH',
-    'MAX_NAME_LENGTH',
-    'MIN_MESSAGE_LENGTH',
-    'MAX_MESSAGE_LENGTH',
-    'VALID_GRADE_LEVELS',
-    'VALID_MODEL_ROLES',
-    'MIN_AGE',
-    'MAX_AGE',
-
+    "UUID_HEX_PATTERN",
+    "SESSION_TOKEN_PATTERN",
+    "MIN_NAME_LENGTH",
+    "MAX_NAME_LENGTH",
+    "MIN_MESSAGE_LENGTH",
+    "MAX_MESSAGE_LENGTH",
+    "VALID_GRADE_LEVELS",
+    "VALID_MODEL_ROLES",
+    "MIN_AGE",
+    "MAX_AGE",
     # Pydantic helpers
-    'create_id_validator',
-    'create_name_validator',
+    "create_id_validator",
+    "create_name_validator",
 ]

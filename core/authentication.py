@@ -38,6 +38,7 @@ except ImportError:
             pbkdf2_hash = stored.replace("$pbkdf2-fallback$", "", 1)
             return self._enc_manager.verify_password(password, pbkdf2_hash)
 
+
 from utils.logger import get_logger, mask_email
 from core.email_crypto import get_email_crypto
 
@@ -73,6 +74,7 @@ class SubscriptionError(AuthenticationError):
 @dataclass
 class AuthSession:
     """Authenticated session information"""
+
     user_id: str  # parent_id
     role: str  # 'parent' or 'admin'
     session_token: str
@@ -103,13 +105,18 @@ class AuthenticationManager:
         """Initialize Redis for distributed session caching"""
         try:
             from utils.cache import cache
+
             if cache.enabled and cache._client:
                 self._redis = cache._client
                 logger.info("[OK] Session cache using Redis (distributed mode)")
             else:
-                logger.warning("[WARN] Session cache using in-memory fallback (single-instance only)")
+                logger.warning(
+                    "[WARN] Session cache using in-memory fallback (single-instance only)"
+                )
         except (ImportError, RedisError) as e:
-            logger.warning(f"[WARN] Session cache Redis init failed, using fallback: {e}")
+            logger.warning(
+                f"[WARN] Session cache Redis init failed, using fallback: {e}"
+            )
 
     def _get_session_from_cache(self, session_token: str) -> Optional[dict]:
         """Get session from Redis or fallback cache, checking expiry"""
@@ -117,6 +124,7 @@ class AuthenticationManager:
         if self._redis:
             try:
                 import json
+
                 redis_key = f"snflwr:session:{session_token}"
                 data = self._redis.get(redis_key)
                 if data:
@@ -128,9 +136,9 @@ class AuthenticationManager:
                 session_data = self._fallback_sessions.get(session_token)
 
         # Check expiry if present in cached data
-        if session_data and 'expires_at' in session_data:
+        if session_data and "expires_at" in session_data:
             try:
-                expires_at = datetime.fromisoformat(session_data['expires_at'])
+                expires_at = datetime.fromisoformat(session_data["expires_at"])
                 if expires_at.tzinfo is None:
                     expires_at = expires_at.replace(tzinfo=timezone.utc)
                 if expires_at < datetime.now(timezone.utc):
@@ -147,8 +155,11 @@ class AuthenticationManager:
         if self._redis:
             try:
                 import json
+
                 redis_key = f"snflwr:session:{session_token}"
-                self._redis.setex(redis_key, self._session_ttl, json.dumps(session_data))
+                self._redis.setex(
+                    redis_key, self._session_ttl, json.dumps(session_data)
+                )
                 # Maintain reverse index for O(1) bulk invalidation on password change
                 user_key = f"snflwr:user_sessions:{session_data['parent_id']}"
                 self._redis.sadd(user_key, session_token)
@@ -193,8 +204,9 @@ class AuthenticationManager:
         else:
             with self._session_lock:
                 to_remove = [
-                    sid for sid, data in self._fallback_sessions.items()
-                    if data.get('parent_id') == user_id
+                    sid
+                    for sid, data in self._fallback_sessions.items()
+                    if data.get("parent_id") == user_id
                 ]
                 for sid in to_remove:
                     del self._fallback_sessions[sid]
@@ -208,28 +220,40 @@ class AuthenticationManager:
             return False, "Password must contain at least one lowercase letter"
         if not any(c.isdigit() for c in password):
             return False, "Password must contain at least one number"
-        if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in password):
-            return False, "Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)"
+        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password):
+            return (
+                False,
+                "Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)",
+            )
         return True, None
 
-    def create_parent_account(self, username: str, password: str, email: Optional[str] = None, role: str = 'parent') -> Tuple[bool, Optional[str]]:
+    def create_parent_account(
+        self,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        role: str = "parent",
+    ) -> Tuple[bool, Optional[str]]:
         # Basic validation
         if not username or len(username) < 3:
-            return False, 'Username must be at least 3 characters'
+            return False, "Username must be at least 3 characters"
         if not password or len(password) < 8:
-            return False, 'Password must be at least 8 characters'
+            return False, "Password must be at least 8 characters"
 
         # Validate email format if provided
         if email:
             import re
-            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+            email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
             if not re.match(email_pattern, email):
-                return False, 'Invalid email format'
+                return False, "Invalid email format"
 
         # Check duplicate username
-        existing = self.db.execute_query("SELECT parent_id FROM accounts WHERE username = ?", (username,))
+        existing = self.db.execute_query(
+            "SELECT parent_id FROM accounts WHERE username = ?", (username,)
+        )
         if existing:
-            return False, 'Username already exists'
+            return False, "Username already exists"
 
         # Validate password strength
         valid, err = self._validate_password_strength(password)
@@ -242,9 +266,11 @@ class AuthenticationManager:
 
         try:
             password_hash = self.ph.hash(password)
-        except Exception as e:  # Intentional catch-all: argon2 can raise varied internal errors
+        except (
+            Exception
+        ) as e:  # Intentional catch-all: argon2 can raise varied internal errors
             logger.error(f"Password hashing failed (argon2 unavailable?): {e}")
-            return False, 'Password hashing failed - server configuration error'
+            return False, "Password hashing failed - server configuration error"
 
         # Prepare email_hash and encrypted_email for secure storage/lookup
         email_hash = None
@@ -252,7 +278,9 @@ class AuthenticationManager:
         if email:
             try:
                 email_crypto = get_email_crypto()
-                email_hash, encrypted_email = email_crypto.prepare_email_for_storage(email)
+                email_hash, encrypted_email = email_crypto.prepare_email_for_storage(
+                    email
+                )
             except Exception as e:
                 logger.warning(f"Email encryption failed (non-fatal): {e}")
 
@@ -261,21 +289,36 @@ class AuthenticationManager:
                 "INSERT INTO accounts (parent_id, username, password_hash, email, "
                 "email_hash, encrypted_email, device_id, role, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (parent_id, username, password_hash, None,
-                 email_hash, encrypted_email, device_id, role, created_at)
+                (
+                    parent_id,
+                    username,
+                    password_hash,
+                    None,
+                    email_hash,
+                    encrypted_email,
+                    device_id,
+                    role,
+                    created_at,
+                ),
             )
         except DB_ERRORS as e:
             logger.error(f"Failed to create parent account: {e}")
-            return False, 'Database error'
+            return False, "Database error"
 
         return True, parent_id
 
-    def authenticate_parent(self, username: str, password: str) -> Tuple[bool, Optional[dict]]:
-        rows = self.db.execute_query("SELECT parent_id, password_hash, failed_login_attempts, account_locked_until FROM accounts WHERE username = ?", (username,))
+    def authenticate_parent(
+        self, username: str, password: str
+    ) -> Tuple[bool, Optional[dict]]:
+        rows = self.db.execute_query(
+            "SELECT parent_id, password_hash, failed_login_attempts, account_locked_until FROM accounts WHERE username = ?",
+            (username,),
+        )
         if not rows:
-            return False, 'User not found'
+            return False, "User not found"
 
         row = rows[0]
+
         # row may be sqlite3.Row or dict-like
         def rget(idx, key=None):
             if isinstance(row, dict):
@@ -283,22 +326,28 @@ class AuthenticationManager:
             try:
                 return row[idx]
             except (IndexError, KeyError, TypeError) as e:
-                logger.warning(f"Failed to extract field '{key}' (index {idx}) from auth row: {e}")
+                logger.warning(
+                    f"Failed to extract field '{key}' (index {idx}) from auth row: {e}"
+                )
                 return None
 
-        parent_id = rget(0, 'parent_id')
-        password_hash = rget(1, 'password_hash')
+        parent_id = rget(0, "parent_id")
+        password_hash = rget(1, "password_hash")
 
         # Validate critical fields are present - fail early with clear error
         if not parent_id:
-            logger.error("Authentication failed: parent_id is None - database row malformed")
-            return False, 'Authentication system error'
+            logger.error(
+                "Authentication failed: parent_id is None - database row malformed"
+            )
+            return False, "Authentication system error"
         if not password_hash:
-            logger.error("Authentication failed: password_hash is None - database row malformed")
-            return False, 'Authentication system error'
+            logger.error(
+                "Authentication failed: password_hash is None - database row malformed"
+            )
+            return False, "Authentication system error"
 
-        failed = rget(2, 'failed_login_attempts') or 0
-        locked_until = rget(3, 'account_locked_until')
+        failed = rget(2, "failed_login_attempts") or 0
+        locked_until = rget(3, "account_locked_until")
 
         # Check lockout
         if locked_until:
@@ -307,7 +356,7 @@ class AuthenticationManager:
                 if locked_time.tzinfo is None:
                     locked_time = locked_time.replace(tzinfo=timezone.utc)
                 if locked_time > datetime.now(timezone.utc):
-                    return False, 'Invalid username or password'
+                    return False, "Invalid username or password"
             except ValueError as e:
                 logger.warning(f"Failed to check account lock status: {e}")
 
@@ -318,7 +367,9 @@ class AuthenticationManager:
             # Invalid hash format or type - treat as mismatch
             logger.debug(f"Password verification failed due to invalid format: {e}")
             verified = False
-        except Exception as e:  # Intentional catch-all: argon2 can raise varied internal errors
+        except (
+            Exception
+        ) as e:  # Intentional catch-all: argon2 can raise varied internal errors
             logger.warning(f"Unexpected error during password verification: {e}")
             verified = False
 
@@ -327,27 +378,33 @@ class AuthenticationManager:
             failed = (failed or 0) + 1
             try:
                 if failed >= 5:
-                    lock_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+                    lock_until = (
+                        datetime.now(timezone.utc) + timedelta(minutes=30)
+                    ).isoformat()
                 else:
                     lock_until = None
                 self.db.execute_write(
                     "UPDATE accounts SET failed_login_attempts = ?, account_locked_until = ? WHERE parent_id = ?",
-                    (failed, lock_until, parent_id)
+                    (failed, lock_until, parent_id),
                 )
             except DB_ERRORS as e:
-                logger.error(f"CRITICAL: Failed to update failed login attempts for {parent_id}: {e}")
+                logger.error(
+                    f"CRITICAL: Failed to update failed login attempts for {parent_id}: {e}"
+                )
                 # Don't return credentials error - return system error to prevent bypass
-                return False, 'Authentication system error. Please try again later.'
-            return False, 'Invalid username or password'
+                return False, "Authentication system error. Please try again later."
+            return False, "Invalid username or password"
 
         # Successful login: reset counters
         try:
             self.db.execute_write(
                 "UPDATE accounts SET failed_login_attempts = 0, account_locked_until = NULL, last_login = ? WHERE parent_id = ?",
-                (datetime.now(timezone.utc).isoformat(), parent_id)
+                (datetime.now(timezone.utc).isoformat(), parent_id),
             )
         except DB_ERRORS as e:
-            logger.error(f"Failed to reset login counters for {parent_id} after successful login: {e}")
+            logger.error(
+                f"Failed to reset login counters for {parent_id} after successful login: {e}"
+            )
 
         # Create session token
         session_token = secrets.token_hex(32)
@@ -356,9 +413,9 @@ class AuthenticationManager:
         expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
 
         session_data = {
-            'parent_id': parent_id,
-            'session_token': session_token,
-            'expires_at': expires_at  # Include expiry for cache validation
+            "parent_id": parent_id,
+            "session_token": session_token,
+            "expires_at": expires_at,  # Include expiry for cache validation
         }
 
         # Persist hashed token in auth_tokens table (never store raw token)
@@ -370,18 +427,29 @@ class AuthenticationManager:
                 """INSERT INTO auth_tokens
                    (token_id, user_id, parent_id, token_type, session_token, created_at, expires_at, is_valid)
                    VALUES (?, ?, ?, 'session', ?, ?, ?, 1)""",
-                (token_id, parent_id, parent_id, hashed_token, datetime.now(timezone.utc).isoformat(), expires_at)
+                (
+                    token_id,
+                    parent_id,
+                    parent_id,
+                    hashed_token,
+                    datetime.now(timezone.utc).isoformat(),
+                    expires_at,
+                ),
             )
             db_persisted = True
         except DB_ERRORS as e:
-            logger.warning(f"Failed to persist session token for {parent_id} to database: {e}")
+            logger.warning(
+                f"Failed to persist session token for {parent_id} to database: {e}"
+            )
 
         # Always cache the session (Redis or fallback) to ensure it's valid
         # This is critical when DB persistence fails - session still works until cache expires
         self._set_session_in_cache(session_token, session_data)
 
         if not db_persisted:
-            logger.warning(f"Session for {parent_id} is cached only - will not survive server restart")
+            logger.warning(
+                f"Session for {parent_id} is cached only - will not survive server restart"
+            )
 
         return True, session_data
 
@@ -403,7 +471,7 @@ class AuthenticationManager:
             hashed_token = hash_session_token(session_id)
             self.db.execute_write(
                 "UPDATE auth_tokens SET is_valid = 0 WHERE session_token = ?",
-                (hashed_token,)
+                (hashed_token,),
             )
 
             logger.info("Session logged out successfully")
@@ -426,14 +494,16 @@ class AuthenticationManager:
         try:
             # Check cache first for parent_id (performance optimization)
             cached_session = self._get_session_from_cache(session_token)
-            cached_parent_id = cached_session.get('parent_id') if cached_session else None
+            cached_parent_id = (
+                cached_session.get("parent_id") if cached_session else None
+            )
 
             # Always verify token validity and expiry from database
             # This ensures immediate effect when tokens are invalidated or expired
             hashed_token = hash_session_token(session_token)
             rows = self.db.execute_query(
                 "SELECT parent_id, expires_at FROM auth_tokens WHERE session_token = ? AND is_valid = 1",
-                (hashed_token,)
+                (hashed_token,),
             )
 
             if not rows:
@@ -443,8 +513,8 @@ class AuthenticationManager:
                 return False, None
 
             row = rows[0]
-            parent_id = row[0] if isinstance(row, tuple) else row['parent_id']
-            expires_str = row[1] if isinstance(row, tuple) else row['expires_at']
+            parent_id = row[0] if isinstance(row, tuple) else row["parent_id"]
+            expires_str = row[1] if isinstance(row, tuple) else row["expires_at"]
 
             # Check if token is expired
             try:
@@ -457,9 +527,9 @@ class AuthenticationManager:
                 logger.warning(f"Failed to parse token expiration time: {e}")
 
             session_data = {
-                'parent_id': parent_id,
-                'session_token': session_token,
-                'expires_at': expires_str  # Include expiry for cache validation
+                "parent_id": parent_id,
+                "session_token": session_token,
+                "expires_at": expires_str,  # Include expiry for cache validation
             }
 
             # Cache it (Redis or fallback) - only if not already cached
@@ -472,7 +542,9 @@ class AuthenticationManager:
             logger.error(f"Session validation failed: {e}")
             return False, None
 
-    def validate_session(self, session_token: str) -> Tuple[bool, Optional[AuthSession]]:
+    def validate_session(
+        self, session_token: str
+    ) -> Tuple[bool, Optional[AuthSession]]:
         """
         Validate a session token and return AuthSession object
 
@@ -491,19 +563,25 @@ class AuthenticationManager:
         try:
             rows = self.db.execute_query(
                 "SELECT encrypted_email, role FROM accounts WHERE parent_id = ?",
-                (parent_id,)
+                (parent_id,),
             )
-            encrypted = rows[0]['encrypted_email'] if rows else None
+            encrypted = rows[0]["encrypted_email"] if rows else None
             email = get_email_crypto().decrypt_email(encrypted) if encrypted else None
-            role = rows[0]['role'] if rows else 'parent'
+            role = rows[0]["role"] if rows else "parent"
         except (KeyError, IndexError, TypeError) as e:
-            logger.warning("Could not retrieve role/email for session (parent_id=%s): %s", parent_id, e)
+            logger.warning(
+                "Could not retrieve role/email for session (parent_id=%s): %s",
+                parent_id,
+                e,
+            )
             email = None
-            role = 'parent'
+            role = "parent"
         except DB_ERRORS as e:
-            logger.error(f"Database error retrieving role/email for session (parent_id={parent_id}): {e}")
+            logger.error(
+                f"Database error retrieving role/email for session (parent_id={parent_id}): {e}"
+            )
             email = None
-            role = 'parent'
+            role = "parent"
 
         # Create AuthSession object
         session = AuthSession(
@@ -511,7 +589,7 @@ class AuthenticationManager:
             role=role,
             session_token=session_token,
             email=email,
-            created_at=datetime.now(timezone.utc).isoformat()
+            created_at=datetime.now(timezone.utc).isoformat(),
         )
 
         return True, session
@@ -529,7 +607,8 @@ class AuthenticationManager:
         """
         # Validate email format
         import re
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(email_pattern, new_email):
             logger.warning(f"Invalid email format: {mask_email(new_email)}")
             return False
@@ -542,7 +621,7 @@ class AuthenticationManager:
             # Check if email already exists (use email_hash for lookup)
             rows = self.db.execute_query(
                 "SELECT parent_id FROM accounts WHERE email_hash = ? AND parent_id != ?",
-                (new_hash, parent_id)
+                (new_hash, parent_id),
             )
 
             if rows:
@@ -553,7 +632,7 @@ class AuthenticationManager:
             self.db.execute_write(
                 "UPDATE accounts SET email = NULL, email_hash = ?, encrypted_email = ? "
                 "WHERE parent_id = ?",
-                (new_hash, new_encrypted, parent_id)
+                (new_hash, new_encrypted, parent_id),
             )
 
             logger.info(f"Email updated for parent {parent_id[:8]}...")
@@ -564,10 +643,7 @@ class AuthenticationManager:
             return False
 
     def change_password(
-        self,
-        user_id: str,
-        current_password: str,
-        new_password: str
+        self, user_id: str, current_password: str, new_password: str
     ) -> Tuple[bool, Optional[str]]:
         """
         Change parent password
@@ -588,21 +664,24 @@ class AuthenticationManager:
 
             # Get current password hash from accounts table
             rows = self.db.execute_query(
-                "SELECT password_hash FROM accounts WHERE parent_id = ?",
-                (user_id,)
+                "SELECT password_hash FROM accounts WHERE parent_id = ?", (user_id,)
             )
 
             if not rows:
                 return False, "Parent not found"
 
             row = rows[0]
-            password_hash = row[0] if isinstance(row, tuple) else row['password_hash']
+            password_hash = row[0] if isinstance(row, tuple) else row["password_hash"]
 
             # Verify current password
             try:
                 verified = self.ph.verify(password_hash, current_password)
-            except Exception as e:  # Intentional catch-all: argon2 can raise varied internal errors
-                logger.debug(f"Password verification failed during password change: {e}")
+            except (
+                Exception
+            ) as e:  # Intentional catch-all: argon2 can raise varied internal errors
+                logger.debug(
+                    f"Password verification failed during password change: {e}"
+                )
                 verified = False
 
             if not verified:
@@ -611,20 +690,24 @@ class AuthenticationManager:
             # Hash new password
             try:
                 new_hash = self.ph.hash(new_password)
-            except Exception as e:  # Intentional catch-all: argon2 can raise varied internal errors
+            except (
+                Exception
+            ) as e:  # Intentional catch-all: argon2 can raise varied internal errors
                 logger.error(f"Password hashing failed during password change: {e}")
-                return False, "Password change failed due to server error. Please try again."
+                return (
+                    False,
+                    "Password change failed due to server error. Please try again.",
+                )
 
             # Update database
             self.db.execute_write(
                 "UPDATE accounts SET password_hash = ? WHERE parent_id = ?",
-                (new_hash, user_id)
+                (new_hash, user_id),
             )
 
             # Invalidate all sessions for security
             self.db.execute_write(
-                "UPDATE auth_tokens SET is_valid = 0 WHERE parent_id = ?",
-                (user_id,)
+                "UPDATE auth_tokens SET is_valid = 0 WHERE parent_id = ?", (user_id,)
             )
 
             # Remove from cache (Redis or fallback)
@@ -653,7 +736,7 @@ class AuthenticationManager:
                 SELECT parent_id, username, encrypted_email, created_at, last_login, role, email_verified
                 FROM accounts WHERE parent_id = ?
                 """,
-                (user_id,)
+                (user_id,),
             )
 
             if not result:
@@ -661,41 +744,55 @@ class AuthenticationManager:
 
             row = result[0]
             if isinstance(row, tuple):
-                parent_id, username, encrypted_email, created_at, last_login, role, email_verified = row
+                (
+                    parent_id,
+                    username,
+                    encrypted_email,
+                    created_at,
+                    last_login,
+                    role,
+                    email_verified,
+                ) = row
             else:
-                parent_id = row['parent_id']
-                username = row['username']
-                encrypted_email = row['encrypted_email']
-                created_at = row['created_at']
-                last_login = row['last_login']
+                parent_id = row["parent_id"]
+                username = row["username"]
+                encrypted_email = row["encrypted_email"]
+                created_at = row["created_at"]
+                last_login = row["last_login"]
                 try:
-                    role = row['role']
+                    role = row["role"]
                 except (KeyError, IndexError, TypeError):
-                    role = 'parent'
+                    role = "parent"
                 try:
-                    email_verified = row['email_verified']
+                    email_verified = row["email_verified"]
                 except (KeyError, IndexError, TypeError):
                     email_verified = False
 
             # Decrypt email from encrypted_email; never read plaintext column
-            email = get_email_crypto().decrypt_email(encrypted_email) if encrypted_email else None
+            email = (
+                get_email_crypto().decrypt_email(encrypted_email)
+                if encrypted_email
+                else None
+            )
 
             return {
-                'user_id': parent_id,
-                'parent_id': parent_id,
-                'username': username,
-                'email': email,
-                'role': role or 'parent',
-                'created_at': created_at,
-                'last_login': last_login,
-                'email_verified': bool(email_verified)
+                "user_id": parent_id,
+                "parent_id": parent_id,
+                "username": username,
+                "email": email,
+                "role": role or "parent",
+                "created_at": created_at,
+                "last_login": last_login,
+                "email_verified": bool(email_verified),
             }
 
         except DB_ERRORS as e:
             logger.error(f"Failed to get user info: {e}")
             return None
 
-    def generate_verification_token(self, user_id: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    def generate_verification_token(
+        self, user_id: str
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Generate email verification token
 
@@ -721,7 +818,13 @@ class AuthenticationManager:
                 INSERT INTO auth_tokens (token_id, user_id, token_type, token_hash, created_at, expires_at)
                 VALUES (?, ?, 'email_verification', ?, ?, ?)
                 """,
-                (token_id, user_id, token_hash, created_at.isoformat(), expires_at.isoformat())
+                (
+                    token_id,
+                    user_id,
+                    token_hash,
+                    created_at.isoformat(),
+                    expires_at.isoformat(),
+                ),
             )
 
             logger.info(f"Email verification token generated for user: {user_id}")
@@ -731,7 +834,9 @@ class AuthenticationManager:
             logger.error(f"Failed to generate verification token: {e}")
             return False, None, str(e)
 
-    def verify_email_token(self, token: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    def verify_email_token(
+        self, token: str
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Verify email verification token and mark email as verified
 
@@ -753,7 +858,7 @@ class AuthenticationManager:
                 WHERE token_hash = ? AND token_type = 'email_verification'
                   AND is_valid = 1 AND used_at IS NULL
                 """,
-                (token_hash,)
+                (token_hash,),
             )
 
             if not result:
@@ -762,7 +867,11 @@ class AuthenticationManager:
             token_id, user_id, expires_at = result[0]
 
             # Check expiration using proper datetime comparison
-            expires_dt = datetime.fromisoformat(expires_at) if isinstance(expires_at, str) else expires_at
+            expires_dt = (
+                datetime.fromisoformat(expires_at)
+                if isinstance(expires_at, str)
+                else expires_at
+            )
             if expires_dt.tzinfo is None:
                 expires_dt = expires_dt.replace(tzinfo=timezone.utc)
             if expires_dt < now:
@@ -771,13 +880,12 @@ class AuthenticationManager:
             # Mark token as used
             self.db.execute_write(
                 "UPDATE auth_tokens SET used_at = ?, is_valid = 0 WHERE token_id = ?",
-                (now.isoformat(), token_id)
+                (now.isoformat(), token_id),
             )
 
             # Mark email as verified
             self.db.execute_write(
-                "UPDATE accounts SET email_verified = 1 WHERE parent_id = ?",
-                (user_id,)
+                "UPDATE accounts SET email_verified = 1 WHERE parent_id = ?", (user_id,)
             )
 
             logger.info(f"Email verified for user: {user_id}")
@@ -787,7 +895,9 @@ class AuthenticationManager:
             logger.error(f"Email verification failed: {e}")
             return False, None, str(e)
 
-    def generate_password_reset_token(self, email: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    def generate_password_reset_token(
+        self, email: str
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Generate password reset token
 
@@ -803,8 +913,7 @@ class AuthenticationManager:
             email_hash = email_crypto.hash_email(email)
 
             result = self.db.execute_read(
-                "SELECT parent_id FROM accounts WHERE email_hash = ?",
-                (email_hash,)
+                "SELECT parent_id FROM accounts WHERE email_hash = ?", (email_hash,)
             )
 
             if not result:
@@ -812,7 +921,9 @@ class AuthenticationManager:
                 logger.warning(f"Password reset requested for non-existent email")
                 return True, None, None
 
-            user_id = result[0]['parent_id'] if isinstance(result[0], dict) else result[0][0]
+            user_id = (
+                result[0]["parent_id"] if isinstance(result[0], dict) else result[0][0]
+            )
 
             # Invalidate any existing password reset tokens for this user
             self.db.execute_write(
@@ -821,7 +932,7 @@ class AuthenticationManager:
                 SET is_valid = 0
                 WHERE user_id = ? AND token_type = 'password_reset' AND is_valid = 1
                 """,
-                (user_id,)
+                (user_id,),
             )
 
             # Generate secure random token
@@ -839,7 +950,13 @@ class AuthenticationManager:
                 INSERT INTO auth_tokens (token_id, user_id, token_type, token_hash, created_at, expires_at)
                 VALUES (?, ?, 'password_reset', ?, ?, ?)
                 """,
-                (token_id, user_id, token_hash, created_at.isoformat(), expires_at.isoformat())
+                (
+                    token_id,
+                    user_id,
+                    token_hash,
+                    created_at.isoformat(),
+                    expires_at.isoformat(),
+                ),
             )
 
             logger.info(f"Password reset token generated for user: {user_id}")
@@ -849,7 +966,9 @@ class AuthenticationManager:
             logger.error(f"Failed to generate password reset token: {e}")
             return False, None, str(e)
 
-    def reset_password_with_token(self, token: str, new_password: str) -> Tuple[bool, Optional[str]]:
+    def reset_password_with_token(
+        self, token: str, new_password: str
+    ) -> Tuple[bool, Optional[str]]:
         """
         Reset password using reset token
 
@@ -872,7 +991,7 @@ class AuthenticationManager:
                 WHERE token_hash = ? AND token_type = 'password_reset'
                   AND is_valid = 1 AND used_at IS NULL
                 """,
-                (token_hash,)
+                (token_hash,),
             )
 
             if not result:
@@ -881,7 +1000,11 @@ class AuthenticationManager:
             token_id, user_id, expires_at = result[0]
 
             # Check expiration using proper datetime comparison
-            expires_dt = datetime.fromisoformat(expires_at) if isinstance(expires_at, str) else expires_at
+            expires_dt = (
+                datetime.fromisoformat(expires_at)
+                if isinstance(expires_at, str)
+                else expires_at
+            )
             if expires_dt.tzinfo is None:
                 expires_dt = expires_dt.replace(tzinfo=timezone.utc)
             if expires_dt < now:
@@ -895,26 +1018,27 @@ class AuthenticationManager:
             # Hash new password using PasswordHasher (Argon2/PBKDF2 includes salt internally)
             try:
                 new_hash = self.ph.hash(new_password)
-            except Exception as e:  # Intentional catch-all: argon2 can raise varied internal errors
+            except (
+                Exception
+            ) as e:  # Intentional catch-all: argon2 can raise varied internal errors
                 logger.error(f"Password hashing failed during reset: {e}")
                 return False, "Password reset failed. Please try again."
 
             # Update password (note: modern hashers include salt in the hash)
             self.db.execute_write(
                 "UPDATE accounts SET password_hash = ? WHERE parent_id = ?",
-                (new_hash, user_id)
+                (new_hash, user_id),
             )
 
             # Mark token as used
             self.db.execute_write(
                 "UPDATE auth_tokens SET used_at = ?, is_valid = 0 WHERE token_id = ?",
-                (now.isoformat(), token_id)
+                (now.isoformat(), token_id),
             )
 
             # Invalidate all sessions for security
             self.db.execute_write(
-                "UPDATE auth_tokens SET is_valid = 0 WHERE parent_id = ?",
-                (user_id,)
+                "UPDATE auth_tokens SET is_valid = 0 WHERE parent_id = ?", (user_id,)
             )
 
             # Clear session cache (Redis or fallback)
@@ -939,8 +1063,7 @@ class AuthenticationManager:
 
             # Delete expired sessions
             result = self.db.execute_write(
-                "DELETE FROM auth_tokens WHERE expires_at < ? OR is_valid = 0",
-                (now,)
+                "DELETE FROM auth_tokens WHERE expires_at < ? OR is_valid = 0", (now,)
             )
 
             count = result if result else 0
@@ -955,6 +1078,7 @@ class AuthenticationManager:
 # Create a default auth_manager instance for tests and runtime convenience.
 try:
     from storage.database import db_manager as default_db_manager
+
     auth_manager = AuthenticationManager(default_db_manager)
 except ImportError:
     # Fall back to an in-memory manager if DB not available during import

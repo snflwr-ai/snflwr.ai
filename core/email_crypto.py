@@ -61,10 +61,7 @@ class EmailCrypto:
             Tuple of (email_hash, encrypted_email)
         """
         normalized = email.lower().strip()
-        return (
-            self.hash_email(normalized),
-            self.encrypt_email(normalized)
-        )
+        return (self.hash_email(normalized), self.encrypt_email(normalized))
 
 
 # Singleton instance

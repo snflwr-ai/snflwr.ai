@@ -34,11 +34,11 @@ class PartitionDetector:
         usb_mounts = []
 
         try:
-            if self.platform == 'Windows':
+            if self.platform == "Windows":
                 usb_mounts = self._detect_windows_usb()
-            elif self.platform == 'Darwin':  # macOS
+            elif self.platform == "Darwin":  # macOS
                 usb_mounts = self._detect_macos_usb()
-            elif self.platform == 'Linux':
+            elif self.platform == "Linux":
                 usb_mounts = self._detect_linux_usb()
             else:
                 logger.warning(f"Unsupported platform: {self.platform}")
@@ -92,7 +92,12 @@ class PartitionDetector:
             if volumes_path.exists():
                 # Exclude macOS system volumes
                 for volume in volumes_path.iterdir():
-                    if volume.is_dir() and volume.name not in ["Macintosh HD", "Preboot", "Recovery", "VM"]:
+                    if volume.is_dir() and volume.name not in [
+                        "Macintosh HD",
+                        "Preboot",
+                        "Recovery",
+                        "VM",
+                    ]:
                         usb_mounts.append(volume)
                         logger.info(f"Found USB mount: {volume}")
 
@@ -170,6 +175,7 @@ class PartitionDetector:
             Path to data directory if found, or None
         """
         from config import system_config
+
         data_dir = system_config.APP_DATA_DIR
 
         if data_dir.exists():

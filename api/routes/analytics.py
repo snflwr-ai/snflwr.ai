@@ -16,7 +16,7 @@ from api.middleware.auth import (
     get_current_session,
     VerifyProfileAccess,
     VerifySessionAccess,
-    audit_log
+    audit_log,
 )
 from utils.logger import get_logger
 
@@ -27,9 +27,7 @@ router = APIRouter()
 
 @router.get("/usage/{profile_id}")
 async def get_usage_stats(
-    profile_id: str,
-    days: int = 7,
-    session: AuthSession = Depends(VerifyProfileAccess)
+    profile_id: str, days: int = 7, session: AuthSession = Depends(VerifyProfileAccess)
 ):
     """
     Get usage statistics for a profile
@@ -40,7 +38,7 @@ async def get_usage_stats(
         stats = session_manager.get_usage_stats(profile_id, days)
 
         # Audit log
-        audit_log('read', 'usage_stats', profile_id, session)
+        audit_log("read", "usage_stats", profile_id, session)
 
         return stats
     except HTTPException:
@@ -57,7 +55,7 @@ async def get_usage_stats(
 async def get_activity_log(
     profile_id: str,
     limit: int = 50,
-    session: AuthSession = Depends(VerifyProfileAccess)
+    session: AuthSession = Depends(VerifyProfileAccess),
 ):
     """
     Get activity log for a profile
@@ -68,12 +66,9 @@ async def get_activity_log(
         sessions = session_manager.get_session_history(profile_id, limit)
 
         # Audit log
-        audit_log('read', 'activity_log', profile_id, session)
+        audit_log("read", "activity_log", profile_id, session)
 
-        return {
-            "sessions": [s.to_dict() for s in sessions],
-            "count": len(sessions)
-        }
+        return {"sessions": [s.to_dict() for s in sessions], "count": len(sessions)}
     except HTTPException:
         raise
     except DB_ERRORS as e:
@@ -86,8 +81,7 @@ async def get_activity_log(
 
 @router.get("/messages/{session_id}")
 async def get_session_messages(
-    session_id: str,
-    auth_session: AuthSession = Depends(VerifySessionAccess)
+    session_id: str, auth_session: AuthSession = Depends(VerifySessionAccess)
 ):
     """
     Get all messages in a session
@@ -99,12 +93,9 @@ async def get_session_messages(
         messages = session_manager.get_messages(session_id)
 
         # Audit log
-        audit_log('read', 'session_messages', session_id, auth_session)
+        audit_log("read", "session_messages", session_id, auth_session)
 
-        return {
-            "messages": messages,
-            "count": len(messages)
-        }
+        return {"messages": messages, "count": len(messages)}
     except HTTPException:
         raise
     except DB_ERRORS as e:

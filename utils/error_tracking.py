@@ -25,6 +25,7 @@ logger = get_logger(__name__)
 @dataclass
 class ErrorRecord:
     """Detailed error record"""
+
     error_id: int
     error_hash: str
     error_type: str
@@ -64,10 +65,10 @@ class ErrorTracker:
     def capture_exception(
         self,
         exception: Exception,
-        severity: str = 'error',
+        severity: str = "error",
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
-        context: Optional[Dict] = None
+        context: Optional[Dict] = None,
     ) -> int:
         """
         Capture and log an exception with full context
@@ -89,9 +90,9 @@ class ErrorTracker:
             exc_tb = exception.__traceback__
 
             # Get stack trace
-            stack_trace = ''.join(traceback.format_exception(
-                type(exception), exception, exc_tb
-            ))
+            stack_trace = "".join(
+                traceback.format_exception(type(exception), exception, exc_tb)
+            )
 
             # Extract location info
             if exc_tb:
@@ -100,8 +101,8 @@ class ErrorTracker:
                 function = frame.name
                 line_number = frame.lineno
             else:
-                module = 'unknown'
-                function = 'unknown'
+                module = "unknown"
+                function = "unknown"
                 line_number = 0
 
             # Generate error hash for deduplication
@@ -114,7 +115,7 @@ class ErrorTracker:
 
             if existing_error:
                 # Update existing error
-                error_id = self._update_error_occurrence(existing_error['error_id'])
+                error_id = self._update_error_occurrence(existing_error["error_id"])
             else:
                 # Create new error record
                 error_id = self._create_error_record(
@@ -128,7 +129,7 @@ class ErrorTracker:
                     severity=severity,
                     user_id=user_id,
                     session_id=session_id,
-                    context=context
+                    context=context,
                 )
 
             # Check if we should alert
@@ -138,10 +139,10 @@ class ErrorTracker:
             logger.error(
                 f"Exception captured: {exc_type} in {module}:{line_number}",
                 extra={
-                    'error_id': error_id,
-                    'error_hash': error_hash,
-                    'user_id': user_id
-                }
+                    "error_id": error_id,
+                    "error_hash": error_hash,
+                    "user_id": user_id,
+                },
             )
 
             return error_id
@@ -156,14 +157,14 @@ class ErrorTracker:
         self,
         error_type: str,
         error_message: str,
-        severity: str = 'error',
+        severity: str = "error",
         module: Optional[str] = None,
         function: Optional[str] = None,
         line_number: Optional[int] = None,
         stack_trace: Optional[str] = None,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
-        context: Optional[Dict] = None
+        context: Optional[Dict] = None,
     ) -> int:
         """
         Capture a custom error without exception object
@@ -200,20 +201,20 @@ class ErrorTracker:
             existing_error = self._get_error_by_hash(error_hash)
 
             if existing_error:
-                error_id = self._update_error_occurrence(existing_error['error_id'])
+                error_id = self._update_error_occurrence(existing_error["error_id"])
             else:
                 error_id = self._create_error_record(
                     error_hash=error_hash,
                     error_type=error_type,
                     error_message=error_message,
-                    module=module or 'unknown',
-                    function=function or 'unknown',
+                    module=module or "unknown",
+                    function=function or "unknown",
                     line_number=line_number or 0,
-                    stack_trace=stack_trace or '',
+                    stack_trace=stack_trace or "",
                     severity=severity,
                     user_id=user_id,
                     session_id=session_id,
-                    context=context
+                    context=context,
                 )
 
             # Check alert threshold
@@ -231,7 +232,7 @@ class ErrorTracker:
         error_message: str,
         module: str,
         function: str,
-        line_number: int
+        line_number: int,
     ) -> str:
         """Generate unique hash for error deduplication"""
         hash_input = f"{error_type}:{module}:{function}:{line_number}"
@@ -245,7 +246,7 @@ class ErrorTracker:
             FROM error_tracking
             WHERE error_hash = ? AND resolved = 0
             """,
-            (error_hash,)
+            (error_hash,),
         )
         return results[0] if results else None
 
@@ -261,7 +262,7 @@ class ErrorTracker:
         severity: str,
         user_id: Optional[str],
         session_id: Optional[str],
-        context: Optional[Dict]
+        context: Optional[Dict],
     ) -> int:
         """Create new error record"""
         now = datetime.now(timezone.utc).isoformat()
@@ -275,19 +276,30 @@ class ErrorTracker:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                error_hash, error_type, error_message, module, function,
-                line_number, stack_trace, now, now,
-                1, severity, False, user_id, session_id,
-                str(context) if context else None
-            )
+                error_hash,
+                error_type,
+                error_message,
+                module,
+                function,
+                line_number,
+                stack_trace,
+                now,
+                now,
+                1,
+                severity,
+                False,
+                user_id,
+                session_id,
+                str(context) if context else None,
+            ),
         )
 
         # Get the error ID
         result = self.db.execute_query(
             "SELECT error_id FROM error_tracking WHERE error_hash = ? ORDER BY error_id DESC LIMIT 1",
-            (error_hash,)
+            (error_hash,),
         )
-        return result[0]['error_id'] if result else -1
+        return result[0]["error_id"] if result else -1
 
     def _update_error_occurrence(self, error_id: int) -> int:
         """Update error occurrence count and last_seen"""
@@ -300,7 +312,7 @@ class ErrorTracker:
                 last_seen = ?
             WHERE error_id = ?
             """,
-            (now, error_id)
+            (now, error_id),
         )
 
         return error_id
@@ -316,14 +328,13 @@ class ErrorTracker:
             # Remove old occurrences outside time window
             cutoff_time = now - timedelta(seconds=self.ERROR_TIME_WINDOW)
             self._error_cache[error_hash] = [
-                t for t in self._error_cache[error_hash]
-                if t > cutoff_time
+                t for t in self._error_cache[error_hash] if t > cutoff_time
             ]
 
             # Check threshold
             occurrence_count = len(self._error_cache[error_hash])
 
-            if severity == 'critical' and occurrence_count >= 1:
+            if severity == "critical" and occurrence_count >= 1:
                 self._send_alert(error_hash, occurrence_count, severity)
             elif occurrence_count >= self.CRITICAL_ERROR_THRESHOLD:
                 self._send_alert(error_hash, occurrence_count, severity)
@@ -336,6 +347,7 @@ class ErrorTracker:
         try:
             from utils.email_alerts import email_alert_system
             from config import system_config
+
             if system_config.SMTP_ENABLED and system_config.ADMIN_EMAIL:
                 error_summary = (
                     f"[{severity.upper()}] Error {error_hash} — "
@@ -368,9 +380,9 @@ class ErrorTracker:
             FROM error_tracking
             WHERE first_seen >= ?
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
-        total_errors = total_result[0]['count'] if total_result else 0
+        total_errors = total_result[0]["count"] if total_result else 0
 
         # By severity
         severity_result = self.db.execute_query(
@@ -380,7 +392,7 @@ class ErrorTracker:
             WHERE first_seen >= ?
             GROUP BY severity
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
 
         # Unresolved errors
@@ -390,9 +402,9 @@ class ErrorTracker:
             FROM error_tracking
             WHERE resolved = 0
             """,
-            ()
+            (),
         )
-        unresolved_errors = unresolved_result[0]['count'] if unresolved_result else 0
+        unresolved_errors = unresolved_result[0]["count"] if unresolved_result else 0
 
         # Most frequent errors
         frequent_errors = self.db.execute_query(
@@ -403,15 +415,15 @@ class ErrorTracker:
             ORDER BY occurrence_count DESC
             LIMIT 10
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
 
         return {
-            'period_days': days,
-            'total_unique_errors': total_errors,
-            'unresolved_errors': unresolved_errors,
-            'by_severity': [dict(row) for row in severity_result],
-            'most_frequent': [dict(row) for row in frequent_errors]
+            "period_days": days,
+            "total_unique_errors": total_errors,
+            "unresolved_errors": unresolved_errors,
+            "by_severity": [dict(row) for row in severity_result],
+            "most_frequent": [dict(row) for row in frequent_errors],
         }
 
     def get_error_details(self, error_id: int) -> Optional[ErrorRecord]:
@@ -420,7 +432,7 @@ class ErrorTracker:
             """
             SELECT * FROM error_tracking WHERE error_id = ?
             """,
-            (error_id,)
+            (error_id,),
         )
 
         if not results:
@@ -428,25 +440,27 @@ class ErrorTracker:
 
         row = results[0]
         return ErrorRecord(
-            error_id=row['error_id'],
-            error_hash=row['error_hash'],
-            error_type=row['error_type'],
-            error_message=row['error_message'],
-            module=row['module'],
-            function=row['function'],
-            line_number=row['line_number'],
-            stack_trace=row['stack_trace'],
-            first_seen=datetime.fromisoformat(row['first_seen']),
-            last_seen=datetime.fromisoformat(row['last_seen']),
-            occurrence_count=row['occurrence_count'],
-            severity=row['severity'],
-            resolved=bool(row['resolved']),
-            user_id=row.get('user_id'),
-            session_id=row.get('session_id'),
-            context=json.loads(row['context']) if row.get('context') else None
+            error_id=row["error_id"],
+            error_hash=row["error_hash"],
+            error_type=row["error_type"],
+            error_message=row["error_message"],
+            module=row["module"],
+            function=row["function"],
+            line_number=row["line_number"],
+            stack_trace=row["stack_trace"],
+            first_seen=datetime.fromisoformat(row["first_seen"]),
+            last_seen=datetime.fromisoformat(row["last_seen"]),
+            occurrence_count=row["occurrence_count"],
+            severity=row["severity"],
+            resolved=bool(row["resolved"]),
+            user_id=row.get("user_id"),
+            session_id=row.get("session_id"),
+            context=json.loads(row["context"]) if row.get("context") else None,
         )
 
-    def mark_resolved(self, error_id: int, resolution_notes: Optional[str] = None) -> bool:
+    def mark_resolved(
+        self, error_id: int, resolution_notes: Optional[str] = None
+    ) -> bool:
         """Mark an error as resolved"""
         try:
             self.db.execute_write(
@@ -455,7 +469,7 @@ class ErrorTracker:
                 SET resolved = 1, resolution_notes = ?, resolved_at = ?
                 WHERE error_id = ?
                 """,
-                (resolution_notes, datetime.now(timezone.utc).isoformat(), error_id)
+                (resolution_notes, datetime.now(timezone.utc).isoformat(), error_id),
             )
 
             logger.info(f"Error {error_id} marked as resolved")
@@ -475,7 +489,9 @@ class ErrorTracker:
         Returns:
             Number of errors deleted
         """
-        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        cutoff_date = (
+            datetime.now(timezone.utc) - timedelta(days=retention_days)
+        ).isoformat()
 
         # Count before deletion
         count_result = self.db.execute_query(
@@ -484,9 +500,9 @@ class ErrorTracker:
             FROM error_tracking
             WHERE resolved = 1 AND resolved_at < ?
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
-        count = count_result[0]['count'] if count_result else 0
+        count = count_result[0]["count"] if count_result else 0
 
         if count > 0:
             self.db.execute_write(
@@ -494,7 +510,7 @@ class ErrorTracker:
                 DELETE FROM error_tracking
                 WHERE resolved = 1 AND resolved_at < ?
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
 
             logger.info(f"Cleaned up {count} old resolved errors")
@@ -503,7 +519,7 @@ class ErrorTracker:
 
 
 # Global exception handler decorator
-def track_exceptions(severity: str = 'error'):
+def track_exceptions(severity: str = "error"):
     """
     Decorator to automatically track exceptions from functions
 
@@ -512,22 +528,27 @@ def track_exceptions(severity: str = 'error'):
         def my_function():
             ...
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
-            except Exception as e:  # Intentional catch-all: error tracker must not crash
+            except (
+                Exception
+            ) as e:  # Intentional catch-all: error tracker must not crash
                 error_tracker.capture_exception(
                     e,
                     severity=severity,
                     context={
-                        'function': func.__name__,
-                        'args': str(args)[:200],
-                        'kwargs': str(kwargs)[:200]
-                    }
+                        "function": func.__name__,
+                        "args": str(args)[:200],
+                        "kwargs": str(kwargs)[:200],
+                    },
                 )
                 raise  # Re-raise the exception
+
         return wrapper
+
     return decorator
 
 
@@ -536,9 +557,4 @@ error_tracker = ErrorTracker()
 
 
 # Export public interface
-__all__ = [
-    'ErrorTracker',
-    'ErrorRecord',
-    'error_tracker',
-    'track_exceptions'
-]
+__all__ = ["ErrorTracker", "ErrorRecord", "error_tracker", "track_exceptions"]

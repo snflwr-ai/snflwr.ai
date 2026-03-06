@@ -30,126 +30,128 @@ logger = get_logger(__name__)
 
 # Track failed tasks for alerting
 _failed_task_counts: Dict[str, int] = {}
-_ALERT_THRESHOLD = int(os.getenv('CELERY_FAILURE_ALERT_THRESHOLD', '3'))
+_ALERT_THRESHOLD = int(os.getenv("CELERY_FAILURE_ALERT_THRESHOLD", "3"))
 
 
 # Initialize Celery app
 celery_app = Celery(
-    'snflwr_tasks',
-    broker=system_config.REDIS_URL,
-    backend=system_config.REDIS_URL
+    "snflwr_tasks", broker=system_config.REDIS_URL, backend=system_config.REDIS_URL
 )
 
 
 # Celery Configuration
 celery_app.conf.update(
     # Task settings
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
     enable_utc=True,
-
     # Task execution settings
     task_acks_late=True,  # Acknowledge task after completion
     task_reject_on_worker_lost=True,  # Reject task if worker dies
     task_time_limit=300,  # 5 minutes hard limit
     task_soft_time_limit=240,  # 4 minutes soft limit
-
     # Result backend settings
     result_expires=3600,  # Results expire after 1 hour
     result_persistent=True,  # Persist results to disk
-
     # Worker settings
     worker_prefetch_multiplier=4,  # Number of tasks to prefetch
     worker_max_tasks_per_child=1000,  # Recycle workers after N tasks
     worker_disable_rate_limits=False,
-
     # Routing
     task_routes={
-        'tasks.background_tasks.send_email': {'queue': 'email'},
-        'tasks.background_tasks.send_safety_alert': {'queue': 'email'},
-        'tasks.background_tasks.send_batch_emails': {'queue': 'email'},
-        'tasks.background_tasks.send_daily_safety_digests': {'queue': 'email'},
-        'tasks.background_tasks.cleanup_old_messages': {'queue': 'maintenance'},
-        'tasks.background_tasks.cleanup_old_sessions': {'queue': 'maintenance'},
-        'tasks.background_tasks.cleanup_old_incidents': {'queue': 'maintenance'},
-        'tasks.background_tasks.cleanup_audit_logs': {'queue': 'maintenance'},
-        'tasks.background_tasks.cleanup_ended_sessions': {'queue': 'maintenance'},
-        'tasks.background_tasks.cleanup_analytics': {'queue': 'maintenance'},
-        'tasks.background_tasks.vacuum_database': {'queue': 'maintenance'},
-        'tasks.background_tasks.generate_ai_batch': {'queue': 'ai'},
-        'tasks.background_tasks.export_user_data': {'queue': 'data'},
-        'tasks.background_tasks.delete_user_data': {'queue': 'data'},
+        "tasks.background_tasks.send_email": {"queue": "email"},
+        "tasks.background_tasks.send_safety_alert": {"queue": "email"},
+        "tasks.background_tasks.send_batch_emails": {"queue": "email"},
+        "tasks.background_tasks.send_daily_safety_digests": {"queue": "email"},
+        "tasks.background_tasks.cleanup_old_messages": {"queue": "maintenance"},
+        "tasks.background_tasks.cleanup_old_sessions": {"queue": "maintenance"},
+        "tasks.background_tasks.cleanup_old_incidents": {"queue": "maintenance"},
+        "tasks.background_tasks.cleanup_audit_logs": {"queue": "maintenance"},
+        "tasks.background_tasks.cleanup_ended_sessions": {"queue": "maintenance"},
+        "tasks.background_tasks.cleanup_analytics": {"queue": "maintenance"},
+        "tasks.background_tasks.vacuum_database": {"queue": "maintenance"},
+        "tasks.background_tasks.generate_ai_batch": {"queue": "ai"},
+        "tasks.background_tasks.export_user_data": {"queue": "data"},
+        "tasks.background_tasks.delete_user_data": {"queue": "data"},
     },
-
     # Queue definitions with dead letter queue for failed tasks
     task_queues=(
-        Queue('default', Exchange('default'), routing_key='default'),
-        Queue('email', Exchange('email'), routing_key='email', priority=8),
-        Queue('ai', Exchange('ai'), routing_key='ai', priority=6),
-        Queue('data', Exchange('data'), routing_key='data', priority=5),
-        Queue('maintenance', Exchange('maintenance'), routing_key='maintenance', priority=3),
+        Queue("default", Exchange("default"), routing_key="default"),
+        Queue("email", Exchange("email"), routing_key="email", priority=8),
+        Queue("ai", Exchange("ai"), routing_key="ai", priority=6),
+        Queue("data", Exchange("data"), routing_key="data", priority=5),
+        Queue(
+            "maintenance",
+            Exchange("maintenance"),
+            routing_key="maintenance",
+            priority=3,
+        ),
         # Dead letter queue for permanently failed tasks
-        Queue('dead_letter', Exchange('dead_letter'), routing_key='dead_letter', priority=1),
+        Queue(
+            "dead_letter",
+            Exchange("dead_letter"),
+            routing_key="dead_letter",
+            priority=1,
+        ),
     ),
-
     # Beat schedule (periodic tasks)
     beat_schedule={
-        'cleanup-old-messages': {
-            'task': 'tasks.background_tasks.cleanup_old_messages',
-            'schedule': timedelta(hours=6),  # Every 6 hours
-            'options': {'queue': 'maintenance'}
+        "cleanup-old-messages": {
+            "task": "tasks.background_tasks.cleanup_old_messages",
+            "schedule": timedelta(hours=6),  # Every 6 hours
+            "options": {"queue": "maintenance"},
         },
-        'cleanup-old-sessions': {
-            'task': 'tasks.background_tasks.cleanup_old_sessions',
-            'schedule': timedelta(hours=12),  # Every 12 hours
-            'options': {'queue': 'maintenance'}
+        "cleanup-old-sessions": {
+            "task": "tasks.background_tasks.cleanup_old_sessions",
+            "schedule": timedelta(hours=12),  # Every 12 hours
+            "options": {"queue": "maintenance"},
         },
-        'cleanup-old-incidents': {
-            'task': 'tasks.background_tasks.cleanup_old_incidents',
-            'schedule': timedelta(days=1),  # Daily
-            'options': {'queue': 'maintenance'}
+        "cleanup-old-incidents": {
+            "task": "tasks.background_tasks.cleanup_old_incidents",
+            "schedule": timedelta(days=1),  # Daily
+            "options": {"queue": "maintenance"},
         },
-        'send-daily-safety-digests': {
-            'task': 'tasks.background_tasks.send_daily_safety_digests',
-            'schedule': timedelta(days=1),  # Daily at midnight UTC
-            'options': {'queue': 'email'}
+        "send-daily-safety-digests": {
+            "task": "tasks.background_tasks.send_daily_safety_digests",
+            "schedule": timedelta(days=1),  # Daily at midnight UTC
+            "options": {"queue": "email"},
         },
-        'cleanup-audit-logs': {
-            'task': 'tasks.background_tasks.cleanup_audit_logs',
-            'schedule': timedelta(days=1),  # Daily
-            'options': {'queue': 'maintenance'}
+        "cleanup-audit-logs": {
+            "task": "tasks.background_tasks.cleanup_audit_logs",
+            "schedule": timedelta(days=1),  # Daily
+            "options": {"queue": "maintenance"},
         },
-        'cleanup-ended-sessions': {
-            'task': 'tasks.background_tasks.cleanup_ended_sessions',
-            'schedule': timedelta(days=1),  # Daily
-            'options': {'queue': 'maintenance'}
+        "cleanup-ended-sessions": {
+            "task": "tasks.background_tasks.cleanup_ended_sessions",
+            "schedule": timedelta(days=1),  # Daily
+            "options": {"queue": "maintenance"},
         },
-        'cleanup-analytics': {
-            'task': 'tasks.background_tasks.cleanup_analytics',
-            'schedule': timedelta(days=7),  # Weekly
-            'options': {'queue': 'maintenance'}
+        "cleanup-analytics": {
+            "task": "tasks.background_tasks.cleanup_analytics",
+            "schedule": timedelta(days=7),  # Weekly
+            "options": {"queue": "maintenance"},
         },
-        'vacuum-database': {
-            'task': 'tasks.background_tasks.vacuum_database',
-            'schedule': timedelta(days=7),  # Weekly
-            'options': {'queue': 'maintenance'}
+        "vacuum-database": {
+            "task": "tasks.background_tasks.vacuum_database",
+            "schedule": timedelta(days=7),  # Weekly
+            "options": {"queue": "maintenance"},
         },
     },
 )
 
 
 # Import tasks to register them
-celery_app.autodiscover_tasks(['tasks'])
+celery_app.autodiscover_tasks(["tasks"])
 
 
 # Celery event handlers
 @celery_app.task(bind=True)
 def debug_task(self):
     """Debug task to test Celery configuration"""
-    logger.info(f'Request: {self.request!r}')
-    return f'Celery is working! Task ID: {self.request.id}'
+    logger.info(f"Request: {self.request!r}")
+    return f"Celery is working! Task ID: {self.request.id}"
 
 
 # Task monitoring
@@ -163,17 +165,25 @@ def setup_periodic_tasks(sender, **kwargs):
 # Celery Signal Handlers for Task Lifecycle Management
 # ==============================================================================
 
+
 @signals.task_failure.connect
-def handle_task_failure(sender=None, task_id=None, exception=None,
-                        args=None, kwargs=None, traceback=None,
-                        einfo=None, **kw):
+def handle_task_failure(
+    sender=None,
+    task_id=None,
+    exception=None,
+    args=None,
+    kwargs=None,
+    traceback=None,
+    einfo=None,
+    **kw,
+):
     """
     Handle task failures with alerting and dead letter queue routing.
 
     This signal fires when a task raises an exception and fails permanently
     (after all retries are exhausted).
     """
-    task_name = sender.name if sender else 'unknown'
+    task_name = sender.name if sender else "unknown"
 
     # Track failure count for this task
     _failed_task_counts[task_name] = _failed_task_counts.get(task_name, 0) + 1
@@ -183,26 +193,26 @@ def handle_task_failure(sender=None, task_id=None, exception=None,
     logger.error(
         f"Task failed permanently",
         extra={
-            'task_id': task_id,
-            'task_name': task_name,
-            'exception': str(exception),
-            'args': args,
-            'kwargs': kwargs,
-            'failure_count': failure_count,
-        }
+            "task_id": task_id,
+            "task_name": task_name,
+            "exception": str(exception),
+            "args": args,
+            "kwargs": kwargs,
+            "failure_count": failure_count,
+        },
     )
 
     # Send to dead letter queue for later inspection/replay
     try:
         dead_letter_payload = {
-            'task_id': task_id,
-            'task_name': task_name,
-            'exception': str(exception),
-            'exception_type': type(exception).__name__,
-            'args': args,
-            'kwargs': kwargs,
-            'failed_at': datetime.now(timezone.utc).isoformat(),
-            'traceback': str(einfo) if einfo else None,
+            "task_id": task_id,
+            "task_name": task_name,
+            "exception": str(exception),
+            "exception_type": type(exception).__name__,
+            "args": args,
+            "kwargs": kwargs,
+            "failed_at": datetime.now(timezone.utc).isoformat(),
+            "traceback": str(einfo) if einfo else None,
         }
         store_failed_task.delay(dead_letter_payload)
     except (ConnectionError, OSError, RedisError) as e:
@@ -215,6 +225,7 @@ def handle_task_failure(sender=None, task_id=None, exception=None,
     # Update Prometheus metrics if available
     try:
         from utils.metrics import celery_task_failures
+
         celery_task_failures.labels(task_name=task_name).inc()
     except ImportError:
         pass
@@ -227,23 +238,24 @@ def handle_task_retry(sender=None, request=None, reason=None, einfo=None, **kw):
 
     This signal fires when a task is being retried after a failure.
     """
-    task_name = sender.name if sender else 'unknown'
-    task_id = request.id if request else 'unknown'
+    task_name = sender.name if sender else "unknown"
+    task_id = request.id if request else "unknown"
     retry_count = request.retries if request else 0
 
     logger.warning(
         f"Task retry attempt",
         extra={
-            'task_id': task_id,
-            'task_name': task_name,
-            'retry_count': retry_count,
-            'reason': str(reason),
-        }
+            "task_id": task_id,
+            "task_name": task_name,
+            "retry_count": retry_count,
+            "reason": str(reason),
+        },
     )
 
     # Update Prometheus metrics if available
     try:
         from utils.metrics import celery_task_retries
+
         celery_task_retries.labels(task_name=task_name).inc()
     except ImportError:
         pass
@@ -256,7 +268,7 @@ def handle_task_success(sender=None, result=None, **kw):
 
     This signal fires when a task completes successfully.
     """
-    task_name = sender.name if sender else 'unknown'
+    task_name = sender.name if sender else "unknown"
 
     # Reset failure count on success (task is working again)
     if task_name in _failed_task_counts:
@@ -265,31 +277,34 @@ def handle_task_success(sender=None, result=None, **kw):
     # Update Prometheus metrics if available
     try:
         from utils.metrics import celery_task_successes
+
         celery_task_successes.labels(task_name=task_name).inc()
     except ImportError:
         pass
 
 
 @signals.task_revoked.connect
-def handle_task_revoked(sender=None, request=None, terminated=None,
-                        signum=None, expired=None, **kw):
+def handle_task_revoked(
+    sender=None, request=None, terminated=None, signum=None, expired=None, **kw
+):
     """Handle task revocation (cancellation)."""
-    task_name = sender.name if sender else 'unknown'
-    task_id = request.id if request else 'unknown'
+    task_name = sender.name if sender else "unknown"
+    task_id = request.id if request else "unknown"
 
     logger.warning(
         f"Task revoked",
         extra={
-            'task_id': task_id,
-            'task_name': task_name,
-            'terminated': terminated,
-            'expired': expired,
-        }
+            "task_id": task_id,
+            "task_name": task_name,
+            "terminated": terminated,
+            "expired": expired,
+        },
     )
 
 
-def _send_failure_alert(task_name: str, failure_count: int,
-                        exception: Exception, task_id: str):
+def _send_failure_alert(
+    task_name: str, failure_count: int, exception: Exception, task_id: str
+):
     """
     Send alert for repeated task failures.
 
@@ -309,19 +324,19 @@ def _send_failure_alert(task_name: str, failure_count: int,
     # Try to send email alert if email task is available
     try:
         celery_app.send_task(
-            'tasks.background_tasks.send_email',
+            "tasks.background_tasks.send_email",
             kwargs={
-                'to': os.getenv('ADMIN_EMAIL', 'admin@snflwr.ai'),
-                'subject': f'[CRITICAL] Task Failure Alert: {task_name}',
-                'body': alert_message,
+                "to": os.getenv("ADMIN_EMAIL", "admin@snflwr.ai"),
+                "subject": f"[CRITICAL] Task Failure Alert: {task_name}",
+                "body": alert_message,
             },
-            queue='email'
+            queue="email",
         )
     except (ConnectionError, OSError, RedisError) as e:
         logger.error(f"Failed to send failure alert email: {e}")
 
 
-@celery_app.task(bind=True, queue='dead_letter')
+@celery_app.task(bind=True, queue="dead_letter")
 def store_failed_task(self, payload: dict):
     """
     Store failed task information in dead letter queue.
@@ -335,15 +350,16 @@ def store_failed_task(self, payload: dict):
     logger.info(
         f"Stored failed task in dead letter queue",
         extra={
-            'task_id': payload.get('task_id'),
-            'task_name': payload.get('task_name'),
-            'failed_at': payload.get('failed_at'),
-        }
+            "task_id": payload.get("task_id"),
+            "task_name": payload.get("task_name"),
+            "failed_at": payload.get("failed_at"),
+        },
     )
 
     # Store in Redis for persistence if available
     try:
         import redis
+
         redis_url = system_config.REDIS_URL
         if redis_url:
             r = redis.from_url(redis_url)
@@ -368,6 +384,7 @@ def get_dead_letter_tasks(task_name: Optional[str] = None, limit: int = 100) -> 
     """
     try:
         import redis
+
         redis_url = system_config.REDIS_URL
         if not redis_url:
             return []
@@ -383,7 +400,7 @@ def get_dead_letter_tasks(task_name: Optional[str] = None, limit: int = 100) -> 
             if data:
                 tasks.append(json.loads(data))
 
-        return sorted(tasks, key=lambda x: x.get('failed_at', ''), reverse=True)
+        return sorted(tasks, key=lambda x: x.get("failed_at", ""), reverse=True)
 
     except (RedisError, ConnectionError, OSError, json.JSONDecodeError) as e:
         logger.exception(f"Error retrieving dead letter tasks: {e}")
@@ -402,6 +419,7 @@ def replay_dead_letter_task(task_id: str) -> Optional[str]:
     """
     try:
         import redis
+
         redis_url = system_config.REDIS_URL
         if not redis_url:
             logger.error("Redis not configured for dead letter queue")
@@ -414,12 +432,12 @@ def replay_dead_letter_task(task_id: str) -> Optional[str]:
             data = r.get(key)
             if data:
                 payload = json.loads(data)
-                if payload.get('task_id') == task_id:
+                if payload.get("task_id") == task_id:
                     # Replay the task
                     result = celery_app.send_task(
-                        payload['task_name'],
-                        args=payload.get('args', []),
-                        kwargs=payload.get('kwargs', {}),
+                        payload["task_name"],
+                        args=payload.get("args", []),
+                        kwargs=payload.get("kwargs", {}),
                     )
 
                     # Remove from DLQ
@@ -428,10 +446,10 @@ def replay_dead_letter_task(task_id: str) -> Optional[str]:
                     logger.info(
                         f"Replayed dead letter task",
                         extra={
-                            'original_task_id': task_id,
-                            'new_task_id': result.id,
-                            'task_name': payload['task_name'],
-                        }
+                            "original_task_id": task_id,
+                            "new_task_id": result.id,
+                            "task_name": payload["task_name"],
+                        },
                     )
 
                     return result.id
@@ -457,7 +475,7 @@ def handle_task_error(self, exc, task_id, args, kwargs, einfo):
 
     # Retry with exponential backoff
     try:
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+        raise self.retry(exc=exc, countdown=2**self.request.retries)
     except MaxRetriesExceededError:
         logger.critical(f"Task {task_id} exceeded max retries")
 
@@ -487,19 +505,18 @@ def check_celery_health() -> dict:
         healthy = stats is not None and len(stats) > 0
 
         return {
-            'healthy': healthy,
-            'worker_count': worker_count,
-            'workers': list(active_workers.keys()) if active_workers else [],
-            'registered_tasks': list(registered_tasks.values())[0] if registered_tasks else [],
-            'queues': list(active_queues.values())[0] if active_queues else [],
+            "healthy": healthy,
+            "worker_count": worker_count,
+            "workers": list(active_workers.keys()) if active_workers else [],
+            "registered_tasks": (
+                list(registered_tasks.values())[0] if registered_tasks else []
+            ),
+            "queues": list(active_queues.values())[0] if active_queues else [],
         }
 
     except (ConnectionError, OSError, RedisError) as e:
         logger.exception(f"Error checking Celery health: {e}")
-        return {
-            'healthy': False,
-            'error': str(e)
-        }
+        return {"healthy": False, "error": str(e)}
 
 
 # Queue statistics
@@ -523,18 +540,18 @@ def get_queue_stats() -> dict:
         if reserved:
             for worker, tasks in reserved.items():
                 for task in tasks:
-                    queue = task.get('delivery_info', {}).get('routing_key', 'default')
+                    queue = task.get("delivery_info", {}).get("routing_key", "default")
                     if queue not in queue_stats:
-                        queue_stats[queue] = {'reserved': 0, 'active': 0}
-                    queue_stats[queue]['reserved'] += 1
+                        queue_stats[queue] = {"reserved": 0, "active": 0}
+                    queue_stats[queue]["reserved"] += 1
 
         if active:
             for worker, tasks in active.items():
                 for task in tasks:
-                    queue = task.get('delivery_info', {}).get('routing_key', 'default')
+                    queue = task.get("delivery_info", {}).get("routing_key", "default")
                     if queue not in queue_stats:
-                        queue_stats[queue] = {'reserved': 0, 'active': 0}
-                    queue_stats[queue]['active'] += 1
+                        queue_stats[queue] = {"reserved": 0, "active": 0}
+                    queue_stats[queue]["active"] += 1
 
         return queue_stats
 
@@ -566,12 +583,12 @@ def purge_queue(queue_name: str) -> int:
 
 # Export public interface
 __all__ = [
-    'celery_app',
-    'check_celery_health',
-    'get_queue_stats',
-    'purge_queue',
-    'debug_task',
-    'get_dead_letter_tasks',
-    'replay_dead_letter_task',
-    'store_failed_task',
+    "celery_app",
+    "check_celery_health",
+    "get_queue_stats",
+    "purge_queue",
+    "debug_task",
+    "get_dead_letter_tasks",
+    "replay_dead_letter_task",
+    "store_failed_task",
 ]

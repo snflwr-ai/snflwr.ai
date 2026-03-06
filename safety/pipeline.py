@@ -37,8 +37,10 @@ logger = get_logger(__name__)
 # 1. Data Models and Enums
 # =============================================================================
 
+
 class Severity(Enum):
     """Severity levels for safety findings, ordered from benign to critical."""
+
     NONE = "none"
     MINOR = "minor"
     MAJOR = "major"
@@ -47,6 +49,7 @@ class Severity(Enum):
 
 class Category(Enum):
     """Classification categories for safety findings."""
+
     VALID = "valid"
     VIOLENCE = "violence"
     SELF_HARM = "self_harm"
@@ -70,6 +73,7 @@ class SafetyResult:
 
     Frozen for thread safety -- once created, cannot be mutated.
     """
+
     is_safe: bool
     severity: Severity
     category: Category
@@ -197,88 +201,92 @@ _LEET_MAP: Dict[str, str] = {
 # Covers Cyrillic and Greek characters commonly used to bypass text filters.
 _HOMOGLYPH_MAP: Dict[str, str] = {
     # Cyrillic lowercase
-    "\u0430": "a",   # а
-    "\u0435": "e",   # е
-    "\u0456": "i",   # і (Ukrainian i)
-    "\u043e": "o",   # о
-    "\u0440": "p",   # р
-    "\u0441": "c",   # с
-    "\u0443": "y",   # у
-    "\u0445": "x",   # х
-    "\u04bb": "h",   # һ (Bashkir)
-    "\u043a": "k",   # к
-    "\u043c": "m",   # м
-    "\u043d": "h",   # н
-    "\u0442": "t",   # т
+    "\u0430": "a",  # а
+    "\u0435": "e",  # е
+    "\u0456": "i",  # і (Ukrainian i)
+    "\u043e": "o",  # о
+    "\u0440": "p",  # р
+    "\u0441": "c",  # с
+    "\u0443": "y",  # у
+    "\u0445": "x",  # х
+    "\u04bb": "h",  # һ (Bashkir)
+    "\u043a": "k",  # к
+    "\u043c": "m",  # м
+    "\u043d": "h",  # н
+    "\u0442": "t",  # т
     # Cyrillic uppercase
-    "\u0410": "a",   # А
-    "\u0412": "b",   # В
-    "\u0415": "e",   # Е
-    "\u041a": "k",   # К
-    "\u041c": "m",   # М
-    "\u041d": "h",   # Н
-    "\u041e": "o",   # О
-    "\u0420": "p",   # Р
-    "\u0421": "c",   # С
-    "\u0422": "t",   # Т
-    "\u0423": "y",   # У
-    "\u0425": "x",   # Х
+    "\u0410": "a",  # А
+    "\u0412": "b",  # В
+    "\u0415": "e",  # Е
+    "\u041a": "k",  # К
+    "\u041c": "m",  # М
+    "\u041d": "h",  # Н
+    "\u041e": "o",  # О
+    "\u0420": "p",  # Р
+    "\u0421": "c",  # С
+    "\u0422": "t",  # Т
+    "\u0423": "y",  # У
+    "\u0425": "x",  # Х
     # Greek lowercase
-    "\u03b1": "a",   # α
-    "\u03b5": "e",   # ε
-    "\u03b9": "i",   # ι
-    "\u03bf": "o",   # ο
-    "\u03ba": "k",   # κ
-    "\u03c1": "p",   # ρ
-    "\u03c5": "u",   # υ
-    "\u03c7": "x",   # χ
+    "\u03b1": "a",  # α
+    "\u03b5": "e",  # ε
+    "\u03b9": "i",  # ι
+    "\u03bf": "o",  # ο
+    "\u03ba": "k",  # κ
+    "\u03c1": "p",  # ρ
+    "\u03c5": "u",  # υ
+    "\u03c7": "x",  # χ
     # Greek uppercase
-    "\u0391": "a",   # Α
-    "\u0395": "e",   # Ε
-    "\u0397": "h",   # Η
-    "\u0399": "i",   # Ι
-    "\u039a": "k",   # Κ
-    "\u039c": "m",   # Μ
-    "\u039d": "n",   # Ν
-    "\u039f": "o",   # Ο
-    "\u03a1": "p",   # Ρ
-    "\u03a4": "t",   # Τ
-    "\u03a5": "y",   # Υ
-    "\u03a7": "x",   # Χ
+    "\u0391": "a",  # Α
+    "\u0395": "e",  # Ε
+    "\u0397": "h",  # Η
+    "\u0399": "i",  # Ι
+    "\u039a": "k",  # Κ
+    "\u039c": "m",  # Μ
+    "\u039d": "n",  # Ν
+    "\u039f": "o",  # Ο
+    "\u03a1": "p",  # Ρ
+    "\u03a4": "t",  # Τ
+    "\u03a5": "y",  # Υ
+    "\u03a7": "x",  # Χ
 }
 
 # Zero-width and invisible formatting characters that can be inserted between
 # letters to break word-boundary regex without changing visual appearance.
-_INVISIBLE_CHARS = frozenset({
-    "\u200b",  # Zero-Width Space
-    "\u200c",  # Zero-Width Non-Joiner
-    "\u200d",  # Zero-Width Joiner
-    "\u200e",  # Left-to-Right Mark
-    "\u200f",  # Right-to-Left Mark
-    "\u2060",  # Word Joiner
-    "\u2061",  # Function Application
-    "\u2062",  # Invisible Times
-    "\u2063",  # Invisible Separator
-    "\u2064",  # Invisible Plus
-    "\ufeff",  # BOM / Zero-Width No-Break Space
-    "\u00ad",  # Soft Hyphen
-    "\u034f",  # Combining Grapheme Joiner
-    "\u061c",  # Arabic Letter Mark
-    "\u180e",  # Mongolian Vowel Separator
-})
+_INVISIBLE_CHARS = frozenset(
+    {
+        "\u200b",  # Zero-Width Space
+        "\u200c",  # Zero-Width Non-Joiner
+        "\u200d",  # Zero-Width Joiner
+        "\u200e",  # Left-to-Right Mark
+        "\u200f",  # Right-to-Left Mark
+        "\u2060",  # Word Joiner
+        "\u2061",  # Function Application
+        "\u2062",  # Invisible Times
+        "\u2063",  # Invisible Separator
+        "\u2064",  # Invisible Plus
+        "\ufeff",  # BOM / Zero-Width No-Break Space
+        "\u00ad",  # Soft Hyphen
+        "\u034f",  # Combining Grapheme Joiner
+        "\u061c",  # Arabic Letter Mark
+        "\u180e",  # Mongolian Vowel Separator
+    }
+)
 
 # Bidirectional control characters that can reorder text visually.
-_BIDI_CONTROLS = frozenset({
-    "\u202a",  # Left-to-Right Embedding
-    "\u202b",  # Right-to-Left Embedding
-    "\u202c",  # Pop Directional Formatting
-    "\u202d",  # Left-to-Right Override
-    "\u202e",  # Right-to-Left Override
-    "\u2066",  # Left-to-Right Isolate
-    "\u2067",  # Right-to-Left Isolate
-    "\u2068",  # First Strong Isolate
-    "\u2069",  # Pop Directional Isolate
-})
+_BIDI_CONTROLS = frozenset(
+    {
+        "\u202a",  # Left-to-Right Embedding
+        "\u202b",  # Right-to-Left Embedding
+        "\u202c",  # Pop Directional Formatting
+        "\u202d",  # Left-to-Right Override
+        "\u202e",  # Right-to-Left Override
+        "\u2066",  # Left-to-Right Isolate
+        "\u2067",  # Right-to-Left Isolate
+        "\u2068",  # First Strong Isolate
+        "\u2069",  # Pop Directional Isolate
+    }
+)
 
 # Combined set for fast lookup
 _STRIP_CHARS = _INVISIBLE_CHARS | _BIDI_CONTROLS
@@ -361,6 +369,7 @@ def _strip_invisible(text: str) -> str:
 # 4. Stage 3 -- Pattern Matcher
 # =============================================================================
 
+
 class _PatternMatcher:
     """
     Deterministic pattern-matching engine.
@@ -374,48 +383,126 @@ class _PatternMatcher:
     # -- Educational exemption configuration ----------------------------------
 
     # Keywords that may appear in legitimate educational contexts
-    _CONTEXTUAL_KEYWORDS = frozenset({
-        "die", "death", "dying", "kill", "killed", "killing",
-        "bomb", "explosive", "gun", "knife", "poison",
-        "meth", "drug", "drugs", "weed", "cocaine",
-        # Sexual keywords: blocked by default, exempt in clear educational contexts
-        # (e.g., health class / biology). Also prevents "sextant" false positive
-        # since the normalized-text substring check has no word boundaries.
-        "sex", "sexual", "sexting", "grooming",
-    })
+    _CONTEXTUAL_KEYWORDS = frozenset(
+        {
+            "die",
+            "death",
+            "dying",
+            "kill",
+            "killed",
+            "killing",
+            "bomb",
+            "explosive",
+            "gun",
+            "knife",
+            "poison",
+            "meth",
+            "drug",
+            "drugs",
+            "weed",
+            "cocaine",
+            # Sexual keywords: blocked by default, exempt in clear educational contexts
+            # (e.g., health class / biology). Also prevents "sextant" false positive
+            # since the normalized-text substring check has no word boundaries.
+            "sex",
+            "sexual",
+            "sexting",
+            "grooming",
+        }
+    )
 
     # Subject-specific indicators sufficient on their own to grant exemption
     _STRONG_EDUCATIONAL_INDICATORS = (
-        "stars die", "dinosaurs", "chemical formula", "life cycle",
-        "biology", "science", "history", "geography", "astronomy",
-        "physics", "chemistry", "ecosystem", "photosynthesis",
-        "extinction", "evolution", "bacteria", "cell death",
-        "world war", "civil war", "revolution", "ancient",
-        "medieval", "nuclear energy", "atoms", "molecules",
-        "periodic table", "experiment", "hypothesis", "research",
-        "natural disaster", "earthquake", "volcano", "tornado",
-        "food chain", "predator", "prey", "habitat",
-        "math", "algebra", "geometry", "calculus", "arithmetic",
-        "trigonometry", "equation", "fraction", "multiplication",
-        "reading", "writing", "spelling", "grammar", "vocabulary",
-        "literature", "essay", "book report", "novel",
-        "health class", "health education",
+        "stars die",
+        "dinosaurs",
+        "chemical formula",
+        "life cycle",
+        "biology",
+        "science",
+        "history",
+        "geography",
+        "astronomy",
+        "physics",
+        "chemistry",
+        "ecosystem",
+        "photosynthesis",
+        "extinction",
+        "evolution",
+        "bacteria",
+        "cell death",
+        "world war",
+        "civil war",
+        "revolution",
+        "ancient",
+        "medieval",
+        "nuclear energy",
+        "atoms",
+        "molecules",
+        "periodic table",
+        "experiment",
+        "hypothesis",
+        "research",
+        "natural disaster",
+        "earthquake",
+        "volcano",
+        "tornado",
+        "food chain",
+        "predator",
+        "prey",
+        "habitat",
+        "math",
+        "algebra",
+        "geometry",
+        "calculus",
+        "arithmetic",
+        "trigonometry",
+        "equation",
+        "fraction",
+        "multiplication",
+        "reading",
+        "writing",
+        "spelling",
+        "grammar",
+        "vocabulary",
+        "literature",
+        "essay",
+        "book report",
+        "novel",
+        "health class",
+        "health education",
     )
 
     # Generic words that are not sufficient alone to grant exemption;
     # preserved here for use in possible_false_positive detection (Task 2).
     _WEAK_EDUCATIONAL_INDICATORS = (
-        "textbook", "homework", "class", "lesson", "teacher",
-        "assignment", "project", "study", "learn", "school",
+        "textbook",
+        "homework",
+        "class",
+        "lesson",
+        "teacher",
+        "assignment",
+        "project",
+        "study",
+        "learn",
+        "school",
     )
 
     # Phrases indicating concerning (non-educational) intent
     _CONCERNING_INDICATORS = (
-        "kill someone", "kill people", "kill a person",
-        "how do people die", "i die", "i want to die",
-        "hurt someone", "murder someone", "attack someone",
-        "kill myself", "how to kill", "best way to kill",
-        "cut myself", "hurt myself",
+        "kill someone",
+        "kill people",
+        "kill a person",
+        "how do people die",
+        "i die",
+        "i want to die",
+        "hurt someone",
+        "murder someone",
+        "attack someone",
+        "kill myself",
+        "how to kill",
+        "best way to kill",
+        "cut myself",
+        "hurt myself",
     )
 
     def __init__(self) -> None:
@@ -423,8 +510,12 @@ class _PatternMatcher:
         self._danger_phrases = self._build_danger_phrases()
         self._prohibited_patterns = self._build_prohibited_patterns()
         self._pii_patterns = self._build_pii_patterns()
-        logger.info("PatternMatcher initialized (%d danger, %d prohibited, %d PII patterns)",
-                     len(self._danger_phrases), len(self._prohibited_patterns), len(self._pii_patterns))
+        logger.info(
+            "PatternMatcher initialized (%d danger, %d prohibited, %d PII patterns)",
+            len(self._danger_phrases),
+            len(self._prohibited_patterns),
+            len(self._pii_patterns),
+        )
 
     # -- Danger phrases (CRITICAL, pfp-flagged but never exempted) ------------
 
@@ -437,42 +528,111 @@ class _PatternMatcher:
         """
         raw: list[Tuple[str, Category, str]] = [
             # VIOLENCE
-            (r"\bhow\s+to\s+make\s+a\s+bomb\b", Category.VIOLENCE, "bomb-making request"),
-            (r"\b(make|build|create)\s+(a\s+)?(fertilizer\s+)?bomb\b", Category.VIOLENCE, "bomb-making request"),
-            (r"\bhow\s+to\s+build\s+a\s+weapon\b", Category.VIOLENCE, "weapon-building request"),
-            (r"\b(kill|murder|attack)\s+(someone|people|a\s+person)\b", Category.VIOLENCE, "violent intent toward people"),
-            (r"\bbest\s+way\s+to\s+(kill|hurt)\b", Category.VIOLENCE, "seeking methods to harm"),
+            (
+                r"\bhow\s+to\s+make\s+a\s+bomb\b",
+                Category.VIOLENCE,
+                "bomb-making request",
+            ),
+            (
+                r"\b(make|build|create)\s+(a\s+)?(fertilizer\s+)?bomb\b",
+                Category.VIOLENCE,
+                "bomb-making request",
+            ),
+            (
+                r"\bhow\s+to\s+build\s+a\s+weapon\b",
+                Category.VIOLENCE,
+                "weapon-building request",
+            ),
+            (
+                r"\b(kill|murder|attack)\s+(someone|people|a\s+person)\b",
+                Category.VIOLENCE,
+                "violent intent toward people",
+            ),
+            (
+                r"\bbest\s+way\s+to\s+(kill|hurt)\b",
+                Category.VIOLENCE,
+                "seeking methods to harm",
+            ),
             # EXPLOITATION
-            (r"\b(send|show|get|find)\s+(me\s+)?(pictures?|photos?|images?|pics|vids|videos?)\s+(of\s+)?(children|kids|minors|child|kid|little\s+(boy|girl)s?)\b",
-             Category.EXPLOITATION, "child exploitation material request"),
-            (r"\b(pictures?|photos?|images?)\s+of\s+(children|kids|minors|child|kid)\b",
-             Category.EXPLOITATION, "child exploitation reference"),
-            (r"\b(child|kid|minor)\s+(porn|pictures?|photos?|images?)\b",
-             Category.EXPLOITATION, "child exploitation reference"),
+            (
+                r"\b(send|show|get|find)\s+(me\s+)?(pictures?|photos?|images?|pics|vids|videos?)\s+(of\s+)?(children|kids|minors|child|kid|little\s+(boy|girl)s?)\b",
+                Category.EXPLOITATION,
+                "child exploitation material request",
+            ),
+            (
+                r"\b(pictures?|photos?|images?)\s+of\s+(children|kids|minors|child|kid)\b",
+                Category.EXPLOITATION,
+                "child exploitation reference",
+            ),
+            (
+                r"\b(child|kid|minor)\s+(porn|pictures?|photos?|images?)\b",
+                Category.EXPLOITATION,
+                "child exploitation reference",
+            ),
             # SELF-HARM
-            (r"\bi\s+want\s+to\s+kill\s+myself\b", Category.SELF_HARM, "suicidal ideation"),
+            (
+                r"\bi\s+want\s+to\s+kill\s+myself\b",
+                Category.SELF_HARM,
+                "suicidal ideation",
+            ),
             (r"\bi\s+want\s+to\s+die\b", Category.SELF_HARM, "suicidal ideation"),
-            (r"\bhow\s+to\s+commit\s+suicide\b", Category.SELF_HARM, "suicide method seeking"),
+            (
+                r"\bhow\s+to\s+commit\s+suicide\b",
+                Category.SELF_HARM,
+                "suicide method seeking",
+            ),
             (r"\bend\s+my\s+life\b", Category.SELF_HARM, "suicidal ideation"),
-            (r"\bi\s+don'?t\s+want\s+to\s+be\s+here\s+anymore\b", Category.SELF_HARM, "distress / suicidal ideation"),
+            (
+                r"\bi\s+don'?t\s+want\s+to\s+be\s+here\s+anymore\b",
+                Category.SELF_HARM,
+                "distress / suicidal ideation",
+            ),
             (r"\bcut\s+myself\b", Category.SELF_HARM, "self-harm reference"),
             (r"\bsuicid(?:e|al)\b", Category.SELF_HARM, "suicide reference"),
             # WEAPONS
-            (r"\bhow\s+to\s+(make|create|build)\s+(explosives?|a?\s*bombs?|poisons?|chemical\s+weapons?)\b",
-             Category.WEAPONS, "weapon/explosive creation request"),
-            (r"\b(help\s+me|can\s+you\s+help\s+me|i\s+need\s+help|show\s+me)\s+(to\s+)?(make|create|build)\s+(a\s+)?(bomb|explosive|weapon|poison|grenade|molotov)\b",
-             Category.WEAPONS, "weapon/explosive creation request"),
-            (r"\bhow\s+to\s+synthesize\b.+\bat\s+home\b", Category.WEAPONS, "home synthesis request"),
+            (
+                r"\bhow\s+to\s+(make|create|build)\s+(explosives?|a?\s*bombs?|poisons?|chemical\s+weapons?)\b",
+                Category.WEAPONS,
+                "weapon/explosive creation request",
+            ),
+            (
+                r"\b(help\s+me|can\s+you\s+help\s+me|i\s+need\s+help|show\s+me)\s+(to\s+)?(make|create|build)\s+(a\s+)?(bomb|explosive|weapon|poison|grenade|molotov)\b",
+                Category.WEAPONS,
+                "weapon/explosive creation request",
+            ),
+            (
+                r"\bhow\s+to\s+synthesize\b.+\bat\s+home\b",
+                Category.WEAPONS,
+                "home synthesis request",
+            ),
             # BYPASS ATTEMPTS
-            (r"\b(ignore|forget)\s+(your\s+)?previous\s+instructions\b", Category.BYPASS_ATTEMPT, "prompt injection attempt"),
-            (r"\bpretend\s+you\s+have\s+no\s+restrictions\b", Category.BYPASS_ATTEMPT, "restriction bypass attempt"),
-            (r"\bbypass\s+your\s+safety\b", Category.BYPASS_ATTEMPT, "safety bypass attempt"),
-            (r"\b(developer|god|admin)\s+mode\b", Category.BYPASS_ATTEMPT, "privilege escalation attempt"),
+            (
+                r"\b(ignore|forget)\s+(your\s+)?previous\s+instructions\b",
+                Category.BYPASS_ATTEMPT,
+                "prompt injection attempt",
+            ),
+            (
+                r"\bpretend\s+you\s+have\s+no\s+restrictions\b",
+                Category.BYPASS_ATTEMPT,
+                "restriction bypass attempt",
+            ),
+            (
+                r"\bbypass\s+your\s+safety\b",
+                Category.BYPASS_ATTEMPT,
+                "safety bypass attempt",
+            ),
+            (
+                r"\b(developer|god|admin)\s+mode\b",
+                Category.BYPASS_ATTEMPT,
+                "privilege escalation attempt",
+            ),
             (r"\bjailbreak\b", Category.BYPASS_ATTEMPT, "jailbreak attempt"),
         ]
         compiled = []
         for pattern_str, category, description in raw:
-            compiled.append((re.compile(pattern_str, re.IGNORECASE), category, description))
+            compiled.append(
+                (re.compile(pattern_str, re.IGNORECASE), category, description)
+            )
         return compiled
 
     # -- Prohibited keywords (MAJOR, with educational exemption) ---------------
@@ -496,23 +656,59 @@ class _PatternMatcher:
         # Extended keyword lists (union with config)
         extended: Dict[str, list] = {
             "violence": [
-                "weapon", "weapons", "bomb", "explosive", "murder", "assault",
-                "attack", "gun", "knife", "blade", "torture", "bombing",
-                "weaponize", "molotov", "detonate", "snuff",
+                "weapon",
+                "weapons",
+                "bomb",
+                "explosive",
+                "murder",
+                "assault",
+                "attack",
+                "gun",
+                "knife",
+                "blade",
+                "torture",
+                "bombing",
+                "weaponize",
+                "molotov",
+                "detonate",
+                "snuff",
             ],
             "self_harm": [
-                "suicidal", "selfharm", "self-harm", "overdose",
+                "suicidal",
+                "selfharm",
+                "self-harm",
+                "overdose",
             ],
             "sexual": [
-                "porn", "pornography", "nude", "naked", "xxx", "sexual",
-                "masturbate", "escort", "explicit", "rape",
-                "sex", "sexting", "grooming",
+                "porn",
+                "pornography",
+                "nude",
+                "naked",
+                "xxx",
+                "sexual",
+                "masturbate",
+                "escort",
+                "explicit",
+                "rape",
+                "sex",
+                "sexting",
+                "grooming",
             ],
             "drugs": [
-                "cocaine", "heroin", "meth", "marijuana", "cannabis", "weed",
+                "cocaine",
+                "heroin",
+                "meth",
+                "marijuana",
+                "cannabis",
+                "weed",
             ],
             "other": [
-                "shoplift", "steal", "hack", "phish", "terror", "abuse",
+                "shoplift",
+                "steal",
+                "hack",
+                "phish",
+                "terror",
+                "abuse",
             ],
         }
 
@@ -567,13 +763,18 @@ class _PatternMatcher:
             # Email
             (r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", "email address"),
             # Street address: 123 Main Street
-            (r"\b\d+\s+[A-Za-z]+\s+(?:street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln|way|court|ct|circle|cir|place|pl)\b",
-             "street address"),
+            (
+                r"\b\d+\s+[A-Za-z]+\s+(?:street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln|way|court|ct|circle|cir|place|pl)\b",
+                "street address",
+            ),
             # Credit card: 1234 5678 1234 5678
             (r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b", "credit card number"),
             # Textual PII requests
             (r"\bsocial\s+security\s+number\b", "SSN reference"),
-            (r"\b(?:my|your)\s+(?:address|phone\s+number|credit\s+card)\b", "personal info reference"),
+            (
+                r"\b(?:my|your)\s+(?:address|phone\s+number|credit\s+card)\b",
+                "personal info reference",
+            ),
         ]
         return [(re.compile(p, re.IGNORECASE), desc) for p, desc in raw]
 
@@ -595,9 +796,12 @@ class _PatternMatcher:
             original_lower_danger = original.lower()
             for pat, category, description in self._danger_phrases:
                 if pat.search(original) or pat.search(normalized):
-                    pfp_danger = (
-                        any(ind in original_lower_danger for ind in self._WEAK_EDUCATIONAL_INDICATORS)
-                        and not any(ind in original_lower_danger for ind in self._CONCERNING_INDICATORS)
+                    pfp_danger = any(
+                        ind in original_lower_danger
+                        for ind in self._WEAK_EDUCATIONAL_INDICATORS
+                    ) and not any(
+                        ind in original_lower_danger
+                        for ind in self._CONCERNING_INDICATORS
                     )
                     return _block(
                         Severity.CRITICAL,
@@ -625,7 +829,10 @@ class _PatternMatcher:
                         if self._has_educational_context(original_lower):
                             continue  # strong indicator → exempt
                         # Check weak indicator → possible false positive
-                        pfp = any(ind in original_lower for ind in self._WEAK_EDUCATIONAL_INDICATORS)
+                        pfp = any(
+                            ind in original_lower
+                            for ind in self._WEAK_EDUCATIONAL_INDICATORS
+                        )
                     else:
                         pfp = False
                     return _block(
@@ -651,7 +858,9 @@ class _PatternMatcher:
             return None  # pass
 
         except Exception as exc:  # Intentional catch-all: fail closed
-            logger.error("Stage 3 (pattern) error, failing closed: %s", exc, exc_info=True)
+            logger.error(
+                "Stage 3 (pattern) error, failing closed: %s", exc, exc_info=True
+            )
             return _block(
                 Severity.MAJOR,
                 Category.CLASSIFIER_ERROR,
@@ -668,7 +877,9 @@ class _PatternMatcher:
         Returns True (exempt) only if educational indicators are present
         AND no concerning indicators are found.
         """
-        has_educational = any(ind in text_lower for ind in self._STRONG_EDUCATIONAL_INDICATORS)
+        has_educational = any(
+            ind in text_lower for ind in self._STRONG_EDUCATIONAL_INDICATORS
+        )
         has_concerning = any(ind in text_lower for ind in self._CONCERNING_INDICATORS)
 
         return has_educational and not has_concerning
@@ -677,6 +888,7 @@ class _PatternMatcher:
 # =============================================================================
 # 5. Stage 4 -- Semantic Classifier (Ollama LLM)
 # =============================================================================
+
 
 class _SemanticClassifier:
     """
@@ -692,7 +904,7 @@ class _SemanticClassifier:
     # Fallback models in preference order (llama-guard only — purpose-built
     # for content-safety classification by Meta).
     FALLBACK_MODELS = [
-        "llama-guard3:1b",      # Meta Llama Guard small (faster, less RAM)
+        "llama-guard3:1b",  # Meta Llama Guard small (faster, less RAM)
     ]
     CONFIDENCE_THRESHOLD = 0.7
 
@@ -702,7 +914,11 @@ class _SemanticClassifier:
         self._client = None
 
         try:
-            from utils.ollama_client import OllamaClient as _OllamaClient, OllamaError as _OE  # noqa: F811
+            from utils.ollama_client import (
+                OllamaClient as _OllamaClient,
+                OllamaError as _OE,
+            )  # noqa: F811
+
             # Use a dedicated short-timeout client for the classifier.
             # The global ollama_client has a 300s timeout (same as the middleware's
             # httpx timeout), so a slow first-inference on a freshly-pulled model
@@ -715,7 +931,9 @@ class _SemanticClassifier:
 
             ok, _version = self._client.check_connection()
             if not ok:
-                logger.warning("Ollama not reachable at init; semantic classifier disabled.")
+                logger.warning(
+                    "Ollama not reachable at init; semantic classifier disabled."
+                )
                 return
 
             # Determine which model to use (prefer custom > larger guard > smaller guard)
@@ -734,10 +952,14 @@ class _SemanticClassifier:
                 self._available = True
                 logger.info("Semantic classifier ready (model=%s)", self._model)
             else:
-                logger.warning("No suitable safety model found; semantic classifier disabled.")
+                logger.warning(
+                    "No suitable safety model found; semantic classifier disabled."
+                )
 
         except ImportError:
-            logger.warning("ollama_client not importable; semantic classifier disabled.")
+            logger.warning(
+                "ollama_client not importable; semantic classifier disabled."
+            )
         except Exception as exc:  # Intentional: init must not crash
             logger.warning("Semantic classifier init failed: %s", exc)
 
@@ -773,7 +995,9 @@ class _SemanticClassifier:
             return self._parse_response(response)
 
         except Exception as exc:  # Intentional catch-all: fail closed
-            logger.error("Stage 4 (classifier) error, failing closed: %s", exc, exc_info=True)
+            logger.error(
+                "Stage 4 (classifier) error, failing closed: %s", exc, exc_info=True
+            )
             return _block(
                 Severity.MAJOR,
                 Category.CLASSIFIER_ERROR,
@@ -900,7 +1124,9 @@ class _SemanticClassifier:
             return None  # pass
 
         except (json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
-            logger.error("Failed to parse classifier response: %s (raw=%s)", exc, raw[:200])
+            logger.error(
+                "Failed to parse classifier response: %s (raw=%s)", exc, raw[:200]
+            )
             return _block(
                 Severity.MAJOR,
                 Category.CLASSIFIER_ERROR,
@@ -912,6 +1138,7 @@ class _SemanticClassifier:
 # =============================================================================
 # 6. Stage 5 -- Age Gate + Topic Redirects
 # =============================================================================
+
 
 def _stage_age_gate(original: str, age: Optional[int]) -> Optional[SafetyResult]:
     """
@@ -952,12 +1179,27 @@ def _stage_age_gate(original: str, age: Optional[int]) -> Optional[SafetyResult]
         # -- Elementary (age < 10) ------------------------------------------------
         if age < 10:
             elementary_blocked = [
-                "dating", "boyfriend", "girlfriend",
-                "horror", "scary", "mature content", "adult",
+                "dating",
+                "boyfriend",
+                "girlfriend",
+                "horror",
+                "scary",
+                "mature content",
+                "adult",
                 # Substances — parents can ask admin to raise age if ready
-                "alcohol", "beer", "wine", "liquor", "drunk",
-                "tobacco", "cigarette", "cigarettes", "smoking", "vaping", "vape",
-                "marijuana", "cannabis",
+                "alcohol",
+                "beer",
+                "wine",
+                "liquor",
+                "drunk",
+                "tobacco",
+                "cigarette",
+                "cigarettes",
+                "smoking",
+                "vaping",
+                "vape",
+                "marijuana",
+                "cannabis",
             ]
             for kw in elementary_blocked:
                 if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
@@ -973,7 +1215,9 @@ def _stage_age_gate(original: str, age: Optional[int]) -> Optional[SafetyResult]
         # -- Middle school (10-13) ------------------------------------------------
         elif age <= 13:
             middle_blocked = [
-                "hookup", "making out", "romantic relationship",
+                "hookup",
+                "making out",
+                "romantic relationship",
             ]
             for kw in middle_blocked:
                 if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
@@ -1008,30 +1252,60 @@ def _stage_age_gate(original: str, age: Optional[int]) -> Optional[SafetyResult]
 # generic words like "class" or "school" alone.
 _CIVICS_INDICATORS = (
     # Government / civics courses
-    "civics", "civic",
+    "civics",
+    "civic",
     "social studies",
-    "government class", "government course", "government lesson",
-    "how government works", "how laws work",
-    "electoral college", "constitution", "amendment",
-    "bill of rights", "branches of government",
+    "government class",
+    "government course",
+    "government lesson",
+    "how government works",
+    "how laws work",
+    "electoral college",
+    "constitution",
+    "amendment",
+    "bill of rights",
+    "branches of government",
     # History courses (specific — "history" alone is too broad)
-    "history class", "history lesson", "history homework",
-    "world history", "us history", "american history",
+    "history class",
+    "history lesson",
+    "history homework",
+    "world history",
+    "us history",
+    "american history",
     # Religion in academic context
-    "world religion", "world religions",
-    "religious studies", "comparative religion",
-    "history of religion", "cultural studies",
+    "world religion",
+    "world religions",
+    "religious studies",
+    "comparative religion",
+    "history of religion",
+    "cultural studies",
 )
 
 # Keyword lists for redirect topics
 _REDIRECT_KEYWORDS: Dict[str, list] = {
     "politics": [
-        "politics", "political", "election", "vote", "democrat",
-        "republican", "liberal", "conservative", "congress", "senator",
+        "politics",
+        "political",
+        "election",
+        "vote",
+        "democrat",
+        "republican",
+        "liberal",
+        "conservative",
+        "congress",
+        "senator",
     ],
     "religion": [
-        "religion", "religious", "church", "mosque", "temple",
-        "bible", "quran", "torah", "prayer", "worship",
+        "religion",
+        "religious",
+        "church",
+        "mosque",
+        "temple",
+        "bible",
+        "quran",
+        "torah",
+        "prayer",
+        "worship",
     ],
 }
 
@@ -1039,6 +1313,7 @@ _REDIRECT_KEYWORDS: Dict[str, list] = {
 # =============================================================================
 # 7. SafetyPipeline -- orchestrator
 # =============================================================================
+
 
 class SafetyPipeline:
     """
@@ -1113,7 +1388,9 @@ class SafetyPipeline:
                 ):
                     logger.info(
                         "Classifier blocked but educational context detected — overriding "
-                        "(category=%s, reason=%s)", result.category, result.reason,
+                        "(category=%s, reason=%s)",
+                        result.category,
+                        result.reason,
                     )
                 else:
                     self._log_block(result, text, profile_id)
@@ -1128,7 +1405,11 @@ class SafetyPipeline:
             return _allow(stage="pipeline")
 
         except Exception as exc:  # Intentional catch-all: fail closed at top level
-            logger.error("SafetyPipeline.check_input unhandled error, failing closed: %s", exc, exc_info=True)
+            logger.error(
+                "SafetyPipeline.check_input unhandled error, failing closed: %s",
+                exc,
+                exc_info=True,
+            )
             return _block(
                 Severity.MAJOR,
                 Category.CLASSIFIER_ERROR,
@@ -1222,7 +1503,11 @@ class SafetyPipeline:
             return _allow(stage="output_pipeline")
 
         except Exception as exc:  # Intentional catch-all: fail closed
-            logger.error("SafetyPipeline.check_output unhandled error, failing closed: %s", exc, exc_info=True)
+            logger.error(
+                "SafetyPipeline.check_output unhandled error, failing closed: %s",
+                exc,
+                exc_info=True,
+            )
             return _block(
                 Severity.MAJOR,
                 Category.CLASSIFIER_ERROR,
@@ -1293,7 +1578,14 @@ class SafetyPipeline:
     # Internal helpers
     # ------------------------------------------------------------------ #
 
-    def _log_block(self, result: SafetyResult, text: str, profile_id: str, *, is_output: bool = False) -> None:
+    def _log_block(
+        self,
+        result: SafetyResult,
+        text: str,
+        profile_id: str,
+        *,
+        is_output: bool = False,
+    ) -> None:
         """Log a blocked interaction via the structured safety incident logger."""
         try:
             self._stats["outputs_blocked" if is_output else "inputs_blocked"] += 1

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Authentication - MUST be set in production
-ADMIN_PASSWORD = os.getenv('PARENT_DASHBOARD_PASSWORD')
+ADMIN_PASSWORD = os.getenv("PARENT_DASHBOARD_PASSWORD")
 if not ADMIN_PASSWORD:
     raise RuntimeError(
         "CRITICAL SECURITY ERROR: PARENT_DASHBOARD_PASSWORD environment variable must be set.\n"
@@ -28,14 +28,18 @@ if not ADMIN_PASSWORD:
 
 def require_auth(f):
     """Require HTTP Basic authentication for dashboard routes"""
+
     @wraps(f)
     def decorated(*args, **kwargs):
         auth = request.authorization
-        if not auth or not hmac.compare_digest(auth.password or '', ADMIN_PASSWORD):
-            return jsonify({"error": "Authentication required"}), 401, {
-                'WWW-Authenticate': 'Basic realm="Parent Dashboard"'
-            }
+        if not auth or not hmac.compare_digest(auth.password or "", ADMIN_PASSWORD):
+            return (
+                jsonify({"error": "Authentication required"}),
+                401,
+                {"WWW-Authenticate": 'Basic realm="Parent Dashboard"'},
+            )
         return f(*args, **kwargs)
+
     return decorated
 
 
@@ -225,28 +229,28 @@ DASHBOARD_HTML = """
 """
 
 
-@app.route('/')
+@app.route("/")
 @require_auth
 def dashboard():
     """Render parent dashboard"""
     return render_template_string(DASHBOARD_HTML)
 
 
-@app.route('/api/analytics')
+@app.route("/api/analytics")
 @require_auth
 def get_analytics():
     """Get safety analytics"""
-    days = request.args.get('days', 7, type=int)
+    days = request.args.get("days", 7, type=int)
     analytics = incident_logger.get_incident_statistics(days=days)
     return jsonify(analytics)
 
 
-@app.route('/api/incidents/unreviewed')
+@app.route("/api/incidents/unreviewed")
 @require_auth
 def get_unreviewed_incidents():
     """Get unreviewed incidents across all profiles"""
-    severity = request.args.get('severity')
-    limit = request.args.get('limit', 50, type=int)
+    severity = request.args.get("severity")
+    limit = request.args.get("limit", 50, type=int)
 
     # Fetch unresolved incidents for all profiles
     # incident_logger.get_profile_incidents requires a profile_id,
@@ -276,20 +280,22 @@ def get_unreviewed_incidents():
         for row in results:
             inc = dict(row)
             # Decrypt encrypted fields before returning
-            if inc.get('content_snippet'):
+            if inc.get("content_snippet"):
                 try:
                     from storage.encryption import EncryptionManager
+
                     enc = EncryptionManager()
-                    inc['content_snippet'] = enc.decrypt_string(inc['content_snippet'])
+                    inc["content_snippet"] = enc.decrypt_string(inc["content_snippet"])
                 except Exception:
-                    inc['content_snippet'] = '[encrypted]'
-            if inc.get('metadata'):
+                    inc["content_snippet"] = "[encrypted]"
+            if inc.get("metadata"):
                 try:
                     from storage.encryption import EncryptionManager
+
                     enc = EncryptionManager()
-                    inc['metadata'] = enc.decrypt_dict(inc['metadata'])
+                    inc["metadata"] = enc.decrypt_dict(inc["metadata"])
                 except Exception:
-                    inc['metadata'] = {}
+                    inc["metadata"] = {}
             incidents.append(inc)
         return jsonify(incidents)
 
@@ -298,32 +304,32 @@ def get_unreviewed_incidents():
         return jsonify({"error": "An unexpected error occurred"}), 500
 
 
-@app.route('/api/incidents/<int:incident_id>/review', methods=['POST'])
+@app.route("/api/incidents/<int:incident_id>/review", methods=["POST"])
 @require_auth
 def mark_incident_reviewed(incident_id):
     """Mark incident as reviewed"""
     data = request.json or {}
-    notes = data.get('notes', '')
+    notes = data.get("notes", "")
     incident_logger.resolve_incident(incident_id, notes)
-    return jsonify({'success': True})
+    return jsonify({"success": True})
 
 
-@app.route('/api/user/<user_id>/report')
+@app.route("/api/user/<user_id>/report")
 @require_auth
 def get_user_report(user_id):
     """Get safety report for specific user"""
-    days = request.args.get('days', 30, type=int)
+    days = request.args.get("days", 30, type=int)
     report = incident_logger.generate_parent_report(parent_id=user_id, days=days)
     return jsonify(report)
 
 
-@app.route('/api/export')
+@app.route("/api/export")
 @require_auth
 def export_incidents():
     """Export incidents"""
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    fmt = request.args.get('format', 'json')
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    fmt = request.args.get("format", "json")
 
     from storage.database import db_manager
     from storage.db_adapters import DB_ERRORS
@@ -344,7 +350,7 @@ def export_incidents():
         results = db_manager.execute_query(query, tuple(params))
         incidents = [dict(row) for row in results]
 
-        if fmt == 'csv':
+        if fmt == "csv":
             import csv
             import io
 
@@ -357,30 +363,42 @@ def export_incidents():
                 writer.writerows(incidents)
                 csv_data = output.getvalue()
 
-            return csv_data, 200, {
-                'Content-Type': 'text/csv',
-                'Content-Disposition': f'attachment; filename=incidents_{datetime.now(timezone.utc).strftime("%Y%m%d")}.csv'
-            }
+            return (
+                csv_data,
+                200,
+                {
+                    "Content-Type": "text/csv",
+                    "Content-Disposition": f'attachment; filename=incidents_{datetime.now(timezone.utc).strftime("%Y%m%d")}.csv',
+                },
+            )
         else:
-            return json.dumps(incidents, default=str), 200, {'Content-Type': 'application/json'}
+            return (
+                json.dumps(incidents, default=str),
+                200,
+                {"Content-Type": "application/json"},
+            )
 
     except DB_ERRORS:
         logger.exception("Unexpected error in export_incidents")
         return jsonify({"error": "An unexpected error occurred"}), 500
 
 
-if __name__ == '__main__':
-    print("\n" + "="*60)
+if __name__ == "__main__":
+    print("\n" + "=" * 60)
     print("snflwr.ai - Parent Dashboard")
-    print("="*60)
+    print("=" * 60)
     print("\nDashboard starting on http://localhost:5000")
     print("\nThis dashboard allows parents/teachers to:")
     print("  - View safety analytics")
     print("  - Review blocked/flagged messages")
     print("  - Track student usage patterns")
     print("  - Export incident reports")
-    print("\n" + "="*60 + "\n")
+    print("\n" + "=" * 60 + "\n")
 
     # SECURITY: Never use debug=True in production - exposes code and allows RCE
-    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-    app.run(host='0.0.0.0', port=5000, debug=debug_mode)  # nosec B104 — intentional for Docker/container use
+    debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(
+        host="0.0.0.0",  # nosec B104 — intentional for Docker/container use
+        port=5000,
+        debug=debug_mode,
+    )

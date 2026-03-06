@@ -32,7 +32,7 @@ class AsyncOllamaClient:
         timeout: int = None,
         max_retries: int = 3,
         max_connections: int = 100,
-        use_circuit_breaker: bool = True
+        use_circuit_breaker: bool = True,
     ):
         """
         Initialize async Ollama client
@@ -52,15 +52,15 @@ class AsyncOllamaClient:
 
         # Connection pooling for better performance
         connector = aiohttp.TCPConnector(
-            limit=max_connections,
-            limit_per_host=50,
-            ttl_dns_cache=300
+            limit=max_connections, limit_per_host=50, ttl_dns_cache=300
         )
 
         self.session: Optional[aiohttp.ClientSession] = None
         self.connector = connector
 
-        logger.info(f"Async Ollama client initialized: {self.base_url} (circuit breaker: {use_circuit_breaker})")
+        logger.info(
+            f"Async Ollama client initialized: {self.base_url} (circuit breaker: {use_circuit_breaker})"
+        )
 
     @property
     def circuit_state(self) -> str:
@@ -90,9 +90,7 @@ class AsyncOllamaClient:
         if self.session is None:
             timeout = aiohttp.ClientTimeout(total=self.timeout)
             self.session = aiohttp.ClientSession(
-                connector=self.connector,
-                timeout=timeout,
-                raise_for_status=False
+                connector=self.connector, timeout=timeout, raise_for_status=False
             )
             logger.info("Async HTTP session created")
 
@@ -105,7 +103,7 @@ class AsyncOllamaClient:
             self.connector = aiohttp.TCPConnector(
                 limit=self.connector.limit,
                 limit_per_host=self.connector._limit_per_host,
-                ttl_dns_cache=300
+                ttl_dns_cache=300,
             )
             logger.info("Async HTTP session closed")
 
@@ -115,7 +113,7 @@ class AsyncOllamaClient:
         prompt: str,
         system: str = None,
         options: Dict[str, Any] = None,
-        stream: bool = False
+        stream: bool = False,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Generate completion asynchronously with circuit breaker protection.
@@ -150,11 +148,7 @@ class AsyncOllamaClient:
 
         try:
             # Build request payload
-            payload = {
-                "model": model,
-                "prompt": prompt,
-                "stream": stream
-            }
+            payload = {"model": model, "prompt": prompt, "stream": stream}
 
             if system:
                 payload["system"] = system
@@ -166,8 +160,7 @@ class AsyncOllamaClient:
             for attempt in range(self.max_retries):
                 try:
                     async with self.session.post(
-                        f"{self.base_url}/api/generate",
-                        json=payload
+                        f"{self.base_url}/api/generate", json=payload
                     ) as response:
 
                         if response.status == 200:
@@ -175,8 +168,12 @@ class AsyncOllamaClient:
                             response_text = data.get("response", "")
 
                             # Log performance
-                            elapsed_ms = (asyncio.get_running_loop().time() - start_time) * 1000
-                            log_performance_metric("ollama_generate_time", elapsed_ms, "ms")
+                            elapsed_ms = (
+                                asyncio.get_running_loop().time() - start_time
+                            ) * 1000
+                            log_performance_metric(
+                                "ollama_generate_time", elapsed_ms, "ms"
+                            )
 
                             logger.info(
                                 f"Ollama generate success: {model} "
@@ -198,7 +195,7 @@ class AsyncOllamaClient:
                             )
 
                             if attempt < self.max_retries - 1:
-                                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                                await asyncio.sleep(2**attempt)  # Exponential backoff
                                 continue
 
                             # All retries failed - record with circuit breaker
@@ -208,9 +205,11 @@ class AsyncOllamaClient:
 
                 except asyncio.TimeoutError as e:
                     last_error = e
-                    logger.warning(f"Ollama timeout (attempt {attempt + 1}/{self.max_retries})")
+                    logger.warning(
+                        f"Ollama timeout (attempt {attempt + 1}/{self.max_retries})"
+                    )
                     if attempt < self.max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)
+                        await asyncio.sleep(2**attempt)
                         continue
                     # All retries failed - record with circuit breaker
                     if self._circuit:
@@ -219,9 +218,11 @@ class AsyncOllamaClient:
 
                 except aiohttp.ClientError as e:
                     last_error = e
-                    logger.warning(f"Ollama client error (attempt {attempt + 1}/{self.max_retries}): {e}")
+                    logger.warning(
+                        f"Ollama client error (attempt {attempt + 1}/{self.max_retries}): {e}"
+                    )
                     if attempt < self.max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)
+                        await asyncio.sleep(2**attempt)
                         continue
                     # All retries failed - record with circuit breaker
                     if self._circuit:
@@ -235,17 +236,20 @@ class AsyncOllamaClient:
 
         except CircuitOpenError:
             raise  # Re-raise circuit open errors
-        except (OllamaError, aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, OSError) as e:
+        except (
+            OllamaError,
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+        ) as e:
             logger.exception(f"Unexpected error in Ollama generate: {e}")
             if self._circuit:
                 self._circuit.record_failure(e)
             return False, None, f"Internal error: {str(e)}"
 
     async def chat(
-        self,
-        model: str,
-        messages: list,
-        options: Dict[str, Any] = None
+        self, model: str, messages: list, options: Dict[str, Any] = None
     ) -> Tuple[bool, Optional[Dict], Optional[str]]:
         """
         Chat completion asynchronously
@@ -262,18 +266,13 @@ class AsyncOllamaClient:
             await self.initialize()
 
         try:
-            payload = {
-                "model": model,
-                "messages": messages,
-                "stream": False
-            }
+            payload = {"model": model, "messages": messages, "stream": False}
 
             if options:
                 payload["options"] = options
 
             async with self.session.post(
-                f"{self.base_url}/api/chat",
-                json=payload
+                f"{self.base_url}/api/chat", json=payload
             ) as response:
 
                 if response.status == 200:
@@ -283,7 +282,13 @@ class AsyncOllamaClient:
                     error_text = await response.text()
                     return False, None, f"HTTP {response.status}: {error_text}"
 
-        except (OllamaError, aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, OSError) as e:
+        except (
+            OllamaError,
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+        ) as e:
             logger.exception(f"Chat error: {e}")
             return False, None, str(e)
 
@@ -307,14 +312,18 @@ class AsyncOllamaClient:
                     error_text = await response.text()
                     return False, None, f"HTTP {response.status}: {error_text}"
 
-        except (OllamaError, aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, OSError) as e:
+        except (
+            OllamaError,
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+        ) as e:
             logger.exception(f"List models error: {e}")
             return False, None, str(e)
 
     async def pull_model(
-        self,
-        model: str,
-        insecure: bool = False
+        self, model: str, insecure: bool = False
     ) -> Tuple[bool, Optional[str]]:
         """
         Pull a model from registry
@@ -333,8 +342,7 @@ class AsyncOllamaClient:
             payload = {"name": model, "insecure": insecure}
 
             async with self.session.post(
-                f"{self.base_url}/api/pull",
-                json=payload
+                f"{self.base_url}/api/pull", json=payload
             ) as response:
 
                 if response.status == 200:
@@ -350,7 +358,13 @@ class AsyncOllamaClient:
                     error_text = await response.text()
                     return False, f"HTTP {response.status}: {error_text}"
 
-        except (OllamaError, aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, OSError) as e:
+        except (
+            OllamaError,
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+        ) as e:
             logger.exception(f"Pull model error: {e}")
             return False, str(e)
 
@@ -367,13 +381,18 @@ class AsyncOllamaClient:
         try:
             async with self.session.get(f"{self.base_url}/api/tags") as response:
                 return response.status == 200
-        except (OllamaError, aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, OSError) as e:
+        except (
+            OllamaError,
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+        ) as e:
             logger.error(f"Health check failed: {e}")
             return False
 
     async def generate_batch(
-        self,
-        requests: list[Dict[str, Any]]
+        self, requests: list[Dict[str, Any]]
     ) -> list[Tuple[bool, Optional[str], Optional[str]]]:
         """
         Generate multiple completions concurrently
@@ -389,7 +408,7 @@ class AsyncOllamaClient:
                 model=req.get("model"),
                 prompt=req.get("prompt"),
                 system=req.get("system"),
-                options=req.get("options")
+                options=req.get("options"),
             )
             for req in requests
         ]
@@ -438,8 +457,4 @@ async def close_async_ollama_client():
 
 
 # Export public interface
-__all__ = [
-    'AsyncOllamaClient',
-    'get_async_ollama_client',
-    'close_async_ollama_client'
-]
+__all__ = ["AsyncOllamaClient", "get_async_ollama_client", "close_async_ollama_client"]

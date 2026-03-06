@@ -28,7 +28,13 @@ from api import __version__
 from config import system_config
 from storage.encryption import is_encryption_available
 from storage.db_adapters import DB_ERRORS
-from utils.logger import get_logger, correlation_id_var, set_correlation_id, get_correlation_id, sanitize_log_value
+from utils.logger import (
+    get_logger,
+    correlation_id_var,
+    set_correlation_id,
+    get_correlation_id,
+    sanitize_log_value,
+)
 from api.middleware.auth import require_admin
 
 logger = get_logger(__name__)
@@ -41,6 +47,7 @@ except ImportError:
 
 # Rate limiter for unauthenticated endpoints
 from utils.rate_limiter import RateLimiter
+
 _setup_rate_limiter = RateLimiter()
 
 
@@ -67,6 +74,7 @@ def check_setup_rate_limit(request: Request):
             headers={"Retry-After": str(retry_after)},
         )
     return info
+
 
 # ===========================================================================
 # STARTUP SECURITY VALIDATION
@@ -109,12 +117,12 @@ _active_connections: int = 0
 _connections_lock = asyncio.Lock()
 
 # Request body size limit (10MB default, configurable)
-MAX_REQUEST_SIZE = getattr(system_config, 'MAX_REQUEST_SIZE_MB', 10) * 1024 * 1024
+MAX_REQUEST_SIZE = getattr(system_config, "MAX_REQUEST_SIZE_MB", 10) * 1024 * 1024
 
 
 # Maximum time (in seconds) allowed for startup before the server aborts.
 # Override with the STARTUP_TIMEOUT_SECONDS environment variable.
-STARTUP_TIMEOUT_SECONDS = int(os.getenv('STARTUP_TIMEOUT_SECONDS', '60'))
+STARTUP_TIMEOUT_SECONDS = int(os.getenv("STARTUP_TIMEOUT_SECONDS", "60"))
 
 
 @asynccontextmanager
@@ -140,17 +148,20 @@ async def lifespan(app: FastAPI):
     # Initialize Prometheus metrics
     try:
         from utils.metrics import init_app_info
+
         init_app_info(
-            version=__version__,
-            environment=os.getenv('ENVIRONMENT', 'development')
+            version=__version__, environment=os.getenv("ENVIRONMENT", "development")
         )
         logger.info("Prometheus metrics initialized")
     except ImportError:
-        logger.warning("Prometheus metrics not available (prometheus_client not installed)")
+        logger.warning(
+            "Prometheus metrics not available (prometheus_client not installed)"
+        )
 
     # Ensure database schema exists (creates tables if missing)
     try:
         from storage.database import db_manager
+
         db_manager.initialize_database()
         logger.info(f"Database schema initialized ({system_config.DATABASE_TYPE})")
     except Exception as e:
@@ -161,6 +172,7 @@ async def lifespan(app: FastAPI):
     try:
         from cryptography.fernet import Fernet
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
         logger.info("Cryptography library available")
     except ImportError as e:
         if system_config.is_production() or system_config.is_production_like():
@@ -184,13 +196,16 @@ async def lifespan(app: FastAPI):
     # Validate Redis connection if enabled
     if system_config.REDIS_ENABLED:
         from utils.cache import cache
+
         if not cache.health_check():
             if system_config.is_production():
                 # Production: hard failure — Redis is a security requirement
                 logger.error("=" * 60)
                 logger.error("STARTUP FAILED: Redis connection unavailable")
                 logger.error("Redis is REQUIRED in production for:")
-                logger.error("   - Authentication rate limiting (brute force protection)")
+                logger.error(
+                    "   - Authentication rate limiting (brute force protection)"
+                )
                 logger.error("   - Distributed caching")
                 logger.error("   - Celery task queue")
                 logger.error("")
@@ -202,20 +217,29 @@ async def lifespan(app: FastAPI):
             else:
                 # Non-production: warn and continue in degraded mode
                 logger.warning("=" * 60)
-                logger.warning("Redis connection unavailable — running in DEGRADED MODE")
-                logger.warning("Rate limiting will use in-memory fallback (per-process only).")
+                logger.warning(
+                    "Redis connection unavailable — running in DEGRADED MODE"
+                )
+                logger.warning(
+                    "Rate limiting will use in-memory fallback (per-process only)."
+                )
                 logger.warning("Session caching will use in-memory fallback.")
                 logger.warning("Celery background tasks will NOT be available.")
                 logger.warning("")
-                logger.warning("The cache will auto-reconnect every %ds if Redis comes back.",
-                               cache.RECONNECT_INTERVAL)
+                logger.warning(
+                    "The cache will auto-reconnect every %ds if Redis comes back.",
+                    cache.RECONNECT_INTERVAL,
+                )
                 logger.warning("=" * 60)
         else:
-            logger.info(f"Redis connected: {system_config.REDIS_HOST}:{system_config.REDIS_PORT}")
+            logger.info(
+                f"Redis connected: {system_config.REDIS_HOST}:{system_config.REDIS_PORT}"
+            )
 
         # Start WebSocket Redis Pub/Sub for horizontal scaling
         try:
             from api.websocket_server import websocket_manager
+
             await websocket_manager.start_pubsub()
             logger.info("WebSocket Redis Pub/Sub started")
         except Exception as e:
@@ -230,14 +254,13 @@ async def lifespan(app: FastAPI):
     # Log detected hardware and auto-tuned configuration
     try:
         from resource_detection import get_resource_profile
+
         profile = get_resource_profile()
         logger.info("-" * 60)
         logger.info("Detected Resources & Auto-Tuned Configuration")
         for line in profile.summary_lines():
             logger.info(f"  {line}")
-        logger.info(
-            "  (override any value via its env var, e.g. API_WORKERS=8)"
-        )
+        logger.info("  (override any value via its env var, e.g. API_WORKERS=8)")
         logger.info("-" * 60)
     except Exception as e:
         logger.warning(f"Could not log resource profile: {e}")
@@ -249,7 +272,9 @@ async def lifespan(app: FastAPI):
             f"Startup took {elapsed:.1f}s, exceeding the {STARTUP_TIMEOUT_SECONDS}s limit. "
             "Aborting. Check database and Redis connectivity, or raise STARTUP_TIMEOUT_SECONDS."
         )
-        raise RuntimeError(f"Startup timeout exceeded ({elapsed:.1f}s > {STARTUP_TIMEOUT_SECONDS}s)")
+        raise RuntimeError(
+            f"Startup timeout exceeded ({elapsed:.1f}s > {STARTUP_TIMEOUT_SECONDS}s)"
+        )
 
     logger.info(f"Startup completed in {elapsed:.1f}s")
     logger.info("=" * 60)
@@ -257,6 +282,7 @@ async def lifespan(app: FastAPI):
     # Start email alert worker thread
     try:
         from utils.email_alerts import email_alert_system
+
         email_alert_system.start_worker()
         logger.info("Email alert worker started")
     except Exception as e:
@@ -267,6 +293,7 @@ async def lifespan(app: FastAPI):
     # Stop email alert worker thread
     try:
         from utils.email_alerts import email_alert_system
+
         email_alert_system.stop_worker()
         logger.info("Email alert worker stopped")
     except Exception as e:
@@ -276,8 +303,9 @@ async def lifespan(app: FastAPI):
     # Close PostgreSQL connection pool if active
     try:
         from storage.database import db_manager
+
         adapter = db_manager._get_adapter()
-        if hasattr(adapter, 'shutdown_pool'):
+        if hasattr(adapter, "shutdown_pool"):
             adapter.shutdown_pool()
             logger.info("Database connection pool closed")
     except Exception as e:
@@ -313,35 +341,34 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         # Check Content-Length header if present
-        content_length = request.headers.get('content-length')
+        content_length = request.headers.get("content-length")
 
         if content_length:
             try:
                 size = int(content_length)
                 if size > MAX_REQUEST_SIZE:
-                    request_id = get_correlation_id() or 'unknown'
+                    request_id = get_correlation_id() or "unknown"
                     logger.warning(
                         f"Request body too large: {size} bytes (limit: {MAX_REQUEST_SIZE})",
-                        extra={"request_id": request_id}
+                        extra={"request_id": request_id},
                     )
                     return JSONResponse(
                         status_code=413,
                         content={
                             "detail": "Request body too large",
                             "max_size_bytes": MAX_REQUEST_SIZE,
-                            "received_bytes": size
-                        }
+                            "received_bytes": size,
+                        },
                     )
             except ValueError:
                 logger.warning(f"Malformed Content-Length header: {content_length}")
                 return JSONResponse(
-                    status_code=400,
-                    content={"detail": "Invalid Content-Length header"}
+                    status_code=400, content={"detail": "Invalid Content-Length header"}
                 )
-        elif request.method in ('POST', 'PUT', 'PATCH'):
+        elif request.method in ("POST", "PUT", "PATCH"):
             # No Content-Length header (e.g. chunked transfer encoding).
             # Read body with size cap to prevent unbounded memory use.
-            body = b''
+            body = b""
             async for chunk in request.stream():
                 body += chunk
                 if len(body) > MAX_REQUEST_SIZE:
@@ -353,12 +380,13 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                         content={
                             "detail": "Request body too large",
                             "max_size_bytes": MAX_REQUEST_SIZE,
-                        }
+                        },
                     )
             # Re-inject the body so downstream handlers can read it
             request._body = body
 
         return await call_next(request)
+
 
 app.add_middleware(RequestSizeLimitMiddleware)
 
@@ -369,11 +397,18 @@ app.add_middleware(
     allow_origins=system_config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Request-ID", "Accept"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-CSRF-Token",
+        "X-Request-ID",
+        "Accept",
+    ],
 )
 
 # CSRF Protection Middleware
 from api.middleware.csrf_protection import validate_csrf_token
+
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Middleware to validate CSRF tokens on state-changing requests"""
@@ -397,6 +432,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
+
 app.add_middleware(CSRFMiddleware)
 
 
@@ -413,7 +449,7 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         # Get or generate correlation ID
-        request_id = request.headers.get('X-Request-ID')
+        request_id = request.headers.get("X-Request-ID")
         if not request_id:
             request_id = str(uuid.uuid4())
 
@@ -430,7 +466,7 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
 
             # Add correlation ID to response
-            response.headers['X-Request-ID'] = request_id
+            response.headers["X-Request-ID"] = request_id
 
             return response
         finally:
@@ -440,6 +476,7 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
             # Decrement active connections
             async with _connections_lock:
                 _active_connections -= 1
+
 
 app.add_middleware(CorrelationIDMiddleware)
 
@@ -455,32 +492,32 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, timeout_seconds: float = 60.0):
         super().__init__(app)
-        self.timeout = getattr(system_config, 'REQUEST_TIMEOUT_SECONDS', timeout_seconds)
+        self.timeout = getattr(
+            system_config, "REQUEST_TIMEOUT_SECONDS", timeout_seconds
+        )
 
     async def dispatch(self, request, call_next):
         # Skip timeout for WebSocket connections and streaming endpoints
-        if request.url.path.startswith('/api/ws'):
+        if request.url.path.startswith("/api/ws"):
             return await call_next(request)
 
         try:
-            return await asyncio.wait_for(
-                call_next(request),
-                timeout=self.timeout
-            )
+            return await asyncio.wait_for(call_next(request), timeout=self.timeout)
         except asyncio.TimeoutError:
-            request_id = get_correlation_id() or 'unknown'
+            request_id = get_correlation_id() or "unknown"
             logger.error(
                 f"Request timeout after {self.timeout}s",
-                extra={"request_id": request_id, "path": request.url.path}
+                extra={"request_id": request_id, "path": request.url.path},
             )
             return JSONResponse(
                 status_code=504,
                 content={
                     "detail": "Request timeout",
                     "request_id": request_id,
-                    "timeout_seconds": self.timeout
-                }
+                    "timeout_seconds": self.timeout,
+                },
             )
+
 
 app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=60.0)
 
@@ -546,8 +583,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # HSTS - Only enable when running behind HTTPS (not on localhost/USB)
-        if os.getenv('ENABLE_HSTS', 'false').lower() == 'true':
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if os.getenv("ENABLE_HSTS", "false").lower() == "true":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
 
         # Permissions-Policy
         response.headers["Permissions-Policy"] = (
@@ -556,10 +595,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         return response
 
+
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Import routers after app creation to avoid circular imports
-from api.routes import chat, profiles, safety, auth, analytics, admin, metrics, websocket, parental_consent, dashboard, admin_dashboard, thin_client
+from api.routes import (
+    chat,
+    profiles,
+    safety,
+    auth,
+    analytics,
+    admin,
+    metrics,
+    websocket,
+    parental_consent,
+    dashboard,
+    admin_dashboard,
+    thin_client,
+)
 
 # Register routes
 app.include_router(admin.router)  # Admin routes have prefix in router definition
@@ -570,7 +623,9 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(metrics.router, prefix="/api", tags=["monitoring"])
 app.include_router(websocket.router, prefix="/api/ws", tags=["websocket"])
-app.include_router(parental_consent.router, prefix="/api/parental-consent", tags=["coppa"])
+app.include_router(
+    parental_consent.router, prefix="/api/parental-consent", tags=["coppa"]
+)
 app.include_router(dashboard.router, tags=["dashboard"])
 app.include_router(admin_dashboard.router, tags=["admin-dashboard"])
 app.include_router(thin_client.router, prefix="/api/thin-client", tags=["thin-client"])
@@ -578,20 +633,25 @@ app.include_router(thin_client.router, prefix="/api/thin-client", tags=["thin-cl
 # Serve dashboard static assets (JS, CSS)
 from pathlib import Path as _Path
 from fastapi.staticfiles import StaticFiles
+
 app.mount(
     "/dashboard/static",
     StaticFiles(directory=str(_Path(__file__).parent / "static" / "dashboard")),
-    name="dashboard-static"
+    name="dashboard-static",
 )
 app.mount(
     "/admin/static",
     StaticFiles(directory=str(_Path(__file__).parent / "static" / "admin")),
-    name="admin-static"
+    name="admin-static",
 )
+
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    return FileResponse(str(_Path(__file__).parent / "static" / "admin" / "icon.png"), media_type="image/png")
+    return FileResponse(
+        str(_Path(__file__).parent / "static" / "admin" / "icon.png"),
+        media_type="image/png",
+    )
 
 
 @app.get("/api/internal/profile-for-user/{user_id}")
@@ -606,11 +666,17 @@ async def get_profile_for_user(user_id: str, authorization: str = Header(None)):
     """
     import hmac as _hmac
     from config import INTERNAL_API_KEY
-    token = authorization.split(" ", 1)[1] if authorization and " " in authorization else authorization
+
+    token = (
+        authorization.split(" ", 1)[1]
+        if authorization and " " in authorization
+        else authorization
+    )
     if not token or not _hmac.compare_digest(token, INTERNAL_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
     import re
-    if not re.match(r'^[a-zA-Z0-9_-]{1,128}$', user_id):
+
+    if not re.match(r"^[a-zA-Z0-9_-]{1,128}$", user_id):
         return {"profile_id": "default_profile"}
 
     try:
@@ -624,7 +690,7 @@ async def get_profile_for_user(user_id: str, authorization: str = Header(None)):
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (user_id,)
+            (user_id,),
         )
 
         if not profiles:
@@ -636,20 +702,28 @@ async def get_profile_for_user(user_id: str, authorization: str = Header(None)):
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                (user_id,)
+                (user_id,),
             )
 
         if profiles:
-            pid = profiles[0]['profile_id'] if isinstance(profiles[0], dict) else profiles[0][0]
+            pid = (
+                profiles[0]["profile_id"]
+                if isinstance(profiles[0], dict)
+                else profiles[0][0]
+            )
             return {"profile_id": str(pid)}
 
         return {"profile_id": f"no_profile_{user_id}"}
 
     except DB_ERRORS as e:
-        logger.error(f"Database error looking up profile for user {sanitize_log_value(user_id)!r}: {e}")
+        logger.error(
+            f"Database error looking up profile for user {sanitize_log_value(user_id)!r}: {e}"
+        )
         return {"profile_id": f"no_profile_{user_id}"}
     except Exception as e:
-        logger.exception(f"Unexpected error looking up profile for user {sanitize_log_value(user_id)!r}: {e}")
+        logger.exception(
+            f"Unexpected error looking up profile for user {sanitize_log_value(user_id)!r}: {e}"
+        )
         return {"profile_id": f"no_profile_{user_id}"}
 
 
@@ -660,7 +734,7 @@ async def root():
         "name": "snflwr.ai API",
         "version": __version__,
         "status": "running",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -673,10 +747,9 @@ async def setup_status(_rate=Depends(check_setup_rate_limit)):
     """
     try:
         from storage.database import db_manager
-        parents = db_manager.execute_query(
-            "SELECT COUNT(*) as count FROM accounts"
-        )
-        has_accounts = parents and parents[0]['count'] > 0
+
+        parents = db_manager.execute_query("SELECT COUNT(*) as count FROM accounts")
+        has_accounts = parents and parents[0]["count"] > 0
     except DB_ERRORS as e:
         logger.error(f"Database error checking setup status: {e}")
         has_accounts = False
@@ -692,6 +765,7 @@ async def setup_status(_rate=Depends(check_setup_rate_limit)):
 
 class SetupRequest(BaseModel):
     """Web setup wizard request — creates the first parent account and optional child profile."""
+
     email: str
     password: str
     verify_password: str
@@ -714,13 +788,12 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
     # ---- Guard: only allow when system is not yet initialized ----
     try:
         from storage.database import db_manager
-        parents = db_manager.execute_query(
-            "SELECT COUNT(*) as count FROM accounts"
-        )
-        if parents and parents[0]['count'] > 0:
+
+        parents = db_manager.execute_query("SELECT COUNT(*) as count FROM accounts")
+        if parents and parents[0]["count"] > 0:
             raise HTTPException(
                 status_code=403,
-                detail="Setup has already been completed. Please log in instead."
+                detail="Setup has already been completed. Please log in instead.",
             )
     except HTTPException:
         raise
@@ -728,13 +801,13 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
         logger.error(f"Database error in setup guard: {e}")
         raise HTTPException(
             status_code=503,
-            detail="Cannot verify system state. Please try again in a moment."
+            detail="Cannot verify system state. Please try again in a moment.",
         )
     except Exception as e:
         logger.exception(f"Unexpected error in setup guard: {e}")
         raise HTTPException(
             status_code=503,
-            detail="Cannot verify system state. Please try again in a moment."
+            detail="Cannot verify system state. Please try again in a moment.",
         )
 
     # ---- Step 1: Create parent account ----
@@ -748,7 +821,7 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
             username=request.email,
             password=request.password,
             email=request.email,
-            role='admin',
+            role="admin",
         )
 
         if not success:
@@ -762,7 +835,9 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
         logger.exception(f"Unexpected error during setup account creation: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create account. Please try again.")
+        raise HTTPException(
+            status_code=500, detail="Failed to create account. Please try again."
+        )
 
     # ---- Step 2: Optionally create child profile ----
     # COPPA: If child is under 13, do NOT create the profile during setup.
@@ -779,6 +854,7 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
         else:
             try:
                 from core.profile_manager import ProfileManager
+
                 profile_manager = ProfileManager(auth_manager.db)
                 profile = profile_manager.create_profile(
                     parent_id=user_id,
@@ -789,7 +865,9 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
                 if profile:
                     child_profile = profile.to_dict()
             except DB_ERRORS as e:
-                logger.warning(f"Setup: child profile creation DB error (non-fatal): {e}")
+                logger.warning(
+                    f"Setup: child profile creation DB error (non-fatal): {e}"
+                )
             except Exception as e:
                 logger.warning(f"Setup: child profile creation failed (non-fatal): {e}")
 
@@ -799,7 +877,11 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
             request.email, request.password
         )
         session_data = login_result if login_success else None
-        token = login_result.get('session_token') if login_success and isinstance(login_result, dict) else None
+        token = (
+            login_result.get("session_token")
+            if login_success and isinstance(login_result, dict)
+            else None
+        )
     except DB_ERRORS as e:
         logger.warning(f"Setup: auto-login DB error (non-fatal): {e}")
         session_data = None
@@ -841,29 +923,27 @@ async def health_check_detailed(session=Depends(require_admin)):
     Returns detailed status of database, Redis, Celery, and Ollama.
     Use this for monitoring dashboards and alerting.
     """
-    health = {
-        "status": "healthy",
-        "checks": {}
-    }
+    health = {"status": "healthy", "checks": {}}
     unhealthy_count = 0
 
     # Database check
     try:
         from storage.database import db_manager
+
         db_manager.adapter.connect()
         # Try a simple query
         result = db_manager.adapter.execute_query("SELECT 1")
         health["checks"]["database"] = {
             "status": "healthy",
             "type": system_config.DATABASE_TYPE,
-            "message": "Connection successful"
+            "message": "Connection successful",
         }
     except DB_ERRORS as e:
         logger.error(f"Database health check failed: {e}")
         health["checks"]["database"] = {
             "status": "unhealthy",
             "type": system_config.DATABASE_TYPE,
-            "error": "Database connection failed"
+            "error": "Database connection failed",
         }
         unhealthy_count += 1
     except Exception as e:
@@ -871,70 +951,77 @@ async def health_check_detailed(session=Depends(require_admin)):
         health["checks"]["database"] = {
             "status": "unhealthy",
             "type": system_config.DATABASE_TYPE,
-            "error": "Database check failed"
+            "error": "Database check failed",
         }
         unhealthy_count += 1
 
     # Redis check (with Sentinel support)
     try:
         from utils.cache import cache
+
         if cache.enabled and cache._client:
             detailed_health = cache.health_check_detailed()
-            if detailed_health.get('healthy'):
+            if detailed_health.get("healthy"):
                 health["checks"]["redis"] = {
                     "status": "healthy",
-                    "mode": detailed_health.get('mode', 'standalone'),
-                    "hit_rate": f"{cache.get_stats().get('hit_rate', 0):.1f}%"
+                    "mode": detailed_health.get("mode", "standalone"),
+                    "hit_rate": f"{cache.get_stats().get('hit_rate', 0):.1f}%",
                 }
                 # Add Sentinel info if available
-                if detailed_health.get('mode') == 'sentinel':
-                    health["checks"]["redis"]["slave_count"] = detailed_health.get('slave_count', 0)
-                    health["checks"]["redis"]["sentinel_nodes"] = detailed_health.get('sentinel_nodes', 0)
+                if detailed_health.get("mode") == "sentinel":
+                    health["checks"]["redis"]["slave_count"] = detailed_health.get(
+                        "slave_count", 0
+                    )
+                    health["checks"]["redis"]["sentinel_nodes"] = detailed_health.get(
+                        "sentinel_nodes", 0
+                    )
             else:
                 health["checks"]["redis"] = {
                     "status": "unhealthy",
-                    "mode": detailed_health.get('mode', 'standalone'),
-                    "error": "Redis connection failed"
+                    "mode": detailed_health.get("mode", "standalone"),
+                    "error": "Redis connection failed",
                 }
                 unhealthy_count += 1
         else:
             health["checks"]["redis"] = {
                 "status": "disabled",
-                "message": "Redis caching is disabled"
+                "message": "Redis caching is disabled",
             }
     except Exception as e:
         logger.exception(f"Unexpected error in Redis health check: {e}")
         health["checks"]["redis"] = {
             "status": "unhealthy",
-            "error": "Redis check failed"
+            "error": "Redis check failed",
         }
         unhealthy_count += 1
 
     # Celery check
     try:
         from utils.celery_config import check_celery_health
+
         celery_health = check_celery_health()
-        if celery_health.get('healthy'):
+        if celery_health.get("healthy"):
             health["checks"]["celery"] = {
                 "status": "healthy",
-                "worker_count": celery_health.get('worker_count', 0)
+                "worker_count": celery_health.get("worker_count", 0),
             }
         else:
             health["checks"]["celery"] = {
                 "status": "unhealthy",
-                "error": "No workers responding"
+                "error": "No workers responding",
             }
             # Celery being down is a warning, not critical
     except Exception as e:
         logger.exception(f"Unexpected error in Celery health check: {e}")
         health["checks"]["celery"] = {
             "status": "unknown",
-            "error": "Celery check failed"
+            "error": "Celery check failed",
         }
 
     # Ollama check with circuit breaker status
     try:
         from utils.circuit_breaker import ollama_circuit
+
         circuit_stats = ollama_circuit.get_stats()
         circuit_state = circuit_stats.get("state", "unknown")
 
@@ -943,38 +1030,39 @@ async def health_check_detailed(session=Depends(require_admin)):
             health["checks"]["ollama"] = {
                 "status": "circuit_open",
                 "circuit_state": circuit_state,
-                "message": "Circuit breaker is OPEN"
+                "message": "Circuit breaker is OPEN",
             }
             unhealthy_count += 1
         else:
             import httpx
+
             ollama_url = system_config.OLLAMA_HOST
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{ollama_url}/api/tags")
                 if response.status_code == 200:
-                    models = response.json().get('models', [])
+                    models = response.json().get("models", [])
                     health["checks"]["ollama"] = {
                         "status": "healthy",
                         "models_loaded": len(models),
-                        "circuit_state": circuit_state
+                        "circuit_state": circuit_state,
                     }
                 else:
                     health["checks"]["ollama"] = {
                         "status": "degraded",
-                        "circuit_state": circuit_state
+                        "circuit_state": circuit_state,
                     }
     except (ConnectionError, OSError) as e:
         logger.error(f"Ollama connection error during health check: {e}")
         health["checks"]["ollama"] = {
             "status": "unhealthy",
-            "error": "Ollama connection failed"
+            "error": "Ollama connection failed",
         }
         unhealthy_count += 1
     except Exception as e:
         logger.exception(f"Unexpected error in Ollama health check: {e}")
         health["checks"]["ollama"] = {
             "status": "unhealthy",
-            "error": "Ollama check failed"
+            "error": "Ollama check failed",
         }
         unhealthy_count += 1
 
@@ -999,22 +1087,17 @@ async def readiness_check():
     try:
         # Check database is accessible
         from storage.database import db_manager
+
         db_manager.adapter.connect()
         db_manager.adapter.execute_query("SELECT 1")
 
         return {"status": "ready"}
     except DB_ERRORS as e:
         logger.error(f"Database not ready: {e}")
-        return JSONResponse(
-            status_code=503,
-            content={"status": "not_ready"}
-        )
+        return JSONResponse(status_code=503, content={"status": "not_ready"})
     except Exception as e:
         logger.exception(f"Unexpected error in readiness check: {e}")
-        return JSONResponse(
-            status_code=503,
-            content={"status": "not_ready"}
-        )
+        return JSONResponse(status_code=503, content={"status": "not_ready"})
 
 
 @app.get("/health/live")
@@ -1050,28 +1133,30 @@ async def prometheus_metrics(request: Request):
     """
     # Bearer token auth for Prometheus scraper
     import hmac as _hmac_metrics
-    metrics_token = os.getenv('PROMETHEUS_METRICS_TOKEN')
+
+    metrics_token = os.getenv("PROMETHEUS_METRICS_TOKEN")
     if not metrics_token:
         raise HTTPException(
             status_code=503,
             detail="Metrics endpoint disabled: set PROMETHEUS_METRICS_TOKEN to enable",
         )
-    auth_header = request.headers.get('Authorization', '')
-    expected = f'Bearer {metrics_token}'
+    auth_header = request.headers.get("Authorization", "")
+    expected = f"Bearer {metrics_token}"
     if not _hmac_metrics.compare_digest(auth_header, expected):
         raise HTTPException(status_code=401, detail="Invalid metrics token")
 
     from fastapi.responses import Response
+
     try:
         from utils.metrics import get_metrics, get_content_type
-        return Response(
-            content=get_metrics(),
-            media_type=get_content_type()
-        )
+
+        return Response(content=get_metrics(), media_type=get_content_type())
     except ImportError:
         return JSONResponse(
             status_code=503,
-            content={"error": "Prometheus metrics not available. Install prometheus_client package."}
+            content={
+                "error": "Prometheus metrics not available. Install prometheus_client package."
+            },
         )
 
 
@@ -1117,17 +1202,20 @@ async def graceful_shutdown(sig: signal.Signals):
     # Step 2: Close WebSocket connections gracefully
     try:
         from api.websocket_server import websocket_manager
+
         connection_count = websocket_manager.get_active_connections()
 
         if connection_count > 0:
             logger.info(f"Closing {connection_count} WebSocket connections...")
 
             # Notify all connected clients about shutdown
-            await websocket_manager.broadcast_all({
-                "type": "server_shutdown",
-                "message": "Server is shutting down for maintenance",
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
+            await websocket_manager.broadcast_all(
+                {
+                    "type": "server_shutdown",
+                    "message": "Server is shutting down for maintenance",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
             # Give clients a moment to receive the message
             await asyncio.sleep(0.5)
@@ -1137,8 +1225,7 @@ async def graceful_shutdown(sig: signal.Signals):
                 for ws in list(connections):
                     try:
                         await asyncio.wait_for(
-                            ws.close(code=1001, reason="Server shutdown"),
-                            timeout=2.0
+                            ws.close(code=1001, reason="Server shutdown"), timeout=2.0
                         )
                     except (asyncio.TimeoutError, Exception):
                         pass
@@ -1156,6 +1243,7 @@ async def graceful_shutdown(sig: signal.Signals):
     # Step 3: Close Redis connections
     try:
         from utils.cache import cache
+
         if cache.enabled and cache._client:
             cache._client.close()
             logger.info("Redis connection closed")
@@ -1167,9 +1255,10 @@ async def graceful_shutdown(sig: signal.Signals):
     # Step 4: Close database connections
     try:
         from storage.database import db_manager
-        if hasattr(db_manager.adapter, 'close'):
+
+        if hasattr(db_manager.adapter, "close"):
             db_manager.adapter.close()
-        elif hasattr(db_manager.adapter, 'disconnect'):
+        elif hasattr(db_manager.adapter, "disconnect"):
             db_manager.adapter.disconnect()
         logger.info("Database connection closed")
     except DB_ERRORS as e:
@@ -1189,13 +1278,15 @@ def setup_signal_handlers():
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
             loop.add_signal_handler(
-                sig,
-                lambda s=sig: asyncio.create_task(graceful_shutdown(s))
+                sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s))
             )
             logger.debug(f"Signal handler registered for {sig.name}")
         except NotImplementedError:
             # Windows doesn't support add_signal_handler
-            signal.signal(sig, lambda s, f: asyncio.create_task(graceful_shutdown(signal.Signals(s))))
+            signal.signal(
+                sig,
+                lambda s, f: asyncio.create_task(graceful_shutdown(signal.Signals(s))),
+            )
 
 
 @app.exception_handler(RequestValidationError)
@@ -1206,7 +1297,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "timestamp": datetime.now(timezone.utc).isoformat()}
+        content={
+            "detail": exc.errors(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
 
@@ -1215,7 +1309,10 @@ async def http_exception_handler(request, exc):
     """Custom HTTP exception handler"""
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail, "timestamp": datetime.now(timezone.utc).isoformat()}
+        content={
+            "detail": exc.detail,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
 
@@ -1230,31 +1327,32 @@ async def generic_exception_handler(request, exc):
         status_code=500,
         content={
             "detail": "An internal error occurred. Please try again later.",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
 
 def _needs_first_run_setup() -> bool:
     """Check if this is a first run with no production config."""
     from pathlib import Path
+
     project_root = Path(__file__).parent.parent
-    env_production = project_root / '.env.production'
+    env_production = project_root / ".env.production"
 
     # If .env.production exists, setup has already been completed
     if env_production.exists():
         return False
 
     # In production mode without a config file, setup is needed
-    environment = os.getenv('ENVIRONMENT', 'development').lower()
-    if environment in ('production', 'prod', 'staging'):
+    environment = os.getenv("ENVIRONMENT", "development").lower()
+    if environment in ("production", "prod", "staging"):
         return True
 
     # If JWT is still the default placeholder, setup hasn't been done
-    jwt = os.getenv('JWT_SECRET_KEY', '')
-    if not jwt or jwt == 'change-this-secret-key-in-production':
+    jwt = os.getenv("JWT_SECRET_KEY", "")
+    if not jwt or jwt == "change-this-secret-key-in-production":
         # Only trigger for production — dev is fine with defaults
-        return environment in ('production', 'prod', 'staging')
+        return environment in ("production", "prod", "staging")
 
     return False
 
@@ -1264,7 +1362,7 @@ def _run_interactive_setup():
     from pathlib import Path
     import subprocess
 
-    setup_script = Path(__file__).parent.parent / 'scripts' / 'setup_production.py'
+    setup_script = Path(__file__).parent.parent / "scripts" / "setup_production.py"
     if not setup_script.exists():
         return False
 
@@ -1278,10 +1376,11 @@ def _run_interactive_setup():
         return False
 
     # Reload environment from the newly created .env.production
-    env_production = Path(__file__).parent.parent / '.env.production'
+    env_production = Path(__file__).parent.parent / ".env.production"
     if env_production.exists():
         try:
             from dotenv import load_dotenv
+
             load_dotenv(env_production, override=True)
         except ImportError:
             pass
@@ -1314,7 +1413,7 @@ def main():
         port=system_config.API_PORT,
         reload=system_config.API_RELOAD,
         workers=1 if system_config.API_RELOAD else system_config.API_WORKERS,
-        log_level=system_config.LOG_LEVEL.lower()
+        log_level=system_config.LOG_LEVEL.lower(),
     )
 
 

@@ -23,8 +23,8 @@ except ImportError:
 logger = get_logger(__name__)
 
 # Check if we're in production
-_ENVIRONMENT = os.getenv('ENVIRONMENT', 'development').lower()
-_IS_PRODUCTION = _ENVIRONMENT in ('production', 'prod', 'staging')
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+_IS_PRODUCTION = _ENVIRONMENT in ("production", "prod", "staging")
 
 
 class LocalRateLimiter:
@@ -38,7 +38,7 @@ class LocalRateLimiter:
 
     def __init__(self):
         self._windows: dict = {}  # {window_key: [timestamp, ...]}
-        self._lock = __import__('threading').Lock()
+        self._lock = __import__("threading").Lock()
         self._warned: set = set()  # Track which keys we've warned about
 
     def check_rate_limit(
@@ -97,19 +97,18 @@ class LocalRateLimiter:
                 )
             try:
                 from utils.metrics import rate_limiter_requests_total
-                rate_limiter_requests_total.labels(
-                    result='fallback_activated'
-                ).inc()
+
+                rate_limiter_requests_total.labels(result="fallback_activated").inc()
             except (ImportError, Exception):
                 pass
 
         return allowed, {
-            'remaining': remaining,
-            'reset_time': datetime.fromtimestamp(reset_time).isoformat(),
-            'retry_after': retry_after,
-            'limit': max_requests,
-            'window': window_seconds,
-            'backend': 'local',
+            "remaining": remaining,
+            "reset_time": datetime.fromtimestamp(reset_time).isoformat(),
+            "retry_after": retry_after,
+            "limit": max_requests,
+            "window": window_seconds,
+            "backend": "local",
         }
 
     def _cleanup_stale(self, current_time: float, default_window: int = 120):
@@ -150,7 +149,7 @@ class RateLimiter:
         max_requests: int,
         window_seconds: int,
         limit_type: str = "api",
-        fail_closed: bool = None
+        fail_closed: bool = None,
     ) -> Tuple[bool, dict]:
         """
         Check if request is within rate limit using sliding window
@@ -168,7 +167,14 @@ class RateLimiter:
             info contains: remaining, reset_time, retry_after
         """
         # Define critical endpoints that require rate limiting for security
-        critical_endpoints = {'auth', 'login', 'password_reset', 'register', 'admin', 'api_key'}
+        critical_endpoints = {
+            "auth",
+            "login",
+            "password_reset",
+            "register",
+            "admin",
+            "api_key",
+        }
 
         # Auto-detect fail-closed for critical endpoints if not explicitly set
         if fail_closed is None:
@@ -188,14 +194,16 @@ class RateLimiter:
                     f"Denying request to prevent potential brute force attacks."
                 )
                 return False, {
-                    'remaining': 0,
-                    'reset_time': None,
-                    'retry_after': 60,
-                    'error': 'Rate limiting service unavailable - request denied for security'
+                    "remaining": 0,
+                    "reset_time": None,
+                    "retry_after": 60,
+                    "error": "Rate limiting service unavailable - request denied for security",
                 }
 
             # Fall back to in-memory rate limiting (non-distributed but still protective)
-            return _local_limiter.check_rate_limit(identifier, max_requests, window_seconds, limit_type)
+            return _local_limiter.check_rate_limit(
+                identifier, max_requests, window_seconds, limit_type
+            )
 
         current_time = time.time()
         window_key = self._get_window_key(identifier, limit_type)
@@ -206,7 +214,7 @@ class RateLimiter:
 
             # Remove old requests outside window
             window_start = current_time - window_seconds
-            pipe.zremrangebyscore(window_key, '-inf', window_start)
+            pipe.zremrangebyscore(window_key, "-inf", window_start)
 
             # Count requests in current window
             pipe.zcard(window_key)
@@ -229,8 +237,7 @@ class RateLimiter:
             if request_count > 0:
                 # Get oldest request in window
                 oldest_requests = self.cache._client.zrange(
-                    window_key,
-                    0, 0, withscores=True
+                    window_key, 0, 0, withscores=True
                 )
                 if oldest_requests:
                     oldest_time = oldest_requests[0][1]
@@ -244,11 +251,11 @@ class RateLimiter:
                 retry_after = 0 if allowed else window_seconds
 
             info = {
-                'remaining': remaining,
-                'reset_time': datetime.fromtimestamp(reset_time).isoformat(),
-                'retry_after': retry_after,
-                'limit': max_requests,
-                'window': window_seconds
+                "remaining": remaining,
+                "reset_time": datetime.fromtimestamp(reset_time).isoformat(),
+                "retry_after": retry_after,
+                "limit": max_requests,
+                "window": window_seconds,
             }
 
             if not allowed:
@@ -270,10 +277,10 @@ class RateLimiter:
                     f"Denying request due to error: {e}"
                 )
                 return False, {
-                    'remaining': 0,
-                    'reset_time': None,
-                    'retry_after': window_seconds,
-                    'error': 'Rate limiting temporarily unavailable'
+                    "remaining": 0,
+                    "reset_time": None,
+                    "retry_after": window_seconds,
+                    "error": "Rate limiting temporarily unavailable",
                 }
             else:
                 logger.info(
@@ -281,10 +288,10 @@ class RateLimiter:
                     f"Allowing request despite error: {e}"
                 )
                 return True, {
-                    'remaining': max_requests,
-                    'reset_time': None,
-                    'retry_after': 0,
-                    'error': str(e)
+                    "remaining": max_requests,
+                    "reset_time": None,
+                    "retry_after": 0,
+                    "error": str(e),
                 }
 
     def reset_limit(self, identifier: str, limit_type: str = "api") -> bool:
@@ -302,10 +309,7 @@ class RateLimiter:
         return self.cache.delete(window_key, self.namespace)
 
     def get_current_usage(
-        self,
-        identifier: str,
-        limit_type: str = "api",
-        window_seconds: int = 60
+        self, identifier: str, limit_type: str = "api", window_seconds: int = 60
     ) -> dict:
         """
         Get current rate limit usage
@@ -319,7 +323,7 @@ class RateLimiter:
             Dictionary with usage statistics
         """
         if not self.cache.enabled:
-            return {'requests': 0, 'window_start': None}
+            return {"requests": 0, "window_start": None}
 
         window_key = self._get_window_key(identifier, limit_type)
         current_time = time.time()
@@ -327,26 +331,20 @@ class RateLimiter:
 
         try:
             # Remove old requests
-            self.cache._client.zremrangebyscore(
-                window_key,
-                '-inf',
-                window_start
-            )
+            self.cache._client.zremrangebyscore(window_key, "-inf", window_start)
 
             # Count requests
-            request_count = self.cache._client.zcard(
-                window_key
-            )
+            request_count = self.cache._client.zcard(window_key)
 
             return {
-                'requests': request_count,
-                'window_start': datetime.fromtimestamp(window_start).isoformat(),
-                'window_end': datetime.fromtimestamp(current_time).isoformat()
+                "requests": request_count,
+                "window_start": datetime.fromtimestamp(window_start).isoformat(),
+                "window_end": datetime.fromtimestamp(current_time).isoformat(),
             }
 
         except (RedisError, ConnectionError, OSError) as e:
             logger.error(f"Error getting rate limit usage: {e}")
-            return {'requests': 0, 'error': str(e)}
+            return {"requests": 0, "error": str(e)}
 
 
 class TokenBucketRateLimiter:
@@ -361,11 +359,7 @@ class TokenBucketRateLimiter:
         self.namespace = "token_bucket"
 
     def check_rate_limit(
-        self,
-        identifier: str,
-        capacity: int,
-        refill_rate: float,
-        tokens_needed: int = 1
+        self, identifier: str, capacity: int, refill_rate: float, tokens_needed: int = 1
     ) -> Tuple[bool, dict]:
         """
         Check if request is allowed using token bucket algorithm
@@ -381,7 +375,9 @@ class TokenBucketRateLimiter:
         """
         if not self.cache.enabled:
             # Fall back to local sliding window (not token bucket, but still protective)
-            return _local_limiter.check_rate_limit(identifier, capacity, 60, "token_bucket")
+            return _local_limiter.check_rate_limit(
+                identifier, capacity, 60, "token_bucket"
+            )
 
         current_time = time.time()
         bucket_key = f"bucket:{identifier}"
@@ -391,8 +387,8 @@ class TokenBucketRateLimiter:
             bucket_data = self.cache.get(bucket_key, self.namespace)
 
             if bucket_data:
-                last_tokens = bucket_data['tokens']
-                last_time = bucket_data['timestamp']
+                last_tokens = bucket_data["tokens"]
+                last_time = bucket_data["timestamp"]
             else:
                 # Initialize bucket
                 last_tokens = capacity
@@ -416,17 +412,14 @@ class TokenBucketRateLimiter:
                 new_tokens = current_tokens
 
             # Save bucket state
-            bucket_state = {
-                'tokens': new_tokens,
-                'timestamp': current_time
-            }
+            bucket_state = {"tokens": new_tokens, "timestamp": current_time}
             self.cache.set(bucket_key, bucket_state, ttl=3600, namespace=self.namespace)
 
             info = {
-                'tokens': new_tokens,
-                'capacity': capacity,
-                'allowed': allowed,
-                'refill_rate': refill_rate
+                "tokens": new_tokens,
+                "capacity": capacity,
+                "allowed": allowed,
+                "refill_rate": refill_rate,
             }
 
             if not allowed:
@@ -440,36 +433,36 @@ class TokenBucketRateLimiter:
         except (RedisError, ConnectionError, OSError) as e:
             logger.error(f"Token bucket error: {e}")
             # On error, allow request
-            return True, {'tokens': capacity, 'capacity': capacity, 'error': str(e)}
+            return True, {"tokens": capacity, "capacity": capacity, "error": str(e)}
 
 
 # Predefined rate limit configurations
 RATE_LIMITS = {
-    'auth': {
-        'max_requests': 10,
-        'window_seconds': 60,
-        'description': 'Authentication attempts (login, register)'
+    "auth": {
+        "max_requests": 10,
+        "window_seconds": 60,
+        "description": "Authentication attempts (login, register)",
     },
-    'api': {
-        'max_requests': 1000,
-        'window_seconds': 60,
-        'description': 'General API requests'
+    "api": {
+        "max_requests": 1000,
+        "window_seconds": 60,
+        "description": "General API requests",
     },
-    'chat': {
-        'max_requests': 100,
-        'window_seconds': 60,
-        'description': 'Chat message submissions'
+    "chat": {
+        "max_requests": 100,
+        "window_seconds": 60,
+        "description": "Chat message submissions",
     },
-    'password_reset': {
-        'max_requests': 3,
-        'window_seconds': 3600,
-        'description': 'Password reset requests'
+    "password_reset": {
+        "max_requests": 3,
+        "window_seconds": 3600,
+        "description": "Password reset requests",
     },
-    'email_verification': {
-        'max_requests': 5,
-        'window_seconds': 3600,
-        'description': 'Email verification requests'
-    }
+    "email_verification": {
+        "max_requests": 5,
+        "window_seconds": 3600,
+        "description": "Email verification requests",
+    },
 }
 
 
@@ -479,10 +472,7 @@ token_bucket_limiter = TokenBucketRateLimiter()
 
 
 # Convenience functions
-def check_rate_limit(
-    identifier: str,
-    limit_type: str = 'api'
-) -> Tuple[bool, dict]:
+def check_rate_limit(identifier: str, limit_type: str = "api") -> Tuple[bool, dict]:
     """
     Check rate limit using predefined configuration
 
@@ -493,29 +483,29 @@ def check_rate_limit(
     Returns:
         Tuple of (allowed: bool, info: dict)
     """
-    config = RATE_LIMITS.get(limit_type, RATE_LIMITS['api'])
+    config = RATE_LIMITS.get(limit_type, RATE_LIMITS["api"])
 
     return rate_limiter.check_rate_limit(
         identifier=identifier,
-        max_requests=config['max_requests'],
-        window_seconds=config['window_seconds'],
-        limit_type=limit_type
+        max_requests=config["max_requests"],
+        window_seconds=config["window_seconds"],
+        limit_type=limit_type,
     )
 
 
-def reset_rate_limit(identifier: str, limit_type: str = 'api') -> bool:
+def reset_rate_limit(identifier: str, limit_type: str = "api") -> bool:
     """Reset rate limit for identifier"""
     return rate_limiter.reset_limit(identifier, limit_type)
 
 
 # Export public interface
 __all__ = [
-    'LocalRateLimiter',
-    'RateLimiter',
-    'TokenBucketRateLimiter',
-    'rate_limiter',
-    'token_bucket_limiter',
-    'check_rate_limit',
-    'reset_rate_limit',
-    'RATE_LIMITS'
+    "LocalRateLimiter",
+    "RateLimiter",
+    "TokenBucketRateLimiter",
+    "rate_limiter",
+    "token_bucket_limiter",
+    "check_rate_limit",
+    "reset_rate_limit",
+    "RATE_LIMITS",
 ]

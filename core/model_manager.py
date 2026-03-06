@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 @dataclass
 class ModelInfo:
     """Information about a loaded model"""
+
     name: str
     size: int  # Size in bytes
     loaded_at: datetime
@@ -69,20 +70,26 @@ class ModelCache:
                 self._current_memory -= old_model.size
 
             # Evict LRU models until we have space
-            while (self._current_memory + model_info.size > self.max_memory_bytes
-                   and len(self._cache) > 0):
+            while (
+                self._current_memory + model_info.size > self.max_memory_bytes
+                and len(self._cache) > 0
+            ):
                 evicted_name, evicted_model = self._cache.popitem(last=False)
                 self._current_memory -= evicted_model.size
-                logger.info(f"Evicted model from cache: {evicted_name} "
-                          f"(freed {evicted_model.size / 1024 / 1024:.1f}MB)")
+                logger.info(
+                    f"Evicted model from cache: {evicted_name} "
+                    f"(freed {evicted_model.size / 1024 / 1024:.1f}MB)"
+                )
 
             # Add new model
             self._cache[model_name] = model_info
             self._current_memory += model_info.size
 
-            logger.info(f"Cached model: {model_name} "
-                       f"(size: {model_info.size / 1024 / 1024:.1f}MB, "
-                       f"total: {self._current_memory / 1024 / 1024:.1f}MB)")
+            logger.info(
+                f"Cached model: {model_name} "
+                f"(size: {model_info.size / 1024 / 1024:.1f}MB, "
+                f"total: {self._current_memory / 1024 / 1024:.1f}MB)"
+            )
 
     def remove(self, model_name: str):
         """Remove model from cache"""
@@ -103,10 +110,10 @@ class ModelCache:
         """Get cache statistics"""
         with self._lock:
             return {
-                'cached_models': len(self._cache),
-                'memory_used_mb': self._current_memory / 1024 / 1024,
-                'memory_limit_mb': self.max_memory_bytes / 1024 / 1024,
-                'models': list(self._cache.keys())
+                "cached_models": len(self._cache),
+                "memory_used_mb": self._current_memory / 1024 / 1024,
+                "memory_limit_mb": self.max_memory_bytes / 1024 / 1024,
+                "models": list(self._cache.keys()),
             }
 
 
@@ -135,13 +142,13 @@ class ModelManager:
 
     def __init__(self):
         """Initialize model manager"""
-        if hasattr(self, '_initialized'):
+        if hasattr(self, "_initialized"):
             return
 
         self._initialized = True
         self.ollama = OllamaClient()
         self.cache = ModelCache(max_memory_mb=4096)  # 4GB cache
-        self._default_model = getattr(system_config, 'OLLAMA_DEFAULT_MODEL', '')
+        self._default_model = getattr(system_config, "OLLAMA_DEFAULT_MODEL", "")
         self._warmup_models: List[str] = []
         self._operation_lock = threading.RLock()
 
@@ -180,12 +187,12 @@ class ModelManager:
                     if cached:
                         logger.debug(f"Model already loaded: {model_name}")
                         return {
-                            'name': model_name,
-                            'status': 'loaded',
-                            'cached': True,
-                            'size_mb': cached.size / 1024 / 1024,
-                            'loaded_at': cached.loaded_at.isoformat(),
-                            'use_count': cached.use_count
+                            "name": model_name,
+                            "status": "loaded",
+                            "cached": True,
+                            "size_mb": cached.size / 1024 / 1024,
+                            "loaded_at": cached.loaded_at.isoformat(),
+                            "use_count": cached.use_count,
                         }
 
                 # Pull model if not available
@@ -197,9 +204,9 @@ class ModelManager:
                 if not success:
                     logger.error(f"Failed to list models: {error}")
                     return {
-                        'name': model_name,
-                        'status': 'error',
-                        'error': error or 'Failed to connect to Ollama'
+                        "name": model_name,
+                        "status": "error",
+                        "error": error or "Failed to connect to Ollama",
                     }
 
                 # Find the model
@@ -208,9 +215,11 @@ class ModelManager:
 
                 if models:
                     for model in models:
-                        if model.get('name') == model_name or model.get('name', '').startswith(model_name):
+                        if model.get("name") == model_name or model.get(
+                            "name", ""
+                        ).startswith(model_name):
                             model_found = True
-                            model_size = model.get('size', 0)
+                            model_size = model.get("size", 0)
                             break
 
                 if not model_found:
@@ -226,7 +235,7 @@ class ModelManager:
                     loaded_at=datetime.now(timezone.utc),
                     last_used=datetime.now(timezone.utc),
                     use_count=1,
-                    parameters={}
+                    parameters={},
                 )
 
                 self.cache.put(model_name, model_info)
@@ -234,20 +243,16 @@ class ModelManager:
                 logger.info(f"Model loaded successfully: {model_name}")
 
                 return {
-                    'name': model_name,
-                    'status': 'loaded',
-                    'cached': False,
-                    'size_mb': model_size / 1024 / 1024,
-                    'loaded_at': model_info.loaded_at.isoformat()
+                    "name": model_name,
+                    "status": "loaded",
+                    "cached": False,
+                    "size_mb": model_size / 1024 / 1024,
+                    "loaded_at": model_info.loaded_at.isoformat(),
                 }
 
             except (OllamaError, ConnectionError, OSError) as e:
                 logger.error(f"Failed to load model {model_name}: {e}")
-                return {
-                    'name': model_name,
-                    'status': 'error',
-                    'error': str(e)
-                }
+                return {"name": model_name, "status": "error", "error": str(e)}
 
     def unload_model(self, model_name: str) -> bool:
         """
@@ -269,10 +274,7 @@ class ModelManager:
                 return False
 
     def generate(
-        self,
-        model_name: str,
-        prompt: str,
-        **kwargs
+        self, model_name: str, prompt: str, **kwargs
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Generate text using a model
@@ -290,15 +292,13 @@ class ModelManager:
                 # Ensure model is loaded
                 model_info = self.load_model(model_name)
 
-                if model_info.get('status') != 'loaded':
-                    error = model_info.get('error', 'Failed to load model')
+                if model_info.get("status") != "loaded":
+                    error = model_info.get("error", "Failed to load model")
                     return False, None, error
 
                 # Call Ollama API for generation
                 success, response, error = self.ollama.generate(
-                    model=model_name,
-                    prompt=prompt,
-                    **kwargs
+                    model=model_name, prompt=prompt, **kwargs
                 )
 
                 if success:
@@ -328,10 +328,12 @@ class ModelManager:
         for model_name in model_names:
             try:
                 result = self.load_model(model_name)
-                if result.get('status') == 'loaded':
+                if result.get("status") == "loaded":
                     logger.info(f"Model warmed up: {model_name}")
                 else:
-                    logger.warning(f"Failed to warm up model {model_name}: {result.get('error')}")
+                    logger.warning(
+                        f"Failed to warm up model {model_name}: {result.get('error')}"
+                    )
             except (OllamaError, ConnectionError, OSError) as e:
                 logger.error(f"Error warming up model {model_name}: {e}")
 
@@ -345,7 +347,7 @@ class ModelManager:
             List of model names
         """
         stats = self.cache.get_stats()
-        return stats.get('models', [])
+        return stats.get("models", [])
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """
@@ -367,7 +369,7 @@ class ModelManager:
             success, models, error = self.ollama.list_models()
 
             if success and models:
-                model_names = [m.get('name') for m in models]
+                model_names = [m.get("name") for m in models]
                 return True, model_names, None
             else:
                 return False, None, error

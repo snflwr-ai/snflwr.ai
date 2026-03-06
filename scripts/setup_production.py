@@ -432,7 +432,10 @@ def step_review_and_write(basics, database, email, redis):
     with os.fdopen(fd, 'w') as f:
         f.write(env_content)
 
-    return env_path, admin_password, db_encryption_key, pii_encryption_key
+    # Only return env_path — sensitive values are written to the file and
+    # must not be kept in caller scope (avoids clear-text-logging taint).
+    del admin_password, db_encryption_key, pii_encryption_key
+    return env_path
 
 
 def print_next_steps(env_path, is_local=False):
@@ -573,7 +576,7 @@ def main():
         email = step_email()
         redis = step_redis()
 
-    env_path, admin_password, db_key, pii_key = step_review_and_write(
+    env_path = step_review_and_write(
         basics, database, email, redis
     )
 

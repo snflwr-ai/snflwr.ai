@@ -18,15 +18,15 @@ httpx = pytest.importorskip("httpx")
 pytest.importorskip("email_validator")
 pytest.importorskip("uvicorn")
 
-# Disable rate limiting for integration tests
-from utils import rate_limiter as _rl_mod
-_always_allow = lambda *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
-_rl_mod._local_limiter.check_rate_limit = _always_allow
-_rl_mod.rate_limiter.check_rate_limit = _always_allow
-_rl_mod.check_rate_limit = lambda *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
+# Disable ALL rate limiting for integration tests by patching the classes themselves.
+# There are multiple RateLimiter() instances across api/routes/ and api/server.py,
+# plus a RedisRateLimiter in api/middleware/auth.py — patching the class method
+# ensures every instance is neutralised regardless of import order.
+from utils.rate_limiter import RateLimiter
+from api.middleware.auth import RedisRateLimiter
 
-from api.middleware import auth as _auth_mod
-_auth_mod._rate_limiter.check_rate_limit = lambda *a, **kw: True
+RateLimiter.check_rate_limit = lambda self, *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
+RedisRateLimiter.check_rate_limit = lambda self, *a, **kw: True
 
 from api.server import app
 from starlette.testclient import TestClient

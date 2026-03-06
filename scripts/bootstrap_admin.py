@@ -57,6 +57,16 @@ def print_error(text):
     print(f"  [ERROR] {text}")
 
 
+def _mask_email(email: str) -> str:
+    """Mask email for safe logging: j***@example.com."""
+    if '@' not in email:
+        return '***'
+    local, domain = email.rsplit('@', 1)
+    if len(local) <= 1:
+        return f"***@{domain}"
+    return f"{local[0]}***@{domain}"
+
+
 def validate_email(email: str) -> bool:
     """
     Validate email address format
@@ -331,7 +341,7 @@ def interactive_mode():
         email_hash, _ = email_crypto.prepare_email_for_storage(email)
 
         if check_email_exists(email_hash):
-            print_error(f"An account with email {email} already exists")
+            print_error(f"An account with email {_mask_email(email)} already exists")
             continue
 
         break
@@ -363,7 +373,7 @@ def interactive_mode():
     # Summary
     print_header("Confirm Admin Account Creation")
     print(f"Name:  {name}")
-    print(f"Email: {email}")
+    print(f"Email: {_mask_email(email)}")
     print(f"Role:  admin")
 
     response = input("\nCreate this admin account? (yes/no): ").strip().lower()
@@ -397,7 +407,7 @@ def interactive_mode():
     print_header("Admin Account Created Successfully")
     print(f"Admin account is ready!\n")
     print(f"User ID: {user_id}")
-    print(f"Email:   {email}")
+    print(f"Email:   {_mask_email(email)}")
     print(f"Name:    {name}")
     print(f"\nYou can now login to the admin panel with these credentials.")
     print(f"Admin panel: http://localhost:39150/admin (or your production URL)")
@@ -425,7 +435,7 @@ def main():
 
         # Validate email
         if not validate_email(args.email):
-            print_error(f"Invalid email format: {args.email}")
+            print_error(f"Invalid email format: {_mask_email(args.email)}")
             return 1
 
         # Validate password
@@ -442,7 +452,7 @@ def main():
             return 1
 
         print_success(f"Admin account created: {user_id}")
-        print(f"Email: {args.email}")
+        print(f"Email: {_mask_email(args.email)}")
         print(f"Name: {args.name}")
 
         return 0

@@ -77,6 +77,13 @@ def _is_powershell():
     return False
 
 
+def _mask_secret(value: str, visible: int = 4) -> str:
+    """Show only last N chars of a secret for verification."""
+    s = str(value)
+    if len(s) <= visible:
+        return '***'
+    return f"***{s[-visible:]}"
+
 def print_header(text):
     """Print styled header"""
     print(f"\n{'='*70}")
@@ -1737,7 +1744,7 @@ def setup_security():
     if auto_dashboard:
         config['PARENT_DASHBOARD_PASSWORD'] = generate_secure_token()
         print_success("Dashboard password generated")
-        print_warning(f"Save this password: {config['PARENT_DASHBOARD_PASSWORD']}")
+        print_warning(f"Save this password: {_mask_secret(config['PARENT_DASHBOARD_PASSWORD'])} (saved to CREDENTIALS.md)")
     else:
         config['PARENT_DASHBOARD_PASSWORD'] = ask_question("Dashboard password")
 
@@ -1819,6 +1826,7 @@ def create_env_file(config):
         f.write("\n# Optional Settings\n")
         f.write("# LOG_LEVEL=INFO\n")
 
+    os.chmod(str(env_path), 0o600)  # Restrict to owner-only access
     print_success(".env file created")
 
 
@@ -1895,6 +1903,7 @@ def save_credentials_file(config):
         f.write("All of these values are also stored in the `.env` file in your\n")
         f.write("installation directory. This document is a backup reference.\n")
 
+    os.chmod(str(creds_path), 0o600)  # Restrict to owner-only access
     print_success(f"Credentials saved to {creds_path}")
 
     # Also save a copy to the USB drive if the user chose USB storage
@@ -2021,7 +2030,7 @@ def show_next_steps(config):
         print("   (opens automatically when you start the application)\n")
 
         print("3. Parent Dashboard Password:")
-        print(f"   {config['PARENT_DASHBOARD_PASSWORD']}")
+        print(f"   {_mask_secret(config['PARENT_DASHBOARD_PASSWORD'])}")
         print("   (saved to CREDENTIALS.md — keep this safe!)\n")
 
         data_dir = config.get('SNFLWR_DATA_DIR', '')

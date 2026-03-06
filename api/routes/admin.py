@@ -31,7 +31,7 @@ from utils.rate_limiter import RateLimiter
 from config import system_config
 
 from core.age_verification import AgeVerificationManager
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 
 def _get_owui_token(session: "AuthSession") -> str:
@@ -160,7 +160,7 @@ def _owui_create_user(open_webui_url: str, owui_token: str, name: str, email: st
             except Exception:
                 detail = ""
             if "already" in detail.lower() or "registered" in detail.lower() or "taken" in detail.lower():
-                _log.info(f"OWU email {email!r} already exists — activating existing account")
+                _log.info(f"OWU email {sanitize_log_value(email)!r} already exists — activating existing account")
                 existing, err = _owui_find_user_by_email(open_webui_url, owui_token, email)
                 if existing:
                     _owui_activate_user(open_webui_url, owui_token, existing)
@@ -476,7 +476,7 @@ async def sync_admin(
                 (email_hash, encrypted_email, request.admin_id)
             )
 
-            logger.info(f"Updated admin {request.admin_id!r}")
+            logger.info(f"Updated admin {sanitize_log_value(request.admin_id)!r}")
 
         else:
             # Create new admin
@@ -498,7 +498,7 @@ async def sync_admin(
                 )
             )
 
-            logger.info(f"Created new admin {request.admin_id!r}")
+            logger.info(f"Created new admin {sanitize_log_value(request.admin_id)!r}")
 
         # Fetch and return the admin record
         admin = db.execute_query(
@@ -802,10 +802,10 @@ async def delete_account(
     except HTTPException:
         raise
     except DB_ERRORS as e:
-        logger.error(f"Database error deleting account {parent_id!r}: {e}")
+        logger.error(f"Database error deleting account {sanitize_log_value(parent_id)!r}: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
-        logger.exception(f"Unexpected error deleting account {parent_id!r}: {e}")
+        logger.exception(f"Unexpected error deleting account {sanitize_log_value(parent_id)!r}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1230,10 +1230,10 @@ async def delete_profile(
     except HTTPException:
         raise
     except DB_ERRORS as e:
-        logger.error(f"Database error deleting profile {profile_id!r}: {e}")
+        logger.error(f"Database error deleting profile {sanitize_log_value(profile_id)!r}: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
-        logger.exception(f"Unexpected error deleting profile {profile_id!r}: {e}")
+        logger.exception(f"Unexpected error deleting profile {sanitize_log_value(profile_id)!r}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

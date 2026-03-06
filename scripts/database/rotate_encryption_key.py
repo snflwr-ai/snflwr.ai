@@ -322,7 +322,7 @@ def rotate_encryption_key():
             return False
 
         old_key, new_key = key_manager.rotate_key(current_key, None)
-        print(f"\n[KEY] YOUR NEW ENCRYPTION KEY:\n{new_key}\n")
+        print(f"\n[KEY] YOUR NEW ENCRYPTION KEY (displayed once, not logged):\n{new_key}\n")
         print("[WARN]  CRITICAL: Save this key securely before continuing!")
         input("Press Enter after you've saved the key...")
 

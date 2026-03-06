@@ -5,7 +5,7 @@ import platform
 import threading
 from typing import Optional, List
 
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 from utils.cache import cached
 from storage.db_adapters import DB_ERRORS
 
@@ -180,7 +180,7 @@ class SessionManager:
             if duration < 0:
                 duration = 0
         except ValueError as e:
-            logger.warning(f"Failed to calculate session duration for {session_id!r}: {e}")
+            logger.warning(f"Failed to calculate session duration for {sanitize_log_value(session_id)!r}: {e}")
             duration = None
 
         if self.db is not None:
@@ -190,7 +190,7 @@ class SessionManager:
                     (ended_at, duration, session_id)
                 )
             except DB_ERRORS as e:
-                logger.error(f"Failed to persist session end for {session_id!r}: {e}")
+                logger.error(f"Failed to persist session end for {sanitize_log_value(session_id)!r}: {e}")
                 raise SessionError(f"Could not end session: database write failed") from e
 
         return True
@@ -468,7 +468,7 @@ class SessionManager:
                         })
             return messages
         except DB_ERRORS as e:
-            logger.error(f"Failed to get messages for session {session_id!r}: {e}")
+            logger.error(f"Failed to get messages for session {sanitize_log_value(session_id)!r}: {e}")
             return []
 
 

@@ -35,7 +35,7 @@ from utils.ollama_client import ollama_client, OllamaError
 from storage.db_adapters import DB_ERRORS
 from storage.conversation_store import conversation_store
 from utils.rate_limiter import RateLimiter
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -168,7 +168,7 @@ async def send_chat_message(
     4. Response validation
     """
     try:
-        logger.info(f"Chat request from profile {request.profile_id!r}, length={len(request.message)}")
+        logger.info(f"Chat request from profile {sanitize_log_value(request.profile_id)!r}, length={len(request.message)}")
 
         # Get profile
         profile_manager = ProfileManager(auth_manager.db)
@@ -196,7 +196,7 @@ async def send_chat_message(
 
         # AUTHORIZATION: Verify user owns this profile (unless admin)
         if auth_session.role != 'admin' and profile.parent_id != auth_session.user_id:
-            logger.warning(f"Access denied: {auth_session.user_id!r} tried to chat for profile {request.profile_id!r}")
+            logger.warning(f"Access denied: {sanitize_log_value(auth_session.user_id)!r} tried to chat for profile {sanitize_log_value(request.profile_id)!r}")
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: You can only chat for your own children's profiles"
@@ -341,7 +341,7 @@ async def send_chat_message(
                     detail="No AI model configured. Set OLLAMA_DEFAULT_MODEL or pull a model into Ollama."
                 )
 
-        logger.info(f"Generating response with {model_name!r} ({len(history_messages)} prior messages in context)")
+        logger.info(f"Generating response with {sanitize_log_value(model_name)!r} ({len(history_messages)} prior messages in context)")
 
         # Build a system prompt appropriate for the audience.
         if skip_safety:
@@ -388,7 +388,7 @@ async def send_chat_message(
 
         if not success:
             err_msg = metadata.get('error', 'unknown error') if metadata else 'unknown error'
-            logger.error(f"Ollama chat failed: {err_msg!r}")
+            logger.error(f"Ollama chat failed: {sanitize_log_value(err_msg)!r}")
             raise HTTPException(
                 status_code=503,
                 detail=f"AI model unavailable: {err_msg}"
@@ -400,7 +400,7 @@ async def send_chat_message(
         # they render as italic inline text instead. Remove them here.
         import re as _re
         if len(response_text) <= 100_000:
-            response_text = _re.sub(r'<think>.*?</think>', '', response_text, flags=_re.DOTALL).strip()
+            response_text = _re.sub(r'<think>[^<]*(?:<(?!/think>)[^<]*)*</think>', '', response_text, flags=_re.DOTALL).strip()
         else:
             response_text = response_text.strip()
 

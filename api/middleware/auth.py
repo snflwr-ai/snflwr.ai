@@ -13,7 +13,7 @@ from core.authentication import auth_manager, AuthSession
 from core.profile_manager import ProfileManager
 from storage.db_adapters import DB_ERRORS
 from config import INTERNAL_API_KEY
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -480,7 +480,7 @@ def audit_log(action: str, resource_type: str, resource_id: str, session: AuthSe
                 True
             )
         )
-        logger.debug(f"Audit: {session.user_id!r} ({session.role!r}) {action!r} {resource_type!r} {resource_id!r}")
+        logger.debug(f"Audit: {sanitize_log_value(session.user_id)!r} ({sanitize_log_value(session.role)!r}) {sanitize_log_value(action)!r} {sanitize_log_value(resource_type)!r} {sanitize_log_value(resource_id)!r}")
         _reset_audit_failure_count()
         return True
     except Exception as e:

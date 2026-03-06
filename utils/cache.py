@@ -15,7 +15,7 @@ from redis.exceptions import RedisError, ConnectionError
 from redis.sentinel import Sentinel
 
 from config import system_config
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -458,7 +458,7 @@ class RedisCache:
             cache_key = self._make_key(key, namespace)
             result = self._client.delete(cache_key)
             self._stats['deletes'] += 1
-            logger.debug(f"Cache DELETE: {cache_key!r}")
+            logger.debug(f"Cache DELETE: {sanitize_log_value(cache_key)!r}")
             if _metrics_available:
                 record_cache_operation('delete', 'success', time.time() - start_time)
             return result > 0

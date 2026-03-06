@@ -40,7 +40,7 @@ from storage.conversation_store import conversation_store
 from storage.db_adapters import DB_ERRORS
 from safety.incident_logger import incident_logger
 from utils.rate_limiter import RateLimiter
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -171,7 +171,7 @@ def create_profile(
     try:
         # Verify authorization: Parents can only create for themselves
         if session.role != 'admin' and session.user_id != request.parent_id:
-            logger.warning(f"Access denied: {session.user_id!r} tried to create profile for {request.parent_id!r}")
+            logger.warning(f"Access denied: {sanitize_log_value(session.user_id)!r} tried to create profile for {sanitize_log_value(request.parent_id)!r}")
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: You can only create profiles for yourself"
@@ -616,7 +616,7 @@ def export_profile_data(
         # Audit log
         audit_log('export', 'profile_data', profile_id, session)
 
-        logger.info(f"Data export completed for profile {profile_id!r} by {session.user_id!r}")
+        logger.info(f"Data export completed for profile {sanitize_log_value(profile_id)!r} by {sanitize_log_value(session.user_id)!r}")
 
         # Return as downloadable JSON file
         return JSONResponse(

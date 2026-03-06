@@ -28,7 +28,7 @@ from api import __version__
 from config import system_config
 from storage.encryption import is_encryption_available
 from storage.db_adapters import DB_ERRORS
-from utils.logger import get_logger, correlation_id_var, set_correlation_id, get_correlation_id
+from utils.logger import get_logger, correlation_id_var, set_correlation_id, get_correlation_id, sanitize_log_value
 from api.middleware.auth import require_admin
 
 logger = get_logger(__name__)
@@ -646,10 +646,10 @@ async def get_profile_for_user(user_id: str, authorization: str = Header(None)):
         return {"profile_id": f"no_profile_{user_id}"}
 
     except DB_ERRORS as e:
-        logger.error(f"Database error looking up profile for user {user_id!r}: {e}")
+        logger.error(f"Database error looking up profile for user {sanitize_log_value(user_id)!r}: {e}")
         return {"profile_id": f"no_profile_{user_id}"}
     except Exception as e:
-        logger.exception(f"Unexpected error looking up profile for user {user_id!r}: {e}")
+        logger.exception(f"Unexpected error looking up profile for user {sanitize_log_value(user_id)!r}: {e}")
         return {"profile_id": f"no_profile_{user_id}"}
 
 
@@ -773,7 +773,7 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
         if request.child_age < 13:
             coppa_consent_required = True
             logger.info(
-                f"Setup: child age {request.child_age!r} requires parental consent workflow. "
+                f"Setup: child age {sanitize_log_value(request.child_age)!r} requires parental consent workflow. "
                 f"Profile creation deferred."
             )
         else:

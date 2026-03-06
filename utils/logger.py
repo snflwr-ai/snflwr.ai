@@ -537,6 +537,15 @@ def mask_email(email: str) -> str:
     return f"{local[0]}***@{domain}" if local else f"***@{domain}"
 
 
+def sanitize_log_value(value) -> str:
+    """Sanitize a value for safe inclusion in log messages (CWE-117).
+
+    Replaces newlines and carriage returns to prevent log injection / forging.
+    """
+    s = str(value) if not isinstance(value, str) else value
+    return s.replace('\n', '\\n').replace('\r', '\\r')
+
+
 # Initialize logger manager singleton
 logger_manager = LoggerManager()
 

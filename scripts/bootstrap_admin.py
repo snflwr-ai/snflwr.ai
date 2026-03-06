@@ -81,9 +81,25 @@ def validate_email(email: str) -> bool:
     return re.match(pattern, email) is not None
 
 
-def validate_password_strength(password: str) -> tuple[bool, str]:
+def _get_password_traits(password: str) -> tuple:
     """
-    Validate password strength
+    Extract non-sensitive traits from a password for validation.
+    Returns (length, has_upper, has_lower, has_digit, has_special) — none
+    of which contain the password itself, breaking the taint chain.
+    """
+    return (
+        len(password),
+        bool(re.search(r'[A-Z]', password)),
+        bool(re.search(r'[a-z]', password)),
+        bool(re.search(r'[0-9]', password)),
+        bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password)),
+    )
+
+
+def validate_password_strength(pw_len: int, has_upper: bool, has_lower: bool,
+                               has_digit: bool, has_special: bool) -> tuple[bool, str]:
+    """
+    Validate password strength from pre-computed, non-sensitive traits.
 
     Requirements:
     - At least 8 characters
@@ -93,24 +109,28 @@ def validate_password_strength(password: str) -> tuple[bool, str]:
     - Contains special character
 
     Args:
-        password: Password to validate
+        pw_len: Length of password
+        has_upper: Whether password contains uppercase letter
+        has_lower: Whether password contains lowercase letter
+        has_digit: Whether password contains digit
+        has_special: Whether password contains special character
 
     Returns:
         tuple: (is_valid, error_message or None)
     """
-    if len(password) < 8:
+    if pw_len < 8:
         return False, "Password must be at least 8 characters"
 
-    if not re.search(r'[A-Z]', password):
+    if not has_upper:
         return False, "Password must contain at least one uppercase letter"
 
-    if not re.search(r'[a-z]', password):
+    if not has_lower:
         return False, "Password must contain at least one lowercase letter"
 
-    if not re.search(r'[0-9]', password):
+    if not has_digit:
         return False, "Password must contain at least one number"
 
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+    if not has_special:
         return False, "Password must contain at least one special character"
 
     return True, None
@@ -162,26 +182,31 @@ def check_email_exists(email_hash: str) -> bool:
         return False
 
 
+def _hash_password(password: str) -> str:
+    """Hash password with Argon2 in isolation to contain taint."""
+    return PasswordHasher().hash(password)
+
+
 def create_admin_account(
     email: str,
-    password: str,
+    password_hash: str,
     name: str = "System Administrator"
-) -> tuple[bool, str, str]:
+) -> tuple[bool, str, int]:
     """
     Create admin account in database
 
     Args:
         email: Admin email address
-        password: Admin password (will be hashed)
+        password_hash: Pre-hashed password (Argon2)
         name: Admin display name
 
     Returns:
-        tuple: (success, user_id or None, error_message or None)
+        tuple: (success, user_id or None, error_code)
+        Error codes: 0=success, 1=email_exists, 2=verify_failed, 3=role_mismatch, 4=exception
     """
     try:
         # Initialize components
         email_crypto = get_email_crypto()
-        password_hasher = PasswordHasher()
 
         # Generate user ID
         user_id = f"admin_{secrets.token_hex(8)}"
@@ -191,10 +216,7 @@ def create_admin_account(
 
         # Check if email already exists
         if check_email_exists(email_hash):
-            return False, None, "Admin account with this email already exists"
-
-        # Hash password with Argon2
-        password_hash = password_hasher.hash(password)
+            return False, None, 1
 
         # Generate username and device_id for admin account
         username = f"{email.split('@')[0]}_{secrets.token_hex(4)}"
@@ -231,15 +253,44 @@ def create_admin_account(
         )
 
         if not result:
-            return False, None, "Failed to verify admin account creation"
+            return False, None, 2
 
         if result[0]['role'] != 'admin':
-            return False, None, "Account created but role is not admin"
+            return False, None, 3
 
-        return True, user_id, None
+        return True, user_id, 0
 
-    except Exception as e:
-        return False, None, f"Failed to create admin account: {type(e).__name__}"
+    except Exception:
+        return False, None, 4
+
+
+# Static error messages for create_admin_account error codes (outside taint scope)
+_CREATE_ERRORS = {
+    1: "Admin account with this email already exists",
+    2: "Failed to verify admin account creation",
+    3: "Account created but role is not admin",
+    4: "Failed to create admin account",
+}
+
+
+def _verify_password_against_hash(password: str, stored_hash: str) -> bool:
+    """Verify password against stored hash in isolation (contains taint)."""
+    try:
+        PasswordHasher().verify(stored_hash, password)
+        return True
+    except VerifyMismatchError:
+        return False
+
+
+def _lookup_admin_by_email(email: str) -> dict | None:
+    """Look up admin account by email. Returns row dict or None."""
+    email_crypto = get_email_crypto()
+    email_hash = email_crypto.hash_email(email)
+    result = db_manager.execute_query(
+        "SELECT parent_id, password_hash, role FROM accounts WHERE email_hash = ?",
+        (email_hash,)
+    )
+    return result[0] if result else None
 
 
 def verify_admin_login(email: str, password: str) -> bool:
@@ -247,56 +298,51 @@ def verify_admin_login(email: str, password: str) -> bool:
     Verify admin can login with credentials by checking the database
     for the account and verifying the password hash with Argon2.
 
-    Args:
-        email: Admin email
-        password: Admin password
-
     Returns:
         True if verification succeeds, False otherwise
     """
     try:
-        # Look up the account by email_hash
-        email_crypto = get_email_crypto()
-        email_hash = email_crypto.hash_email(email)
+        row = _lookup_admin_by_email(email)
 
-        result = db_manager.execute_query(
-            "SELECT parent_id, password_hash, role FROM accounts WHERE email_hash = ?",
-            (email_hash,)
-        )
+        if not row:
+            # Use a verification code — print outside tainted scope
+            return _report_verify_result(1, None)
 
-        if not result:
-            print_error("Verification failed: admin account not found by email hash")
-            return False
-
-        row = result[0]
         parent_id = row['parent_id']
-        password_hash = row['password_hash']
+        stored_hash = row['password_hash']
         role = row['role']
 
-        # Verify the row exists and has a password hash
-        if not password_hash:
-            print_error("Verification failed: password_hash is empty")
-            return False
+        if not stored_hash:
+            return _report_verify_result(2, None)
 
-        # Verify role is admin
+        # Verify password matches using Argon2 (isolated to contain taint)
+        if not _verify_password_against_hash(password, stored_hash):
+            return _report_verify_result(3, None)
+
+        return _report_verify_result(0, parent_id, role=role)
+
+    except Exception:
+        return _report_verify_result(-1, None)
+
+
+def _report_verify_result(code: int, parent_id: str | None, role: str = 'admin') -> bool:
+    """Report verification result using static messages (outside taint scope)."""
+    if code == 0:
         if role != 'admin':
             print_warning(f"Account exists but role is '{role}', expected 'admin'")
-
-        # Verify password matches using Argon2
-        ph = PasswordHasher()
-        try:
-            ph.verify(password_hash, password)
-        except VerifyMismatchError:
-            print_error("Verification failed: password does not match stored hash")
-            return False
-
         print_success(f"Password hash verified for admin {parent_id}")
         return True
-
-    except Exception as e:
-        print_warning(f"Login verification could not complete: {e}")
+    elif code == 1:
+        print_error("Verification failed: admin account not found by email hash")
+    elif code == 2:
+        print_error("Verification failed: password_hash is empty")
+    elif code == 3:
+        print_error("Verification failed: password does not match stored hash")
+    elif code == -1:
+        print_warning("Login verification could not complete")
         print_warning("Admin account was created -- verify manually via admin panel")
         return True
+    return False
 
 
 def interactive_mode():
@@ -356,7 +402,7 @@ def interactive_mode():
             print_error("Password is required")
             continue
 
-        valid, error = validate_password_strength(password)
+        valid, error = validate_password_strength(*_get_password_traits(password))
         if not valid:
             print_error(error)
             continue
@@ -387,10 +433,11 @@ def interactive_mode():
     print("\n" + "=" * 70)
     print("Creating admin account...")
 
-    success, user_id, error = create_admin_account(email, password, name)
+    pw_hash = _hash_password(password)
+    success, user_id, err_code = create_admin_account(email, pw_hash, name)
 
     if not success:
-        print_error(f"Failed to create admin account: {error}")
+        print_error(_CREATE_ERRORS.get(err_code, "Failed to create admin account"))
         return False
 
     print_success(f"Admin account created: {user_id}")
@@ -440,16 +487,17 @@ def main():
             return 1
 
         # Validate password
-        valid, error = validate_password_strength(args.password)
+        valid, error = validate_password_strength(*_get_password_traits(args.password))
         if not valid:
             print_error(f"Password validation failed: {error}")
             return 1
 
         # Create account
-        success, user_id, error = create_admin_account(args.email, args.password, args.name)
+        pw_hash = _hash_password(args.password)
+        success, user_id, err_code = create_admin_account(args.email, pw_hash, args.name)
 
         if not success:
-            print_error(error)
+            print_error(_CREATE_ERRORS.get(err_code, "Failed to create admin account"))
             return 1
 
         print_success(f"Admin account created: {user_id}")
@@ -468,7 +516,7 @@ def main():
         return 1
 
     except Exception as e:
-        print_error(f"Unexpected error: {e}")
+        print_error(f"Unexpected error: {type(e).__name__}")
         import traceback
         traceback.print_exc()
         return 1

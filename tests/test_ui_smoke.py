@@ -660,6 +660,7 @@ class TestDashboardQueryScoping:
         dash, mock_db = scoped_dashboard
         mock_db.execute_query.return_value = []
         dash._get_recent_sessions(5)
+        assert mock_db.execute_query.call_args is not None, "execute_query was not called"
         sql = mock_db.execute_query.call_args[0][0]
         assert "profile_id IN" in sql
 
@@ -667,6 +668,7 @@ class TestDashboardQueryScoping:
         dash, mock_db = scoped_dashboard
         mock_db.execute_query.return_value = [{'count': 1}]
         dash._get_active_profiles_today()
+        assert mock_db.execute_query.call_args is not None, "execute_query was not called"
         sql = mock_db.execute_query.call_args[0][0]
         assert "profile_id IN" in sql
 
@@ -674,6 +676,7 @@ class TestDashboardQueryScoping:
         dash, mock_db = scoped_dashboard
         mock_db.execute_query.return_value = [{'count': 2}]
         dash._get_total_sessions_today()
+        assert mock_db.execute_query.call_args is not None, "execute_query was not called"
         sql = mock_db.execute_query.call_args[0][0]
         assert "profile_id IN" in sql
 
@@ -681,6 +684,7 @@ class TestDashboardQueryScoping:
         dash, mock_db = scoped_dashboard
         mock_db.execute_query.return_value = [{'count': 0}]
         dash._get_pending_incidents()
+        assert mock_db.execute_query.call_args is not None, "execute_query was not called"
         sql = mock_db.execute_query.call_args[0][0]
         assert "profile_id IN" in sql
 

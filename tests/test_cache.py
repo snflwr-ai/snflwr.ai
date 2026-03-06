@@ -120,8 +120,9 @@ class TestRedisEnabledEnvVar:
         cache = RedisCache(enabled=True)
         assert cache.enabled is False
 
-    def test_redis_enabled_default_is_false(self):
+    def test_redis_enabled_default_is_false(self, monkeypatch):
         """Default env has REDIS_ENABLED unset / 'false' → disabled."""
+        monkeypatch.delenv("REDIS_ENABLED", raising=False)
         from utils.cache import RedisCache
         cache = RedisCache(enabled=True)   # env default is 'false'
         assert cache.enabled is False

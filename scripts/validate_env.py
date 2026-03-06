@@ -79,7 +79,7 @@ def validate_smtp_config():
     _smtp_email = system_config.SMTP_FROM_EMAIL.lower()
     _smtp_domain = _smtp_email.split('@', 1)[1] if '@' in _smtp_email else _smtp_email
     if _smtp_domain == 'example.com':
-        warnings.append(f"SMTP_FROM_EMAIL contains 'example.com': {system_config.SMTP_FROM_EMAIL}")
+        warnings.append("SMTP_FROM_EMAIL contains 'example.com' - update with a real email address")
 
     _smtp_pw_is_example = system_config.SMTP_PASSWORD.startswith('SG.YOUR')
     _smtp_pw_is_set = bool(system_config.SMTP_PASSWORD)

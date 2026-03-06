@@ -428,8 +428,9 @@ def step_review_and_write(basics, database, email, redis):
             env_path = Path(__file__).parent.parent / '.env.production.new'
             print(f"  Writing to {env_path.name} instead.")
 
-    env_path.write_text(env_content)
-    os.chmod(str(env_path), 0o600)  # Only owner can read
+    fd = os.open(str(env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write(env_content)
 
     return env_path, admin_password, db_encryption_key, pii_encryption_key
 
@@ -445,7 +446,7 @@ def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption
   Your configuration has been saved to: {_bold(str(env_path))}
 
   {_bold("Your account:")}
-    Password: {_mask_secret(admin_password)} (saved in {env_path})
+    Password: (saved in {env_path})
     {_yellow("Change this password after your first login!")}
 
   {_bold("What to do next:")}
@@ -456,7 +457,7 @@ def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption
     2. Open your browser to:
        {_blue("http://localhost:39150")}
 
-    3. Log in with the email you entered and the password above
+    3. Log in with the email you entered and the password from {env_path}
 
     4. The setup wizard will walk you through adding your child's profile
 
@@ -470,17 +471,17 @@ def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption
   {_bold(_red("IMPORTANT — Save these keys somewhere safe (like a password manager):"))}
   {_bold(_red("If you lose them, encrypted data cannot be recovered."))}
 
-    DB Encryption Key:  {_mask_secret(db_encryption_key)} (saved in {env_path})
-    PII Encryption Key: {_mask_secret(pii_encryption_key)} (saved in {env_path})
+    DB Encryption Key:  (saved in {env_path})
+    PII Encryption Key: (saved in {env_path})
 
   {_bold("Your first admin account:")}
     Email:    (the admin email you entered above)
-    Password: {_mask_secret(admin_password)} (saved in {env_path})
+    Password: (saved in {env_path})
     {_yellow("Change this password after your first login!")}
 
   {_bold("What to do next:")}
 
-    1. Save the encryption keys above to a password manager (1Password, Bitwarden, etc.)
+    1. Save the encryption keys from {env_path} to a password manager (1Password, Bitwarden, etc.)
 
     2. Start the application:
        {_blue("docker compose up -d")}

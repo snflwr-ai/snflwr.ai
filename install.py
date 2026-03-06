@@ -1744,7 +1744,7 @@ def setup_security():
     if auto_dashboard:
         config['PARENT_DASHBOARD_PASSWORD'] = generate_secure_token()
         print_success("Dashboard password generated")
-        print_warning(f"Save this password: {_mask_secret(config['PARENT_DASHBOARD_PASSWORD'])} (saved to CREDENTIALS.md)")
+        print_warning("Dashboard password generated and saved to .env file")
     else:
         config['PARENT_DASHBOARD_PASSWORD'] = ask_question("Dashboard password")
 
@@ -1762,8 +1762,9 @@ def create_env_file(config):
         env_path.rename(backup_path)
         print_warning(f"Backed up existing .env to {backup_path}")
 
-    # Write new .env
-    with open(env_path, 'w') as f:
+    # Write new .env with secure permissions from creation
+    fd = os.open(str(env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
         f.write("# snflwr.ai Configuration\n")
         f.write(f"# Generated on {platform.node()} at {os.path.basename(os.getcwd())}\n\n")
 
@@ -1825,8 +1826,6 @@ def create_env_file(config):
         # Optional settings
         f.write("\n# Optional Settings\n")
         f.write("# LOG_LEVEL=INFO\n")
-
-    os.chmod(str(env_path), 0o600)  # Restrict to owner-only access
     print_success(".env file created")
 
 
@@ -1850,8 +1849,8 @@ def save_credentials_file(config):
 
         # Always present
         f.write("## snflwr.ai API\n\n")
-        f.write(f"- **JWT Secret Key:** `{config['JWT_SECRET_KEY']}`\n")
-        f.write(f"- **Parent Dashboard Password:** `{config['PARENT_DASHBOARD_PASSWORD']}`\n\n")
+        f.write(f"- **JWT Secret Key:** (see .env file)\n")
+        f.write(f"- **Parent Dashboard Password:** (see .env file)\n\n")
 
         # Database
         f.write("## Database\n\n")
@@ -1865,33 +1864,33 @@ def save_credentials_file(config):
             f.write(f"- **Host:** `{config['POSTGRES_HOST']}:{config['POSTGRES_PORT']}`\n")
             f.write(f"- **Database:** `{config['POSTGRES_DATABASE']}`\n")
             f.write(f"- **User:** `{config['POSTGRES_USER']}`\n")
-            f.write(f"- **Password:** `{config['POSTGRES_PASSWORD']}`\n\n")
+            f.write(f"- **Password:** (see .env file)\n\n")
 
         # Enterprise-only credentials
         if config['DATABASE_TYPE'] == 'postgresql':
             f.write("## Internal API Key\n\n")
-            f.write(f"- **INTERNAL_API_KEY:** `{config['INTERNAL_API_KEY']}`\n\n")
+            f.write(f"- **INTERNAL_API_KEY:** (see .env file)\n\n")
 
             f.write("## Open WebUI Frontend\n\n")
-            f.write(f"- **WEBUI_SECRET_KEY:** `{config['WEBUI_SECRET_KEY']}`\n\n")
+            f.write(f"- **WEBUI_SECRET_KEY:** (see .env file)\n\n")
 
             f.write("## Database Encryption\n\n")
-            f.write(f"- **DB_ENCRYPTION_KEY:** `{config['DB_ENCRYPTION_KEY']}`\n\n")
+            f.write(f"- **DB_ENCRYPTION_KEY:** (see .env file)\n\n")
 
             f.write("## Redis\n\n")
-            f.write(f"- **Password:** `{config['REDIS_PASSWORD']}`\n\n")
+            f.write(f"- **Password:** (see .env file)\n\n")
 
             f.write("## Monitoring — Grafana\n\n")
             f.write(f"- **Username:** `admin`\n")
-            f.write(f"- **Password:** `{config['GRAFANA_PASSWORD']}`\n")
+            f.write(f"- **Password:** (see .env file)\n")
             f.write(f"- **URL:** `http://<your-server>:3000`\n\n")
 
             f.write("## Monitoring — Kibana\n\n")
-            f.write(f"- **Encryption Key:** `{config['KIBANA_ENCRYPTION_KEY']}`\n\n")
+            f.write(f"- **Encryption Key:** (see .env file)\n\n")
 
             f.write("## Celery — Flower Dashboard\n\n")
             f.write(f"- **Username:** `{config['FLOWER_USER']}`\n")
-            f.write(f"- **Password:** `{config['FLOWER_PASSWORD']}`\n")
+            f.write(f"- **Password:** (see .env file)\n")
             f.write(f"- **URL:** `http://<your-server>:5555`\n\n")
 
         # Model info
@@ -2030,8 +2029,7 @@ def show_next_steps(config):
         print("   (opens automatically when you start the application)\n")
 
         print("3. Parent Dashboard Password:")
-        print(f"   {_mask_secret(config['PARENT_DASHBOARD_PASSWORD'])}")
-        print("   (saved to CREDENTIALS.md — keep this safe!)\n")
+        print("   (saved to .env file — keep this file secure!)\n")
 
         data_dir = config.get('SNFLWR_DATA_DIR', '')
         if 'SnflwrAI' in data_dir:

@@ -175,7 +175,7 @@ llm_request_duration_seconds = Histogram(
 llm_tokens_total = Counter(
     "snflwr_llm_tokens_total",
     "Total tokens processed",
-    ["model", "type"],  # type: prompt, completion
+    ["model", "type"],  # labels: prompt, completion
 )
 
 llm_queue_size = Gauge("snflwr_llm_queue_size", "Current LLM request queue size")

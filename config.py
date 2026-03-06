@@ -215,7 +215,8 @@ class _SystemConfig:
         # No valid key found in .env — generate and persist
         generated_secret = secrets.token_hex(32)
         try:
-            with open(env_path, 'a') as f:
+            fd = os.open(str(env_path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            with os.fdopen(fd, 'a') as f:
                 f.write(f"\n# Auto-generated JWT secret for session persistence\n")
                 f.write(f"JWT_SECRET_KEY={generated_secret}\n")
             os.chmod(str(env_path), 0o600)  # Restrict to owner-only access

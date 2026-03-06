@@ -325,6 +325,11 @@ def rotate_encryption_key():
         print(f"\n[KEY] YOUR NEW ENCRYPTION KEY (displayed once, not logged):\n{new_key}\n")
         print("[WARN]  CRITICAL: Save this key securely before continuing!")
         input("Press Enter after you've saved the key...")
+        try:
+            os.unlink(_key_file)
+            print("[OK] Temporary key file deleted")
+        except OSError:
+            print(f"[WARN] Could not delete {_key_file} — remove it manually")
 
     else:
         print("Invalid choice")

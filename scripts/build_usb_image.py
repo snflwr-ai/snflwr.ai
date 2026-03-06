@@ -238,28 +238,28 @@ LOG_LEVEL=INFO
 
 # IMPORTANT: Save this dashboard password!
 # Parent Dashboard: http://localhost:8000/dashboard
-# Password: {dashboard_password}
 """
 
         env_path = self.usb_root / '.env'
-        with open(env_path, 'w', encoding='utf-8') as f:
+        fd = os.open(str(env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(env_content)
         os.chmod(str(env_path), 0o600)  # Restrict to owner-only access
 
         print_success("Created .env configuration")
         print_warning(f"Dashboard password: {_mask_secret(dashboard_password)} (see DASHBOARD_PASSWORD.txt)")
 
-        # Save password to separate file for reference
-        password_file = self.usb_root / 'DASHBOARD_PASSWORD.txt'
-        with open(password_file, 'w', encoding='utf-8') as f:
-            f.write(f"snflwr.ai Parent Dashboard Password\n")
+        # Save dashboard reference file (no secrets - password is in .env)
+        password_file = self.usb_root / 'DASHBOARD_INFO.txt'
+        fd = os.open(str(password_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(f"snflwr.ai Parent Dashboard\n")
             f.write(f"========================================\n\n")
-            f.write(f"Password: {dashboard_password}\n\n")
             f.write(f"URL: http://localhost:8000/dashboard\n\n")
             f.write(f"WARNING: KEEP THIS FILE SECURE - It contains access to child safety data!\n")
         os.chmod(str(password_file), 0o600)  # Restrict to owner-only access
 
-        print_success("Created DASHBOARD_PASSWORD.txt")
+        print_success("Created DASHBOARD_INFO.txt")
 
     def create_launcher_scripts(self):
         """Create platform-specific launcher scripts"""
@@ -691,7 +691,7 @@ read -p "Press Enter to exit..."
 ### First-Time Setup
 1. Run the launcher script
 2. Access parent dashboard: http://localhost:8000/dashboard
-3. Dashboard password is in `DASHBOARD_PASSWORD.txt`
+3. Dashboard password is in `.env` (see `DASHBOARD_INFO.txt` for details)
 4. Create your first child profile
 
 ## [TIP] Usage Tips
@@ -753,7 +753,7 @@ chmod +x run_snflwr.sh
 - Keep the USB in a secure location
 - Never share your dashboard password
 - Regularly backup `data/snflwr.db`
-- The dashboard password is in `DASHBOARD_PASSWORD.txt`
+- The dashboard password is in `.env` (see `DASHBOARD_INFO.txt` for details)
 
 ## [STATS] What Data is Stored?
 

@@ -1036,14 +1036,14 @@ class DatabaseManager:
                 cursor = conn.cursor()
 
                 # Clean up old sessions
-                cursor.execute(
+                cursor.execute(  # nosec B608 — placeholder is ? or %s from adapter
                     f"DELETE FROM sessions WHERE ended_at < {placeholder} AND ended_at IS NOT NULL",
                     (cutoff_date,)
                 )
                 sessions_deleted = cursor.rowcount
 
                 # Clean up old audit logs
-                cursor.execute(
+                cursor.execute(  # nosec B608
                     f"DELETE FROM audit_log WHERE timestamp < {placeholder}",
                     (cutoff_date,)
                 )
@@ -1051,12 +1051,12 @@ class DatabaseManager:
 
                 # Clean up resolved safety incidents
                 if self.db_type == 'sqlite':
-                    cursor.execute(
+                    cursor.execute(  # nosec B608
                         f"DELETE FROM safety_incidents WHERE resolved = 1 AND resolved_at < {placeholder}",
                         (cutoff_date,)
                     )
                 else:
-                    cursor.execute(
+                    cursor.execute(  # nosec B608
                         f"DELETE FROM safety_incidents WHERE resolved = TRUE AND resolved_at < {placeholder}",
                         (cutoff_date,)
                     )

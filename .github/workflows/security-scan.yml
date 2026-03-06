@@ -118,7 +118,7 @@ jobs:
     - name: Run Trivy vulnerability scanner
       if: steps.docker-build.outcome == 'success'
       continue-on-error: true
-      uses: aquasecurity/trivy-action@0.34.0
+      uses: aquasecurity/trivy-action@0.34.2
       with:
         image-ref: 'snflwr-api:scan'
         format: 'sarif'

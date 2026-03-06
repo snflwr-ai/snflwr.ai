@@ -57,8 +57,9 @@ class ThinClientManager:
         """
         url = f"{self.server_url}/api/thin-client/manifest"
         try:
+            _validate_url(url)
             req = Request(url, headers={'User-Agent': 'SnflwrAI-ThinClient/1.0'})
-            resp = urlopen(req, timeout=timeout)
+            resp = urlopen(req, timeout=timeout)  # nosec B310
             if 200 <= resp.getcode() < 300:
                 manifest = json.loads(resp.read().decode('utf-8'))
                 self._save_manifest(manifest)
@@ -147,8 +148,8 @@ class ThinClientManager:
             return None
 
         try:
-            _validate_url(url)
-            resp = urlopen(url, timeout=60)
+            url = _validate_url(url)
+            resp = urlopen(url, timeout=60)  # nosec B310
             dest_dir.mkdir(parents=True, exist_ok=True)
             tmp_dest = dest_dir / "launcher_update.zip.tmp"
             hasher = hashlib.sha256()
@@ -196,6 +197,7 @@ class ThinClientManager:
 
         url = f"{self.server_url}/api/thin-client/register"
         try:
+            _validate_url(url)
             from config import system_config
             payload = json.dumps({
                 'hostname': _platform.node(),
@@ -211,7 +213,7 @@ class ThinClientManager:
                 },
                 method='POST',
             )
-            resp = urlopen(req, timeout=10)
+            resp = urlopen(req, timeout=10)  # nosec B310
             return 200 <= resp.getcode() < 300
         except (URLError, OSError) as e:
             logger.warning("Failed to register client at %s: %s", url, e)

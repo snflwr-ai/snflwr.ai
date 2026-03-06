@@ -1744,7 +1744,7 @@ def setup_security():
     if auto_dashboard:
         config['PARENT_DASHBOARD_PASSWORD'] = generate_secure_token()
         print_success("Dashboard password generated")
-        print_warning(f"Save this password: {_mask_secret(config['PARENT_DASHBOARD_PASSWORD'])} (saved to CREDENTIALS.md)")
+        print_warning("Dashboard password generated and saved to .env file")
     else:
         config['PARENT_DASHBOARD_PASSWORD'] = ask_question("Dashboard password")
 
@@ -1826,8 +1826,6 @@ def create_env_file(config):
         # Optional settings
         f.write("\n# Optional Settings\n")
         f.write("# LOG_LEVEL=INFO\n")
-
-    os.chmod(str(env_path), 0o600)  # Restrict to owner-only access
     print_success(".env file created")
 
 
@@ -2031,8 +2029,7 @@ def show_next_steps(config):
         print("   (opens automatically when you start the application)\n")
 
         print("3. Parent Dashboard Password:")
-        print(f"   {_mask_secret(config['PARENT_DASHBOARD_PASSWORD'])}")
-        print("   (saved to CREDENTIALS.md — keep this safe!)\n")
+        print("   (saved to .env file — keep this file secure!)\n")
 
         data_dir = config.get('SNFLWR_DATA_DIR', '')
         if 'SnflwrAI' in data_dir:

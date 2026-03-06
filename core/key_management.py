@@ -87,7 +87,6 @@ class KeyAuditLogger:
             fd = os.open(str(self.audit_file), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
             with os.fdopen(fd, 'a') as f:
                 f.write(json.dumps(entry) + '\n')
-            os.chmod(str(self.audit_file), 0o600)  # Restrict to owner-only access
         except IOError as e:
             logger.error(f"Failed to write audit log: {e}")
 

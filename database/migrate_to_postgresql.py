@@ -73,10 +73,7 @@ class DatabaseMigrator:
 
         # Connect to PostgreSQL
         self.pg_conn = psycopg2.connect(**self.pg_config)
-        _pg_host = str(self.pg_config['host'])
-        _pg_port = str(self.pg_config['port'])
-        _pg_db = str(self.pg_config['database'])
-        print(f"[OK] Connected to PostgreSQL: {_pg_host}:{_pg_port}/{_pg_db}")
+        print(f"[OK] Connected to PostgreSQL: ***@{self.pg_config['host']}:{self.pg_config['port']}/{self.pg_config['database']}")
 
     def convert_value(self, value, column_name: str):
         """Convert SQLite values to PostgreSQL format"""
@@ -250,9 +247,9 @@ def main():
     _pg_db = str(pg_config['database'])
     _pg_user_len = len(pg_config['user'])
     print(f"\nDestination (PostgreSQL):")
-    print(f"  Host: {_pg_host}:{_pg_port}")
-    print(f"  Database: {_pg_db}")
-    print(f"  User: ({_pg_user_len} chars, see .env)")
+    print(f"  Host: {pg_config['host']}:{pg_config['port']}")
+    print(f"  Database: {pg_config['database']}")
+    print(f"  User: {_mask_secret(pg_config['user'])}")
 
     # Validate
     if not pg_config['password']:

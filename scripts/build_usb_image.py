@@ -244,9 +244,10 @@ LOG_LEVEL=INFO
         fd = os.open(str(env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(env_content)
+        os.chmod(str(env_path), 0o600)  # Restrict to owner-only access
 
         print_success("Created .env configuration")
-        print_warning("Dashboard password saved to .env file")
+        print_warning(f"Dashboard password: {_mask_secret(dashboard_password)} (see DASHBOARD_PASSWORD.txt)")
 
         # Save dashboard reference file (no secrets - password is in .env)
         password_file = self.usb_root / 'DASHBOARD_INFO.txt'
@@ -255,8 +256,8 @@ LOG_LEVEL=INFO
             f.write(f"snflwr.ai Parent Dashboard\n")
             f.write(f"========================================\n\n")
             f.write(f"URL: http://localhost:8000/dashboard\n\n")
-            f.write(f"Your password is stored in the .env file.\n")
-            f.write(f"Look for PARENT_DASHBOARD_PASSWORD in .env\n")
+            f.write(f"WARNING: KEEP THIS FILE SECURE - It contains access to child safety data!\n")
+        os.chmod(str(password_file), 0o600)  # Restrict to owner-only access
 
         print_success("Created DASHBOARD_INFO.txt")
 

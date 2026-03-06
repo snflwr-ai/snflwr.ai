@@ -322,13 +322,8 @@ def rotate_encryption_key():
             return False
 
         old_key, new_key = key_manager.rotate_key(current_key, None)
-        import tempfile
-        _key_file = os.path.join(tempfile.gettempdir(), 'snflwr_new_key.txt')
-        _fd = os.open(_key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(_fd, 'w') as _kf:
-            _kf.write(new_key)
-        print(f"\n[KEY] New encryption key written to: {_key_file}")
-        print("[WARN]  CRITICAL: Copy this key to your password manager, then press Enter!")
+        print(f"\n[KEY] YOUR NEW ENCRYPTION KEY (displayed once, not logged):\n{new_key}\n")
+        print("[WARN]  CRITICAL: Save this key securely before continuing!")
         input("Press Enter after you've saved the key...")
         try:
             os.unlink(_key_file)

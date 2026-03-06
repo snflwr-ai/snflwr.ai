@@ -446,7 +446,7 @@ def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption
   Your configuration has been saved to: {_bold(str(env_path))}
 
   {_bold("Your account:")}
-    Password: (saved in {env_path})
+    Password: {_mask_secret(admin_password)} (saved in {env_path})
     {_yellow("Change this password after your first login!")}
 
   {_bold("What to do next:")}
@@ -471,12 +471,12 @@ def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption
   {_bold(_red("IMPORTANT — Save these keys somewhere safe (like a password manager):"))}
   {_bold(_red("If you lose them, encrypted data cannot be recovered."))}
 
-    DB Encryption Key:  (saved in {env_path})
-    PII Encryption Key: (saved in {env_path})
+    DB Encryption Key:  {_mask_secret(db_encryption_key)} (saved in {env_path})
+    PII Encryption Key: {_mask_secret(pii_encryption_key)} (saved in {env_path})
 
   {_bold("Your first admin account:")}
     Email:    (the admin email you entered above)
-    Password: (saved in {env_path})
+    Password: {_mask_secret(admin_password)} (saved in {env_path})
     {_yellow("Change this password after your first login!")}
 
   {_bold("What to do next:")}

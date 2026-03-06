@@ -9,7 +9,10 @@ from safety.incident_logger import incident_logger
 from datetime import datetime, timezone
 import hmac
 import json
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -290,8 +293,9 @@ def get_unreviewed_incidents():
             incidents.append(inc)
         return jsonify(incidents)
 
-    except DB_ERRORS as e:
-        return jsonify({"error": str(e)}), 500
+    except DB_ERRORS:
+        logger.exception("Unexpected error in get_unreviewed_incidents")
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 @app.route('/api/incidents/<int:incident_id>/review', methods=['POST'])
@@ -360,8 +364,9 @@ def export_incidents():
         else:
             return json.dumps(incidents, default=str), 200, {'Content-Type': 'application/json'}
 
-    except DB_ERRORS as e:
-        return jsonify({"error": str(e)}), 500
+    except DB_ERRORS:
+        logger.exception("Unexpected error in export_incidents")
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 if __name__ == '__main__':

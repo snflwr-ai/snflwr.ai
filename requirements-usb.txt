@@ -11,7 +11,7 @@ argon2-cffi==23.1.0           # Password hashing (Argon2)
 
 # HTTP & API
 requests==2.31.0              # HTTP client
-urllib3==2.1.0                # HTTP library
+urllib3==2.6.3                # HTTP library
 
 # Web Framework
 fastapi==0.109.0              # API framework

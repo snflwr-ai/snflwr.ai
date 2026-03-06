@@ -14,7 +14,7 @@ import sqlite3
 
 from config import system_config
 from storage.db_adapters import create_adapter, DatabaseAdapter, SQLiteAdapter, PostgreSQLAdapter, DB_ERRORS
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -959,7 +959,7 @@ class DatabaseManager:
         except DB_ERRORS as e:
             logger.error(f"Query execution failed: {e}")
             logger.error(f"Query: {_redact_sensitive_sql(query)!r}")
-            logger.error(f"Params: {_redact_sensitive_params(params)!r}")
+            logger.error(f"Params: {sanitize_log_value(_redact_sensitive_params(params))!r}")
             raise
 
     def execute_read(self, query: str, params: Tuple = ()) -> List[Union[Dict, Any]]:
@@ -993,7 +993,7 @@ class DatabaseManager:
         except DB_ERRORS as e:
             logger.error(f"Write operation failed: {e}")
             logger.error(f"Query: {_redact_sensitive_sql(query)!r}")
-            logger.error(f"Params: {_redact_sensitive_params(params)!r}")
+            logger.error(f"Params: {sanitize_log_value(_redact_sensitive_params(params))!r}")
             raise
 
     # Backwards-compatible alias used by tests

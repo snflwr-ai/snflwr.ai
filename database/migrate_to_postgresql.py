@@ -23,6 +23,14 @@ except ImportError:
 from config import system_config
 
 
+def _mask_secret(value: str, visible: int = 4) -> str:
+    """Show only last N chars of a secret for verification."""
+    s = str(value)
+    if len(s) <= visible:
+        return '***'
+    return f"***{s[-visible:]}"
+
+
 class DatabaseMigrator:
     """Migrates data from SQLite to PostgreSQL"""
 
@@ -65,7 +73,7 @@ class DatabaseMigrator:
 
         # Connect to PostgreSQL
         self.pg_conn = psycopg2.connect(**self.pg_config)
-        print(f"[OK] Connected to PostgreSQL: {self.pg_config['user']}@{self.pg_config['host']}:{self.pg_config['port']}/{self.pg_config['database']}")
+        print(f"[OK] Connected to PostgreSQL: ***@{self.pg_config['host']}:{self.pg_config['port']}/{self.pg_config['database']}")
 
     def convert_value(self, value, column_name: str):
         """Convert SQLite values to PostgreSQL format"""
@@ -237,7 +245,7 @@ def main():
     print(f"\nDestination (PostgreSQL):")
     print(f"  Host: {pg_config['host']}:{pg_config['port']}")
     print(f"  Database: {pg_config['database']}")
-    print(f"  User: {pg_config['user']}")
+    print(f"  User: {_mask_secret(pg_config['user'])}")
 
     # Validate
     if not pg_config['password']:

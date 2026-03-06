@@ -218,6 +218,7 @@ class _SystemConfig:
             with open(env_path, 'a') as f:
                 f.write(f"\n# Auto-generated JWT secret for session persistence\n")
                 f.write(f"JWT_SECRET_KEY={generated_secret}\n")
+            os.chmod(str(env_path), 0o600)  # Restrict to owner-only access
             warnings.warn(
                 "JWT_SECRET_KEY not set - generated and saved to .env.",
                 RuntimeWarning

@@ -40,6 +40,13 @@ def _red(text):
 def _blue(text):
     return text
 
+def _mask_secret(value: str, visible: int = 4) -> str:
+    """Show only last N chars of a secret for verification."""
+    s = str(value)
+    if len(s) <= visible:
+        return '***'
+    return f"***{s[-visible:]}"
+
 def banner():
     print()
     print("=" * 64)
@@ -438,7 +445,7 @@ def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption
   Your configuration has been saved to: {_bold(str(env_path))}
 
   {_bold("Your account:")}
-    Password: {admin_password}
+    Password: {_mask_secret(admin_password)} (saved in {env_path})
     {_yellow("Change this password after your first login!")}
 
   {_bold("What to do next:")}
@@ -463,12 +470,12 @@ def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption
   {_bold(_red("IMPORTANT — Save these keys somewhere safe (like a password manager):"))}
   {_bold(_red("If you lose them, encrypted data cannot be recovered."))}
 
-    DB Encryption Key:  {db_encryption_key}
-    PII Encryption Key: {pii_encryption_key}
+    DB Encryption Key:  {_mask_secret(db_encryption_key)} (saved in {env_path})
+    PII Encryption Key: {_mask_secret(pii_encryption_key)} (saved in {env_path})
 
   {_bold("Your first admin account:")}
     Email:    (the admin email you entered above)
-    Password: {admin_password}
+    Password: {_mask_secret(admin_password)} (saved in {env_path})
     {_yellow("Change this password after your first login!")}
 
   {_bold("What to do next:")}

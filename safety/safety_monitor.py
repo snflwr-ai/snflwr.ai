@@ -16,7 +16,7 @@ from config import safety_config
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
 from safety.pipeline import safety_pipeline
-from utils.logger import get_logger, log_safety_incident
+from utils.logger import get_logger, log_safety_incident, sanitize_log_value
 from enum import Enum
 
 logger = get_logger(__name__)
@@ -190,7 +190,7 @@ class SafetyMonitor:
                         profile_id=profile_id,
                         parent_id=parent_id
                     )
-                    logger.info(f"Started monitoring profile: {profile_id!r}")
+                    logger.info(f"Started monitoring profile: {sanitize_log_value(profile_id)!r}")
         except (KeyError, IndexError, TypeError) as e:
             logger.error(f"Failed to start monitoring: {e}")
     
@@ -272,7 +272,7 @@ class SafetyMonitor:
                     )
                     parent_id = res[0]['parent_id'] if res else 'unknown'
                 except DB_ERRORS as e:
-                    logger.warning(f"Failed to look up parent_id for profile {profile_id!r}: {e}")
+                    logger.warning(f"Failed to look up parent_id for profile {sanitize_log_value(profile_id)!r}: {e}")
                     parent_id = 'unknown'
 
                 # Auto-start monitoring for compatibility with tests
@@ -689,7 +689,7 @@ class SafetyMonitor:
                 for i, alert in enumerate(self._pending_alerts):
                     if alert.alert_id == alert_id:
                         self._pending_alerts.pop(i)
-                        logger.info(f"Alert acknowledged: {alert_id!r}")
+                        logger.info(f"Alert acknowledged: {sanitize_log_value(alert_id)!r}")
                         return True
                 return False
         except (KeyError, IndexError, TypeError) as e:

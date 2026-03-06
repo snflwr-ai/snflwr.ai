@@ -21,7 +21,7 @@ import hashlib
 import hmac
 import secrets
 
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 from storage.db_adapters import DB_ERRORS
 
 logger = get_logger(__name__)
@@ -301,7 +301,7 @@ class AgeVerificationManager:
                 )
             )
 
-            logger.info(f"Parental consent logged: {consent_id!r} for profile {profile_id!r}")
+            logger.info(f"Parental consent logged: {sanitize_log_value(consent_id)!r} for profile {sanitize_log_value(profile_id)!r}")
             return consent_id
 
         except DB_ERRORS as e:
@@ -426,7 +426,7 @@ class AgeVerificationManager:
                 (profile_id,)
             )
 
-            logger.warning(f"Parental consent revoked for profile {profile_id!r}: {reason!r}")
+            logger.warning(f"Parental consent revoked for profile {sanitize_log_value(profile_id)!r}: {sanitize_log_value(reason)!r}")
             return True
 
         except DB_ERRORS as e:

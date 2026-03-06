@@ -2017,7 +2017,8 @@ def show_next_steps(config):
 
     system = platform.system()
 
-    if config['DATABASE_TYPE'] == 'sqlite':
+    _db_type = os.environ.get('DB_TYPE', config.get('DATABASE_TYPE', 'sqlite'))
+    if _db_type == 'sqlite':
         print("1. Start the application:")
         if system == 'Windows':
             print(f"   {_windows_start_cmd()}\n")
@@ -2031,15 +2032,16 @@ def show_next_steps(config):
         print("3. Parent Dashboard Password:")
         print("   (saved to .env file — keep this file secure!)\n")
 
-        data_dir = config.get('SNFLWR_DATA_DIR', '')
+        data_dir = os.environ.get('SNFLWR_DATA_DIR', '')
         if 'SnflwrAI' in data_dir:
             print("4. Your data is stored at:")
             print(f"   {data_dir}")
             print("   Keep this USB drive safe — it contains all your data!\n")
 
     else:
+        _pg_db = os.environ.get('POSTGRES_DATABASE', 'snflwr_ai')
         print("1. Set up PostgreSQL database:")
-        print(f"   createdb {config['POSTGRES_DATABASE']}\n")
+        print(f"   createdb {_pg_db}\n")
 
         print("2. Run database migrations:")
         print("   python -m database.init_db\n")
@@ -2065,7 +2067,7 @@ def show_next_steps(config):
     print("Security Reminders:")
     print("  Keep your .env file secure (contains secrets)")
     print("  Back up your database regularly")
-    if config['DATABASE_TYPE'] == 'sqlite':
+    if _db_type == 'sqlite':
         print("  Keep your USB drive in a safe place\n")
 
 def ensure_venv():

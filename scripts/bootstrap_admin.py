@@ -191,7 +191,7 @@ def create_admin_account(
 
         # Check if email already exists
         if check_email_exists(email_hash):
-            return False, None, f"Admin account with email {email} already exists"
+            return False, None, "Admin account with this email already exists"
 
         # Hash password with Argon2
         password_hash = password_hasher.hash(password)
@@ -239,7 +239,7 @@ def create_admin_account(
         return True, user_id, None
 
     except Exception as e:
-        return False, None, f"Failed to create admin account: {str(e)}"
+        return False, None, f"Failed to create admin account: {type(e).__name__}"
 
 
 def verify_admin_login(email: str, password: str) -> bool:

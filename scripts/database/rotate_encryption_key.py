@@ -19,6 +19,7 @@ Safety features:
 """
 
 import os
+import re
 import sys
 import shutil
 from pathlib import Path
@@ -322,19 +323,24 @@ def rotate_encryption_key():
             return False
 
         old_key, new_key = key_manager.rotate_key(current_key, None)
-        import tempfile
-        _key_file = os.path.join(tempfile.gettempdir(), 'snflwr_new_key.txt')
-        _fd = os.open(_key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(_fd, 'w') as _kf:
-            _kf.write(new_key)
-        print(f"\n[KEY] New encryption key written to: {_key_file}")
-        print("[WARN]  CRITICAL: Copy this key to your password manager, then press Enter!")
-        input("Press Enter after you've saved the key...")
-        try:
-            os.unlink(_key_file)
-            print("[OK] Temporary key file deleted")
-        except OSError:
-            print(f"[WARN] Could not delete {_key_file} — remove it manually")
+        # Save new key directly to .env file
+        _env_path = Path(os.environ.get('ENV_FILE', '.env'))
+        if _env_path.exists():
+            _content = _env_path.read_text()
+            _content = re.sub(
+                r'^DB_ENCRYPTION_KEY=.*$',
+                f'DB_ENCRYPTION_KEY={new_key}',
+                _content,
+                flags=re.MULTILINE,
+            )
+            _fd = os.open(str(_env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(_fd, 'w') as _f:
+                _f.write(_content)
+            print("\n[OK] New encryption key generated and saved to .env")
+        else:
+            print(f"\n[WARN] .env file not found at {_env_path} — update DB_ENCRYPTION_KEY manually")
+        print("[WARN] CRITICAL: Back up your .env file immediately!")
+        input("Press Enter to continue...")
 
     else:
         print("Invalid choice")

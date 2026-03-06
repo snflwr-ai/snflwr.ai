@@ -186,7 +186,7 @@ class USBImageBuilder:
                 try:
                     cursor.execute(statement)
                 except sqlite3.Error as e:
-                    print_warning(f"Schema statement warning: {e}")
+                    print_warning(f"Schema statement warning: {type(e).__name__}")
 
         conn.commit()
 

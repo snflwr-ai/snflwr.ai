@@ -646,10 +646,10 @@ async def get_profile_for_user(user_id: str, authorization: str = Header(None)):
         return {"profile_id": f"no_profile_{user_id}"}
 
     except DB_ERRORS as e:
-        logger.error(f"Database error looking up profile for user {user_id}: {e}")
+        logger.error(f"Database error looking up profile for user {user_id!r}: {e}")
         return {"profile_id": f"no_profile_{user_id}"}
     except Exception as e:
-        logger.exception(f"Unexpected error looking up profile for user {user_id}: {e}")
+        logger.exception(f"Unexpected error looking up profile for user {user_id!r}: {e}")
         return {"profile_id": f"no_profile_{user_id}"}
 
 
@@ -773,7 +773,7 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
         if request.child_age < 13:
             coppa_consent_required = True
             logger.info(
-                f"Setup: child age {request.child_age} requires parental consent workflow. "
+                f"Setup: child age {request.child_age!r} requires parental consent workflow. "
                 f"Profile creation deferred."
             )
         else:

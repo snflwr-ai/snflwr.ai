@@ -240,9 +240,9 @@ class TestMissingPasswordGuard:
         import sys
         import importlib
 
-        # Remove any cached module
+        # Remove cached safety.parent_dashboard module only (not ui.parent_dashboard)
         for mod_name in list(sys.modules.keys()):
-            if 'parent_dashboard' in mod_name:
+            if 'parent_dashboard' in mod_name and mod_name.startswith('safety'):
                 del sys.modules[mod_name]
 
         original = os.environ.pop('PARENT_DASHBOARD_PASSWORD', None)
@@ -257,7 +257,7 @@ class TestMissingPasswordGuard:
                 os.environ['PARENT_DASHBOARD_PASSWORD'] = 'test-password-abc123'
             # Clean up the failed import attempt so module reloads cleanly
             for mod_name in list(sys.modules.keys()):
-                if 'parent_dashboard' in mod_name:
+                if 'parent_dashboard' in mod_name and mod_name.startswith('safety'):
                     del sys.modules[mod_name]
             import safety.parent_dashboard  # noqa: F401
 

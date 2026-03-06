@@ -25,6 +25,9 @@ _rl_mod._local_limiter.check_rate_limit = _always_allow
 _rl_mod.rate_limiter.check_rate_limit = _always_allow
 _rl_mod.check_rate_limit = lambda *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
 
+from api.middleware import auth as _auth_mod
+_auth_mod._rate_limiter.check_rate_limit = lambda *a, **kw: True
+
 from api.server import app
 from starlette.testclient import TestClient
 from storage.database import db_manager

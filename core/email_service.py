@@ -718,7 +718,7 @@ class EmailService:
                 logger.error(f"Failed to send parental consent email: {error}")
                 return False
 
-            logger.info(f"Parental consent email sent to {mask_email(to_email)} for child profile")
+            logger.info(f"Parental consent email sent to {mask_email(to_email)!r} for child profile")
             return True
 
         except smtplib.SMTPException as e:

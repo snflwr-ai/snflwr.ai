@@ -958,8 +958,8 @@ class DatabaseManager:
             return results
         except DB_ERRORS as e:
             logger.error(f"Query execution failed: {e}")
-            logger.error(f"Query: {_redact_sensitive_sql(query)}")
-            logger.error(f"Params: {_redact_sensitive_params(params)}")
+            logger.error(f"Query: {_redact_sensitive_sql(query)!r}")
+            logger.error(f"Params: {_redact_sensitive_params(params)!r}")
             raise
 
     def execute_read(self, query: str, params: Tuple = ()) -> List[Union[Dict, Any]]:
@@ -992,8 +992,8 @@ class DatabaseManager:
             return result
         except DB_ERRORS as e:
             logger.error(f"Write operation failed: {e}")
-            logger.error(f"Query: {_redact_sensitive_sql(query)}")
-            logger.error(f"Params: {_redact_sensitive_params(params)}")
+            logger.error(f"Query: {_redact_sensitive_sql(query)!r}")
+            logger.error(f"Params: {_redact_sensitive_params(params)!r}")
             raise
 
     # Backwards-compatible alias used by tests

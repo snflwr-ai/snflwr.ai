@@ -301,7 +301,7 @@ class AgeVerificationManager:
                 )
             )
 
-            logger.info(f"Parental consent logged: {consent_id} for profile {profile_id}")
+            logger.info(f"Parental consent logged: {consent_id!r} for profile {profile_id!r}")
             return consent_id
 
         except DB_ERRORS as e:
@@ -426,7 +426,7 @@ class AgeVerificationManager:
                 (profile_id,)
             )
 
-            logger.warning(f"Parental consent revoked for profile {profile_id}: {reason}")
+            logger.warning(f"Parental consent revoked for profile {profile_id!r}: {reason!r}")
             return True
 
         except DB_ERRORS as e:

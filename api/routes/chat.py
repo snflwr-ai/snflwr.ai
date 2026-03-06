@@ -168,7 +168,7 @@ async def send_chat_message(
     4. Response validation
     """
     try:
-        logger.info(f"Chat request from profile {request.profile_id}, length={len(request.message)}")
+        logger.info(f"Chat request from profile {request.profile_id!r}, length={len(request.message)}")
 
         # Get profile
         profile_manager = ProfileManager(auth_manager.db)
@@ -196,7 +196,7 @@ async def send_chat_message(
 
         # AUTHORIZATION: Verify user owns this profile (unless admin)
         if auth_session.role != 'admin' and profile.parent_id != auth_session.user_id:
-            logger.warning(f"Access denied: {auth_session.user_id} tried to chat for profile {request.profile_id}")
+            logger.warning(f"Access denied: {auth_session.user_id!r} tried to chat for profile {request.profile_id!r}")
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: You can only chat for your own children's profiles"
@@ -341,7 +341,7 @@ async def send_chat_message(
                     detail="No AI model configured. Set OLLAMA_DEFAULT_MODEL or pull a model into Ollama."
                 )
 
-        logger.info(f"Generating response with {model_name} ({len(history_messages)} prior messages in context)")
+        logger.info(f"Generating response with {model_name!r} ({len(history_messages)} prior messages in context)")
 
         # Build a system prompt appropriate for the audience.
         if skip_safety:
@@ -388,7 +388,7 @@ async def send_chat_message(
 
         if not success:
             err_msg = metadata.get('error', 'unknown error') if metadata else 'unknown error'
-            logger.error(f"Ollama chat failed: {err_msg}")
+            logger.error(f"Ollama chat failed: {err_msg!r}")
             raise HTTPException(
                 status_code=503,
                 detail=f"AI model unavailable: {err_msg}"
@@ -399,7 +399,10 @@ async def send_chat_message(
         # Open WebUI cannot collapse them into a "Thought for X seconds" section;
         # they render as italic inline text instead. Remove them here.
         import re as _re
-        response_text = _re.sub(r'<think>.*?</think>', '', response_text, flags=_re.DOTALL).strip()
+        if len(response_text) <= 100_000:
+            response_text = _re.sub(r'<think>.*?</think>', '', response_text, flags=_re.DOTALL).strip()
+        else:
+            response_text = response_text.strip()
 
         if not response_text:
             logger.error("Model returned empty response after stripping thinking tokens")

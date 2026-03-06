@@ -176,7 +176,7 @@ class IncidentLogger:
 
             if result:
                 incident_id = result[0]['incident_id']
-                logger.info(f"Incident logged: ID {incident_id}, severity: {severity}, profile: {profile_id}")
+                logger.info(f"Incident logged: ID {incident_id!r}, severity: {severity!r}, profile: {profile_id!r}")
 
                 # Broadcast incident via WebSocket for real-time monitoring
                 self._broadcast_incident_websocket(profile_id, incident_id, severity, incident_type, content_snippet)
@@ -546,7 +546,7 @@ class IncidentLogger:
                 (datetime.now(timezone.utc).isoformat(), encrypted_notes, incident_id)
             )
 
-            logger.info(f"Incident {incident_id} resolved")
+            logger.info(f"Incident {incident_id!r} resolved")
             return True
 
         except DB_ERRORS as e:
@@ -792,7 +792,7 @@ class IncidentLogger:
             )
 
             if not result:
-                logger.error(f"Could not find profile {profile_id} for parent alert")
+                logger.error(f"Could not find profile {profile_id!r} for parent alert")
                 return
 
             parent_id = result[0]['parent_id']
@@ -918,7 +918,7 @@ class IncidentLogger:
             )
 
             if not result:
-                logger.warning(f"Could not find profile {profile_id} for WebSocket broadcast")
+                logger.warning(f"Could not find profile {profile_id!r} for WebSocket broadcast")
                 return
 
             parent_id = result[0]['parent_id']

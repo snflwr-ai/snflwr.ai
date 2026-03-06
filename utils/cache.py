@@ -458,7 +458,7 @@ class RedisCache:
             cache_key = self._make_key(key, namespace)
             result = self._client.delete(cache_key)
             self._stats['deletes'] += 1
-            logger.debug(f"Cache DELETE: {cache_key}")
+            logger.debug(f"Cache DELETE: {cache_key!r}")
             if _metrics_available:
                 record_cache_operation('delete', 'success', time.time() - start_time)
             return result > 0

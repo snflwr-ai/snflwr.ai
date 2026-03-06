@@ -64,6 +64,8 @@ def _get_owui_token(session: "AuthSession") -> str:
 def _owui_find_user_by_email(open_webui_url: str, owui_token: str, email: str):
     """Look up an existing OWU user by email. Returns (user_dict, error) tuple."""
     import requests as http_client
+    from utils.logger import get_logger as _get_logger
+    _log = _get_logger(__name__)
     headers = {"Authorization": f"Bearer {owui_token}"}
     try:
         resp = http_client.get(
@@ -79,7 +81,8 @@ def _owui_find_user_by_email(open_webui_url: str, owui_token: str, email: str):
             return None, "User not found"
         return None, f"OWU users list error ({resp.status_code})"
     except Exception as e:
-        return None, str(e)
+        _log.exception("Unexpected error looking up OWU user by email")
+        return None, "An internal error occurred"
 
 
 def _owui_activate_user(open_webui_url: str, owui_token: str, user: dict):
@@ -119,9 +122,9 @@ def _owui_delete_user(open_webui_url: str, owui_token: str, owui_user_id: str):
             timeout=10,
         )
         if resp.status_code not in (200, 204):
-            _log.warning(f"OWU delete user {owui_user_id} returned {resp.status_code}")
+            _log.warning(f"OWU delete user {owui_user_id!r} returned {resp.status_code}")
     except Exception as e:
-        _log.warning(f"OWU delete user {owui_user_id} failed: {e}")
+        _log.warning(f"OWU delete user {owui_user_id!r} failed: {e}")
 
 
 def _owui_create_user(open_webui_url: str, owui_token: str, name: str, email: str, password: str):
@@ -157,7 +160,7 @@ def _owui_create_user(open_webui_url: str, owui_token: str, name: str, email: st
             except Exception:
                 detail = ""
             if "already" in detail.lower() or "registered" in detail.lower() or "taken" in detail.lower():
-                _log.info(f"OWU email {email} already exists — activating existing account")
+                _log.info(f"OWU email {email!r} already exists — activating existing account")
                 existing, err = _owui_find_user_by_email(open_webui_url, owui_token, email)
                 if existing:
                     _owui_activate_user(open_webui_url, owui_token, existing)
@@ -473,7 +476,7 @@ async def sync_admin(
                 (email_hash, encrypted_email, request.admin_id)
             )
 
-            logger.info(f"Updated admin {request.admin_id}")
+            logger.info(f"Updated admin {request.admin_id!r}")
 
         else:
             # Create new admin
@@ -495,7 +498,7 @@ async def sync_admin(
                 )
             )
 
-            logger.info(f"Created new admin {request.admin_id}")
+            logger.info(f"Created new admin {request.admin_id!r}")
 
         # Fetch and return the admin record
         admin = db.execute_query(
@@ -799,10 +802,10 @@ async def delete_account(
     except HTTPException:
         raise
     except DB_ERRORS as e:
-        logger.error(f"Database error deleting account {parent_id}: {e}")
+        logger.error(f"Database error deleting account {parent_id!r}: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
-        logger.exception(f"Unexpected error deleting account {parent_id}: {e}")
+        logger.exception(f"Unexpected error deleting account {parent_id!r}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1007,7 +1010,7 @@ async def bulk_import_students(
                 )
             )
         except DB_ERRORS as e:
-            logger.error(f"DB error creating profile for {s.email}: {e}")
+            logger.error(f"DB error creating profile for {s.email!r}: {e}")
             failed.append({"email": s.email, "error": "Database error creating profile"})
             continue
 
@@ -1030,7 +1033,7 @@ async def bulk_import_students(
                 # COPPA log failure is non-fatal — profile is created, flag it
                 logger.error(f"COPPA consent log failed for {profile_id}: {e}")
 
-        logger.info(f"Imported student {s.email} → profile {profile_id}, owui {owui_user_id}")
+        logger.info(f"Imported student {s.email!r} → profile {profile_id!r}, owui {owui_user_id!r}")
         created.append(s.email)
 
     audit_log('create', 'student_bulk_import', f"imported={len(created)}", session)
@@ -1227,10 +1230,10 @@ async def delete_profile(
     except HTTPException:
         raise
     except DB_ERRORS as e:
-        logger.error(f"Database error deleting profile {profile_id}: {e}")
+        logger.error(f"Database error deleting profile {profile_id!r}: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
-        logger.exception(f"Unexpected error deleting profile {profile_id}: {e}")
+        logger.exception(f"Unexpected error deleting profile {profile_id!r}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

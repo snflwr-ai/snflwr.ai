@@ -480,7 +480,7 @@ def audit_log(action: str, resource_type: str, resource_id: str, session: AuthSe
                 True
             )
         )
-        logger.debug(f"Audit: {session.user_id} ({session.role}) {action} {resource_type} {resource_id}")
+        logger.debug(f"Audit: {session.user_id!r} ({session.role!r}) {action!r} {resource_type!r} {resource_id!r}")
         _reset_audit_failure_count()
         return True
     except Exception as e:

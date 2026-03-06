@@ -96,7 +96,7 @@ class ProfileManager:
             raise
         except DB_ERRORS as e:
             # Table may not exist in test environments — log it so we know
-            logger.warning(f"Could not verify parent_id {parent_id} (table may not exist): {e}")
+            logger.warning(f"Could not verify parent_id {parent_id!r} (table may not exist): {e}")
 
         # Check for duplicate name within family
         try:
@@ -148,7 +148,7 @@ class ProfileManager:
         try:
             rows = self.db.execute_query("SELECT * FROM child_profiles WHERE profile_id = ?", (profile_id,))
         except DB_ERRORS as e:
-            logger.debug(f"Failed to query profile {profile_id} (non-critical): {e}")
+            logger.debug(f"Failed to query profile {profile_id!r} (non-critical): {e}")
             return None
         if not rows:
             return None
@@ -172,7 +172,7 @@ class ProfileManager:
             )
             subjects = [row[0] if isinstance(row, tuple) else row['subject'] for row in subject_rows]
         except DB_ERRORS as e:
-            logger.debug(f"Failed to query subjects for profile {profile_id} (non-critical): {e}")
+            logger.debug(f"Failed to query subjects for profile {profile_id!r} (non-critical): {e}")
 
         # Get session counts - prefer sessions table, fallback to profile table
         total_sessions = 0
@@ -197,7 +197,7 @@ class ProfileManager:
                     total_questions = g('total_questions', 10) or 0
         except DB_ERRORS as e:
             # Fallback to profile table values
-            logger.debug(f"Failed to query session stats for profile {profile_id} (non-critical): {e}")
+            logger.debug(f"Failed to query session stats for profile {profile_id!r} (non-critical): {e}")
             total_sessions = g('total_sessions', 9) or 0
             total_questions = g('total_questions', 10) or 0
 
@@ -221,7 +221,7 @@ class ProfileManager:
         try:
             rows = self.db.execute_query("SELECT * FROM child_profiles WHERE parent_id = ?", (parent_id,))
         except DB_ERRORS as e:
-            logger.debug(f"Failed to query profiles for parent {parent_id} (non-critical): {e}")
+            logger.debug(f"Failed to query profiles for parent {parent_id!r} (non-critical): {e}")
             return []
 
         if not rows:

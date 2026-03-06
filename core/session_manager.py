@@ -94,7 +94,7 @@ class SessionManager:
                 try:
                     self.db.execute_write(insert_sql, params)
                 except DB_ERRORS as e:
-                    logger.error(f"Failed to persist session {session_id} to database: {e}")
+                    logger.error(f"Failed to persist session {session_id!r} to database: {e}")
                     raise SessionError(f"Could not create session: database write failed") from e
 
             return Session(
@@ -180,7 +180,7 @@ class SessionManager:
             if duration < 0:
                 duration = 0
         except ValueError as e:
-            logger.warning(f"Failed to calculate session duration for {session_id}: {e}")
+            logger.warning(f"Failed to calculate session duration for {session_id!r}: {e}")
             duration = None
 
         if self.db is not None:
@@ -190,7 +190,7 @@ class SessionManager:
                     (ended_at, duration, session_id)
                 )
             except DB_ERRORS as e:
-                logger.error(f"Failed to persist session end for {session_id}: {e}")
+                logger.error(f"Failed to persist session end for {session_id!r}: {e}")
                 raise SessionError(f"Could not end session: database write failed") from e
 
         return True
@@ -204,7 +204,7 @@ class SessionManager:
                 (session_id,)
             )
         except DB_ERRORS as e:
-            logger.error(f"Failed to increment question count for session {session_id}: {e}")
+            logger.error(f"Failed to increment question count for session {session_id!r}: {e}")
             return False
         return True
 
@@ -401,7 +401,8 @@ class SessionManager:
                     if self.end_session(r['session_id']):
                         recovered += 1
             except (ValueError, TypeError, *DB_ERRORS) as e:
-                logger.warning(f"Failed to recover orphaned session {r['session_id'] if r else 'unknown'}: {e}")
+                _sid = r['session_id'] if r else 'unknown'
+                logger.warning(f"Failed to recover orphaned session {_sid!r}: {e}")
                 continue
         return recovered
 
@@ -467,7 +468,7 @@ class SessionManager:
                         })
             return messages
         except DB_ERRORS as e:
-            logger.error(f"Failed to get messages for session {session_id}: {e}")
+            logger.error(f"Failed to get messages for session {session_id!r}: {e}")
             return []
 
 

@@ -190,7 +190,7 @@ class SafetyMonitor:
                         profile_id=profile_id,
                         parent_id=parent_id
                     )
-                    logger.info(f"Started monitoring profile: {profile_id}")
+                    logger.info(f"Started monitoring profile: {profile_id!r}")
         except (KeyError, IndexError, TypeError) as e:
             logger.error(f"Failed to start monitoring: {e}")
     
@@ -205,12 +205,12 @@ class SafetyMonitor:
             with self._lock:
                 if profile_id in self._monitoring_profiles:
                     del self._monitoring_profiles[profile_id]
-                    logger.info(f"Stopped monitoring profile: {profile_id}")
+                    logger.info(f"Stopped monitoring profile: {profile_id!r}")
 
                 # Clean up conversation history to prevent memory leak
                 if profile_id in self._conversation_history:
                     del self._conversation_history[profile_id]
-                    logger.debug(f"Cleaned up conversation history for profile: {profile_id}")
+                    logger.debug(f"Cleaned up conversation history for profile: {profile_id!r}")
         except (KeyError, IndexError, TypeError) as e:
             logger.error(f"Failed to stop monitoring: {e}")
 
@@ -232,7 +232,7 @@ class SafetyMonitor:
                 # Remove conversation history for inactive profiles
                 for profile_id in inactive_profiles:
                     del self._conversation_history[profile_id]
-                    logger.debug(f"Cleaned up conversation history for inactive profile: {profile_id}")
+                    logger.debug(f"Cleaned up conversation history for inactive profile: {profile_id!r}")
 
                 if inactive_profiles:
                     logger.info(f"Cleaned up {len(inactive_profiles)} inactive profiles from conversation history")
@@ -272,7 +272,7 @@ class SafetyMonitor:
                     )
                     parent_id = res[0]['parent_id'] if res else 'unknown'
                 except DB_ERRORS as e:
-                    logger.warning(f"Failed to look up parent_id for profile {profile_id}: {e}")
+                    logger.warning(f"Failed to look up parent_id for profile {profile_id!r}: {e}")
                     parent_id = 'unknown'
 
                 # Auto-start monitoring for compatibility with tests
@@ -410,7 +410,7 @@ class SafetyMonitor:
                 metadata={'session_id': session_id}
             )
             
-            logger.warning(f"Safety incident recorded: {severity} - {reason} (profile: {profile.profile_id})")
+            logger.warning(f"Safety incident recorded: {severity!r} - {reason!r} (profile: {profile.profile_id!r})")
             
         except DB_ERRORS as e:
             logger.error(f"Failed to record incident: {e}")
@@ -458,7 +458,7 @@ class SafetyMonitor:
                 (datetime.now(timezone.utc).isoformat(), profile.profile_id)
             )
 
-            logger.warning(f"Parent alert created for profile {profile.profile_id}")
+            logger.warning(f"Parent alert created for profile {profile.profile_id!r}")
 
             # Send email notification
             try:
@@ -475,9 +475,9 @@ class SafetyMonitor:
                 )
 
                 if success:
-                    logger.info(f"Email notification sent for alert {alert.alert_id}")
+                    logger.info(f"Email notification sent for alert {alert.alert_id!r}")
                 elif error:
-                    logger.warning(f"Email notification failed for alert {alert.alert_id}: {error}")
+                    logger.warning(f"Email notification failed for alert {alert.alert_id!r}: {error}")
 
             except smtplib.SMTPException as email_error:
                 # Don't fail the alert creation if email fails
@@ -689,7 +689,7 @@ class SafetyMonitor:
                 for i, alert in enumerate(self._pending_alerts):
                     if alert.alert_id == alert_id:
                         self._pending_alerts.pop(i)
-                        logger.info(f"Alert acknowledged: {alert_id}")
+                        logger.info(f"Alert acknowledged: {alert_id!r}")
                         return True
                 return False
         except (KeyError, IndexError, TypeError) as e:

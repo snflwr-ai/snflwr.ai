@@ -75,7 +75,7 @@ async def register_client(reg: ClientRegistration, request: Request):
     """
     client_ip = request.client.host if request.client else "unknown"
     logger.info(
-        "Thin client registered: hostname=%s platform=%s version=%s ip=%s",
+        "Thin client registered: hostname=%r platform=%r version=%r ip=%r",
         reg.hostname, reg.platform, reg.version, client_ip,
     )
     return RegistrationAck(status="registered")

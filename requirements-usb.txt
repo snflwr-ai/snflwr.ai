@@ -6,7 +6,7 @@
 python-dotenv==1.0.0          # Environment configuration
 
 # Cryptography & Security
-cryptography==43.0.3          # Encryption utilities
+cryptography==46.0.5          # Encryption utilities
 argon2-cffi==23.1.0           # Password hashing (Argon2)
 
 # HTTP & API

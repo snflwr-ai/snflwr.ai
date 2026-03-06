@@ -22,7 +22,7 @@ from config import system_config
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
 from core.email_crypto import get_email_crypto
-from utils.logger import get_logger, mask_email
+from utils.logger import get_logger, mask_email, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -718,7 +718,7 @@ class EmailService:
                 logger.error(f"Failed to send parental consent email: {error}")
                 return False
 
-            logger.info(f"Parental consent email sent to {mask_email(to_email)!r} for child profile")
+            logger.info(f"Parental consent email sent to {sanitize_log_value(mask_email(to_email))!r} for child profile")
             return True
 
         except smtplib.SMTPException as e:

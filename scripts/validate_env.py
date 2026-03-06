@@ -45,11 +45,14 @@ def validate_jwt_secret():
     """Validate JWT secret key"""
     issues = []
 
-    if system_config.JWT_SECRET_KEY == 'change-this-secret-key-in-production':
+    _jwt_len = len(system_config.JWT_SECRET_KEY)
+    _jwt_is_default = (system_config.JWT_SECRET_KEY == 'change-this-secret-key-in-production')
+
+    if _jwt_is_default:
         issues.append("JWT_SECRET_KEY is using default value - CRITICAL SECURITY RISK!")
 
-    if len(system_config.JWT_SECRET_KEY) < 32:
-        issues.append(f"JWT_SECRET_KEY is too short ({len(system_config.JWT_SECRET_KEY)} chars, minimum 32)")
+    if _jwt_len < 32:
+        issues.append(f"JWT_SECRET_KEY is too short ({_jwt_len} chars, minimum 32)")
 
     return issues
 
@@ -78,10 +81,14 @@ def validate_smtp_config():
     if _smtp_domain == 'example.com':
         warnings.append(f"SMTP_FROM_EMAIL contains 'example.com': {system_config.SMTP_FROM_EMAIL}")
 
-    if system_config.SMTP_PASSWORD.startswith('SG.YOUR'):
+    _smtp_pw_is_example = system_config.SMTP_PASSWORD.startswith('SG.YOUR')
+    _smtp_pw_is_set = bool(system_config.SMTP_PASSWORD)
+    _smtp_user_is_set = bool(system_config.SMTP_USERNAME)
+
+    if _smtp_pw_is_example:
         issues.append("SMTP_PASSWORD is using example value - update with real SendGrid API key")
 
-    if not system_config.SMTP_USERNAME or not system_config.SMTP_PASSWORD:
+    if not _smtp_user_is_set or not _smtp_pw_is_set:
         warnings.append("SMTP credentials not set - email sending may fail")
 
     return issues, warnings
@@ -210,7 +217,8 @@ def main():
         for issue in issues:
             print_error(issue)
     else:
-        print_success(f"JWT_SECRET_KEY is set ({len(system_config.JWT_SECRET_KEY)} characters)")
+        _jwt_key_len = len(system_config.JWT_SECRET_KEY)
+        print_success(f"JWT_SECRET_KEY is set ({_jwt_key_len} characters)")
 
     # 2. SMTP Configuration
     print_header("2. Email Notifications (SMTP)")

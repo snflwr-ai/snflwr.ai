@@ -34,6 +34,13 @@ def print_warning(msg):
 def print_error(msg):
     print(f"  [ERROR] {msg}")
 
+def _mask_secret(value: str, visible: int = 4) -> str:
+    """Show only last N chars of a secret for verification."""
+    s = str(value)
+    if len(s) <= visible:
+        return '***'
+    return f"***{s[-visible:]}"
+
 
 class USBImageBuilder:
     """Build a distributable USB image for snflwr.ai"""
@@ -237,9 +244,10 @@ LOG_LEVEL=INFO
         env_path = self.usb_root / '.env'
         with open(env_path, 'w', encoding='utf-8') as f:
             f.write(env_content)
+        os.chmod(str(env_path), 0o600)  # Restrict to owner-only access
 
         print_success("Created .env configuration")
-        print_warning(f"Dashboard password: {dashboard_password}")
+        print_warning(f"Dashboard password: {_mask_secret(dashboard_password)} (see DASHBOARD_PASSWORD.txt)")
 
         # Save password to separate file for reference
         password_file = self.usb_root / 'DASHBOARD_PASSWORD.txt'
@@ -249,6 +257,7 @@ LOG_LEVEL=INFO
             f.write(f"Password: {dashboard_password}\n\n")
             f.write(f"URL: http://localhost:8000/dashboard\n\n")
             f.write(f"WARNING: KEEP THIS FILE SECURE - It contains access to child safety data!\n")
+        os.chmod(str(password_file), 0o600)  # Restrict to owner-only access
 
         print_success("Created DASHBOARD_PASSWORD.txt")
 

@@ -26,7 +26,7 @@ from core.age_verification import AgeVerificationManager, AgeVerificationError, 
 from core.email_service import email_service
 from storage.db_adapters import DB_ERRORS
 from api.middleware.auth import get_current_session, audit_log
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -84,7 +84,7 @@ async def request_parental_consent(
         child_age = row['age'] if isinstance(row, dict) else row[1]
 
         if parent_id != auth_session.user_id:
-            logger.warning(f"Access denied: {auth_session.user_id!r} tried to request consent for profile {request_data.profile_id!r}")
+            logger.warning(f"Access denied: {sanitize_log_value(auth_session.user_id)!r} tried to request consent for profile {sanitize_log_value(request_data.profile_id)!r}")
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: You can only request consent for your own children"
@@ -163,7 +163,7 @@ async def request_parental_consent(
         # Audit log
         audit_log('request', 'parental_consent', request_data.profile_id, auth_session)
 
-        logger.info(f"Parental consent requested for profile {request_data.profile_id!r}")
+        logger.info(f"Parental consent requested for profile {sanitize_log_value(request_data.profile_id)!r}")
 
         return {
             "status": "success",
@@ -252,7 +252,7 @@ async def verify_parental_consent(
         if profile_parent != user_id:
             logger.warning(
                 "Consent verification: token user_id %r does not own profile %r (owner: %r)",
-                user_id, profile_id, profile_parent,
+                sanitize_log_value(user_id), sanitize_log_value(profile_id), sanitize_log_value(profile_parent),
             )
             raise HTTPException(status_code=403, detail="Token does not match profile owner")
 
@@ -290,7 +290,7 @@ async def verify_parental_consent(
             (datetime.now(timezone.utc).isoformat(), token_hash)
         )
 
-        logger.info(f"Parental consent verified for profile {profile_id!r}, consent_id: {consent_id!r}")
+        logger.info(f"Parental consent verified for profile {sanitize_log_value(profile_id)!r}, consent_id: {sanitize_log_value(consent_id)!r}")
 
         return {
             "status": "success",
@@ -358,7 +358,7 @@ async def revoke_parental_consent(
         # Audit log
         audit_log('revoke', 'parental_consent', revocation.profile_id, auth_session)
 
-        logger.warning(f"Parental consent revoked for profile {revocation.profile_id!r}")
+        logger.warning(f"Parental consent revoked for profile {sanitize_log_value(revocation.profile_id)!r}")
 
         return {
             "status": "success",

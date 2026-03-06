@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Dict, Optional
 
 from config import system_config
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -76,6 +76,6 @@ async def register_client(reg: ClientRegistration, request: Request):
     client_ip = request.client.host if request.client else "unknown"
     logger.info(
         "Thin client registered: hostname=%r platform=%r version=%r ip=%r",
-        reg.hostname, reg.platform, reg.version, client_ip,
+        sanitize_log_value(reg.hostname), sanitize_log_value(reg.platform), sanitize_log_value(reg.version), sanitize_log_value(client_ip),
     )
     return RegistrationAck(status="registered")

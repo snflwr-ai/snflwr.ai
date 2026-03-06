@@ -10,20 +10,20 @@ python-dotenv==1.0.1          # Environment configuration
 psycopg2-binary==2.9.10       # PostgreSQL adapter for production deployments
 
 # Cryptography & Security
-cryptography==44.0.3          # Encryption utilities (includes fixes through 44.x line)
+cryptography==46.0.5          # Encryption utilities (CVE-2026-26007 fix)
 argon2-cffi==25.1.0           # Password hashing (Argon2)
 pynacl==1.6.2                 # Additional cryptographic primitives
 
 # HTTP & API
-fastapi==0.115.12             # Web framework for API server
+fastapi==0.135.1              # Web framework for API server (starlette CVE-2025-54121, CVE-2025-62727 fix)
 flask==3.1.3                  # Web framework for parent dashboard UI
 pydantic[email]==2.12.5       # Data validation (includes email-validator)
 email-validator==2.3.0        # Required for Pydantic EmailStr
 uvicorn[standard]==0.34.3     # ASGI server for FastAPI
 # starlette pin removed — FastAPI manages its own Starlette dependency
-requests==2.32.3              # HTTP client for auth server
+requests==2.32.4              # HTTP client for auth server (CVE-2024-47081 fix)
 httpx==0.28.1                 # Async HTTP client (health checks, API probes)
-urllib3==2.3.0                # HTTP library
+urllib3==2.6.3                # HTTP library (CVE-2025-66471, CVE-2026-21441 fix)
 
 # System & Hardware Detection
 psutil==6.1.1                 # System and process utilities
@@ -34,7 +34,7 @@ typer==0.24.1                 # CLI framework (Open WebUI dependency)
 
 # AI/ML Integration
 ollama==0.4.7                 # Ollama Python client
-aiohttp==3.11.11              # Async HTTP client for async Ollama client
+aiohttp==3.13.3               # Async HTTP client for async Ollama client (CVE-2025-69223–69230 fix)
 
 # Background Task Queue
 celery==5.4.0                 # Distributed task queue

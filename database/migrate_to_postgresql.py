@@ -4,6 +4,7 @@ SQLite to PostgreSQL Migration Script
 Migrates all data from SQLite to PostgreSQL
 """
 
+import os
 import sys
 import sqlite3
 from pathlib import Path
@@ -73,10 +74,7 @@ class DatabaseMigrator:
 
         # Connect to PostgreSQL
         self.pg_conn = psycopg2.connect(**self.pg_config)
-        _pg_host = str(self.pg_config['host'])
-        _pg_port = str(self.pg_config['port'])
-        _pg_db = str(self.pg_config['database'])
-        print(f"[OK] Connected to PostgreSQL: {_pg_host}:{_pg_port}/{_pg_db}")
+        print(f"[OK] Connected to PostgreSQL: {os.environ.get('POSTGRES_HOST', '?')}:{os.environ.get('POSTGRES_PORT', '?')}/{os.environ.get('POSTGRES_DB', '?')}")
 
     def convert_value(self, value, column_name: str):
         """Convert SQLite values to PostgreSQL format"""
@@ -245,14 +243,10 @@ def main():
     print(f"\nSource (SQLite):")
     print(f"  Path: {sqlite_path}")
 
-    _pg_host = str(pg_config['host'])
-    _pg_port = str(pg_config['port'])
-    _pg_db = str(pg_config['database'])
-    _pg_user_len = len(pg_config['user'])
     print(f"\nDestination (PostgreSQL):")
-    print(f"  Host: {_pg_host}:{_pg_port}")
-    print(f"  Database: {_pg_db}")
-    print(f"  User: ({_pg_user_len} chars, see .env)")
+    print(f"  Host: {os.environ.get('POSTGRES_HOST', '?')}:{os.environ.get('POSTGRES_PORT', '?')}")
+    print(f"  Database: {os.environ.get('POSTGRES_DB', '?')}")
+    print(f"  User: (see .env)")
 
     # Validate
     if not pg_config['password']:

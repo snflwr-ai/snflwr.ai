@@ -398,9 +398,17 @@ async def send_chat_message(
         # message.content. The Snflwr API returns a non-streaming response so
         # Open WebUI cannot collapse them into a "Thought for X seconds" section;
         # they render as italic inline text instead. Remove them here.
-        import re as _re
         if len(response_text) <= 100_000:
-            response_text = _re.sub(r'<think>[^<]*(?:<(?!/think>)[^<]*)*</think>', '', response_text, flags=_re.DOTALL).strip()
+            # Strip <think>...</think> blocks iteratively (avoids regex ReDoS)
+            while True:
+                start = response_text.find('<think>')
+                if start == -1:
+                    break
+                end = response_text.find('</think>', start)
+                if end == -1:
+                    break
+                response_text = response_text[:start] + response_text[end + 8:]
+            response_text = response_text.strip()
         else:
             response_text = response_text.strip()
 

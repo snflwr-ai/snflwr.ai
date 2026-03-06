@@ -52,7 +52,7 @@ def validate_jwt_secret():
         issues.append("JWT_SECRET_KEY is using default value - CRITICAL SECURITY RISK!")
 
     if _jwt_len < 32:
-        issues.append(f"JWT_SECRET_KEY is too short ({_jwt_len} chars, minimum 32)")
+        issues.append("JWT_SECRET_KEY is too short (minimum 32 characters)")
 
     return issues
 
@@ -106,7 +106,7 @@ def validate_encryption_key():
         elif encryption_key.startswith('CHANGE_THIS'):
             issues.append("ENCRYPTION_KEY is using default value")
         elif len(encryption_key) < 40:
-            issues.append(f"ENCRYPTION_KEY is too short ({len(encryption_key)} chars, should be 44 for Fernet)")
+            issues.append("ENCRYPTION_KEY is too short (should be 44 characters for Fernet)")
 
     except Exception as e:
         issues.append(f"Failed to validate ENCRYPTION_KEY: {e}")
@@ -217,8 +217,7 @@ def main():
         for issue in issues:
             print_error(issue)
     else:
-        _jwt_key_len = len(system_config.JWT_SECRET_KEY)
-        print_success(f"JWT_SECRET_KEY is set ({_jwt_key_len} characters)")
+        print_success("JWT_SECRET_KEY is set")
 
     # 2. SMTP Configuration
     print_header("2. Email Notifications (SMTP)")

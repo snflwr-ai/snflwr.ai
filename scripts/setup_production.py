@@ -435,7 +435,7 @@ def step_review_and_write(basics, database, email, redis):
     return env_path, admin_password, db_encryption_key, pii_encryption_key
 
 
-def print_next_steps(env_path, admin_password, db_encryption_key, pii_encryption_key, is_local=False):
+def print_next_steps(env_path, is_local=False):
     """Print what to do next."""
     print(_bold(_green("\n" + "=" * 64)))
     print(_bold(_green("  Setup complete!")))
@@ -578,7 +578,7 @@ def main():
     )
 
     is_local = basics['domain'] in ('localhost', '127.0.0.1')
-    print_next_steps(env_path, admin_password, db_key, pii_key, is_local=is_local)
+    print_next_steps(env_path, is_local=is_local)
 
 
 if __name__ == '__main__':

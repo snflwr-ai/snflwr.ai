@@ -18,17 +18,27 @@ httpx = pytest.importorskip("httpx")
 pytest.importorskip("email_validator")
 pytest.importorskip("uvicorn")
 
-# Disable ALL rate limiting for integration tests by patching the classes themselves.
-# There are multiple RateLimiter() instances across api/routes/ and api/server.py,
-# plus a RedisRateLimiter in api/middleware/auth.py — patching the class method
-# ensures every instance is neutralised regardless of import order.
-from utils.rate_limiter import RateLimiter
-from api.middleware.auth import RedisRateLimiter
-
-RateLimiter.check_rate_limit = lambda self, *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
-RedisRateLimiter.check_rate_limit = lambda self, *a, **kw: True
-
+# Disable ALL rate limiting for e2e tests by patching every RateLimiter instance.
+# We must import the app first (which triggers route module imports), then patch
+# each instance individually so we don't pollute the class for other test files.
 from api.server import app
+
+_always_allow = lambda *a, **kw: (True, {"remaining": 999, "reset_time": 0, "retry_after": 0})
+
+# Patch every RateLimiter instance across the codebase
+from api.routes import auth as _auth_routes
+from api.routes import admin as _admin_routes
+from api.routes import chat as _chat_routes
+from api.routes import profiles as _profile_routes
+import api.server as _server_mod
+from api.middleware import auth as _auth_mw
+
+_auth_routes.rate_limiter.check_rate_limit = _always_allow
+_admin_routes.rate_limiter.check_rate_limit = _always_allow
+_chat_routes.rate_limiter.check_rate_limit = _always_allow
+_profile_routes.rate_limiter.check_rate_limit = _always_allow
+_server_mod._setup_rate_limiter.check_rate_limit = _always_allow
+_auth_mw._rate_limiter.check_rate_limit = lambda *a, **kw: True
 from starlette.testclient import TestClient
 from storage.database import db_manager
 

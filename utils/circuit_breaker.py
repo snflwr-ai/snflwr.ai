@@ -45,8 +45,9 @@ try:
         record_circuit_breaker_state,
         record_circuit_breaker_transition,
         record_circuit_breaker_request,
-        circuit_breaker_failure_count
+        circuit_breaker_failure_count,
     )
+
     _metrics_available = True
 except ImportError:
     pass
@@ -54,13 +55,15 @@ except ImportError:
 
 class CircuitState(Enum):
     """Circuit breaker states"""
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Failing fast
+
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Failing fast
     HALF_OPEN = "half_open"  # Testing recovery
 
 
 class CircuitOpenError(Exception):
     """Raised when circuit is open and calls are blocked"""
+
     def __init__(self, service_name: str, time_until_retry: float):
         self.service_name = service_name
         self.time_until_retry = time_until_retry
@@ -73,6 +76,7 @@ class CircuitOpenError(Exception):
 @dataclass
 class CircuitStats:
     """Statistics for circuit breaker monitoring"""
+
     total_requests: int = 0
     successful_requests: int = 0
     failed_requests: int = 0
@@ -106,7 +110,7 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
         success_threshold: int = 2,
-        half_open_max_calls: int = 1
+        half_open_max_calls: int = 1,
     ):
         self.name = name
         self.failure_threshold = failure_threshold
@@ -132,7 +136,7 @@ class CircuitBreaker:
         )
 
     @classmethod
-    def get(cls, name: str) -> Optional['CircuitBreaker']:
+    def get(cls, name: str) -> Optional["CircuitBreaker"]:
         """Get a circuit breaker by name"""
         with cls._registry_lock:
             return cls._instances.get(name)
@@ -142,8 +146,7 @@ class CircuitBreaker:
         """Get stats for all circuit breakers"""
         with cls._registry_lock:
             return {
-                name: breaker.get_stats()
-                for name, breaker in cls._instances.items()
+                name: breaker.get_stats() for name, breaker in cls._instances.items()
             }
 
     @property
@@ -183,7 +186,7 @@ class CircuitBreaker:
                 else:
                     self._stats.rejected_requests += 1
                     if _metrics_available:
-                        record_circuit_breaker_request(self.name, 'rejected')
+                        record_circuit_breaker_request(self.name, "rejected")
                     return False
 
             if self._state == CircuitState.HALF_OPEN:
@@ -194,7 +197,7 @@ class CircuitBreaker:
                 else:
                     self._stats.rejected_requests += 1
                     if _metrics_available:
-                        record_circuit_breaker_request(self.name, 'rejected')
+                        record_circuit_breaker_request(self.name, "rejected")
                     return False
 
             return False
@@ -223,7 +226,7 @@ class CircuitBreaker:
             self._stats.consecutive_failures = 0
 
             if _metrics_available:
-                record_circuit_breaker_request(self.name, 'success')
+                record_circuit_breaker_request(self.name, "success")
                 circuit_breaker_failure_count.labels(service=self.name).set(0)
 
             if self._state == CircuitState.HALF_OPEN:
@@ -247,7 +250,7 @@ class CircuitBreaker:
             self._last_failure_time = time.time()
 
             if _metrics_available:
-                record_circuit_breaker_request(self.name, 'failure')
+                record_circuit_breaker_request(self.name, "failure")
                 circuit_breaker_failure_count.labels(service=self.name).set(
                     self._stats.consecutive_failures
                 )
@@ -281,7 +284,7 @@ class CircuitBreaker:
             f"Requests will fail fast for {self.recovery_timeout}s"
         )
         if _metrics_available:
-            record_circuit_breaker_transition(self.name, old_state, 'open')
+            record_circuit_breaker_transition(self.name, old_state, "open")
 
     def _transition_to_half_open(self):
         """Transition to HALF_OPEN state"""
@@ -292,7 +295,7 @@ class CircuitBreaker:
         self._half_open_calls = 0
         logger.info(f"Circuit '{self.name}' is now HALF_OPEN. Testing recovery...")
         if _metrics_available:
-            record_circuit_breaker_transition(self.name, old_state, 'half_open')
+            record_circuit_breaker_transition(self.name, old_state, "half_open")
 
     def _transition_to_closed(self):
         """Transition to CLOSED state"""
@@ -303,7 +306,7 @@ class CircuitBreaker:
         self._success_count = 0
         logger.info(f"Circuit '{self.name}' is now CLOSED. Service recovered.")
         if _metrics_available:
-            record_circuit_breaker_transition(self.name, old_state, 'closed')
+            record_circuit_breaker_transition(self.name, old_state, "closed")
 
     def force_open(self):
         """Manually force circuit open (for maintenance)"""
@@ -344,8 +347,8 @@ class CircuitBreaker:
                     "failed": self._stats.failed_requests,
                     "rejected": self._stats.rejected_requests,
                     "consecutive_failures": self._stats.consecutive_failures,
-                    "state_changes": self._stats.state_changes
-                }
+                    "state_changes": self._stats.state_changes,
+                },
             }
 
     def protected(self, func: Callable) -> Callable:
@@ -357,6 +360,7 @@ class CircuitBreaker:
             def call_external_service():
                 ...
         """
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             if not self.can_execute():
@@ -366,7 +370,9 @@ class CircuitBreaker:
                 result = func(*args, **kwargs)
                 self.record_success()
                 return result
-            except Exception as e:  # Intentional catch-all: circuit breaker tracks all failure types
+            except (
+                Exception
+            ) as e:  # Intentional catch-all: circuit breaker tracks all failure types
                 self.record_failure(e)
                 raise
 
@@ -381,6 +387,7 @@ class CircuitBreaker:
             async def call_external_service():
                 ...
         """
+
         @wraps(func)
         async def wrapper(*args, **kwargs):
             if not self.can_execute():
@@ -390,7 +397,9 @@ class CircuitBreaker:
                 result = await func(*args, **kwargs)
                 self.record_success()
                 return result
-            except Exception as e:  # Intentional catch-all: circuit breaker tracks all failure types
+            except (
+                Exception
+            ) as e:  # Intentional catch-all: circuit breaker tracks all failure types
                 self.record_failure(e)
                 raise
 
@@ -400,18 +409,18 @@ class CircuitBreaker:
 # Pre-configured circuit breaker for Ollama
 ollama_circuit = CircuitBreaker(
     name="ollama",
-    failure_threshold=5,       # Open after 5 consecutive failures
-    recovery_timeout=30.0,     # Wait 30s before testing recovery
-    success_threshold=2,       # Need 2 successes to close
-    half_open_max_calls=1      # Only 1 test call in half-open
+    failure_threshold=5,  # Open after 5 consecutive failures
+    recovery_timeout=30.0,  # Wait 30s before testing recovery
+    success_threshold=2,  # Need 2 successes to close
+    half_open_max_calls=1,  # Only 1 test call in half-open
 )
 
 
 # Export public interface
 __all__ = [
-    'CircuitBreaker',
-    'CircuitState',
-    'CircuitOpenError',
-    'CircuitStats',
-    'ollama_circuit'
+    "CircuitBreaker",
+    "CircuitState",
+    "CircuitOpenError",
+    "CircuitStats",
+    "ollama_circuit",
 ]

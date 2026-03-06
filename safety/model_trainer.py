@@ -49,7 +49,7 @@ class SafetyModelTrainer:
         classification: Dict,
         actual_outcome: Optional[str] = None,
         human_override: bool = False,
-        context: Optional[str] = None
+        context: Optional[str] = None,
     ) -> bool:
         """
         Log an edge case for future model improvement
@@ -66,30 +66,34 @@ class SafetyModelTrainer:
         """
         try:
             edge_case = {
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-                'input': input_text[:500],  # Limit length
-                'classification': classification,
-                'actual_outcome': actual_outcome,
-                'human_override': human_override,
-                'context': context,
-                'logged_for_review': True
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "input": input_text[:500],  # Limit length
+                "classification": classification,
+                "actual_outcome": actual_outcome,
+                "human_override": human_override,
+                "context": context,
+                "logged_for_review": True,
             }
 
             # Append to JSONL file
-            with open(self.EDGE_CASES_PATH, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(edge_case) + '\n')
+            with open(self.EDGE_CASES_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(edge_case) + "\n")
 
             # Log to database as well for easier querying
             self._log_to_database(edge_case)
 
-            logger.info(f"Logged edge case: confidence={classification.get('confidence')}, override={human_override}")
+            logger.info(
+                f"Logged edge case: confidence={classification.get('confidence')}, override={human_override}"
+            )
             return True
 
         except (ValueError, OSError, RuntimeError) as e:
             logger.error(f"Failed to log edge case: {e}")
             return False
 
-    def should_log_as_edge_case(self, classification: Dict, human_override: bool = False) -> bool:
+    def should_log_as_edge_case(
+        self, classification: Dict, human_override: bool = False
+    ) -> bool:
         """
         Determine if a classification should be logged as an edge case
 
@@ -100,7 +104,7 @@ class SafetyModelTrainer:
         Returns:
             True if this should be logged
         """
-        confidence = classification.get('confidence', 0)
+        confidence = classification.get("confidence", 0)
 
         # Always log human overrides
         if human_override:
@@ -128,7 +132,7 @@ class SafetyModelTrainer:
         """
         try:
             edge_cases = []
-            with open(self.EDGE_CASES_PATH, 'r', encoding='utf-8') as f:
+            with open(self.EDGE_CASES_PATH, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
                         edge_cases.append(json.loads(line))
@@ -140,7 +144,9 @@ class SafetyModelTrainer:
             logger.error(f"Failed to read edge cases: {e}")
             return []
 
-    def regenerate_modelfile_with_examples(self, reviewed_cases: List[Dict]) -> Tuple[bool, Optional[str]]:
+    def regenerate_modelfile_with_examples(
+        self, reviewed_cases: List[Dict]
+    ) -> Tuple[bool, Optional[str]]:
         """
         Regenerate safety modelfile with additional few-shot examples from reviewed cases
 
@@ -153,13 +159,16 @@ class SafetyModelTrainer:
         try:
             # Llama Guard is used directly — no custom modelfile to regenerate
             if self.MODELFILE_PATH is None:
-                return False, "Llama Guard used directly; custom modelfile retraining not supported"
+                return (
+                    False,
+                    "Llama Guard used directly; custom modelfile retraining not supported",
+                )
 
             # Read current modelfile
             if not self.MODELFILE_PATH.exists():
                 return False, "Modelfile not found"
 
-            with open(self.MODELFILE_PATH, 'r', encoding='utf-8') as f:
+            with open(self.MODELFILE_PATH, "r", encoding="utf-8") as f:
                 current_content = f.read()
 
             # Extract existing examples section
@@ -177,12 +186,12 @@ class SafetyModelTrainer:
             updated_content = self._insert_new_examples(current_content, new_examples)
 
             # Backup old modelfile
-            backup_path = self.MODELFILE_PATH.with_suffix('.modelfile.backup')
-            with open(backup_path, 'w', encoding='utf-8') as f:
+            backup_path = self.MODELFILE_PATH.with_suffix(".modelfile.backup")
+            with open(backup_path, "w", encoding="utf-8") as f:
                 f.write(current_content)
 
             # Write updated modelfile
-            with open(self.MODELFILE_PATH, 'w', encoding='utf-8') as f:
+            with open(self.MODELFILE_PATH, "w", encoding="utf-8") as f:
                 f.write(updated_content)
 
             logger.info(f"Updated modelfile with {len(new_examples)} new examples")
@@ -202,7 +211,10 @@ class SafetyModelTrainer:
         try:
             # Llama Guard is used directly — no custom modelfile to retrain from
             if self.MODELFILE_PATH is None:
-                return False, "Llama Guard used directly; custom modelfile retraining not supported"
+                return (
+                    False,
+                    "Llama Guard used directly; custom modelfile retraining not supported",
+                )
 
             # Delete old model
             logger.info(f"Deleting old safety model: {self.SAFETY_MODEL_NAME}")
@@ -216,17 +228,26 @@ class SafetyModelTrainer:
 
             # Use ollama create command via subprocess since ollama_client may not have this
             import subprocess
+
             result = subprocess.run(
-                ['ollama', 'create', self.SAFETY_MODEL_NAME, '-f', str(self.MODELFILE_PATH)],
+                [
+                    "ollama",
+                    "create",
+                    self.SAFETY_MODEL_NAME,
+                    "-f",
+                    str(self.MODELFILE_PATH),
+                ],
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
             )
 
             if result.returncode != 0:
                 return False, f"Model creation failed: {result.stderr}"
 
-            logger.info(f"Successfully retrained safety model: {self.SAFETY_MODEL_NAME}")
+            logger.info(
+                f"Successfully retrained safety model: {self.SAFETY_MODEL_NAME}"
+            )
             return True, None
 
         except (ValueError, OSError, RuntimeError) as e:
@@ -237,7 +258,8 @@ class SafetyModelTrainer:
         """Log edge case to database"""
         try:
             # Create edge_cases table if it doesn't exist
-            self.db.execute_query("""
+            self.db.execute_query(
+                """
                 CREATE TABLE IF NOT EXISTS safety_edge_cases (
                     id INTEGER PRIMARY KEY,
                     timestamp TEXT NOT NULL,
@@ -250,7 +272,8 @@ class SafetyModelTrainer:
                     reviewed_at TEXT,
                     reviewed_by TEXT
                 )
-            """)
+            """
+            )
 
             # Insert edge case
             self.db.execute_query(
@@ -260,13 +283,13 @@ class SafetyModelTrainer:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    edge_case['timestamp'],
-                    edge_case['input'],
-                    json.dumps(edge_case['classification']),
-                    edge_case['actual_outcome'],
-                    edge_case['human_override'],
-                    edge_case['context']
-                )
+                    edge_case["timestamp"],
+                    edge_case["input"],
+                    json.dumps(edge_case["classification"]),
+                    edge_case["actual_outcome"],
+                    edge_case["human_override"],
+                    edge_case["context"],
+                ),
             )
         except DB_ERRORS as e:
             logger.error(f"Failed to log edge case to database: {e}")
@@ -276,11 +299,11 @@ class SafetyModelTrainer:
         examples = []
 
         for case in cases:
-            if not case.get('human_reviewed', False):
+            if not case.get("human_reviewed", False):
                 continue
 
-            input_text = case['input']
-            correct_classification = case.get('correct_classification', {})
+            input_text = case["input"]
+            correct_classification = case.get("correct_classification", {})
 
             if not correct_classification:
                 continue
@@ -300,7 +323,9 @@ Output: {json.dumps(correct_classification)}"""
             return content
 
         # Find where to insert (after existing examples, before "You MUST respond")
-        insert_point = content.find("You MUST respond with ONLY valid JSON", examples_start)
+        insert_point = content.find(
+            "You MUST respond with ONLY valid JSON", examples_start
+        )
         if insert_point == -1:
             return content
 
@@ -315,41 +340,44 @@ Output: {json.dumps(correct_classification)}"""
             # Count edge cases from file
             total_cases = 0
             if self.EDGE_CASES_PATH.exists():
-                with open(self.EDGE_CASES_PATH, 'r') as f:
+                with open(self.EDGE_CASES_PATH, "r") as f:
                     total_cases = sum(1 for line in f if line.strip())
 
             # Get database stats
-            results = self.db.execute_query("""
+            results = self.db.execute_query(
+                """
                 SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN human_override = 1 THEN 1 ELSE 0 END) as overrides,
                     SUM(CASE WHEN reviewed = 1 THEN 1 ELSE 0 END) as reviewed
                 FROM safety_edge_cases
-            """)
+            """
+            )
 
             if results and len(results) > 0:
                 stats = dict(results[0])  # Convert sqlite3.Row to dict
                 return {
-                    'total_edge_cases': total_cases,
-                    'human_overrides': stats.get('overrides', 0) or 0,
-                    'cases_reviewed': stats.get('reviewed', 0) or 0,
-                    'cases_pending_review': total_cases - (stats.get('reviewed', 0) or 0)
+                    "total_edge_cases": total_cases,
+                    "human_overrides": stats.get("overrides", 0) or 0,
+                    "cases_reviewed": stats.get("reviewed", 0) or 0,
+                    "cases_pending_review": total_cases
+                    - (stats.get("reviewed", 0) or 0),
                 }
             else:
                 return {
-                    'total_edge_cases': total_cases,
-                    'human_overrides': 0,
-                    'cases_reviewed': 0,
-                    'cases_pending_review': total_cases
+                    "total_edge_cases": total_cases,
+                    "human_overrides": 0,
+                    "cases_reviewed": 0,
+                    "cases_pending_review": total_cases,
                 }
 
         except (ValueError, OSError, RuntimeError) + DB_ERRORS as e:
             logger.error(f"Failed to get training statistics: {e}")
             return {
-                'total_edge_cases': 0,
-                'human_overrides': 0,
-                'cases_reviewed': 0,
-                'cases_pending_review': 0
+                "total_edge_cases": 0,
+                "human_overrides": 0,
+                "cases_reviewed": 0,
+                "cases_pending_review": 0,
             }
 
 
@@ -358,7 +386,4 @@ model_trainer = SafetyModelTrainer()
 
 
 # Export public interface
-__all__ = [
-    'SafetyModelTrainer',
-    'model_trainer'
-]
+__all__ = ["SafetyModelTrainer", "model_trainer"]

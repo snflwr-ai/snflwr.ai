@@ -14,6 +14,7 @@ try:
     import psycopg2
     import psycopg2.extras
     import psycopg2.pool
+
     POSTGRESQL_AVAILABLE = True
 except ImportError:
     POSTGRESQL_AVAILABLE = False
@@ -81,7 +82,9 @@ class DatabaseAdapter(ABC):
 class SQLiteAdapter(DatabaseAdapter):
     """SQLite database adapter"""
 
-    def __init__(self, db_path: Path, timeout: float = 30.0, check_same_thread: bool = True):
+    def __init__(
+        self, db_path: Path, timeout: float = 30.0, check_same_thread: bool = True
+    ):
         self.db_path = db_path
         self.timeout = timeout
         self.check_same_thread = check_same_thread
@@ -95,7 +98,7 @@ class SQLiteAdapter(DatabaseAdapter):
                 str(self.db_path),
                 timeout=self.timeout,
                 check_same_thread=self.check_same_thread,
-                isolation_level='DEFERRED'
+                isolation_level="DEFERRED",
             )
             self.connection.row_factory = sqlite3.Row
 
@@ -105,7 +108,7 @@ class SQLiteAdapter(DatabaseAdapter):
             # Performance optimizations
             # Use WAL by default, but on Windows prefer DELETE journal to avoid -wal/-shm file locking issues
             try:
-                if os.name == 'nt':
+                if os.name == "nt":
                     self.connection.execute("PRAGMA journal_mode = DELETE")
                 else:
                     self.connection.execute("PRAGMA journal_mode = WAL")
@@ -130,7 +133,9 @@ class SQLiteAdapter(DatabaseAdapter):
                     self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                 except sqlite3.Error as e:
                     # Best-effort; ignore if unsupported
-                    logger.warning(f"WAL checkpoint failed (may cause disk space issues): {e}")
+                    logger.warning(
+                        f"WAL checkpoint failed (may cause disk space issues): {e}"
+                    )
                 self.connection.close()
             finally:
                 self.connection = None
@@ -150,7 +155,9 @@ class SQLiteAdapter(DatabaseAdapter):
             except sqlite3.Error as e:
                 logger.debug(f"Failed to close cursor (non-critical): {e}")
 
-    def execute_write(self, query: str, params: Tuple = (), auto_commit: bool = True) -> int:
+    def execute_write(
+        self, query: str, params: Tuple = (), auto_commit: bool = True
+    ) -> int:
         """Execute write operation
 
         Args:
@@ -226,10 +233,12 @@ class PostgreSQLAdapter(DatabaseAdapter):
         user: str,
         password: str,
         min_connections: int = 2,
-        max_connections: int = 10
+        max_connections: int = 10,
     ):
         if not POSTGRESQL_AVAILABLE:
-            raise ImportError("psycopg2 is required for PostgreSQL support. Install: pip install psycopg2-binary")
+            raise ImportError(
+                "psycopg2 is required for PostgreSQL support. Install: pip install psycopg2-binary"
+            )
 
         self.host = host
         self.port = port
@@ -241,7 +250,9 @@ class PostgreSQLAdapter(DatabaseAdapter):
         self.pool = None
         self.connection = None
 
-        logger.info("Initializing PostgreSQL adapter: ***@%s:%s/%s", host, port, database)
+        logger.info(
+            "Initializing PostgreSQL adapter: ***@%s:%s/%s", host, port, database
+        )
 
     def connect(self):
         """Establish PostgreSQL connection with pooling"""
@@ -249,7 +260,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
             try:
                 # statement_timeout prevents runaway queries from holding locks
                 # indefinitely. Default 30s; override via POSTGRES_STATEMENT_TIMEOUT env var.
-                stmt_timeout_ms = int(os.getenv('POSTGRES_STATEMENT_TIMEOUT', '30000'))
+                stmt_timeout_ms = int(os.getenv("POSTGRES_STATEMENT_TIMEOUT", "30000"))
                 self.pool = psycopg2.pool.ThreadedConnectionPool(
                     self.min_connections,
                     self.max_connections,
@@ -260,9 +271,11 @@ class PostgreSQLAdapter(DatabaseAdapter):
                     password=self.password,
                     sslmode=system_config.POSTGRES_SSLMODE,
                     cursor_factory=psycopg2.extras.RealDictCursor,
-                    options=f'-c statement_timeout={stmt_timeout_ms}'
+                    options=f"-c statement_timeout={stmt_timeout_ms}",
                 )
-                logger.info(f"PostgreSQL connection pool created: {self.min_connections}-{self.max_connections} connections")
+                logger.info(
+                    f"PostgreSQL connection pool created: {self.min_connections}-{self.max_connections} connections"
+                )
             except psycopg2.Error as e:
                 logger.error(f"Failed to create PostgreSQL connection pool: {e}")
                 raise
@@ -310,12 +323,12 @@ class PostgreSQLAdapter(DatabaseAdapter):
                 else:
                     in_quote = False
                     result.append(char)
-            elif char == '?' and not in_quote:
-                result.append('%s')
+            elif char == "?" and not in_quote:
+                result.append("%s")
             else:
                 result.append(char)
             i += 1
-        return ''.join(result)
+        return "".join(result)
 
     def execute_query(self, query: str, params: Tuple = ()) -> List[dict]:
         """Execute SELECT query"""
@@ -341,7 +354,9 @@ class PostgreSQLAdapter(DatabaseAdapter):
                 except psycopg2.Error:
                     pass
 
-    def execute_write(self, query: str, params: Tuple = (), auto_commit: bool = True) -> int:
+    def execute_write(
+        self, query: str, params: Tuple = (), auto_commit: bool = True
+    ) -> int:
         """Execute write operation
 
         Args:
@@ -436,7 +451,7 @@ def create_adapter(db_type: str, **config) -> DatabaseAdapter:
     Returns:
         DatabaseAdapter instance
     """
-    if db_type.lower() == 'sqlite':
+    if db_type.lower() == "sqlite":
         # Check if encryption is enabled
         if system_config.DB_ENCRYPTION_ENABLED and system_config.DB_ENCRYPTION_KEY:
             # Lazy import to avoid circular dependency
@@ -444,11 +459,11 @@ def create_adapter(db_type: str, **config) -> DatabaseAdapter:
 
             logger.info("Creating encrypted SQLite adapter")
             return EncryptedSQLiteAdapter(
-                db_path=config['db_path'],
+                db_path=config["db_path"],
                 encryption_key=system_config.DB_ENCRYPTION_KEY,
-                timeout=config.get('timeout', 30.0),
-                check_same_thread=config.get('check_same_thread', True),
-                kdf_iter=system_config.DB_KDF_ITERATIONS
+                timeout=config.get("timeout", 30.0),
+                check_same_thread=config.get("check_same_thread", True),
+                kdf_iter=system_config.DB_KDF_ITERATIONS,
             )
         else:
             # Fail closed: refuse to create an unencrypted database when
@@ -462,19 +477,21 @@ def create_adapter(db_type: str, **config) -> DatabaseAdapter:
                     "Set DB_ENCRYPTION_KEY or disable DB_ENCRYPTION_ENABLED."
                 )
             return SQLiteAdapter(
-                db_path=config['db_path'],
-                timeout=config.get('timeout', 30.0),
-                check_same_thread=config.get('check_same_thread', True)
+                db_path=config["db_path"],
+                timeout=config.get("timeout", 30.0),
+                check_same_thread=config.get("check_same_thread", True),
             )
-    elif db_type.lower() == 'postgresql':
+    elif db_type.lower() == "postgresql":
         return PostgreSQLAdapter(
-            host=config['host'],
-            port=config.get('port', 5432),
-            database=config['database'],
-            user=config['user'],
-            password=config['password'],
-            min_connections=config.get('min_connections', 2),
-            max_connections=config.get('max_connections', 10)
+            host=config["host"],
+            port=config.get("port", 5432),
+            database=config["database"],
+            user=config["user"],
+            password=config["password"],
+            min_connections=config.get("min_connections", 2),
+            max_connections=config.get("max_connections", 10),
         )
     else:
-        raise ValueError(f"Unsupported database type: {db_type}. Must be 'sqlite' or 'postgresql'")
+        raise ValueError(
+            f"Unsupported database type: {db_type}. Must be 'sqlite' or 'postgresql'"
+        )

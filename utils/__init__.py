@@ -9,7 +9,7 @@ from .logger import (
     log_performance_metric,
     get_performance_statistics,
     log_system_startup,
-    logger_manager
+    logger_manager,
 )
 
 from .ollama_client import (
@@ -17,22 +17,21 @@ from .ollama_client import (
     OllamaError,
     OllamaConnectionError,
     OllamaTimeoutError,
-    ollama_client
+    ollama_client,
 )
 
 __all__ = [
     # Logging
-    'get_logger',
-    'log_safety_incident',
-    'log_performance_metric',
-    'get_performance_statistics',
-    'log_system_startup',
-    'logger_manager',
-
+    "get_logger",
+    "log_safety_incident",
+    "log_performance_metric",
+    "get_performance_statistics",
+    "log_system_startup",
+    "logger_manager",
     # Ollama Integration
-    'OllamaClient',
-    'OllamaError',
-    'OllamaConnectionError',
-    'OllamaTimeoutError',
-    'ollama_client',
+    "OllamaClient",
+    "OllamaError",
+    "OllamaConnectionError",
+    "OllamaTimeoutError",
+    "ollama_client",
 ]

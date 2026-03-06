@@ -26,12 +26,13 @@ logger = logging.getLogger(__name__)
 MANIFEST_CACHE_FILENAME = ".thin_client_manifest.json"
 
 
-_ALLOWED_SCHEMES = frozenset(('http', 'https'))
+_ALLOWED_SCHEMES = frozenset(("http", "https"))
 
 
 def _validate_url(url: str) -> str:
     """Ensure URL uses http/https scheme only (prevents file:// attacks)."""
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES:
         raise ValueError(f"URL scheme '{parsed.scheme}' not allowed (only http/https)")
@@ -42,7 +43,7 @@ class ThinClientManager:
     """Manages thin client configuration and updates from a management server."""
 
     def __init__(self, server_url: str, data_dir: Path):
-        self.server_url = _validate_url(server_url.rstrip('/'))
+        self.server_url = _validate_url(server_url.rstrip("/"))
         self.data_dir = data_dir
         self.manifest_path = data_dir / MANIFEST_CACHE_FILENAME
 
@@ -58,14 +59,15 @@ class ThinClientManager:
         url = f"{self.server_url}/api/thin-client/manifest"
         try:
             _validate_url(url)
-            req = Request(url, headers={'User-Agent': 'SnflwrAI-ThinClient/1.0'})
+            req = Request(url, headers={"User-Agent": "SnflwrAI-ThinClient/1.0"})
             resp = urlopen(req, timeout=timeout)  # nosec B310
             if 200 <= resp.getcode() < 300:
-                manifest = json.loads(resp.read().decode('utf-8'))
+                manifest = json.loads(resp.read().decode("utf-8"))
                 self._save_manifest(manifest)
                 logger.info(
                     "Fetched manifest v%s from %s",
-                    manifest.get('version', '?'), self.server_url,
+                    manifest.get("version", "?"),
+                    self.server_url,
                 )
                 return manifest
         except (URLError, json.JSONDecodeError, OSError) as e:
@@ -79,10 +81,10 @@ class ThinClientManager:
     # Map from manifest config keys to system_config attribute names.
     # Only keys that thin clients actually need are listed here.
     _CONFIG_TO_ATTR = {
-        'OLLAMA_BASE_URL': 'OLLAMA_HOST',
-        'API_PORT': 'API_PORT',
-        'OPEN_WEBUI_URL': 'OPEN_WEBUI_URL',
-        'BASE_URL': 'BASE_URL',
+        "OLLAMA_BASE_URL": "OLLAMA_HOST",
+        "API_PORT": "API_PORT",
+        "OPEN_WEBUI_URL": "OPEN_WEBUI_URL",
+        "BASE_URL": "BASE_URL",
     }
 
     def apply_config(self, manifest: Dict[str, Any]) -> None:
@@ -96,7 +98,7 @@ class ThinClientManager:
         """
         from config import system_config
 
-        config = manifest.get('config', {})
+        config = manifest.get("config", {})
         for key, value in config.items():
             str_value = str(value)
             if os.getenv(key) is None:
@@ -122,7 +124,7 @@ class ThinClientManager:
         """Return True if the server offers a newer launcher version."""
         from config import system_config
 
-        server_version = manifest.get('launcher_version', '')
+        server_version = manifest.get("launcher_version", "")
         current_version = system_config.VERSION
         if not server_version or server_version == current_version:
             return False
@@ -142,8 +144,8 @@ class ThinClientManager:
         Returns:
             Path to the downloaded file, or None on failure.
         """
-        url = manifest.get('launcher_url')
-        expected_checksum = manifest.get('launcher_checksum', '')
+        url = manifest.get("launcher_url")
+        expected_checksum = manifest.get("launcher_checksum", "")
         if not url:
             return None
 
@@ -154,7 +156,7 @@ class ThinClientManager:
             tmp_dest = dest_dir / "launcher_update.zip.tmp"
             hasher = hashlib.sha256()
 
-            with open(tmp_dest, 'wb') as f:
+            with open(tmp_dest, "wb") as f:
                 while True:
                     chunk = resp.read(65536)
                     if not chunk:
@@ -162,12 +164,13 @@ class ThinClientManager:
                     f.write(chunk)
                     hasher.update(chunk)
 
-            if expected_checksum.startswith('sha256:'):
+            if expected_checksum.startswith("sha256:"):
                 expected_hash = expected_checksum[7:]
                 if hasher.hexdigest() != expected_hash:
                     logger.error(
                         "Checksum mismatch: expected %s, got %s",
-                        expected_hash, hasher.hexdigest(),
+                        expected_hash,
+                        hasher.hexdigest(),
                     )
                     tmp_dest.unlink(missing_ok=True)
                     return None
@@ -199,19 +202,22 @@ class ThinClientManager:
         try:
             _validate_url(url)
             from config import system_config
-            payload = json.dumps({
-                'hostname': _platform.node(),
-                'platform': _platform.system(),
-                'version': system_config.VERSION,
-            }).encode('utf-8')
+
+            payload = json.dumps(
+                {
+                    "hostname": _platform.node(),
+                    "platform": _platform.system(),
+                    "version": system_config.VERSION,
+                }
+            ).encode("utf-8")
             req = Request(
                 url,
                 data=payload,
                 headers={
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'SnflwrAI-ThinClient/1.0',
+                    "Content-Type": "application/json",
+                    "User-Agent": "SnflwrAI-ThinClient/1.0",
                 },
-                method='POST',
+                method="POST",
             )
             resp = urlopen(req, timeout=10)  # nosec B310
             return 200 <= resp.getcode() < 300

@@ -46,7 +46,7 @@ def _safe_url(url: str) -> str:
         return ""
     url = url.strip()
     parsed = urlparse(url)
-    if parsed.scheme not in ('https', 'http'):
+    if parsed.scheme not in ("https", "http"):
         return ""
     return html_escape(url, quote=True)
 
@@ -61,7 +61,7 @@ class EmailTemplate:
         incident_count: int,
         severity: str,
         description: str,
-        snippet: Optional[str] = None
+        snippet: Optional[str] = None,
     ) -> tuple[str, str]:
         """
         Generate critical safety alert email
@@ -148,7 +148,7 @@ class EmailTemplate:
         child_name: str,
         incident_count: int,
         severity: str,
-        description: str
+        description: str,
     ) -> tuple[str, str]:
         """
         Generate moderate safety alert email
@@ -221,10 +221,7 @@ class EmailTemplate:
         return subject, html
 
     @staticmethod
-    def email_verification(
-        user_name: str,
-        verification_token: str
-    ) -> tuple[str, str]:
+    def email_verification(user_name: str, verification_token: str) -> tuple[str, str]:
         """
         Generate email verification email
 
@@ -237,7 +234,9 @@ class EmailTemplate:
         """
         subject = "Verify your snflwr.ai account"
 
-        verification_url = f"{system_config.BASE_URL}/verify-email?token={verification_token}"
+        verification_url = (
+            f"{system_config.BASE_URL}/verify-email?token={verification_token}"
+        )
 
         # Escape user-controlled values to prevent stored XSS in email
         safe_user_name = html_escape(user_name)
@@ -299,10 +298,7 @@ class EmailTemplate:
         return subject, html
 
     @staticmethod
-    def password_reset(
-        user_name: str,
-        reset_token: str
-    ) -> tuple[str, str]:
+    def password_reset(user_name: str, reset_token: str) -> tuple[str, str]:
         """
         Generate password reset email
 
@@ -397,9 +393,13 @@ class EmailService:
         self.enabled = system_config.SMTP_ENABLED
 
         if self.enabled:
-            logger.info(f"Email service initialized - SMTP enabled ({system_config.SMTP_HOST}:{system_config.SMTP_PORT})")
+            logger.info(
+                f"Email service initialized - SMTP enabled ({system_config.SMTP_HOST}:{system_config.SMTP_PORT})"
+            )
         else:
-            logger.info("Email service initialized - SMTP disabled (emails will be logged only)")
+            logger.info(
+                "Email service initialized - SMTP disabled (emails will be logged only)"
+            )
 
     def send_safety_alert(
         self,
@@ -408,7 +408,7 @@ class EmailService:
         severity: str,
         incident_count: int,
         description: str,
-        snippet: Optional[str] = None
+        snippet: Optional[str] = None,
     ) -> tuple[bool, Optional[str]]:
         """
         Send safety alert email to parent
@@ -436,24 +436,28 @@ class EmailService:
             # Check if parent has email notifications enabled
             if not email_enabled:
                 logger.info(f"Email notifications disabled for parent {parent_id}")
-                self._log_email_attempt(parent_id, parent_email, "skipped", "Email notifications disabled")
+                self._log_email_attempt(
+                    parent_id, parent_email, "skipped", "Email notifications disabled"
+                )
                 return True, None  # Not an error, just skipped
 
             # Check if SMTP is enabled
             if not self.enabled:
                 logger.warning("SMTP not configured - email not sent (logged only)")
-                self._log_email_attempt(parent_id, parent_email, "not_sent", "SMTP not configured")
+                self._log_email_attempt(
+                    parent_id, parent_email, "not_sent", "SMTP not configured"
+                )
                 return True, None  # Return success since it's expected behavior
 
             # Generate email template based on severity
-            if severity.lower() in ['critical', 'high']:
+            if severity.lower() in ["critical", "high"]:
                 subject, html_body = EmailTemplate.safety_alert_critical(
                     parent_name=parent_name,
                     child_name=child_name,
                     incident_count=incident_count,
                     severity=severity,
                     description=description,
-                    snippet=snippet
+                    snippet=snippet,
                 )
             else:
                 subject, html_body = EmailTemplate.safety_alert_moderate(
@@ -461,14 +465,12 @@ class EmailService:
                     child_name=child_name,
                     incident_count=incident_count,
                     severity=severity,
-                    description=description
+                    description=description,
                 )
 
             # Send email
             success, error = self._send_email(
-                to_email=parent_email,
-                subject=subject,
-                html_body=html_body
+                to_email=parent_email, subject=subject, html_body=html_body
             )
 
             # Log attempt
@@ -477,7 +479,9 @@ class EmailService:
                 logger.info(f"Safety alert email sent to {mask_email(parent_email)}")
             else:
                 self._log_email_attempt(parent_id, parent_email, "failed", error)
-                logger.error(f"Failed to send email to {mask_email(parent_email)}: {error}")
+                logger.error(
+                    f"Failed to send email to {mask_email(parent_email)}: {error}"
+                )
 
             return success, error
 
@@ -486,11 +490,7 @@ class EmailService:
             return False, str(e)
 
     def send_verification_email(
-        self,
-        user_id: str,
-        user_email: str,
-        user_name: str,
-        verification_token: str
+        self, user_id: str, user_email: str, user_name: str, verification_token: str
     ) -> tuple[bool, Optional[str]]:
         """
         Send email verification email to user
@@ -507,21 +507,22 @@ class EmailService:
         try:
             # Check if SMTP is enabled
             if not self.enabled:
-                logger.warning("SMTP not configured - verification email not sent (logged only)")
-                self._log_email_attempt(user_id, user_email, "not_sent", "SMTP not configured")
+                logger.warning(
+                    "SMTP not configured - verification email not sent (logged only)"
+                )
+                self._log_email_attempt(
+                    user_id, user_email, "not_sent", "SMTP not configured"
+                )
                 return True, None  # Return success since it's expected behavior
 
             # Generate email template
             subject, html_body = EmailTemplate.email_verification(
-                user_name=user_name,
-                verification_token=verification_token
+                user_name=user_name, verification_token=verification_token
             )
 
             # Send email
             success, error = self._send_email(
-                to_email=user_email,
-                subject=subject,
-                html_body=html_body
+                to_email=user_email, subject=subject, html_body=html_body
             )
 
             # Log attempt
@@ -530,7 +531,9 @@ class EmailService:
                 logger.info(f"Verification email sent to {mask_email(user_email)}")
             else:
                 self._log_email_attempt(user_id, user_email, "failed", error)
-                logger.error(f"Failed to send verification email to {mask_email(user_email)}: {error}")
+                logger.error(
+                    f"Failed to send verification email to {mask_email(user_email)}: {error}"
+                )
 
             return success, error
 
@@ -539,11 +542,7 @@ class EmailService:
             return False, str(e)
 
     def send_password_reset_email(
-        self,
-        user_id: str,
-        user_email: str,
-        user_name: str,
-        reset_token: str
+        self, user_id: str, user_email: str, user_name: str, reset_token: str
     ) -> tuple[bool, Optional[str]]:
         """
         Send password reset email to user
@@ -560,21 +559,22 @@ class EmailService:
         try:
             # Check if SMTP is enabled
             if not self.enabled:
-                logger.warning("SMTP not configured - password reset email not sent (logged only)")
-                self._log_email_attempt(user_id, user_email, "not_sent", "SMTP not configured")
+                logger.warning(
+                    "SMTP not configured - password reset email not sent (logged only)"
+                )
+                self._log_email_attempt(
+                    user_id, user_email, "not_sent", "SMTP not configured"
+                )
                 return True, None  # Return success since it's expected behavior
 
             # Generate email template
             subject, html_body = EmailTemplate.password_reset(
-                user_name=user_name,
-                reset_token=reset_token
+                user_name=user_name, reset_token=reset_token
             )
 
             # Send email
             success, error = self._send_email(
-                to_email=user_email,
-                subject=subject,
-                html_body=html_body
+                to_email=user_email, subject=subject, html_body=html_body
             )
 
             # Log attempt
@@ -597,7 +597,7 @@ class EmailService:
         parent_name: str,
         child_name: str,
         child_age: int,
-        consent_url: str
+        consent_url: str,
     ) -> bool:
         """
         Send parental consent verification email (COPPA compliance)
@@ -709,16 +709,16 @@ class EmailService:
 
             # Send email
             success, error = self._send_email(
-                to_email=to_email,
-                subject=subject,
-                html_body=html_body
+                to_email=to_email, subject=subject, html_body=html_body
             )
 
             if not success:
                 logger.error(f"Failed to send parental consent email: {error}")
                 return False
 
-            logger.info(f"Parental consent email sent to {sanitize_log_value(mask_email(to_email))!r} for child profile")
+            logger.info(
+                f"Parental consent email sent to {sanitize_log_value(mask_email(to_email))!r} for child profile"
+            )
             return True
 
         except smtplib.SMTPException as e:
@@ -743,20 +743,20 @@ class EmailService:
                 FROM accounts
                 WHERE parent_id = ? AND role = 'parent'
                 """,
-                (parent_id,)
+                (parent_id,),
             )
 
             if not result:
                 return None
 
             row = result[0]
-            encrypted_email = row['encrypted_email']
+            encrypted_email = row["encrypted_email"]
             try:
-                parent_name = row['name']
+                parent_name = row["name"]
             except (KeyError, IndexError, TypeError):
-                parent_name = 'Parent'
+                parent_name = "Parent"
             try:
-                email_enabled = row['email_notifications_enabled']
+                email_enabled = row["email_notifications_enabled"]
             except (KeyError, IndexError, TypeError):
                 email_enabled = 1  # Default enabled
 
@@ -770,10 +770,7 @@ class EmailService:
             return None
 
     def _send_email(
-        self,
-        to_email: str,
-        subject: str,
-        html_body: str
+        self, to_email: str, subject: str, html_body: str
     ) -> tuple[bool, Optional[str]]:
         """
         Send email via SMTP
@@ -788,32 +785,36 @@ class EmailService:
         """
         try:
             # Create message
-            message = MIMEMultipart('alternative')
-            message['Subject'] = subject
-            message['From'] = f"{system_config.SMTP_FROM_NAME} <{system_config.SMTP_FROM_EMAIL}>"
-            message['To'] = to_email
+            message = MIMEMultipart("alternative")
+            message["Subject"] = subject
+            message["From"] = (
+                f"{system_config.SMTP_FROM_NAME} <{system_config.SMTP_FROM_EMAIL}>"
+            )
+            message["To"] = to_email
 
             # Attach HTML body
-            html_part = MIMEText(html_body, 'html')
+            html_part = MIMEText(html_body, "html")
             message.attach(html_part)
 
             # Create SSL context
             context = ssl.create_default_context()
 
             # Send email
-            with smtplib.SMTP(system_config.SMTP_HOST, system_config.SMTP_PORT) as server:
+            with smtplib.SMTP(
+                system_config.SMTP_HOST, system_config.SMTP_PORT
+            ) as server:
                 if system_config.SMTP_USE_TLS:
                     server.starttls(context=context)
 
                 # Login if credentials provided
                 if system_config.SMTP_USERNAME and system_config.SMTP_PASSWORD:
-                    server.login(system_config.SMTP_USERNAME, system_config.SMTP_PASSWORD)
+                    server.login(
+                        system_config.SMTP_USERNAME, system_config.SMTP_PASSWORD
+                    )
 
                 # Send email
                 server.sendmail(
-                    system_config.SMTP_FROM_EMAIL,
-                    to_email,
-                    message.as_string()
+                    system_config.SMTP_FROM_EMAIL, to_email, message.as_string()
                 )
 
             return True, None
@@ -822,11 +823,7 @@ class EmailService:
             return False, str(e)
 
     def _log_email_attempt(
-        self,
-        parent_id: str,
-        to_email: str,
-        status: str,
-        error: Optional[str]
+        self, parent_id: str, to_email: str, status: str, error: Optional[str]
     ):
         """
         Log email attempt to audit trail
@@ -847,13 +844,13 @@ class EmailService:
                 """,
                 (
                     datetime.now(timezone.utc).isoformat(),
-                    'email_notification',
+                    "email_notification",
                     parent_id,
-                    'parent',
-                    'safety_alert_email',
+                    "parent",
+                    "safety_alert_email",
                     f"Status: {status}, To: {mask_email(to_email)}{', Error: ' + error if error else ''}",
-                    status == 'sent'
-                )
+                    status == "sent",
+                ),
             )
         except DB_ERRORS as e:
             logger.error(f"Failed to log email attempt: {e}")
@@ -871,12 +868,16 @@ class EmailService:
         try:
             context = ssl.create_default_context()
 
-            with smtplib.SMTP(system_config.SMTP_HOST, system_config.SMTP_PORT, timeout=10) as server:
+            with smtplib.SMTP(
+                system_config.SMTP_HOST, system_config.SMTP_PORT, timeout=10
+            ) as server:
                 if system_config.SMTP_USE_TLS:
                     server.starttls(context=context)
 
                 if system_config.SMTP_USERNAME and system_config.SMTP_PASSWORD:
-                    server.login(system_config.SMTP_USERNAME, system_config.SMTP_PASSWORD)
+                    server.login(
+                        system_config.SMTP_USERNAME, system_config.SMTP_PASSWORD
+                    )
 
             logger.info("SMTP connection test successful")
             return True, None
@@ -891,4 +892,4 @@ class EmailService:
 email_service = EmailService()
 
 
-__all__ = ['EmailService', 'EmailTemplate', 'email_service']
+__all__ = ["EmailService", "EmailTemplate", "email_service"]

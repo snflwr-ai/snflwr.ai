@@ -62,7 +62,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, De
 from api.websocket_server import (
     websocket_manager,
     authenticate_websocket,
-    handle_websocket_message
+    handle_websocket_message,
 )
 from core.authentication import AuthSession
 from api.middleware.auth import get_current_session
@@ -119,10 +119,12 @@ async def websocket_monitor_endpoint(websocket: WebSocket):
             return
 
         if auth_msg.get("type") != "auth" or not auth_msg.get("token"):
-            await websocket.send_json({
-                "type": "error",
-                "message": "First message must be {\"type\": \"auth\", \"token\": \"...\"}"
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": 'First message must be {"type": "auth", "token": "..."}',
+                }
+            )
             await websocket.close(code=1008, reason="Invalid auth message")
             return
 
@@ -130,21 +132,24 @@ async def websocket_monitor_endpoint(websocket: WebSocket):
         session = await authenticate_websocket(auth_msg["token"])
 
         if not session:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Invalid or expired session token"
-            })
+            await websocket.send_json(
+                {"type": "error", "message": "Invalid or expired session token"}
+            )
             await websocket.close(code=1008, reason="Authentication failed")
             return
 
         # Verify parent/admin role
-        if session.role not in ['parent', 'admin']:
-            logger.warning(f"WebSocket connection rejected: user {session.user_id} is not parent/admin")
-            await websocket.send_json({
-                "type": "error",
-                "message": "Insufficient permissions"
-            })
-            await websocket.close(code=1003, reason="Insufficient permissions - parent or admin role required")
+        if session.role not in ["parent", "admin"]:
+            logger.warning(
+                f"WebSocket connection rejected: user {session.user_id} is not parent/admin"
+            )
+            await websocket.send_json(
+                {"type": "error", "message": "Insufficient permissions"}
+            )
+            await websocket.close(
+                code=1003,
+                reason="Insufficient permissions - parent or admin role required",
+            )
             return
 
         parent_id = session.user_id
@@ -163,31 +168,38 @@ async def websocket_monitor_endpoint(websocket: WebSocket):
             try:
                 # Wait for message from client with timeout
                 data = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=WEBSOCKET_TIMEOUT
+                    websocket.receive_text(), timeout=WEBSOCKET_TIMEOUT
                 )
 
                 # Parse JSON
                 try:
                     message_data = json.loads(data)
                 except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON received from {parent_id}: {data[:100]}")
+                    logger.warning(
+                        f"Invalid JSON received from {parent_id}: {data[:100]}"
+                    )
                     continue
 
                 # Handle message
                 await handle_websocket_message(websocket, message_data)
 
             except asyncio.TimeoutError:
-                logger.info(f"WebSocket timeout for {parent_id} after {WEBSOCKET_TIMEOUT}s idle (connection_id={connection_id})")
+                logger.info(
+                    f"WebSocket timeout for {parent_id} after {WEBSOCKET_TIMEOUT}s idle (connection_id={connection_id})"
+                )
                 await websocket.close(code=1000, reason="Idle timeout")
                 break
 
             except WebSocketDisconnect:
-                logger.info(f"Parent {parent_id} disconnected (connection_id={connection_id})")
+                logger.info(
+                    f"Parent {parent_id} disconnected (connection_id={connection_id})"
+                )
                 break
 
             except (ConnectionError, RuntimeError) as e:
-                logger.error(f"Connection error in WebSocket message loop for {parent_id}: {e}")
+                logger.error(
+                    f"Connection error in WebSocket message loop for {parent_id}: {e}"
+                )
                 break
             except Exception as e:
                 logger.error(f"Error in WebSocket message loop for {parent_id}: {e}")
@@ -195,7 +207,9 @@ async def websocket_monitor_endpoint(websocket: WebSocket):
                 await asyncio.sleep(0.1)
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected during setup (connection_id={connection_id})")
+        logger.info(
+            f"WebSocket disconnected during setup (connection_id={connection_id})"
+        )
 
     except (ConnectionError, RuntimeError) as e:
         logger.error(f"Connection error in WebSocket endpoint: {e}")
@@ -226,7 +240,7 @@ async def get_websocket_stats(session: AuthSession = Depends(get_current_session
 
     [LOCKED] SECURED: Admin only
     """
-    if session.role != 'admin':
+    if session.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     total_connections = websocket_manager.get_active_connections()
 
@@ -239,5 +253,5 @@ async def get_websocket_stats(session: AuthSession = Depends(get_current_session
         "total_connections": total_connections,
         "unique_parents": len(websocket_manager.parent_connections),
         "parent_connections": parent_stats,
-        "timestamp": asyncio.get_running_loop().time()
+        "timestamp": asyncio.get_running_loop().time(),
     }

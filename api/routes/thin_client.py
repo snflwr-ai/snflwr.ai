@@ -19,8 +19,10 @@ router = APIRouter()
 
 # ── Response / request models ─────────────────────────────────────
 
+
 class ManifestResponse(BaseModel):
     """Deployment manifest served to thin clients."""
+
     version: str
     config: Dict[str, str]
     launcher_version: str
@@ -32,6 +34,7 @@ class ManifestResponse(BaseModel):
 
 class ClientRegistration(BaseModel):
     """Thin client self-registration payload."""
+
     hostname: str
     platform: str
     version: str
@@ -42,6 +45,7 @@ class RegistrationAck(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────
+
 
 @router.get("/manifest", response_model=ManifestResponse)
 async def get_manifest():
@@ -76,6 +80,9 @@ async def register_client(reg: ClientRegistration, request: Request):
     client_ip = request.client.host if request.client else "unknown"
     logger.info(
         "Thin client registered: hostname=%r platform=%r version=%r ip=%r",
-        sanitize_log_value(reg.hostname), sanitize_log_value(reg.platform), sanitize_log_value(reg.version), sanitize_log_value(client_ip),
+        sanitize_log_value(reg.hostname),
+        sanitize_log_value(reg.platform),
+        sanitize_log_value(reg.version),
+        sanitize_log_value(client_ip),
     )
     return RegistrationAck(status="registered")

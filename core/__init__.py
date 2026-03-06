@@ -5,7 +5,7 @@ from .profile_manager import ProfileManager
 from .session_manager import SessionManager
 
 __all__ = [
-    'AuthenticationManager',
-    'ProfileManager',
-    'SessionManager',
+    "AuthenticationManager",
+    "ProfileManager",
+    "SessionManager",
 ]

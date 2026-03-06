@@ -32,6 +32,7 @@ COPPA_AGE_THRESHOLD = 13  # Age below which parental consent is required
 @dataclass
 class AgeVerificationResult:
     """Result of age verification check"""
+
     age: int
     is_under_13: bool
     requires_parental_consent: bool
@@ -43,11 +44,13 @@ class AgeVerificationResult:
 
 class AgeVerificationError(Exception):
     """Raised when age verification fails"""
+
     pass
 
 
 class ParentalConsentRequired(Exception):
     """Raised when parental consent is required but not provided"""
+
     pass
 
 
@@ -79,7 +82,9 @@ def calculate_age_from_birthdate(birthdate: str) -> int:
     return age
 
 
-def validate_birthdate(birthdate: str, min_age: int = 5, max_age: int = 18) -> Tuple[bool, Optional[str]]:
+def validate_birthdate(
+    birthdate: str, min_age: int = 5, max_age: int = 18
+) -> Tuple[bool, Optional[str]]:
     """
     Validate birthdate for K-12 student profile
 
@@ -115,9 +120,7 @@ def validate_birthdate(birthdate: str, min_age: int = 5, max_age: int = 18) -> T
 
 
 def check_coppa_compliance(
-    age: int,
-    has_parental_consent: bool,
-    parental_consent_date: Optional[str] = None
+    age: int, has_parental_consent: bool, parental_consent_date: Optional[str] = None
 ) -> AgeVerificationResult:
     """
     Check if profile meets COPPA compliance requirements
@@ -155,11 +158,13 @@ def check_coppa_compliance(
         has_parental_consent=has_parental_consent,
         is_compliant=is_compliant,
         verification_date=datetime.now(timezone.utc).isoformat(),
-        error_message=error_msg
+        error_message=error_msg,
     )
 
 
-def generate_consent_verification_token(parent_id: str, profile_id: str) -> Tuple[str, str]:
+def generate_consent_verification_token(
+    parent_id: str, profile_id: str
+) -> Tuple[str, str]:
     """
     Generate a verification token for parental consent via email
 
@@ -181,7 +186,9 @@ def generate_consent_verification_token(parent_id: str, profile_id: str) -> Tupl
     return token, token_hash
 
 
-def verify_consent_token(token: str, token_hash: str, parent_id: str, profile_id: str) -> bool:
+def verify_consent_token(
+    token: str, token_hash: str, parent_id: str, profile_id: str
+) -> bool:
     """
     Verify a parental consent token
 
@@ -214,7 +221,7 @@ class AgeVerificationManager:
         self,
         birthdate: str,
         has_parental_consent: bool = False,
-        parental_consent_date: Optional[str] = None
+        parental_consent_date: Optional[str] = None,
     ) -> AgeVerificationResult:
         """
         Verify age and COPPA compliance from birthdate
@@ -239,7 +246,9 @@ class AgeVerificationManager:
         age = calculate_age_from_birthdate(birthdate)
 
         # Check COPPA compliance
-        result = check_coppa_compliance(age, has_parental_consent, parental_consent_date)
+        result = check_coppa_compliance(
+            age, has_parental_consent, parental_consent_date
+        )
 
         if not result.is_compliant:
             logger.warning(f"COPPA compliance check failed: {result.error_message}")
@@ -254,7 +263,7 @@ class AgeVerificationManager:
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
         electronic_signature: Optional[str] = None,
-        verification_token: Optional[str] = None
+        verification_token: Optional[str] = None,
     ) -> str:
         """
         Log parental consent to audit trail
@@ -289,7 +298,7 @@ class AgeVerificationManager:
                     consent_id,
                     profile_id,
                     parent_id,
-                    'initial',
+                    "initial",
                     consent_method,
                     consent_date,
                     ip_address,
@@ -297,11 +306,13 @@ class AgeVerificationManager:
                     electronic_signature,
                     verification_token,
                     consent_date,  # verified_at = consent_date for immediate verification
-                    1  # is_active
-                )
+                    1,  # is_active
+                ),
             )
 
-            logger.info(f"Parental consent logged: {sanitize_log_value(consent_id)!r} for profile {sanitize_log_value(profile_id)!r}")
+            logger.info(
+                f"Parental consent logged: {sanitize_log_value(consent_id)!r} for profile {sanitize_log_value(profile_id)!r}"
+            )
             return consent_id
 
         except DB_ERRORS as e:
@@ -313,7 +324,7 @@ class AgeVerificationManager:
         profile_id: str,
         consent_given: bool,
         consent_date: str,
-        consent_method: str
+        consent_method: str,
     ) -> bool:
         """
         Update child profile with parental consent status
@@ -344,8 +355,8 @@ class AgeVerificationManager:
                     consent_method,
                     1 if consent_given else 0,
                     datetime.now(timezone.utc).isoformat(),
-                    profile_id
-                )
+                    profile_id,
+                ),
             )
 
             logger.info(f"Profile {profile_id} consent status updated: {consent_given}")
@@ -356,10 +367,7 @@ class AgeVerificationManager:
             return False
 
     def revoke_parental_consent(
-        self,
-        profile_id: str,
-        parent_id: str,
-        reason: Optional[str] = None
+        self, profile_id: str, parent_id: str, reason: Optional[str] = None
     ) -> bool:
         """
         Revoke parental consent for a profile
@@ -391,7 +399,7 @@ class AgeVerificationManager:
                 SET is_active = 0
                 WHERE profile_id = ? AND parent_id = ? AND is_active = 1
                 """,
-                (profile_id, parent_id)
+                (profile_id, parent_id),
             )
 
             # Step 2: Insert revocation record (is_active=0 since consent is revoked)
@@ -406,12 +414,12 @@ class AgeVerificationManager:
                     consent_id,
                     profile_id,
                     parent_id,
-                    'revoked',
-                    'manual_revocation',
+                    "revoked",
+                    "manual_revocation",
                     revocation_date,
                     reason or "Parental consent revoked",
-                    0
-                )
+                    0,
+                ),
             )
 
             # Update profile
@@ -423,10 +431,12 @@ class AgeVerificationManager:
                     is_active = 0
                 WHERE profile_id = ?
                 """,
-                (profile_id,)
+                (profile_id,),
             )
 
-            logger.warning(f"Parental consent revoked for profile {sanitize_log_value(profile_id)!r}: {sanitize_log_value(reason)!r}")
+            logger.warning(
+                f"Parental consent revoked for profile {sanitize_log_value(profile_id)!r}: {sanitize_log_value(reason)!r}"
+            )
             return True
 
         except DB_ERRORS as e:
@@ -451,7 +461,7 @@ class AgeVerificationManager:
                 FROM child_profiles
                 WHERE profile_id = ?
                 """,
-                (profile_id,)
+                (profile_id,),
             )
 
             if not rows:
@@ -460,12 +470,12 @@ class AgeVerificationManager:
             row = rows[0]
             # Support both dict and tuple row types
             if isinstance(row, dict):
-                consent_given = row.get('parental_consent_given')
-                consent_date = row.get('parental_consent_date')
-                consent_method = row.get('parental_consent_method')
-                coppa_verified = row.get('coppa_verified')
-                age = row.get('age')
-                birthdate = row.get('birthdate')
+                consent_given = row.get("parental_consent_given")
+                consent_date = row.get("parental_consent_date")
+                consent_method = row.get("parental_consent_method")
+                coppa_verified = row.get("coppa_verified")
+                age = row.get("age")
+                birthdate = row.get("birthdate")
             else:
                 consent_given = row[0]
                 consent_date = row[1]
@@ -482,7 +492,7 @@ class AgeVerificationManager:
                 "coppa_verified": bool(coppa_verified),
                 "age": age,
                 "birthdate": birthdate,
-                "requires_consent": age < COPPA_AGE_THRESHOLD if age else False
+                "requires_consent": age < COPPA_AGE_THRESHOLD if age else False,
             }
 
         except DB_ERRORS as e:

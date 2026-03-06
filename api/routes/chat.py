@@ -14,20 +14,21 @@ from datetime import datetime, timezone
 
 from config import system_config
 from resource_detection import get_resource_profile as _get_resource_profile
+
 _resources = _get_resource_profile()
 from utils.input_validation import (
-    validate_profile_id, validate_session_id, validate_message,
-    UUID_HEX_PATTERN, SESSION_TOKEN_PATTERN,
-    MIN_MESSAGE_LENGTH, MAX_MESSAGE_LENGTH
+    validate_profile_id,
+    validate_session_id,
+    validate_message,
+    UUID_HEX_PATTERN,
+    SESSION_TOKEN_PATTERN,
+    MIN_MESSAGE_LENGTH,
+    MAX_MESSAGE_LENGTH,
 )
 from core.profile_manager import ProfileManager
 from core.session_manager import session_manager, SessionError, SessionLimitError
 from core.authentication import auth_manager, AuthSession
-from api.middleware.auth import (
-    get_current_session,
-    VerifySessionAccess,
-    audit_log
-)
+from api.middleware.auth import get_current_session, VerifySessionAccess, audit_log
 from safety.pipeline import safety_pipeline
 from safety.safety_monitor import safety_monitor
 from safety.incident_logger import incident_logger
@@ -49,14 +50,13 @@ def _get_or_create_conversation_id(session_id: str, profile_id: str) -> str:
     """Return the active conversation_id for a session, creating one if absent."""
     rows = conversation_store.db.execute_query(
         "SELECT conversation_id FROM conversations WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
-        (session_id,)
+        (session_id,),
     )
     if rows:
         row = rows[0]
-        return row['conversation_id'] if isinstance(row, dict) else row[0]
+        return row["conversation_id"] if isinstance(row, dict) else row[0]
     conv = conversation_store.create_conversation(
-        session_id=session_id,
-        profile_id=profile_id
+        session_id=session_id, profile_id=profile_id
     )
     return conv.conversation_id
 
@@ -65,30 +65,30 @@ def check_chat_rate_limit(request: Request):
     """Rate limit chat messages: 100 requests per 60 seconds per IP"""
     client_ip = request.client.host if request.client else "unknown"
     allowed, info = rate_limiter.check_rate_limit(
-        identifier=client_ip,
-        max_requests=100,
-        window_seconds=60,
-        limit_type="chat"
+        identifier=client_ip, max_requests=100, window_seconds=60, limit_type="chat"
     )
     if not allowed:
         retry_after = info.get("retry_after", 60) if isinstance(info, dict) else 60
         raise HTTPException(
             status_code=429,
             detail="Too many chat requests. Please slow down.",
-            headers={"Retry-After": str(retry_after)}
+            headers={"Retry-After": str(retry_after)},
         )
     return info
 
 
 class ChatRequest(BaseModel):
     """Chat request payload from Open WebUI middleware with validated fields"""
-    message: str = Field(..., min_length=MIN_MESSAGE_LENGTH, max_length=MAX_MESSAGE_LENGTH)
+
+    message: str = Field(
+        ..., min_length=MIN_MESSAGE_LENGTH, max_length=MAX_MESSAGE_LENGTH
+    )
     profile_id: str = Field(..., min_length=1, max_length=64)
     model: str = Field(default=system_config.OLLAMA_DEFAULT_MODEL, max_length=100)
     session_id: Optional[str] = Field(None, min_length=32, max_length=64)
     metadata: Optional[Dict[str, Any]] = None
 
-    @field_validator('message')
+    @field_validator("message")
     @classmethod
     def validate_message_content(cls, v: str) -> str:
         is_valid, error = validate_message(v)
@@ -96,7 +96,7 @@ class ChatRequest(BaseModel):
             raise ValueError(error)
         return v.strip()
 
-    @field_validator('profile_id')
+    @field_validator("profile_id")
     @classmethod
     def validate_profile_id_format(cls, v: str) -> str:
         # Allow admin/middleware sentinels that are not UUIDs
@@ -107,7 +107,7 @@ class ChatRequest(BaseModel):
             raise ValueError(error)
         return v
 
-    @field_validator('session_id')
+    @field_validator("session_id")
     @classmethod
     def validate_session_id_format(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -117,7 +117,7 @@ class ChatRequest(BaseModel):
             raise ValueError(error)
         return v
 
-    @field_validator('model')
+    @field_validator("model")
     @classmethod
     def validate_model_name(cls, v: str) -> str:
         # Basic sanitization for model name
@@ -129,13 +129,15 @@ class ChatRequest(BaseModel):
         v = v.strip()
         # Only allow alphanumeric, hyphen, underscore, colon, and period (for model tags)
         import re
-        if not re.match(r'^[a-zA-Z0-9_\-.:]+$', v):
+
+        if not re.match(r"^[a-zA-Z0-9_\-.:]+$", v):
             raise ValueError("Model name contains invalid characters")
         return v
 
 
 class ChatResponse(BaseModel):
     """Chat response payload to Open WebUI middleware"""
+
     message: str
     blocked: bool = False
     block_reason: Optional[str] = None
@@ -151,7 +153,7 @@ class ChatResponse(BaseModel):
 async def send_chat_message(
     request: ChatRequest,
     auth_session: AuthSession = Depends(get_current_session),
-    rate_limit_info: dict = Depends(check_chat_rate_limit)
+    rate_limit_info: dict = Depends(check_chat_rate_limit),
 ):
     """
     Process chat message through 4-layer safety pipeline
@@ -168,52 +170,60 @@ async def send_chat_message(
     4. Response validation
     """
     try:
-        logger.info(f"Chat request from profile {sanitize_log_value(request.profile_id)!r}, length={len(request.message)}")
+        logger.info(
+            f"Chat request from profile {sanitize_log_value(request.profile_id)!r}, length={len(request.message)}"
+        )
 
         # Get profile
         profile_manager = ProfileManager(auth_manager.db)
         profile = profile_manager.get_profile(request.profile_id)
 
         if not profile:
-            if auth_session.role == 'admin' and request.profile_id.startswith("no_profile_"):
+            if auth_session.role == "admin" and request.profile_id.startswith(
+                "no_profile_"
+            ):
                 # Admin testing without a configured child profile — synthesize a default profile.
                 # Age 13 applies middle-school safety filters (appropriate default for admin testing).
                 from core.profile_manager import ChildProfile
+
                 profile = ChildProfile(
                     profile_id=request.profile_id,
                     parent_id=auth_session.user_id,
                     name="Admin Test",
                     age=13,
-                    grade='8',
+                    grade="8",
                     is_active=True,
                 )
-                logger.info(f"Admin {auth_session.user_id} chatting without a child profile — using synthetic test profile")
+                logger.info(
+                    f"Admin {auth_session.user_id} chatting without a child profile — using synthetic test profile"
+                )
             else:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Profile {request.profile_id} not found. Please create a child profile first."
+                    detail=f"Profile {request.profile_id} not found. Please create a child profile first.",
                 )
 
         # AUTHORIZATION: Verify user owns this profile (unless admin)
-        if auth_session.role != 'admin' and profile.parent_id != auth_session.user_id:
-            logger.warning(f"Access denied: {sanitize_log_value(auth_session.user_id)!r} tried to chat for profile {sanitize_log_value(request.profile_id)!r}")
+        if auth_session.role != "admin" and profile.parent_id != auth_session.user_id:
+            logger.warning(
+                f"Access denied: {sanitize_log_value(auth_session.user_id)!r} tried to chat for profile {sanitize_log_value(request.profile_id)!r}"
+            )
             raise HTTPException(
                 status_code=403,
-                detail="Access denied: You can only chat for your own children's profiles"
+                detail="Access denied: You can only chat for your own children's profiles",
             )
 
         if not profile.is_active:
-            raise HTTPException(
-                status_code=403,
-                detail="Profile is inactive"
-            )
+            raise HTTPException(status_code=403, detail="Profile is inactive")
 
         # Admin testing mode — ephemeral in-memory session, no history, no DB writes.
         # Only applies when admin has no child profile (no_profile_ sentinel).
-        is_admin_test = auth_session.role == 'admin' and request.profile_id.startswith("no_profile_")
+        is_admin_test = auth_session.role == "admin" and request.profile_id.startswith(
+            "no_profile_"
+        )
 
         # All admins bypass the safety pipeline, monitoring, and response filtering.
-        skip_safety = auth_session.role == 'admin'
+        skip_safety = auth_session.role == "admin"
 
         # Get or create session
         # Open WebUI sends each message as an independent request, so reuse
@@ -222,11 +232,12 @@ async def send_chat_message(
             # Admin test: ephemeral in-memory session — no DB write needed.
             import uuid as _uuid
             from core.session_manager import Session as _Session
+
             session = _Session(
                 session_id=_uuid.uuid4().hex,
                 profile_id=request.profile_id,
                 parent_id=auth_session.user_id,
-                session_type='admin_test',
+                session_type="admin_test",
                 started_at=datetime.now(timezone.utc).isoformat(),
             )
         else:
@@ -244,18 +255,22 @@ async def send_chat_message(
                     session = session_manager.create_session(
                         profile_id=request.profile_id,
                         parent_id=profile.parent_id,
-                        session_type='student'
+                        session_type="student",
                     )
                 except SessionLimitError as e:
                     raise HTTPException(status_code=429, detail=str(e))
                 except SessionError as e:
-                    raise HTTPException(status_code=500, detail=f"Failed to create session: {e}")
+                    raise HTTPException(
+                        status_code=500, detail=f"Failed to create session: {e}"
+                    )
 
         # Load prior conversation messages for multi-turn context (skipped for admin test)
         history_messages = []
         if not is_admin_test:
             try:
-                conv_id = _get_or_create_conversation_id(session.session_id, request.profile_id)
+                conv_id = _get_or_create_conversation_id(
+                    session.session_id, request.profile_id
+                )
                 prior_messages = conversation_store.get_conversation_messages(conv_id)
                 history_messages = [
                     {"role": m.role, "content": m.content}
@@ -304,7 +319,7 @@ async def send_chat_message(
                 profile_id=request.profile_id,
                 message=request.message,
                 message_type="user",
-                session_id=session.session_id
+                session_id=session.session_id,
             )
 
             # Return safe response
@@ -321,7 +336,7 @@ async def send_chat_message(
                 possible_false_positive=filter_result.possible_false_positive,
                 model=request.model,
                 timestamp=datetime.now(timezone.utc).isoformat(),
-                session_id=session.session_id
+                session_id=session.session_id,
             )
 
         # LAYER 3: Generate AI response using Ollama
@@ -332,16 +347,18 @@ async def send_chat_message(
             try:
                 ok, models, _err = ollama_client.list_models()
                 if ok and models:
-                    model_name = models[0].get('name', '')
+                    model_name = models[0].get("name", "")
             except Exception:
                 pass
             if not model_name:
                 raise HTTPException(
                     status_code=503,
-                    detail="No AI model configured. Set OLLAMA_DEFAULT_MODEL or pull a model into Ollama."
+                    detail="No AI model configured. Set OLLAMA_DEFAULT_MODEL or pull a model into Ollama.",
                 )
 
-        logger.info(f"Generating response with {sanitize_log_value(model_name)!r} ({len(history_messages)} prior messages in context)")
+        logger.info(
+            f"Generating response with {sanitize_log_value(model_name)!r} ({len(history_messages)} prior messages in context)"
+        )
 
         # Build a system prompt appropriate for the audience.
         if skip_safety:
@@ -358,7 +375,9 @@ async def send_chat_message(
             level_note = {
                 "beginner": "Use very simple words and short sentences. Avoid jargon.",
                 "advanced": "You may use technical vocabulary and challenge the student with deeper explanations.",
-            }.get(level, "Match your vocabulary and depth to the student's grade level.")
+            }.get(
+                level, "Match your vocabulary and depth to the student's grade level."
+            )
 
             system_content = (
                 f"You are snflwr-ai, a friendly and encouraging AI tutor for K-12 students. "
@@ -379,19 +398,20 @@ async def send_chat_message(
             model=model_name,
             messages=messages,
             options={
-                'temperature': 0.7,
-                'num_predict': _resources.num_predict,
-                'num_ctx': _resources.num_ctx,
+                "temperature": 0.7,
+                "num_predict": _resources.num_predict,
+                "num_ctx": _resources.num_ctx,
             },
             think=False,
         )
 
         if not success:
-            err_msg = metadata.get('error', 'unknown error') if metadata else 'unknown error'
+            err_msg = (
+                metadata.get("error", "unknown error") if metadata else "unknown error"
+            )
             logger.error(f"Ollama chat failed: {sanitize_log_value(err_msg)!r}")
             raise HTTPException(
-                status_code=503,
-                detail=f"AI model unavailable: {err_msg}"
+                status_code=503, detail=f"AI model unavailable: {err_msg}"
             )
 
         # Strip thinking tokens — qwen3.5 embeds <think>...</think> blocks in
@@ -401,22 +421,23 @@ async def send_chat_message(
         if len(response_text) <= 100_000:
             # Strip <think>...</think> blocks iteratively (avoids regex ReDoS)
             while True:
-                start = response_text.find('<think>')
+                start = response_text.find("<think>")
                 if start == -1:
                     break
-                end = response_text.find('</think>', start)
+                end = response_text.find("</think>", start)
                 if end == -1:
                     break
-                response_text = response_text[:start] + response_text[end + 8:]
+                response_text = response_text[:start] + response_text[end + 8 :]
             response_text = response_text.strip()
         else:
             response_text = response_text.strip()
 
         if not response_text:
-            logger.error("Model returned empty response after stripping thinking tokens")
+            logger.error(
+                "Model returned empty response after stripping thinking tokens"
+            )
             raise HTTPException(
-                status_code=503,
-                detail="AI model unavailable: empty response"
+                status_code=503, detail="AI model unavailable: empty response"
             )
 
         # Response validation via safety pipeline (skipped for admins)
@@ -440,26 +461,31 @@ async def send_chat_message(
                     metadata={
                         "stage": response_filter.stage,
                         "original_query": request.message[:100],
-                    }
+                    },
                 )
 
                 # Use safe alternative from pipeline
-                response_text = response_filter.modified_content or safety_pipeline.get_safe_response(response_filter)
+                response_text = (
+                    response_filter.modified_content
+                    or safety_pipeline.get_safe_response(response_filter)
+                )
         else:
             response_filter = None
-            audit_log('chat_admin', 'message', request.profile_id, auth_session)
+            audit_log("chat_admin", "message", request.profile_id, auth_session)
 
         # Store messages in conversation history (skipped for admin test)
         if not is_admin_test:
             try:
-                conversation_id = _get_or_create_conversation_id(session.session_id, request.profile_id)
+                conversation_id = _get_or_create_conversation_id(
+                    session.session_id, request.profile_id
+                )
 
                 conversation_store.add_message(
                     conversation_id=conversation_id,
                     role="user",
                     content=request.message,
                     tokens_used=len(request.message.split()),
-                    safety_filtered=False
+                    safety_filtered=False,
                 )
 
                 conversation_store.add_message(
@@ -468,7 +494,8 @@ async def send_chat_message(
                     content=response_text,
                     model_used=model_name,
                     tokens_used=len(response_text.split()),
-                    safety_filtered=response_filter is not None and not response_filter.is_safe
+                    safety_filtered=response_filter is not None
+                    and not response_filter.is_safe,
                 )
             except DB_ERRORS as e:
                 logger.warning(f"Failed to store conversation messages: {e}")
@@ -479,25 +506,29 @@ async def send_chat_message(
                 profile_id=request.profile_id,
                 message=response_text,
                 message_type="assistant",
-                session_id=session.session_id
+                session_id=session.session_id,
             )
 
         # Audit log — admin requests are already logged above with 'chat_admin' scope;
         # only log the generic 'chat' event for non-admin (student) requests.
         if not skip_safety:
-            audit_log('chat', 'message', request.profile_id, auth_session)
+            audit_log("chat", "message", request.profile_id, auth_session)
 
         # Return successful response
         return ChatResponse(
             message=response_text,
             blocked=False,
             safety_metadata={
-                "filter_layers_passed": ["keyword", "llm_classifier", "response_validation"],
-                "model_used": model_name
+                "filter_layers_passed": [
+                    "keyword",
+                    "llm_classifier",
+                    "response_validation",
+                ],
+                "model_used": model_name,
             },
             model=model_name,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            session_id=session.session_id
+            session_id=session.session_id,
         )
 
     except HTTPException:
@@ -506,7 +537,9 @@ async def send_chat_message(
         raise HTTPException(status_code=400, detail=str(e))
     except OllamaError as e:
         logger.error(f"Ollama error during chat: {e}")
-        raise HTTPException(status_code=503, detail="AI model service temporarily unavailable")
+        raise HTTPException(
+            status_code=503, detail="AI model service temporarily unavailable"
+        )
     except DB_ERRORS as e:
         logger.error(f"Database error during chat: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -517,8 +550,7 @@ async def send_chat_message(
 
 @router.post("/end-session")
 async def end_session(
-    session_id: str,
-    auth_session: AuthSession = Depends(VerifySessionAccess)
+    session_id: str, auth_session: AuthSession = Depends(VerifySessionAccess)
 ):
     """
     End a conversation session
@@ -533,7 +565,7 @@ async def end_session(
             raise HTTPException(status_code=400, detail="Failed to end session")
 
         # Audit log
-        audit_log('end', 'session', session_id, auth_session)
+        audit_log("end", "session", session_id, auth_session)
 
         return {"status": "success", "message": "Session ended"}
 

@@ -25,8 +25,8 @@ class ChildProfile:
     name: str
     age: int
     grade: str
-    avatar: str = 'default'
-    learning_level: str = 'adaptive'
+    avatar: str = "default"
+    learning_level: str = "adaptive"
     daily_time_limit_minutes: int = 120
     is_active: bool = True
     total_sessions: int = 0
@@ -37,19 +37,19 @@ class ChildProfile:
     def to_dict(self) -> dict:
         """Convert profile to dictionary for JSON serialization"""
         return {
-            'profile_id': self.profile_id,
-            'parent_id': self.parent_id,
-            'name': self.name,
-            'age': self.age,
-            'grade': self.grade,
-            'avatar': self.avatar,
-            'learning_level': self.learning_level,
-            'daily_time_limit_minutes': self.daily_time_limit_minutes,
-            'is_active': self.is_active,
-            'total_sessions': self.total_sessions,
-            'total_questions': self.total_questions,
-            'last_active': self.last_active,
-            'subjects_focus': self.subjects_focus or []
+            "profile_id": self.profile_id,
+            "parent_id": self.parent_id,
+            "name": self.name,
+            "age": self.age,
+            "grade": self.grade,
+            "avatar": self.avatar,
+            "learning_level": self.learning_level,
+            "daily_time_limit_minutes": self.daily_time_limit_minutes,
+            "is_active": self.is_active,
+            "total_sessions": self.total_sessions,
+            "total_questions": self.total_questions,
+            "last_active": self.last_active,
+            "subjects_focus": self.subjects_focus or [],
         }
 
 
@@ -78,9 +78,19 @@ class ProfileManager:
     def _invalidate_profile_cache(self, profile_id: str):
         """Invalidate the cached get_profile result for a given profile."""
         from utils.cache import cache
+
         cache.delete(f"child_profile:{profile_id}", namespace="snflwr")
 
-    def create_profile(self, parent_id: str, name: str, age: int, grade: str, avatar: str = 'default', learning_level: str = 'adaptive', daily_time_limit_minutes: int = 120) -> ChildProfile:
+    def create_profile(
+        self,
+        parent_id: str,
+        name: str,
+        age: int,
+        grade: str,
+        avatar: str = "default",
+        learning_level: str = "adaptive",
+        daily_time_limit_minutes: int = 120,
+    ) -> ChildProfile:
         # Basic validation
         if not name or len(name) < 2:
             raise ProfileValidationError("Name must be at least 2 characters")
@@ -89,23 +99,29 @@ class ProfileManager:
 
         # Verify parent exists (if table present)
         try:
-            rows = self.db.execute_query("SELECT parent_id FROM accounts WHERE parent_id = ?", (parent_id,))
+            rows = self.db.execute_query(
+                "SELECT parent_id FROM accounts WHERE parent_id = ?", (parent_id,)
+            )
             if not rows:
                 raise ProfileError("Invalid parent_id")
         except ProfileError:
             raise
         except DB_ERRORS as e:
             # Table may not exist in test environments — log it so we know
-            logger.warning(f"Could not verify parent_id {sanitize_log_value(parent_id)!r} (table may not exist): {e}")
+            logger.warning(
+                f"Could not verify parent_id {sanitize_log_value(parent_id)!r} (table may not exist): {e}"
+            )
 
         # Check for duplicate name within family
         try:
             existing = self.db.execute_query(
                 "SELECT name FROM child_profiles WHERE parent_id = ? AND name = ? AND is_active = 1",
-                (parent_id, name)
+                (parent_id, name),
             )
             if existing:
-                raise ProfileValidationError(f"Profile with name '{name}' already exists for this parent")
+                raise ProfileValidationError(
+                    f"Profile with name '{name}' already exists for this parent"
+                )
         except ProfileValidationError:
             raise
         except DB_ERRORS as e:
@@ -118,14 +134,31 @@ class ProfileManager:
         try:
             self.db.execute_write(
                 "INSERT INTO child_profiles (profile_id, parent_id, name, age, grade, created_at, avatar, learning_level, daily_time_limit_minutes, is_active, total_sessions, total_questions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (profile_id, parent_id, name, age, grade, created_at, avatar, learning_level, daily_time_limit_minutes, 1, 0, 0)
+                (
+                    profile_id,
+                    parent_id,
+                    name,
+                    age,
+                    grade,
+                    created_at,
+                    avatar,
+                    learning_level,
+                    daily_time_limit_minutes,
+                    1,
+                    0,
+                    0,
+                ),
             )
         except DB_ERRORS as e:
             error_msg = str(e).lower()
-            if 'foreign key' in error_msg or ('constraint' in error_msg and 'parent' in error_msg):
+            if "foreign key" in error_msg or (
+                "constraint" in error_msg and "parent" in error_msg
+            ):
                 raise ProfileError(f"Invalid parent_id: {parent_id}")
             logger.error(f"Failed to write profile {profile_id} to database: {e}")
-            raise ProfileError(f"Could not create profile: database write failed") from e
+            raise ProfileError(
+                f"Could not create profile: database write failed"
+            ) from e
 
         return ChildProfile(
             profile_id=profile_id,
@@ -140,15 +173,19 @@ class ProfileManager:
             total_sessions=0,
             total_questions=0,
             last_active=None,
-            subjects_focus=[]
+            subjects_focus=[],
         )
 
     @cached(ttl=120, key_prefix="child_profile")
     def get_profile(self, profile_id: str) -> Optional[ChildProfile]:
         try:
-            rows = self.db.execute_query("SELECT * FROM child_profiles WHERE profile_id = ?", (profile_id,))
+            rows = self.db.execute_query(
+                "SELECT * FROM child_profiles WHERE profile_id = ?", (profile_id,)
+            )
         except DB_ERRORS as e:
-            logger.debug(f"Failed to query profile {sanitize_log_value(profile_id)!r} (non-critical): {e}")
+            logger.debug(
+                f"Failed to query profile {sanitize_log_value(profile_id)!r} (non-critical): {e}"
+            )
             return None
         if not rows:
             return None
@@ -168,11 +205,16 @@ class ProfileManager:
         try:
             subject_rows = self.db.execute_query(
                 "SELECT subject FROM profile_subjects WHERE profile_id = ?",
-                (profile_id,)
+                (profile_id,),
             )
-            subjects = [row[0] if isinstance(row, tuple) else row['subject'] for row in subject_rows]
+            subjects = [
+                row[0] if isinstance(row, tuple) else row["subject"]
+                for row in subject_rows
+            ]
         except DB_ERRORS as e:
-            logger.debug(f"Failed to query subjects for profile {sanitize_log_value(profile_id)!r} (non-critical): {e}")
+            logger.debug(
+                f"Failed to query subjects for profile {sanitize_log_value(profile_id)!r} (non-critical): {e}"
+            )
 
         # Get session counts - prefer sessions table, fallback to profile table
         total_sessions = 0
@@ -180,12 +222,16 @@ class ProfileManager:
         try:
             session_stats = self.db.execute_query(
                 "SELECT COUNT(*) as count, SUM(COALESCE(questions_asked, 0)) as questions FROM sessions WHERE profile_id = ?",
-                (profile_id,)
+                (profile_id,),
             )
             if session_stats:
                 stat_row = session_stats[0]
-                sessions_count = stat_row['count'] if isinstance(stat_row, dict) else stat_row[0]
-                questions_count = stat_row['questions'] if isinstance(stat_row, dict) else stat_row[1]
+                sessions_count = (
+                    stat_row["count"] if isinstance(stat_row, dict) else stat_row[0]
+                )
+                questions_count = (
+                    stat_row["questions"] if isinstance(stat_row, dict) else stat_row[1]
+                )
 
                 # If there are actual sessions, use those counts
                 if sessions_count and sessions_count > 0:
@@ -193,35 +239,41 @@ class ProfileManager:
                     total_questions = questions_count if questions_count else 0
                 else:
                     # No sessions yet, use values from profile table
-                    total_sessions = g('total_sessions', 9) or 0
-                    total_questions = g('total_questions', 10) or 0
+                    total_sessions = g("total_sessions", 9) or 0
+                    total_questions = g("total_questions", 10) or 0
         except DB_ERRORS as e:
             # Fallback to profile table values
-            logger.debug(f"Failed to query session stats for profile {sanitize_log_value(profile_id)!r} (non-critical): {e}")
-            total_sessions = g('total_sessions', 9) or 0
-            total_questions = g('total_questions', 10) or 0
+            logger.debug(
+                f"Failed to query session stats for profile {sanitize_log_value(profile_id)!r} (non-critical): {e}"
+            )
+            total_sessions = g("total_sessions", 9) or 0
+            total_questions = g("total_questions", 10) or 0
 
         return ChildProfile(
-            profile_id=g('profile_id', 0),
-            parent_id=g('parent_id', 1),
-            name=g('name', 2) or g('name', 1),
-            age=g('age', 3) or 0,
-            grade=g('grade', 4) or g('grade_level', 4) or 'K',
-            avatar=g('avatar', 5) or g('avatar_url', 5) or 'default',
-            learning_level=g('learning_level', 7) or 'adaptive',
-            daily_time_limit_minutes=g('daily_time_limit_minutes', 8) or 120,
-            is_active=bool(g('is_active', 14)),
+            profile_id=g("profile_id", 0),
+            parent_id=g("parent_id", 1),
+            name=g("name", 2) or g("name", 1),
+            age=g("age", 3) or 0,
+            grade=g("grade", 4) or g("grade_level", 4) or "K",
+            avatar=g("avatar", 5) or g("avatar_url", 5) or "default",
+            learning_level=g("learning_level", 7) or "adaptive",
+            daily_time_limit_minutes=g("daily_time_limit_minutes", 8) or 120,
+            is_active=bool(g("is_active", 14)),
             total_sessions=total_sessions,
             total_questions=total_questions,
-            last_active=g('last_active', 13),
-            subjects_focus=subjects
+            last_active=g("last_active", 13),
+            subjects_focus=subjects,
         )
 
     def get_profiles_by_parent(self, parent_id: str) -> List[ChildProfile]:
         try:
-            rows = self.db.execute_query("SELECT * FROM child_profiles WHERE parent_id = ?", (parent_id,))
+            rows = self.db.execute_query(
+                "SELECT * FROM child_profiles WHERE parent_id = ?", (parent_id,)
+            )
         except DB_ERRORS as e:
-            logger.debug(f"Failed to query profiles for parent {sanitize_log_value(parent_id)!r} (non-critical): {e}")
+            logger.debug(
+                f"Failed to query profiles for parent {sanitize_log_value(parent_id)!r} (non-critical): {e}"
+            )
             return []
 
         if not rows:
@@ -243,37 +295,37 @@ class ProfileManager:
                         except (KeyError, IndexError, TypeError):
                             return None
 
-                profile_id = g('profile_id', 0)
+                profile_id = g("profile_id", 0)
                 profile_ids.append(profile_id)
 
                 profile = ChildProfile(
                     profile_id=profile_id,
-                    parent_id=g('parent_id', 1),
-                    name=g('name', 2) or g('name', 1),
-                    age=g('age', 3) or 0,
-                    grade=g('grade', 4) or g('grade_level', 4) or 'K',
-                    avatar=g('avatar', 5) or g('avatar_url', 5) or 'default',
-                    learning_level=g('learning_level', 7) or 'adaptive',
-                    daily_time_limit_minutes=g('daily_time_limit_minutes', 8) or 120,
-                    is_active=bool(g('is_active', 14)),
+                    parent_id=g("parent_id", 1),
+                    name=g("name", 2) or g("name", 1),
+                    age=g("age", 3) or 0,
+                    grade=g("grade", 4) or g("grade_level", 4) or "K",
+                    avatar=g("avatar", 5) or g("avatar_url", 5) or "default",
+                    learning_level=g("learning_level", 7) or "adaptive",
+                    daily_time_limit_minutes=g("daily_time_limit_minutes", 8) or 120,
+                    is_active=bool(g("is_active", 14)),
                     total_sessions=0,  # Will be updated from sessions table
                     total_questions=0,  # Will be updated from sessions table
-                    last_active=g('last_active', 13),
-                    subjects_focus=[]  # Skip subject lookup for list view (use get_profile for details)
+                    last_active=g("last_active", 13),
+                    subjects_focus=[],  # Skip subject lookup for list view (use get_profile for details)
                 )
                 profiles.append(profile)
             except (KeyError, IndexError, TypeError) as e:
                 # Log parsing failure but continue with other profiles
                 logger.warning(
                     f"Failed to parse profile row: {e}",
-                    extra={'row_data': str(row)[:100]}  # Truncate for safety
+                    extra={"row_data": str(row)[:100]},  # Truncate for safety
                 )
                 continue
 
         # Get real-time session counts for all profiles in one bulk query
         if profile_ids:
             try:
-                placeholders = ','.join('?' * len(profile_ids))
+                placeholders = ",".join("?" * len(profile_ids))
                 query = f"""
                     SELECT profile_id, COUNT(*) as count, SUM(COALESCE(questions_asked, 0)) as questions
                     FROM sessions
@@ -285,9 +337,9 @@ class ProfileManager:
                 # Build lookup dict for O(1) access
                 stats_map = {}
                 for stat in session_stats:
-                    pid = stat['profile_id'] if isinstance(stat, dict) else stat[0]
-                    count = stat['count'] if isinstance(stat, dict) else stat[1]
-                    questions = stat['questions'] if isinstance(stat, dict) else stat[2]
+                    pid = stat["profile_id"] if isinstance(stat, dict) else stat[0]
+                    count = stat["count"] if isinstance(stat, dict) else stat[1]
+                    questions = stat["questions"] if isinstance(stat, dict) else stat[2]
                     stats_map[pid] = (count or 0, questions or 0)
 
                 # Update profiles with real session counts from sessions table
@@ -299,53 +351,67 @@ class ProfileManager:
 
                 # For profiles without session records, fall back to counter columns
                 # This supports increment_session_count() / increment_question_count() methods
-                profiles_without_sessions = [p for p in profiles if p.profile_id not in stats_map]
+                profiles_without_sessions = [
+                    p for p in profiles if p.profile_id not in stats_map
+                ]
                 if profiles_without_sessions:
                     try:
                         # Bulk query for counter columns
                         counter_ids = [p.profile_id for p in profiles_without_sessions]
-                        placeholders = ','.join('?' * len(counter_ids))
+                        placeholders = ",".join("?" * len(counter_ids))
                         counter_query = f"SELECT profile_id, total_sessions, total_questions FROM child_profiles WHERE profile_id IN ({placeholders})"
-                        counter_rows = self.db.execute_query(counter_query, tuple(counter_ids))
+                        counter_rows = self.db.execute_query(
+                            counter_query, tuple(counter_ids)
+                        )
 
                         # Build lookup dict
                         counter_map = {}
                         for row in counter_rows:
-                            pid = row['profile_id'] if isinstance(row, dict) else row[0]
-                            sessions = row['total_sessions'] if isinstance(row, dict) else row[1]
-                            questions = row['total_questions'] if isinstance(row, dict) else row[2]
+                            pid = row["profile_id"] if isinstance(row, dict) else row[0]
+                            sessions = (
+                                row["total_sessions"]
+                                if isinstance(row, dict)
+                                else row[1]
+                            )
+                            questions = (
+                                row["total_questions"]
+                                if isinstance(row, dict)
+                                else row[2]
+                            )
                             counter_map[pid] = (sessions or 0, questions or 0)
 
                         # Update profiles
                         for profile in profiles_without_sessions:
                             if profile.profile_id in counter_map:
-                                sessions_count, questions_count = counter_map[profile.profile_id]
+                                sessions_count, questions_count = counter_map[
+                                    profile.profile_id
+                                ]
                                 profile.total_sessions = sessions_count
                                 profile.total_questions = questions_count
                     except DB_ERRORS as e:
                         # Log but don't fail - profiles will keep default counts (0, 0)
                         logger.warning(
                             f"Failed to fetch counter columns for profiles: {e}",
-                            extra={'profile_count': len(profiles_without_sessions)}
+                            extra={"profile_count": len(profiles_without_sessions)},
                         )
             except DB_ERRORS as e:
                 # Log but don't fail - profiles will have 0 counts
                 logger.warning(
                     f"Failed to fetch session stats for profiles: {e}",
-                    extra={'profile_count': len(profile_ids)}
+                    extra={"profile_count": len(profile_ids)},
                 )
 
             # Get subjects for all profiles in one bulk query
             try:
-                placeholders = ','.join('?' * len(profile_ids))
+                placeholders = ",".join("?" * len(profile_ids))
                 query = f"SELECT profile_id, subject FROM profile_subjects WHERE profile_id IN ({placeholders})"
                 subject_rows = self.db.execute_query(query, tuple(profile_ids))
 
                 # Build lookup dict mapping profile_id to list of subjects
                 subjects_map = {}
                 for row in subject_rows:
-                    pid = row['profile_id'] if isinstance(row, dict) else row[0]
-                    subject = row['subject'] if isinstance(row, dict) else row[1]
+                    pid = row["profile_id"] if isinstance(row, dict) else row[0]
+                    subject = row["subject"] if isinstance(row, dict) else row[1]
                     if pid not in subjects_map:
                         subjects_map[pid] = []
                     subjects_map[pid].append(subject)
@@ -358,7 +424,7 @@ class ProfileManager:
                 # Log but don't fail - profiles will have empty subjects
                 logger.warning(
                     f"Failed to fetch subjects for profiles: {e}",
-                    extra={'profile_count': len(profile_ids)}
+                    extra={"profile_count": len(profile_ids)},
                 )
 
         return profiles
@@ -379,43 +445,84 @@ class ProfileManager:
             ProfileError: If update fails
         """
         # Validate inputs before updating
-        if 'age' in kwargs:
-            age = kwargs['age']
+        if "age" in kwargs:
+            age = kwargs["age"]
             if age < 5 or age > 18:
                 raise ProfileValidationError("Age must be between 5 and 18 for K-12")
 
-        if 'learning_level' in kwargs:
-            level = kwargs['learning_level']
-            valid_levels = ['beginner', 'advanced', 'adaptive']
+        if "learning_level" in kwargs:
+            level = kwargs["learning_level"]
+            valid_levels = ["beginner", "advanced", "adaptive"]
             if level not in valid_levels:
-                raise ProfileValidationError(f"Learning level must be one of: {', '.join(valid_levels)}")
+                raise ProfileValidationError(
+                    f"Learning level must be one of: {', '.join(valid_levels)}"
+                )
 
-        if 'name' in kwargs:
-            name = kwargs['name']
+        if "name" in kwargs:
+            name = kwargs["name"]
             if not name or len(name) < 2:
                 raise ProfileValidationError("Name must be at least 2 characters")
 
-        if 'grade' in kwargs:
-            grade = kwargs['grade']
-            valid_grades = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
+        if "grade" in kwargs:
+            grade = kwargs["grade"]
+            valid_grades = [
+                "K",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+            ]
             # Also accept grades with suffixes like "1st", "2nd", "6th", etc.
-            valid_grades_with_suffix = valid_grades + ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th']
+            valid_grades_with_suffix = valid_grades + [
+                "1st",
+                "2nd",
+                "3rd",
+                "4th",
+                "5th",
+                "6th",
+                "7th",
+                "8th",
+                "9th",
+                "10th",
+                "11th",
+                "12th",
+            ]
             if grade not in valid_grades_with_suffix:
-                raise ProfileValidationError(f"Grade must be one of: {', '.join(valid_grades)}")
+                raise ProfileValidationError(
+                    f"Grade must be one of: {', '.join(valid_grades)}"
+                )
 
-        if 'daily_time_limit_minutes' in kwargs:
-            limit = kwargs['daily_time_limit_minutes']
+        if "daily_time_limit_minutes" in kwargs:
+            limit = kwargs["daily_time_limit_minutes"]
             if not isinstance(limit, int) or limit < 0 or limit > 1440:
-                raise ProfileValidationError("Daily time limit must be between 0 and 1440 minutes (24 hours)")
+                raise ProfileValidationError(
+                    "Daily time limit must be between 0 and 1440 minutes (24 hours)"
+                )
 
-        if 'is_active' in kwargs:
-            is_active = kwargs['is_active']
+        if "is_active" in kwargs:
+            is_active = kwargs["is_active"]
             if not isinstance(is_active, bool):
                 raise ProfileValidationError("is_active must be a boolean")
 
         updates = []
         params = []
-        allowed = ['name', 'age', 'grade', 'grade_level', 'learning_level', 'daily_time_limit_minutes', 'is_active']
+        allowed = [
+            "name",
+            "age",
+            "grade",
+            "grade_level",
+            "learning_level",
+            "daily_time_limit_minutes",
+            "is_active",
+        ]
         for k, v in kwargs.items():
             if k not in allowed:
                 continue
@@ -429,13 +536,16 @@ class ProfileManager:
             self.db.execute_write(query, tuple(params))
             # Invalidate cache for this profile
             from utils.cache import cache
+
             cache.delete(f"child_profile:{profile_id}", namespace="snflwr")
             return True
         except DB_ERRORS as e:
             logger.error(f"Failed to update profile: {e}")
             raise ProfileError(f"Failed to update profile: {e}")
 
-    def update_profile_with_permission_check(self, parent_id: str, profile_id: str, **kwargs) -> bool:
+    def update_profile_with_permission_check(
+        self, parent_id: str, profile_id: str, **kwargs
+    ) -> bool:
         """
         Update profile fields with permission check
 
@@ -456,16 +566,18 @@ class ProfileManager:
         try:
             rows = self.db.execute_query(
                 "SELECT parent_id FROM child_profiles WHERE profile_id = ?",
-                (profile_id,)
+                (profile_id,),
             )
             if not rows:
                 raise ProfileNotFoundError(f"Profile not found: {profile_id}")
 
             row = rows[0]
-            owner_parent_id = row[0] if isinstance(row, tuple) else row['parent_id']
+            owner_parent_id = row[0] if isinstance(row, tuple) else row["parent_id"]
 
             if owner_parent_id != parent_id:
-                raise PermissionDeniedError(f"Parent {parent_id} does not have permission to modify profile {profile_id}")
+                raise PermissionDeniedError(
+                    f"Parent {parent_id} does not have permission to modify profile {profile_id}"
+                )
 
         except PermissionDeniedError:
             raise
@@ -492,7 +604,10 @@ class ProfileManager:
             ProfileError: If deactivation fails
         """
         try:
-            self.db.execute_write("UPDATE child_profiles SET is_active = 0 WHERE profile_id = ?", (profile_id,))
+            self.db.execute_write(
+                "UPDATE child_profiles SET is_active = 0 WHERE profile_id = ?",
+                (profile_id,),
+            )
             self._invalidate_profile_cache(profile_id)
             return True
         except DB_ERRORS as e:
@@ -512,7 +627,10 @@ class ProfileManager:
             ProfileError: If reactivation fails
         """
         try:
-            self.db.execute_write("UPDATE child_profiles SET is_active = 1 WHERE profile_id = ?", (profile_id,))
+            self.db.execute_write(
+                "UPDATE child_profiles SET is_active = 1 WHERE profile_id = ?",
+                (profile_id,),
+            )
             self._invalidate_profile_cache(profile_id)
             return True
         except DB_ERRORS as e:
@@ -532,7 +650,9 @@ class ProfileManager:
             ProfileError: If deletion fails
         """
         try:
-            self.db.execute_write("DELETE FROM child_profiles WHERE profile_id = ?", (profile_id,))
+            self.db.execute_write(
+                "DELETE FROM child_profiles WHERE profile_id = ?", (profile_id,)
+            )
             return True
         except DB_ERRORS as e:
             raise ProfileError(f"Failed to delete profile: {e}")
@@ -555,7 +675,7 @@ class ProfileManager:
         try:
             rows = self.db.execute_query(
                 "SELECT * FROM child_profiles WHERE parent_id = ? AND is_active = 1",
-                (parent_id,)
+                (parent_id,),
             )
         except DB_ERRORS as e:
             logger.debug(f"Failed to query active profiles (non-critical): {e}")
@@ -586,7 +706,7 @@ class ProfileManager:
             # Check if already exists
             rows = self.db.execute_query(
                 "SELECT id FROM profile_subjects WHERE profile_id = ? AND subject = ?",
-                (profile_id, subject)
+                (profile_id, subject),
             )
             if rows:
                 return True  # Already exists
@@ -595,7 +715,7 @@ class ProfileManager:
             added_at = datetime.now(timezone.utc).isoformat()
             self.db.execute_write(
                 "INSERT INTO profile_subjects (profile_id, subject, added_at) VALUES (?, ?, ?)",
-                (profile_id, subject, added_at)
+                (profile_id, subject, added_at),
             )
             self._invalidate_profile_cache(profile_id)
             return True
@@ -617,7 +737,7 @@ class ProfileManager:
         try:
             self.db.execute_write(
                 "DELETE FROM profile_subjects WHERE profile_id = ? AND subject = ?",
-                (profile_id, subject)
+                (profile_id, subject),
             )
             self._invalidate_profile_cache(profile_id)
             return True
@@ -638,10 +758,11 @@ class ProfileManager:
         try:
             self.db.execute_write(
                 "UPDATE child_profiles SET total_sessions = total_sessions + 1 WHERE profile_id = ?",
-                (profile_id,)
+                (profile_id,),
             )
             # Invalidate cache for this profile
             from utils.cache import cache
+
             cache.delete(f"child_profile:{profile_id}", namespace="snflwr")
             return True
         except DB_ERRORS as e:
@@ -662,10 +783,11 @@ class ProfileManager:
         try:
             self.db.execute_write(
                 "UPDATE child_profiles SET total_questions = total_questions + ? WHERE profile_id = ?",
-                (count, profile_id)
+                (count, profile_id),
             )
             # Invalidate cache for this profile
             from utils.cache import cache
+
             cache.delete(f"child_profile:{profile_id}", namespace="snflwr")
             return True
         except DB_ERRORS as e:
@@ -686,10 +808,11 @@ class ProfileManager:
             now = datetime.now(timezone.utc).isoformat()
             self.db.execute_write(
                 "UPDATE child_profiles SET last_active = ? WHERE profile_id = ?",
-                (now, profile_id)
+                (now, profile_id),
             )
             # Invalidate cache so get_profile() returns the updated timestamp
             from utils.cache import cache
+
             cache.delete(f"child_profile:{profile_id}", namespace="snflwr")
             return True
         except DB_ERRORS as e:
@@ -718,17 +841,16 @@ class ProfileManager:
         if profiles:
             try:
                 # Build IN clause placeholders safely
-                placeholders = ','.join('?' * len(profiles))
+                placeholders = ",".join("?" * len(profiles))
                 query = f"SELECT SUM(duration_minutes) FROM sessions WHERE profile_id IN ({placeholders})"
                 minutes_rows = self.db.execute_query(
-                    query,
-                    tuple(p.profile_id for p in profiles)
+                    query, tuple(p.profile_id for p in profiles)
                 )
                 if minutes_rows:
                     row = minutes_rows[0]
                     # Safely extract value whether row is dict or tuple
                     if isinstance(row, dict):
-                        total_minutes = row.get('SUM(duration_minutes)') or 0
+                        total_minutes = row.get("SUM(duration_minutes)") or 0
                     elif row and len(row) > 0 and row[0]:
                         total_minutes = row[0]
             except DB_ERRORS as e:
@@ -737,12 +859,12 @@ class ProfileManager:
         active_profiles = len([p for p in profiles if p.is_active])
 
         return {
-            'total_profiles': len(profiles),
-            'active_profiles': active_profiles,
-            'total_sessions': total_sessions,
-            'total_questions': total_questions,
-            'total_minutes': total_minutes,
-            'profiles': profiles
+            "total_profiles": len(profiles),
+            "active_profiles": active_profiles,
+            "total_sessions": total_sessions,
+            "total_questions": total_questions,
+            "total_minutes": total_minutes,
+            "profiles": profiles,
         }
 
     def get_most_active_profile(self, parent_id: str) -> Optional[ChildProfile]:
@@ -764,7 +886,9 @@ class ProfileManager:
         most_active = max(profiles, key=lambda p: p.total_sessions)
         return most_active
 
-    def get_profiles_by_age_range(self, parent_id: str, min_age: int, max_age: int) -> List[ChildProfile]:
+    def get_profiles_by_age_range(
+        self, parent_id: str, min_age: int, max_age: int
+    ) -> List[ChildProfile]:
         """
         Get profiles within an age range
 
@@ -781,6 +905,7 @@ class ProfileManager:
 
     def _row_to_profile(self, row) -> Optional[ChildProfile]:
         """Helper to convert database row to ChildProfile"""
+
         def g(key, idx):
             try:
                 return row[key]
@@ -790,7 +915,7 @@ class ProfileManager:
                 except (KeyError, IndexError, TypeError):
                     return None
 
-        profile_id = g('profile_id', 0)
+        profile_id = g("profile_id", 0)
 
         # Get subjects for this profile
         subjects = []
@@ -798,25 +923,29 @@ class ProfileManager:
             try:
                 subject_rows = self.db.execute_query(
                     "SELECT subject FROM profile_subjects WHERE profile_id = ?",
-                    (profile_id,)
+                    (profile_id,),
                 )
-                subjects = [row[0] if isinstance(row, tuple) else row['subject'] for row in subject_rows]
+                subjects = [
+                    row[0] if isinstance(row, tuple) else row["subject"]
+                    for row in subject_rows
+                ]
             except DB_ERRORS as e:
-                logger.debug(f"Failed to query subjects in _row_to_profile (non-critical): {e}")
+                logger.debug(
+                    f"Failed to query subjects in _row_to_profile (non-critical): {e}"
+                )
 
         return ChildProfile(
             profile_id=profile_id,
-            parent_id=g('parent_id', 1),
-            name=g('name', 2) or g('name', 1),
-            age=g('age', 3) or 0,
-            grade=g('grade', 4) or g('grade_level', 4) or 'K',
-            avatar=g('avatar', 5) or g('avatar_url', 5) or 'default',
-            learning_level=g('learning_level', 7) or 'adaptive',
-            daily_time_limit_minutes=g('daily_time_limit_minutes', 8) or 120,
-            is_active=bool(g('is_active', 14)),
-            total_sessions=g('total_sessions', 9) or 0,
-            total_questions=g('total_questions', 10) or 0,
-            last_active=g('last_active', 13),
-            subjects_focus=subjects
+            parent_id=g("parent_id", 1),
+            name=g("name", 2) or g("name", 1),
+            age=g("age", 3) or 0,
+            grade=g("grade", 4) or g("grade_level", 4) or "K",
+            avatar=g("avatar", 5) or g("avatar_url", 5) or "default",
+            learning_level=g("learning_level", 7) or "adaptive",
+            daily_time_limit_minutes=g("daily_time_limit_minutes", 8) or 120,
+            is_active=bool(g("is_active", 14)),
+            total_sessions=g("total_sessions", 9) or 0,
+            total_questions=g("total_questions", 10) or 0,
+            last_active=g("last_active", 13),
+            subjects_focus=subjects,
         )
-

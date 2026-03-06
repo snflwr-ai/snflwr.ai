@@ -29,22 +29,25 @@ logger = get_logger(__name__)
 
 # Key rotation policy constants
 DEFAULT_KEY_MAX_AGE_DAYS = 365  # Recommend rotation after 1 year
-KEY_EXPIRY_WARNING_DAYS = 30   # Warn 30 days before recommended rotation
+KEY_EXPIRY_WARNING_DAYS = 30  # Warn 30 days before recommended rotation
 
 
 class KeyManagementError(Exception):
     """Raised when key management operations fail"""
+
     pass
 
 
 class KeyStrengthError(KeyManagementError):
     """Raised when passphrase/key is too weak"""
+
     pass
 
 
 # =============================================================================
 # AUDIT LOGGING
 # =============================================================================
+
 
 class KeyAuditLogger:
     """
@@ -64,7 +67,7 @@ class KeyAuditLogger:
         operation: str,
         success: bool,
         details: Optional[Dict[str, Any]] = None,
-        admin_id: Optional[str] = None
+        admin_id: Optional[str] = None,
     ) -> None:
         """
         Log a key management operation.
@@ -80,13 +83,15 @@ class KeyAuditLogger:
             "operation": operation,
             "success": success,
             "admin_id": admin_id or "system",
-            "details": details or {}
+            "details": details or {},
         }
 
         try:
-            fd = os.open(str(self.audit_file), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-            with os.fdopen(fd, 'a') as f:
-                f.write(json.dumps(entry) + '\n')
+            fd = os.open(
+                str(self.audit_file), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600
+            )
+            with os.fdopen(fd, "a") as f:
+                f.write(json.dumps(entry) + "\n")
         except IOError as e:
             logger.error(f"Failed to write audit log: {e}")
 
@@ -98,7 +103,7 @@ class KeyAuditLogger:
             return operations
 
         try:
-            with open(self.audit_file, 'r') as f:
+            with open(self.audit_file, "r") as f:
                 lines = f.readlines()
                 for line in lines[-limit:]:
                     try:
@@ -135,6 +140,7 @@ _PRIME = 2**257 - 93
 
 def _mod_inverse(a: int, m: int) -> int:
     """Calculate modular multiplicative inverse using extended Euclidean algorithm."""
+
     def extended_gcd(a: int, b: int) -> Tuple[int, int, int]:
         if a == 0:
             return b, 0, 1
@@ -183,11 +189,7 @@ def _lagrange_interpolate(shares: List[Tuple[int, int]], prime: int) -> int:
     return secret
 
 
-def create_key_shares(
-    key: str,
-    total_shares: int = 5,
-    threshold: int = 3
-) -> List[str]:
+def create_key_shares(key: str, total_shares: int = 5, threshold: int = 3) -> List[str]:
     """
     Split encryption key into shares using Shamir's Secret Sharing.
 
@@ -222,12 +224,12 @@ def create_key_shares(
 
     # Decode key to bytes
     try:
-        key_bytes = base64.urlsafe_b64decode(key.encode('ascii'))
+        key_bytes = base64.urlsafe_b64decode(key.encode("ascii"))
     except (ValueError, TypeError) as e:
         raise KeyManagementError(f"Invalid key format: {e}")
 
     # Convert key bytes to integer
-    secret = int.from_bytes(key_bytes, byteorder='big')
+    secret = int.from_bytes(key_bytes, byteorder="big")
 
     # Generate random polynomial coefficients
     # f(x) = secret + a1*x + a2*x^2 + ... + a_{k-1}*x^{k-1}
@@ -249,10 +251,7 @@ def create_key_shares(
     audit.log_operation(
         operation="key_shares_created",
         success=True,
-        details={
-            "total_shares": total_shares,
-            "threshold": threshold
-        }
+        details={"total_shares": total_shares, "threshold": threshold},
     )
 
     logger.info(f"Created {total_shares} key shares with threshold {threshold}")
@@ -286,7 +285,7 @@ def recover_key_from_shares(shares: List[str]) -> str:
     parsed_shares = []
     for share in shares:
         try:
-            index_str, value_hex = share.split(':')
+            index_str, value_hex = share.split(":")
             x = int(index_str)
             y = int(value_hex, 16)
             parsed_shares.append((x, y))
@@ -297,10 +296,10 @@ def recover_key_from_shares(shares: List[str]) -> str:
     secret = _lagrange_interpolate(parsed_shares, _PRIME)
 
     # Convert back to bytes (32 bytes for AES-256)
-    key_bytes = secret.to_bytes(32, byteorder='big')
+    key_bytes = secret.to_bytes(32, byteorder="big")
 
     # Encode as base64
-    recovered_key = base64.urlsafe_b64encode(key_bytes).decode('ascii')
+    recovered_key = base64.urlsafe_b64encode(key_bytes).decode("ascii")
 
     # Audit log
     audit = get_audit_logger()
@@ -309,8 +308,8 @@ def recover_key_from_shares(shares: List[str]) -> str:
         success=True,
         details={
             "shares_used": len(shares),
-            "share_indices": [s.split(':')[0] for s in shares]
-        }
+            "share_indices": [s.split(":")[0] for s in shares],
+        },
     )
 
     logger.info(f"Key recovered using {len(shares)} shares")
@@ -322,7 +321,10 @@ def recover_key_from_shares(shares: List[str]) -> str:
 # KEY ROTATION POLICY
 # =============================================================================
 
-def check_key_rotation_status(metadata_file: Path = Path("config/encryption.meta.json")) -> Dict[str, Any]:
+
+def check_key_rotation_status(
+    metadata_file: Path = Path("config/encryption.meta.json"),
+) -> Dict[str, Any]:
     """
     Check if key rotation is recommended based on age policy.
 
@@ -337,7 +339,7 @@ def check_key_rotation_status(metadata_file: Path = Path("config/encryption.meta
         "needs_rotation": False,
         "key_age_days": 0,
         "days_until_recommended": DEFAULT_KEY_MAX_AGE_DAYS,
-        "warning_message": None
+        "warning_message": None,
     }
 
     if not metadata_file.exists():
@@ -345,10 +347,12 @@ def check_key_rotation_status(metadata_file: Path = Path("config/encryption.meta
         return result
 
     try:
-        with open(metadata_file, 'r') as f:
+        with open(metadata_file, "r") as f:
             metadata = json.load(f)
 
-        created_at = datetime.fromisoformat(metadata.get('created_at', datetime.now(timezone.utc).isoformat()))
+        created_at = datetime.fromisoformat(
+            metadata.get("created_at", datetime.now(timezone.utc).isoformat())
+        )
         key_age = datetime.now(timezone.utc) - created_at
         result["key_age_days"] = key_age.days
 
@@ -376,9 +380,7 @@ def check_key_rotation_status(metadata_file: Path = Path("config/encryption.meta
 
 
 def derive_key_from_passphrase(
-    passphrase: str,
-    salt: Optional[bytes] = None,
-    iterations: int = 600000
+    passphrase: str, salt: Optional[bytes] = None, iterations: int = 600000
 ) -> Tuple[str, str]:
     """
     Derive encryption key from user-provided passphrase using PBKDF2
@@ -410,16 +412,12 @@ def derive_key_from_passphrase(
 
     # Derive key using PBKDF2-HMAC-SHA256
     key = hashlib.pbkdf2_hmac(
-        'sha256',
-        passphrase.encode('utf-8'),
-        salt,
-        iterations,
-        dklen=32  # 256 bits
+        "sha256", passphrase.encode("utf-8"), salt, iterations, dklen=32  # 256 bits
     )
 
     # Encode to base64 for storage
-    key_b64 = base64.urlsafe_b64encode(key).decode('ascii')
-    salt_b64 = base64.urlsafe_b64encode(salt).decode('ascii')
+    key_b64 = base64.urlsafe_b64encode(key).decode("ascii")
+    salt_b64 = base64.urlsafe_b64encode(salt).decode("ascii")
 
     return key_b64, salt_b64
 
@@ -432,7 +430,7 @@ def generate_secure_key() -> str:
         Base64-encoded key suitable for AES-256
     """
     key = secrets.token_bytes(32)
-    return base64.urlsafe_b64encode(key).decode('ascii')
+    return base64.urlsafe_b64encode(key).decode("ascii")
 
 
 def validate_key_strength(key: str) -> Tuple[bool, Optional[str]]:
@@ -447,17 +445,23 @@ def validate_key_strength(key: str) -> Tuple[bool, Optional[str]]:
     """
     try:
         # Decode key
-        decoded = base64.urlsafe_b64decode(key.encode('ascii'))
+        decoded = base64.urlsafe_b64decode(key.encode("ascii"))
 
         # Check length (must be 256 bits = 32 bytes)
         if len(decoded) < 32:
-            return False, f"Key is too short ({len(decoded)} bytes). AES-256 requires 32 bytes."
+            return (
+                False,
+                f"Key is too short ({len(decoded)} bytes). AES-256 requires 32 bytes.",
+            )
 
         # Check for low entropy (weak keys)
         # Count unique bytes - should have good distribution
         unique_bytes = len(set(decoded))
         if unique_bytes < 16:  # Less than 50% unique
-            return False, "Key has low entropy (too predictable). Use a cryptographically random key."
+            return (
+                False,
+                "Key has low entropy (too predictable). Use a cryptographically random key.",
+            )
 
         return True, None
 
@@ -490,7 +494,7 @@ class KeyManager:
         self,
         passphrase: str,
         save_backup: bool = True,
-        backup_location: Optional[Path] = None
+        backup_location: Optional[Path] = None,
     ) -> str:
         """
         Initialize encryption key from passphrase
@@ -515,11 +519,11 @@ class KeyManager:
             "salt": salt,
             "iterations": 600000,
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "key_version": 1
+            "key_version": 1,
         }
 
         if save_backup:
-            with open(self.metadata_file, 'w') as f:
+            with open(self.metadata_file, "w") as f:
                 json.dump(metadata, f, indent=2)
 
             logger.info(f"Key metadata saved to {self.metadata_file}")
@@ -528,7 +532,7 @@ class KeyManager:
             if backup_location:
                 backup_path = Path(backup_location) / "encryption.meta.json"
                 backup_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(backup_path, 'w') as f:
+                with open(backup_path, "w") as f:
                     json.dump(metadata, f, indent=2)
                 logger.info(f"Key metadata backed up to {backup_path}")
 
@@ -536,7 +540,7 @@ class KeyManager:
         self.audit.log_operation(
             operation="key_initialized_from_passphrase",
             success=True,
-            details={"key_version": 1, "backup_saved": save_backup}
+            details={"key_version": 1, "backup_saved": save_backup},
         )
 
         return key
@@ -561,7 +565,7 @@ class KeyManager:
             )
 
         try:
-            with open(self.metadata_file, 'r') as f:
+            with open(self.metadata_file, "r") as f:
                 metadata = json.load(f)
 
             if metadata.get("method") != "pbkdf2_passphrase":
@@ -570,8 +574,8 @@ class KeyManager:
                 )
 
             # Decode salt
-            salt = base64.urlsafe_b64decode(metadata['salt'].encode('ascii'))
-            iterations = metadata.get('iterations', 600000)
+            salt = base64.urlsafe_b64decode(metadata["salt"].encode("ascii"))
+            iterations = metadata.get("iterations", 600000)
 
             # Derive key using same parameters
             key, _ = derive_key_from_passphrase(passphrase, salt, iterations)
@@ -580,7 +584,7 @@ class KeyManager:
             self.audit.log_operation(
                 operation="key_recovered_from_passphrase",
                 success=True,
-                details={"key_version": metadata.get('key_version', 1)}
+                details={"key_version": metadata.get("key_version", 1)},
             )
 
             logger.info("Key successfully recovered from passphrase")
@@ -591,14 +595,12 @@ class KeyManager:
             self.audit.log_operation(
                 operation="key_recovered_from_passphrase",
                 success=False,
-                details={"error": str(e)}
+                details={"error": str(e)},
             )
             raise KeyManagementError(f"Failed to recover key: {e}")
 
     def initialize_from_random_key(
-        self,
-        save_backup: bool = True,
-        backup_location: Optional[Path] = None
+        self, save_backup: bool = True, backup_location: Optional[Path] = None
     ) -> str:
         """
         Initialize with cryptographically random key
@@ -621,11 +623,11 @@ class KeyManager:
             "method": "random_generation",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "key_version": 1,
-            "warning": "Key must be stored securely. This file does NOT contain the key."
+            "warning": "Key must be stored securely. This file does NOT contain the key.",
         }
 
         if save_backup:
-            with open(self.metadata_file, 'w') as f:
+            with open(self.metadata_file, "w") as f:
                 json.dump(metadata, f, indent=2)
 
             logger.warning(
@@ -637,15 +639,13 @@ class KeyManager:
         self.audit.log_operation(
             operation="key_initialized_random",
             success=True,
-            details={"key_version": 1, "backup_saved": save_backup}
+            details={"key_version": 1, "backup_saved": save_backup},
         )
 
         return key
 
     def rotate_key(
-        self,
-        old_key: str,
-        new_passphrase: Optional[str] = None
+        self, old_key: str, new_passphrase: Optional[str] = None
     ) -> Tuple[str, str]:
         """
         Rotate encryption key
@@ -678,7 +678,7 @@ class KeyManager:
                 "iterations": 600000,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "key_version": self._get_next_version(),
-                "rotation_history": self._get_rotation_history()
+                "rotation_history": self._get_rotation_history(),
             }
         else:
             new_key = generate_secure_key()
@@ -687,11 +687,11 @@ class KeyManager:
                 "method": "random_generation",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "key_version": self._get_next_version(),
-                "rotation_history": self._get_rotation_history()
+                "rotation_history": self._get_rotation_history(),
             }
 
         # Save new metadata
-        with open(self.metadata_file, 'w') as f:
+        with open(self.metadata_file, "w") as f:
             json.dump(metadata, f, indent=2)
 
         # Audit log
@@ -699,10 +699,10 @@ class KeyManager:
             operation="key_rotated",
             success=True,
             details={
-                "old_version": metadata['key_version'] - 1,
-                "new_version": metadata['key_version'],
-                "method": metadata['method']
-            }
+                "old_version": metadata["key_version"] - 1,
+                "new_version": metadata["key_version"],
+                "method": metadata["method"],
+            },
         )
 
         logger.warning("Key rotation completed successfully")
@@ -714,10 +714,7 @@ class KeyManager:
         return check_key_rotation_status(self.metadata_file)
 
     def create_emergency_shares(
-        self,
-        key: str,
-        total_shares: int = 5,
-        threshold: int = 3
+        self, key: str, total_shares: int = 5, threshold: int = 3
     ) -> List[str]:
         """
         Create emergency recovery shares for the encryption key.
@@ -750,9 +747,9 @@ class KeyManager:
             return 1
 
         try:
-            with open(self.metadata_file, 'r') as f:
+            with open(self.metadata_file, "r") as f:
                 metadata = json.load(f)
-            return metadata.get('key_version', 0) + 1
+            return metadata.get("key_version", 0) + 1
         except (IOError, json.JSONDecodeError, KeyError):
             return 1
 
@@ -762,15 +759,17 @@ class KeyManager:
             return []
 
         try:
-            with open(self.metadata_file, 'r') as f:
+            with open(self.metadata_file, "r") as f:
                 metadata = json.load(f)
 
-            history = metadata.get('rotation_history', [])
-            history.append({
-                "version": metadata.get('key_version', 0),
-                "rotated_at": datetime.now(timezone.utc).isoformat(),
-                "method": metadata.get('method')
-            })
+            history = metadata.get("rotation_history", [])
+            history.append(
+                {
+                    "version": metadata.get("key_version", 0),
+                    "rotated_at": datetime.now(timezone.utc).isoformat(),
+                    "method": metadata.get("method"),
+                }
+            )
             return history
         except (IOError, json.JSONDecodeError, KeyError):
             return []
@@ -783,7 +782,7 @@ def check_environment_key() -> Tuple[bool, Optional[str], Optional[str]]:
     Returns:
         (key_found, key_value, error_message)
     """
-    key = os.getenv('DB_ENCRYPTION_KEY')
+    key = os.getenv("DB_ENCRYPTION_KEY")
 
     if not key:
         return False, None, "DB_ENCRYPTION_KEY not found in environment"
@@ -804,9 +803,9 @@ def setup_encryption_interactive():
 
     This function guides administrators through secure key setup.
     """
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("DATABASE ENCRYPTION KEY SETUP")
-    print("="*60)
+    print("=" * 60)
     print("\nChoose encryption key method:\n")
     print("1. Passphrase (recommended for schools)")
     print("   - Easy to remember and recover")
@@ -822,9 +821,9 @@ def setup_encryption_interactive():
     key_manager = KeyManager()
 
     if choice == "1":
-        print("\n" + "-"*60)
+        print("\n" + "-" * 60)
         print("PASSPHRASE SETUP")
-        print("-"*60)
+        print("-" * 60)
         print("Requirements:")
         print("- Minimum 12 characters")
         print("- Recommended: 4-5 random words")
@@ -840,12 +839,13 @@ def setup_encryption_interactive():
 
             try:
                 key = key_manager.initialize_from_passphrase(
-                    passphrase,
-                    save_backup=True
+                    passphrase, save_backup=True
                 )
                 print("\n[OK] Encryption key derived from passphrase")
                 print(f"[OK] Metadata saved to {key_manager.metadata_file}")
-                print("\n[WARN]  IMPORTANT: Remember your passphrase! It's needed to recover your key.")
+                print(
+                    "\n[WARN]  IMPORTANT: Remember your passphrase! It's needed to recover your key."
+                )
                 return key
 
             except KeyStrengthError as e:
@@ -853,9 +853,9 @@ def setup_encryption_interactive():
                 continue
 
     elif choice == "2":
-        print("\n" + "-"*60)
+        print("\n" + "-" * 60)
         print("RANDOM KEY GENERATION")
-        print("-"*60)
+        print("-" * 60)
         print("[WARN]  WARNING: Store this key securely!")
         print("Lost key = permanent data loss\n")
 

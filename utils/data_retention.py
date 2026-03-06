@@ -49,13 +49,13 @@ class DataRetentionManager:
 
         # Start scheduler thread
         self.scheduler_thread = threading.Thread(
-            target=self._run_scheduler,
-            daemon=True,
-            name="DataRetentionScheduler"
+            target=self._run_scheduler, daemon=True, name="DataRetentionScheduler"
         )
         self.scheduler_thread.start()
 
-        logger.info(f"Data retention scheduler started (daily at {safety_config.DATA_CLEANUP_HOUR:02d}:00)")
+        logger.info(
+            f"Data retention scheduler started (daily at {safety_config.DATA_CLEANUP_HOUR:02d}:00)"
+        )
 
     def stop_scheduler(self):
         """Stop the automated cleanup scheduler"""
@@ -88,111 +88,87 @@ class DataRetentionManager:
 
         logger.info("Starting automated data retention cleanup")
 
-        results = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'tasks': {}
-        }
+        results = {"timestamp": datetime.now(timezone.utc).isoformat(), "tasks": {}}
 
         # 1. Cleanup safety incidents
         try:
             deleted_count = self.cleanup_safety_incidents()
-            results['tasks']['safety_incidents'] = {
-                'status': 'success',
-                'deleted_count': deleted_count
+            results["tasks"]["safety_incidents"] = {
+                "status": "success",
+                "deleted_count": deleted_count,
             }
             logger.info(f"Safety incidents cleanup: {deleted_count} records deleted")
         except DB_ERRORS as e:
-            results['tasks']['safety_incidents'] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            results["tasks"]["safety_incidents"] = {"status": "error", "error": str(e)}
             logger.error(f"Safety incidents cleanup failed: {e}")
 
         # 2. Cleanup audit logs
         try:
             deleted_count = self.cleanup_audit_logs()
-            results['tasks']['audit_logs'] = {
-                'status': 'success',
-                'deleted_count': deleted_count
+            results["tasks"]["audit_logs"] = {
+                "status": "success",
+                "deleted_count": deleted_count,
             }
             logger.info(f"Audit logs cleanup: {deleted_count} records deleted")
         except DB_ERRORS as e:
-            results['tasks']['audit_logs'] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            results["tasks"]["audit_logs"] = {"status": "error", "error": str(e)}
             logger.error(f"Audit logs cleanup failed: {e}")
 
         # 3. Cleanup old sessions
         try:
             deleted_count = self.cleanup_sessions()
-            results['tasks']['sessions'] = {
-                'status': 'success',
-                'deleted_count': deleted_count
+            results["tasks"]["sessions"] = {
+                "status": "success",
+                "deleted_count": deleted_count,
             }
             logger.info(f"Sessions cleanup: {deleted_count} records deleted")
         except DB_ERRORS as e:
-            results['tasks']['sessions'] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            results["tasks"]["sessions"] = {"status": "error", "error": str(e)}
             logger.error(f"Sessions cleanup failed: {e}")
 
         # 4. Cleanup old conversations
         try:
             deleted_count = self.cleanup_conversations()
-            results['tasks']['conversations'] = {
-                'status': 'success',
-                'deleted_count': deleted_count
+            results["tasks"]["conversations"] = {
+                "status": "success",
+                "deleted_count": deleted_count,
             }
             logger.info(f"Conversations cleanup: {deleted_count} records deleted")
         except DB_ERRORS as e:
-            results['tasks']['conversations'] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            results["tasks"]["conversations"] = {"status": "error", "error": str(e)}
             logger.error(f"Conversations cleanup failed: {e}")
 
         # 5. Cleanup old analytics
         try:
             deleted_count = self.cleanup_analytics()
-            results['tasks']['analytics'] = {
-                'status': 'success',
-                'deleted_count': deleted_count
+            results["tasks"]["analytics"] = {
+                "status": "success",
+                "deleted_count": deleted_count,
             }
             logger.info(f"Analytics cleanup: {deleted_count} records deleted")
         except DB_ERRORS as e:
-            results['tasks']['analytics'] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            results["tasks"]["analytics"] = {"status": "error", "error": str(e)}
             logger.error(f"Analytics cleanup failed: {e}")
 
         # 6. Cleanup expired auth tokens
         try:
             deleted_count = self.cleanup_expired_tokens()
-            results['tasks']['auth_tokens'] = {
-                'status': 'success',
-                'deleted_count': deleted_count
+            results["tasks"]["auth_tokens"] = {
+                "status": "success",
+                "deleted_count": deleted_count,
             }
             logger.info(f"Auth tokens cleanup: {deleted_count} records deleted")
         except DB_ERRORS as e:
-            results['tasks']['auth_tokens'] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            results["tasks"]["auth_tokens"] = {"status": "error", "error": str(e)}
             logger.error(f"Auth tokens cleanup failed: {e}")
 
         # 7. Vacuum database to reclaim space
         try:
             self.vacuum_database()
-            results['tasks']['vacuum'] = {'status': 'success'}
+            results["tasks"]["vacuum"] = {"status": "success"}
             logger.info("Database vacuum completed")
         except DB_ERRORS as e:
-            results['tasks']['vacuum'] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            results["tasks"]["vacuum"] = {"status": "error", "error": str(e)}
             logger.error(f"Database vacuum failed: {e}")
 
         # Log summary to audit trail
@@ -210,7 +186,8 @@ class DataRetentionManager:
             Number of records deleted
         """
         cutoff_date = (
-            datetime.now(timezone.utc) - timedelta(days=safety_config.SAFETY_LOG_RETENTION_DAYS)
+            datetime.now(timezone.utc)
+            - timedelta(days=safety_config.SAFETY_LOG_RETENTION_DAYS)
         ).isoformat()
 
         # Count records to be deleted
@@ -220,9 +197,9 @@ class DataRetentionManager:
             FROM safety_incidents
             WHERE resolved = 1 AND resolved_at < ?
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
-        count = count_result[0]['count'] if count_result else 0
+        count = count_result[0]["count"] if count_result else 0
 
         if count > 0:
             # Delete old resolved incidents
@@ -231,14 +208,14 @@ class DataRetentionManager:
                 DELETE FROM safety_incidents
                 WHERE resolved = 1 AND resolved_at < ?
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
 
             # Log to audit trail
             self._audit_log(
-                event_type='data_retention',
-                action=f'Deleted {count} old safety incidents (older than {safety_config.SAFETY_LOG_RETENTION_DAYS} days)',
-                success=True
+                event_type="data_retention",
+                action=f"Deleted {count} old safety incidents (older than {safety_config.SAFETY_LOG_RETENTION_DAYS} days)",
+                success=True,
             )
 
         return count
@@ -252,7 +229,8 @@ class DataRetentionManager:
             Number of records deleted
         """
         cutoff_date = (
-            datetime.now(timezone.utc) - timedelta(days=safety_config.AUDIT_LOG_RETENTION_DAYS)
+            datetime.now(timezone.utc)
+            - timedelta(days=safety_config.AUDIT_LOG_RETENTION_DAYS)
         ).isoformat()
 
         # Count records
@@ -262,9 +240,9 @@ class DataRetentionManager:
             FROM audit_log
             WHERE timestamp < ?
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
-        count = count_result[0]['count'] if count_result else 0
+        count = count_result[0]["count"] if count_result else 0
 
         if count > 0:
             # Delete old audit logs
@@ -273,7 +251,7 @@ class DataRetentionManager:
                 DELETE FROM audit_log
                 WHERE timestamp < ?
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
 
         return count
@@ -287,7 +265,8 @@ class DataRetentionManager:
             Number of records deleted
         """
         cutoff_date = (
-            datetime.now(timezone.utc) - timedelta(days=safety_config.SESSION_RETENTION_DAYS)
+            datetime.now(timezone.utc)
+            - timedelta(days=safety_config.SESSION_RETENTION_DAYS)
         ).isoformat()
 
         # Count records
@@ -297,9 +276,9 @@ class DataRetentionManager:
             FROM sessions
             WHERE ended_at IS NOT NULL AND ended_at < ?
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
-        count = count_result[0]['count'] if count_result else 0
+        count = count_result[0]["count"] if count_result else 0
 
         if count > 0:
             # Delete old sessions
@@ -308,14 +287,14 @@ class DataRetentionManager:
                 DELETE FROM sessions
                 WHERE ended_at IS NOT NULL AND ended_at < ?
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
 
             # Log to audit trail
             self._audit_log(
-                event_type='data_retention',
-                action=f'Deleted {count} old sessions (older than {safety_config.SESSION_RETENTION_DAYS} days)',
-                success=True
+                event_type="data_retention",
+                action=f"Deleted {count} old sessions (older than {safety_config.SESSION_RETENTION_DAYS} days)",
+                success=True,
             )
 
         return count
@@ -331,7 +310,8 @@ class DataRetentionManager:
             Number of records deleted
         """
         cutoff_date = (
-            datetime.now(timezone.utc) - timedelta(days=safety_config.CONVERSATION_RETENTION_DAYS)
+            datetime.now(timezone.utc)
+            - timedelta(days=safety_config.CONVERSATION_RETENTION_DAYS)
         ).isoformat()
 
         # Count conversations to be deleted
@@ -341,9 +321,9 @@ class DataRetentionManager:
             FROM conversations
             WHERE updated_at < ?
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
-        count = count_result[0]['count'] if count_result else 0
+        count = count_result[0]["count"] if count_result else 0
 
         if count > 0:
             # Delete associated messages first (cascade)
@@ -356,7 +336,7 @@ class DataRetentionManager:
                     WHERE updated_at < ?
                 )
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
 
             # Delete conversations
@@ -365,14 +345,14 @@ class DataRetentionManager:
                 DELETE FROM conversations
                 WHERE updated_at < ?
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
 
             # Log to audit trail
             self._audit_log(
-                event_type='data_retention',
-                action=f'Deleted {count} old conversations (older than {safety_config.CONVERSATION_RETENTION_DAYS} days)',
-                success=True
+                event_type="data_retention",
+                action=f"Deleted {count} old conversations (older than {safety_config.CONVERSATION_RETENTION_DAYS} days)",
+                success=True,
             )
 
         return count
@@ -386,7 +366,8 @@ class DataRetentionManager:
             Number of records deleted
         """
         cutoff_date = (
-            datetime.now(timezone.utc) - timedelta(days=safety_config.ANALYTICS_RETENTION_DAYS)
+            datetime.now(timezone.utc)
+            - timedelta(days=safety_config.ANALYTICS_RETENTION_DAYS)
         ).isoformat()
 
         # Count records
@@ -396,9 +377,9 @@ class DataRetentionManager:
             FROM learning_analytics
             WHERE date < ?
             """,
-            (cutoff_date,)
+            (cutoff_date,),
         )
-        count = count_result[0]['count'] if count_result else 0
+        count = count_result[0]["count"] if count_result else 0
 
         if count > 0:
             # Delete old analytics
@@ -407,14 +388,14 @@ class DataRetentionManager:
                 DELETE FROM learning_analytics
                 WHERE date < ?
                 """,
-                (cutoff_date,)
+                (cutoff_date,),
             )
 
             # Log to audit trail
             self._audit_log(
-                event_type='data_retention',
-                action=f'Deleted {count} old analytics records (older than {safety_config.ANALYTICS_RETENTION_DAYS} days)',
-                success=True
+                event_type="data_retention",
+                action=f"Deleted {count} old analytics records (older than {safety_config.ANALYTICS_RETENTION_DAYS} days)",
+                success=True,
             )
 
         return count
@@ -435,9 +416,9 @@ class DataRetentionManager:
             FROM auth_tokens
             WHERE expires_at < ? OR is_valid = 0
             """,
-            (now,)
+            (now,),
         )
-        count = count_result[0]['count'] if count_result else 0
+        count = count_result[0]["count"] if count_result else 0
 
         if count > 0:
             # Delete expired and invalid tokens
@@ -446,7 +427,7 @@ class DataRetentionManager:
                 DELETE FROM auth_tokens
                 WHERE expires_at < ? OR is_valid = 0
                 """,
-                (now,)
+                (now,),
             )
 
         return count
@@ -468,9 +449,9 @@ class DataRetentionManager:
         """
         # Always return retention policy, even if data volumes can't be retrieved
         result = {
-            'retention_policy': safety_config.get_retention_policy(),
-            'cleanup_enabled': safety_config.DATA_CLEANUP_ENABLED,
-            'cleanup_schedule': f"Daily at {safety_config.DATA_CLEANUP_HOUR:02d}:00"
+            "retention_policy": safety_config.get_retention_policy(),
+            "cleanup_enabled": safety_config.DATA_CLEANUP_ENABLED,
+            "cleanup_schedule": f"Daily at {safety_config.DATA_CLEANUP_HOUR:02d}:00",
         }
 
         try:
@@ -482,23 +463,29 @@ class DataRetentionManager:
                 incidents = self.db.execute_query(
                     "SELECT COUNT(*) as total, SUM(CASE WHEN resolved = 1 THEN 1 ELSE 0 END) as resolved FROM safety_incidents"
                 )
-                tables_info.append({
-                    'table': 'safety_incidents',
-                    'retention_days': safety_config.SAFETY_LOG_RETENTION_DAYS,
-                    'total_records': incidents[0]['total'] if incidents else 0,
-                    'resolved_records': incidents[0]['resolved'] if incidents else 0
-                })
+                tables_info.append(
+                    {
+                        "table": "safety_incidents",
+                        "retention_days": safety_config.SAFETY_LOG_RETENTION_DAYS,
+                        "total_records": incidents[0]["total"] if incidents else 0,
+                        "resolved_records": (
+                            incidents[0]["resolved"] if incidents else 0
+                        ),
+                    }
+                )
             except DB_ERRORS as e:
                 logger.debug(f"Failed to query safety_incidents count: {e}")
 
             # Audit logs
             try:
                 audit = self.db.execute_query("SELECT COUNT(*) as total FROM audit_log")
-                tables_info.append({
-                    'table': 'audit_log',
-                    'retention_days': safety_config.AUDIT_LOG_RETENTION_DAYS,
-                    'total_records': audit[0]['total'] if audit else 0
-                })
+                tables_info.append(
+                    {
+                        "table": "audit_log",
+                        "retention_days": safety_config.AUDIT_LOG_RETENTION_DAYS,
+                        "total_records": audit[0]["total"] if audit else 0,
+                    }
+                )
             except DB_ERRORS as e:
                 logger.debug(f"Failed to query audit_log count: {e}")
 
@@ -507,42 +494,54 @@ class DataRetentionManager:
                 sessions = self.db.execute_query(
                     "SELECT COUNT(*) as total, SUM(CASE WHEN ended_at IS NOT NULL THEN 1 ELSE 0 END) as ended FROM sessions"
                 )
-                tables_info.append({
-                    'table': 'sessions',
-                    'retention_days': safety_config.SESSION_RETENTION_DAYS,
-                    'total_records': sessions[0]['total'] if sessions else 0,
-                    'ended_sessions': sessions[0]['ended'] if sessions else 0
-                })
+                tables_info.append(
+                    {
+                        "table": "sessions",
+                        "retention_days": safety_config.SESSION_RETENTION_DAYS,
+                        "total_records": sessions[0]["total"] if sessions else 0,
+                        "ended_sessions": sessions[0]["ended"] if sessions else 0,
+                    }
+                )
             except DB_ERRORS as e:
                 logger.debug(f"Failed to query sessions count: {e}")
 
             # Conversations
             try:
-                conversations = self.db.execute_query("SELECT COUNT(*) as total FROM conversations")
-                tables_info.append({
-                    'table': 'conversations',
-                    'retention_days': safety_config.CONVERSATION_RETENTION_DAYS,
-                    'total_records': conversations[0]['total'] if conversations else 0
-                })
+                conversations = self.db.execute_query(
+                    "SELECT COUNT(*) as total FROM conversations"
+                )
+                tables_info.append(
+                    {
+                        "table": "conversations",
+                        "retention_days": safety_config.CONVERSATION_RETENTION_DAYS,
+                        "total_records": (
+                            conversations[0]["total"] if conversations else 0
+                        ),
+                    }
+                )
             except DB_ERRORS as e:
                 logger.debug(f"Failed to query conversations count: {e}")
 
             # Analytics
             try:
-                analytics = self.db.execute_query("SELECT COUNT(*) as total FROM learning_analytics")
-                tables_info.append({
-                    'table': 'learning_analytics',
-                    'retention_days': safety_config.ANALYTICS_RETENTION_DAYS,
-                    'total_records': analytics[0]['total'] if analytics else 0
-                })
+                analytics = self.db.execute_query(
+                    "SELECT COUNT(*) as total FROM learning_analytics"
+                )
+                tables_info.append(
+                    {
+                        "table": "learning_analytics",
+                        "retention_days": safety_config.ANALYTICS_RETENTION_DAYS,
+                        "total_records": analytics[0]["total"] if analytics else 0,
+                    }
+                )
             except DB_ERRORS as e:
                 logger.debug(f"Failed to query learning_analytics count: {e}")
 
-            result['data_volumes'] = tables_info
+            result["data_volumes"] = tables_info
 
         except DB_ERRORS as e:
             logger.error(f"Failed to get data volumes: {e}")
-            result['data_volumes'] = []
+            result["data_volumes"] = []
 
         return result
 
@@ -559,13 +558,13 @@ class DataRetentionManager:
                 (
                     datetime.now(timezone.utc).isoformat(),
                     event_type,
-                    'system',
-                    'system',
+                    "system",
+                    "system",
                     action,
-                    'localhost',
-                    'DataRetentionManager',
-                    1 if success else 0
-                )
+                    "localhost",
+                    "DataRetentionManager",
+                    1 if success else 0,
+                ),
             )
         except DB_ERRORS as e:
             logger.error(f"Failed to write audit log: {e}")
@@ -573,13 +572,15 @@ class DataRetentionManager:
     def _log_cleanup_summary(self, results: Dict):
         """Log cleanup summary to audit trail"""
         total_deleted = sum(
-            task.get('deleted_count', 0)
-            for task in results['tasks'].values()
+            task.get("deleted_count", 0)
+            for task in results["tasks"].values()
             if isinstance(task, dict)
         )
 
-        summary = f"Data retention cleanup completed: {total_deleted} total records deleted"
-        self._audit_log('data_retention', summary, True)
+        summary = (
+            f"Data retention cleanup completed: {total_deleted} total records deleted"
+        )
+        self._audit_log("data_retention", summary, True)
 
 
 # Singleton instance
@@ -587,7 +588,4 @@ data_retention_manager = DataRetentionManager()
 
 
 # Export public interface
-__all__ = [
-    'DataRetentionManager',
-    'data_retention_manager'
-]
+__all__ = ["DataRetentionManager", "data_retention_manager"]

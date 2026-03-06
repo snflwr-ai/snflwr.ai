@@ -7,7 +7,7 @@
 
 # GUI Framework (for desktop app development)
 # tkinter - Built-in Python module (may require system package: python3-tk)
-Pillow==11.1.0                # Image processing for UI
+Pillow==12.1.1                # Image processing for UI
 customtkinter==5.2.2          # Modern UI components
 
 # Testing & Quality

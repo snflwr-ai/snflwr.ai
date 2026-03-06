@@ -242,6 +242,10 @@ def main():
     print(f"\nSource (SQLite):")
     print(f"  Path: {sqlite_path}")
 
+    _pg_host = str(pg_config['host'])
+    _pg_port = str(pg_config['port'])
+    _pg_db = str(pg_config['database'])
+    _pg_user_len = len(pg_config['user'])
     print(f"\nDestination (PostgreSQL):")
     print(f"  Host: {pg_config['host']}:{pg_config['port']}")
     print(f"  Database: {pg_config['database']}")

@@ -171,7 +171,7 @@ def create_profile(
     try:
         # Verify authorization: Parents can only create for themselves
         if session.role != 'admin' and session.user_id != request.parent_id:
-            logger.warning(f"Access denied: {session.user_id} tried to create profile for {request.parent_id}")
+            logger.warning(f"Access denied: {session.user_id!r} tried to create profile for {request.parent_id!r}")
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: You can only create profiles for yourself"
@@ -196,7 +196,7 @@ def create_profile(
             calculated_age = calculate_age_from_birthdate(request.birthdate)
             birthdate_to_store = request.birthdate
 
-            logger.info(f"Age calculated from birthdate: {calculated_age} years old")
+            logger.info("Age calculated from birthdate")
 
         elif request.age:
             # Use provided age (less accurate, but allowed)
@@ -290,8 +290,8 @@ def create_profile(
         audit_log('create', 'profile', profile.profile_id, session)
 
         logger.info(
-            f"Profile created: {profile.profile_id} by {session.user_id}, "
-            f"age={calculated_age}, coppa_compliant={age_verification_result.is_compliant}"
+            f"Profile created: {profile.profile_id!r} by {session.user_id!r}, "
+            f"coppa_compliant={age_verification_result.is_compliant!r}"
         )
 
         return {
@@ -616,7 +616,7 @@ def export_profile_data(
         # Audit log
         audit_log('export', 'profile_data', profile_id, session)
 
-        logger.info(f"Data export completed for profile {profile_id} by {session.user_id}")
+        logger.info(f"Data export completed for profile {profile_id!r} by {session.user_id!r}")
 
         # Return as downloadable JSON file
         return JSONResponse(

@@ -14,6 +14,7 @@ import os
 import sys
 import argparse
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -72,7 +73,9 @@ def validate_smtp_config():
         issues.append("SMTP_FROM_EMAIL is not set")
 
     # Check for default/example values
-    if 'example.com' in system_config.SMTP_FROM_EMAIL.lower():
+    _smtp_email = system_config.SMTP_FROM_EMAIL.lower()
+    _smtp_domain = _smtp_email.split('@', 1)[1] if '@' in _smtp_email else _smtp_email
+    if _smtp_domain == 'example.com':
         warnings.append(f"SMTP_FROM_EMAIL contains 'example.com': {system_config.SMTP_FROM_EMAIL}")
 
     if system_config.SMTP_PASSWORD.startswith('SG.YOUR'):
@@ -115,9 +118,11 @@ def validate_cors_origins():
         warnings.append("CORS_ORIGINS is empty - API will not accept requests")
 
     for origin in origins:
-        if 'localhost' in origin:
+        _parsed = urlparse(origin)
+        _netloc = _parsed.netloc or _parsed.path
+        if _netloc == 'localhost' or _netloc.startswith('localhost:'):
             warnings.append(f"CORS_ORIGINS contains localhost: {origin} - OK for dev, not for production")
-        elif 'yourdomain.com' in origin:
+        elif _netloc == 'yourdomain.com' or _netloc.endswith('.yourdomain.com'):
             issues.append(f"CORS_ORIGINS contains example domain: {origin}")
 
     return issues, warnings

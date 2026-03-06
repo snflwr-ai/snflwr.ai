@@ -580,10 +580,10 @@ class EmailService:
             # Log attempt
             if success:
                 self._log_email_attempt(user_id, user_email, "sent", None)
-                logger.info(f"Password reset email sent to {mask_email(user_email)}")
+                logger.info("Password reset email sent")
             else:
                 self._log_email_attempt(user_id, user_email, "failed", error)
-                logger.error(f"Failed to send password reset email to {mask_email(user_email)}: {error}")
+                logger.error(f"Failed to send password reset email: {error}")
 
             return success, error
 

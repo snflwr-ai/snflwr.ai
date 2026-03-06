@@ -704,7 +704,7 @@ class KeyManager:
             }
         )
 
-        logger.warning(f"Key rotation initiated. New key version: {metadata['key_version']}")
+        logger.warning("Key rotation completed successfully")
 
         return old_key, new_key
 

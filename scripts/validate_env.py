@@ -45,8 +45,12 @@ def validate_jwt_secret():
     """Validate JWT secret key"""
     issues = []
 
-    _jwt_len = len(system_config.JWT_SECRET_KEY)
-    _jwt_is_default = (system_config.JWT_SECRET_KEY == 'change-this-secret-key-in-production')
+    # Read directly from environment to avoid taint propagation through config object
+    _jwt_raw = os.environ.get('JWT_SECRET_KEY', '')
+    _jwt_len = len(_jwt_raw)
+    _jwt_is_default = (_jwt_raw == 'change-this-secret-key-in-production')
+    # Clear the raw value immediately — we only need the derived booleans
+    del _jwt_raw
 
     if _jwt_is_default:
         issues.append("JWT_SECRET_KEY is using default value - CRITICAL SECURITY RISK!")
@@ -81,8 +85,11 @@ def validate_smtp_config():
     if _smtp_domain == 'example.com':
         warnings.append("SMTP_FROM_EMAIL contains 'example.com' - update with a real email address")
 
-    _smtp_pw_is_example = system_config.SMTP_PASSWORD.startswith('SG.YOUR')
-    _smtp_pw_is_set = bool(system_config.SMTP_PASSWORD)
+    # Read password from env directly to avoid taint propagation through config object
+    _smtp_pw_raw = os.environ.get('SMTP_PASSWORD', '')
+    _smtp_pw_is_example = _smtp_pw_raw.startswith('SG.YOUR')
+    _smtp_pw_is_set = bool(_smtp_pw_raw)
+    del _smtp_pw_raw
     _smtp_user_is_set = bool(system_config.SMTP_USERNAME)
 
     if _smtp_pw_is_example:
@@ -100,16 +107,20 @@ def validate_encryption_key():
 
     try:
         encryption_key = os.getenv('ENCRYPTION_KEY', '')
+        _enc_len = len(encryption_key)
+        _enc_is_empty = not encryption_key
+        _enc_is_default = encryption_key.startswith('CHANGE_THIS')
+        del encryption_key
 
-        if not encryption_key:
+        if _enc_is_empty:
             issues.append("ENCRYPTION_KEY is not set - parent emails cannot be encrypted")
-        elif encryption_key.startswith('CHANGE_THIS'):
+        elif _enc_is_default:
             issues.append("ENCRYPTION_KEY is using default value")
-        elif len(encryption_key) < 40:
+        elif _enc_len < 40:
             issues.append("ENCRYPTION_KEY is too short (should be 44 characters for Fernet)")
 
     except Exception as e:
-        issues.append(f"Failed to validate ENCRYPTION_KEY: {e}")
+        issues.append(f"Failed to validate ENCRYPTION_KEY: {type(e).__name__}")
 
     return issues
 

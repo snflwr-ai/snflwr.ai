@@ -969,7 +969,7 @@ class ConversationStore:
                 all_messages_rows = []
 
             # Group messages by conversation_id
-            messages_by_conv = {}
+            messages_by_conv: dict = {}
             for msg_row in all_messages_rows:
 
                 def gm(key, idx):

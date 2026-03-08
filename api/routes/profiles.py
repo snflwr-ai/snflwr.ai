@@ -11,7 +11,7 @@ import re
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator, Field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from core.profile_manager import (
@@ -429,7 +429,7 @@ def update_profile(
         profile_manager = ProfileManager(auth_manager.db)
 
         # Build kwargs, filtering out None values
-        update_fields = {}
+        update_fields: Dict[str, Any] = {}
         if request.name is not None:
             update_fields["name"] = request.name
         if request.age is not None:

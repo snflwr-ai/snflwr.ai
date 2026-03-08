@@ -23,7 +23,7 @@ from config import system_config
 try:
     from redis.exceptions import RedisError
 except ImportError:
-    RedisError = OSError
+    RedisError = OSError  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 
@@ -639,7 +639,7 @@ def export_user_data(self, user_id: str, export_format: str = 'json') -> Optiona
         profiles = db_manager.execute_read(profiles_query, (user_id,))
 
         # Get all messages for each profile
-        all_data = {
+        all_data: Dict[str, Any] = {
             'user': user[0] if user else None,
             'profiles': []
         }

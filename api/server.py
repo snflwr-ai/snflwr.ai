@@ -43,7 +43,7 @@ logger = get_logger(__name__)
 try:
     from redis.exceptions import RedisError
 except ImportError:
-    RedisError = OSError
+    RedisError = OSError  # type: ignore[misc,assignment]
 
 # Rate limiter for unauthenticated endpoints
 from utils.rate_limiter import RateLimiter

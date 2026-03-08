@@ -97,7 +97,7 @@ class KeyAuditLogger:
 
     def get_recent_operations(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Get recent key operations for audit review."""
-        operations = []
+        operations: list = []
 
         if not self.audit_file.exists():
             return operations
@@ -340,7 +340,7 @@ def check_key_rotation_status(
         "key_age_days": 0,
         "days_until_recommended": DEFAULT_KEY_MAX_AGE_DAYS,
         "warning_message": None,
-    }
+    }  # type: Dict[str, Any]
 
     if not metadata_file.exists():
         result["warning_message"] = "No key metadata found. Cannot determine key age."
@@ -699,7 +699,7 @@ class KeyManager:
             operation="key_rotated",
             success=True,
             details={
-                "old_version": metadata["key_version"] - 1,
+                "old_version": int(metadata["key_version"]) - 1,  # type: ignore[call-overload]
                 "new_version": metadata["key_version"],
                 "method": metadata["method"],
             },

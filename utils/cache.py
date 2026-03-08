@@ -108,8 +108,8 @@ class RedisCache:
         self.db = db
         self.password = password or os.getenv("REDIS_PASSWORD", None)
 
-        self._client: Optional[redis.Redis] = None
-        self._sentinel: Optional[Sentinel] = None
+        self._client: Optional[redis.Redis] = None  # type: ignore[no-redef]
+        self._sentinel: Optional[Sentinel] = None  # type: ignore[no-redef]
         self._stats = {
             "hits": 0,
             "misses": 0,
@@ -573,7 +573,7 @@ class RedisCache:
 
     def get_stats(self) -> dict:
         """Get cache statistics including Sentinel and degraded-mode info"""
-        stats = self._stats.copy()
+        stats: dict = self._stats.copy()
         stats["degraded"] = self._degraded
 
         if self.enabled and self._client:

@@ -4,7 +4,7 @@ Safety Incident Logging and Reporting System
 Comprehensive tracking, analysis, and reporting of safety incidents with real-time WebSocket notifications
 """
 
-from typing import Optional, Dict, List, Tuple
+from typing import Any, Optional, Dict, List, Tuple
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 import json
@@ -20,7 +20,7 @@ from utils.logger import get_logger, sanitize_log_value
 try:
     from cryptography.fernet import InvalidToken
 except ImportError:
-    InvalidToken = Exception
+    InvalidToken = Exception  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 
@@ -645,7 +645,7 @@ class IncidentLogger:
                 )
 
             # Process results
-            stats = {
+            stats: Dict[str, Any] = {
                 "total_incidents": 0,
                 "by_severity": {},
                 "unresolved": 0,
@@ -759,7 +759,7 @@ class IncidentLogger:
                     (parent_id, cutoff_date),
                 )
 
-            report = {
+            report: Dict[str, Any] = {
                 "parent_id": parent_id,
                 "report_period_days": days,
                 "generated_at": datetime.now(timezone.utc).isoformat(),

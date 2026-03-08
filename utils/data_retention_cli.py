@@ -9,7 +9,7 @@ import argparse
 import sys
 import json
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Any, Dict
 
 from utils.data_retention import data_retention_manager
 from config import safety_config
@@ -291,7 +291,7 @@ Examples:
         from storage.database import db_manager
         from storage.db_adapters import DB_ERRORS
 
-        categories = [
+        categories: list[dict[str, Any]] = [
             {
                 "name": "Safety Incidents (resolved)",
                 "query": "SELECT COUNT(*) as count FROM safety_incidents WHERE resolved = 1 AND resolved_at < ?",
@@ -329,15 +329,15 @@ Examples:
 
         total = 0
         for cat in categories:
-            if cat["retention_days"] > 0:
+            if int(cat["retention_days"]) > 0:
                 cutoff = (
-                    datetime.now(timezone.utc) - timedelta(days=cat["retention_days"])
+                    datetime.now(timezone.utc) - timedelta(days=int(cat["retention_days"]))
                 ).isoformat()
             else:
                 cutoff = datetime.now(timezone.utc).isoformat()
 
             try:
-                result = db_manager.execute_query(cat["query"], (cutoff,))
+                result = db_manager.execute_query(str(cat["query"]), (cutoff,))
                 count = result[0]["count"] if result else 0
             except DB_ERRORS:
                 count = 0
@@ -346,7 +346,7 @@ Examples:
             icon = "[DELETE] " if count > 0 else "   "
             retention_info = (
                 f"(>{cat['retention_days']}d old)"
-                if cat["retention_days"] > 0
+                if int(cat["retention_days"]) > 0
                 else "(expired)"
             )
             print(f"   {icon}{cat['name']}: {count:,} records {retention_info}")

@@ -1050,7 +1050,7 @@ class DatabaseManager:
 
     def execute_read(self, query: str, params: Tuple = ()) -> List[Union[Dict, Any]]:
         """Alias for execute_query for backward compatibility"""
-        return self.execute_query(query, params)
+        return self.execute_query(query, params)  # type: ignore[return-value]
 
     def execute_write(self, query: str, params: Tuple = ()) -> int:
         """
@@ -1072,7 +1072,7 @@ class DatabaseManager:
             )
             auto_commit = not in_transaction
 
-            result = adapter.execute_write(query, params, auto_commit=auto_commit)
+            result = adapter.execute_write(query, params, auto_commit=auto_commit)  # type: ignore[call-arg]
 
             # Keep connection open for reuse (closed in DatabaseManager.close())
             # Transactions are managed by the transaction() context manager
@@ -1250,7 +1250,7 @@ class DatabaseManager:
         """Get database statistics"""
 
         try:
-            stats = {}
+            stats: dict = {}
             stats["database_type"] = self.db_type
 
             # Count tables - whitelist of valid table names

@@ -9,7 +9,7 @@ and must work correctly in multi-instance deployments.
 
 import os
 import time
-from typing import Tuple, Optional
+from typing import Any, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 
 from utils.cache import cache
@@ -18,7 +18,7 @@ from utils.logger import get_logger
 try:
     from redis.exceptions import RedisError
 except ImportError:
-    RedisError = OSError
+    RedisError = OSError  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 
@@ -437,7 +437,7 @@ class TokenBucketRateLimiter:
 
 
 # Predefined rate limit configurations
-RATE_LIMITS = {
+RATE_LIMITS: Dict[str, Dict[str, Any]] = {
     "auth": {
         "max_requests": 10,
         "window_seconds": 60,
@@ -487,8 +487,8 @@ def check_rate_limit(identifier: str, limit_type: str = "api") -> Tuple[bool, di
 
     return rate_limiter.check_rate_limit(
         identifier=identifier,
-        max_requests=config["max_requests"],
-        window_seconds=config["window_seconds"],
+        max_requests=config["max_requests"],  # type: ignore[call-overload]
+        window_seconds=config["window_seconds"],  # type: ignore[call-overload]
         limit_type=limit_type,
     )
 

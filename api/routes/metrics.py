@@ -9,7 +9,7 @@ from api.middleware.auth import require_admin
 from datetime import datetime, timezone
 import psutil
 import time
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from utils.logger import get_logger, logger_manager
 from storage.database import db_manager
@@ -429,7 +429,7 @@ async def detailed_health(session: AuthSession = Depends(require_admin)):
 
     Returns JSON with health status of all components
     """
-    health_status = {
+    health_status: Dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "components": {},

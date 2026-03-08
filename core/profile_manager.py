@@ -408,7 +408,7 @@ class ProfileManager:
                 subject_rows = self.db.execute_query(query, tuple(profile_ids))
 
                 # Build lookup dict mapping profile_id to list of subjects
-                subjects_map = {}
+                subjects_map: dict = {}
                 for row in subject_rows:
                     pid = row["profile_id"] if isinstance(row, dict) else row[0]
                     subject = row["subject"] if isinstance(row, dict) else row[1]

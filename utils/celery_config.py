@@ -24,7 +24,7 @@ from utils.logger import get_logger
 try:
     from redis.exceptions import RedisError
 except ImportError:
-    RedisError = OSError
+    RedisError = OSError  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 

@@ -5,7 +5,7 @@ Simplified, robust interface for Ollama operations with comprehensive error hand
 Includes circuit breaker pattern to prevent cascading failures
 """
 
-import requests
+import requests  # type: ignore[import-untyped]
 import json
 import random
 from typing import Optional, Dict, List, Generator, Tuple, Callable

@@ -24,10 +24,10 @@ except ImportError:
     logger.info("sentry-sdk not installed, error tracking unavailable")
 
 # SQLAlchemy integration is optional — only available if sqlalchemy is installed
-_SqlalchemyIntegration = None
+_SqlalchemyIntegration: type = type(None)
 if _SENTRY_AVAILABLE:
     try:
-        from sentry_sdk.integrations.sqlalchemy import (
+        from sentry_sdk.integrations.sqlalchemy import (  # type: ignore[no-redef]
             SqlalchemyIntegration as _SqlalchemyIntegration,
         )
     except Exception:
@@ -267,7 +267,7 @@ def capture_message(message: str, level: str = "info", **kwargs):
                 scope.set_extra(key, value)
 
         # Capture message
-        sentry_sdk.capture_message(message, level=level)
+        sentry_sdk.capture_message(message, level=level)  # type: ignore[arg-type]
 
 
 def add_breadcrumb(

@@ -8,7 +8,7 @@ import os
 import secrets
 import hashlib
 import base64
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from pathlib import Path
 import json
 
@@ -33,12 +33,12 @@ except ImportError as _crypto_import_error:
         RuntimeWarning,
     )
 
-    class InvalidToken(Exception):
+    class InvalidToken(Exception):  # type: ignore[no-redef]
         """Stub for cryptography.fernet.InvalidToken when package unavailable."""
 
         pass
 
-    class Fernet:
+    class Fernet:  # type: ignore[no-redef]
         """
         INSECURE FALLBACK — raises errors instead of silently pretending to encrypt.
         Only allows operation in development/testing. Any attempt to encrypt in
@@ -71,14 +71,14 @@ except ImportError as _crypto_import_error:
 
         pass
 
-    class hashes:
+    class hashes:  # type: ignore[no-redef]
         """Stub module for cryptography.hazmat.primitives.hashes"""
 
         @staticmethod
         def SHA256():
             return _SHA256Stub()
 
-    class PBKDF2HMAC:
+    class PBKDF2HMAC:  # type: ignore[no-redef]
         def __init__(
             self,
             algorithm=None,
@@ -644,7 +644,7 @@ class SecureStorage:
             logger.error(f"Secure storage failed for {key}: {e}")
             return False
 
-    def retrieve(self, key: str) -> Optional[dict]:
+    def retrieve(self, key: str) -> Optional[Any]:
         """
         Retrieve and decrypt data
 

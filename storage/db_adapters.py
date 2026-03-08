@@ -29,9 +29,9 @@ if POSTGRESQL_AVAILABLE:
     DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg2.IntegrityError)
     DB_OPERATIONAL_ERRORS = (sqlite3.OperationalError, psycopg2.OperationalError)
 else:
-    DB_ERRORS = (sqlite3.Error,)
-    DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError,)
-    DB_OPERATIONAL_ERRORS = (sqlite3.OperationalError,)
+    DB_ERRORS = (sqlite3.Error,)  # type: ignore[assignment]
+    DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError,)  # type: ignore[assignment]
+    DB_OPERATIONAL_ERRORS = (sqlite3.OperationalError,)  # type: ignore[assignment]
 
 logger = get_logger(__name__)
 

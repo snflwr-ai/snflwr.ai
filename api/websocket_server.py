@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 try:
     from redis.exceptions import RedisError
 except ImportError:
-    RedisError = OSError  # Fallback so except RedisError still works
+    RedisError = OSError  # type: ignore[misc,assignment]  # Fallback so except RedisError still works
 
 # Redis Pub/Sub configuration
 REDIS_PUBSUB_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
@@ -382,7 +382,7 @@ class ConnectionManager:
 
         Internal method - use broadcast_all for cross-instance support.
         """
-        all_connections = []
+        all_connections: list = []
         for connections in self.parent_connections.values():
             all_connections.extend(connections)
 

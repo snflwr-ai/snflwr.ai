@@ -22,6 +22,7 @@ from safety.pipeline import SafetyPipeline, SafetyResult, Severity, Category
 from safety.safety_monitor import SafetyMonitor, SafetyAlert, MonitoringProfile
 
 _safety_monitor_mod = sys.modules["safety.safety_monitor"]
+_cs_module = sys.modules["storage.conversation_store"]
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +63,7 @@ def mock_db():
 @pytest.fixture
 def conversation_store_encrypted(mock_db, encryption):
     """ConversationStore wired to a real EncryptionManager with encryption ON."""
-    with patch("storage.conversation_store.safety_config") as mock_safety_cfg:
+    with patch.object(_cs_module, "safety_config") as mock_safety_cfg:
         mock_safety_cfg.ENCRYPT_CONVERSATIONS = True
         store = ConversationStore(db=mock_db, encryption=encryption)
         # Re-patch for the duration of every method call within the store
@@ -72,7 +73,7 @@ def conversation_store_encrypted(mock_db, encryption):
 @pytest.fixture
 def conversation_store_unencrypted(mock_db, encryption):
     """ConversationStore wired to a real EncryptionManager with encryption OFF."""
-    with patch("storage.conversation_store.safety_config") as mock_safety_cfg:
+    with patch.object(_cs_module, "safety_config") as mock_safety_cfg:
         mock_safety_cfg.ENCRYPT_CONVERSATIONS = False
         store = ConversationStore(db=mock_db, encryption=encryption)
         yield store, mock_db, encryption, mock_safety_cfg
@@ -174,7 +175,7 @@ class TestConversationEncryptionFlow:
         broken_enc = MagicMock()
         broken_enc.encrypt_string.side_effect = Exception("Key corrupted")
 
-        with patch("storage.conversation_store.safety_config") as mock_cfg:
+        with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = True
             store = ConversationStore(db=mock_db, encryption=broken_enc)
 
@@ -757,7 +758,7 @@ class TestDecryptionFailureSentinel:
         # Simulate garbled ciphertext that can't be decrypted
         garbled = "dGhpcyBpcyBub3QgcmVhbCBjaXBoZXJ0ZXh0"  # base64 but not valid Fernet
 
-        with patch("storage.conversation_store.safety_config") as mock_cfg:
+        with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = True
             result = store._maybe_decrypt(garbled)
 
@@ -776,7 +777,7 @@ class TestDecryptionFailureSentinel:
 
         plaintext = "Hello, this is a normal message"
 
-        with patch("storage.conversation_store.safety_config") as mock_cfg:
+        with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = False
             result = store._maybe_decrypt(plaintext)
 
@@ -795,7 +796,7 @@ class TestDecryptionFailureSentinel:
         original = "This is a secret message"
         encrypted = enc.encrypt_string(original)
 
-        with patch("storage.conversation_store.safety_config") as mock_cfg:
+        with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = True
             result = store._maybe_decrypt(encrypted)
 
@@ -825,7 +826,7 @@ class TestEncryptedSearch:
             return original_write.return_value
         db.execute_write.side_effect = capture_write
 
-        with patch("storage.conversation_store.safety_config") as mock_cfg:
+        with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = True
             store.add_message(
                 conversation_id="conv123",
@@ -862,7 +863,7 @@ class TestEncryptedSearch:
         db.execute_write.return_value = None
         store = ConversationStore(db=db, encryption=enc)
 
-        with patch("storage.conversation_store.safety_config") as mock_cfg:
+        with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = True
             store.search_conversations(profile_id="prof123", search_text="photosynthesis")
 
@@ -885,7 +886,7 @@ class TestEncryptedSearch:
         db.execute_write.return_value = None
         store = ConversationStore(db=db, encryption=enc)
 
-        with patch("storage.conversation_store.safety_config") as mock_cfg:
+        with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = True
             result = store.search_conversations(profile_id="prof123")
 

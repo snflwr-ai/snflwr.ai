@@ -228,12 +228,10 @@ class PrometheusMetrics:
             )
 
             # Count messages (last 24 hours)
-            messages_24h = db_manager.execute_read(
-                """
+            messages_24h = db_manager.execute_read("""
                 SELECT COUNT(*) as count FROM messages
                 WHERE timestamp > datetime('now', '-24 hours')
-                """
-            )
+                """)
             message_count = messages_24h[0]["count"] if messages_24h else 0
 
             metrics.append(
@@ -258,12 +256,10 @@ class PrometheusMetrics:
 
         try:
             # Count safety incidents (last 24 hours)
-            incidents_24h = db_manager.execute_read(
-                """
+            incidents_24h = db_manager.execute_read("""
                 SELECT COUNT(*) as count FROM safety_incidents
                 WHERE timestamp > datetime('now', '-24 hours')
-                """
-            )
+                """)
             incident_count = incidents_24h[0]["count"] if incidents_24h else 0
 
             metrics.append(

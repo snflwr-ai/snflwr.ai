@@ -2,9 +2,14 @@
 Tests for api/middleware/auth.py — audit log helpers, resource authorization,
 Redis rate limiter, and audit failure tracking.
 """
+import sys
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 from fastapi import HTTPException
+
+import safety.safety_monitor  # noqa: F401 — ensure module is in sys.modules
+_safety_monitor_mod = sys.modules["safety.safety_monitor"]
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +239,7 @@ class TestVerifyAlertAccess:
     @pytest.mark.asyncio
     async def test_alert_not_found_raises_404(self, mock_session):
         from api.middleware.auth import ResourceAuthorization
-        with patch("safety.safety_monitor.safety_monitor") as mock_sm:
+        with patch.object(_safety_monitor_mod, "safety_monitor") as mock_sm:
             mock_sm.get_alert.return_value = None
             with pytest.raises(HTTPException) as exc_info:
                 await ResourceAuthorization.verify_alert_access("missing-alert", mock_session)
@@ -244,7 +249,7 @@ class TestVerifyAlertAccess:
     async def test_wrong_parent_raises_403(self, mock_session):
         from api.middleware.auth import ResourceAuthorization
         mock_alert = MagicMock(parent_id="other-parent")
-        with patch("safety.safety_monitor.safety_monitor") as mock_sm:
+        with patch.object(_safety_monitor_mod, "safety_monitor") as mock_sm:
             mock_sm.get_alert.return_value = mock_alert
             with pytest.raises(HTTPException) as exc_info:
                 await ResourceAuthorization.verify_alert_access("alert-1", mock_session)
@@ -254,7 +259,7 @@ class TestVerifyAlertAccess:
     async def test_correct_parent_allowed(self, mock_session):
         from api.middleware.auth import ResourceAuthorization
         mock_alert = MagicMock(parent_id="user-123")
-        with patch("safety.safety_monitor.safety_monitor") as mock_sm:
+        with patch.object(_safety_monitor_mod, "safety_monitor") as mock_sm:
             mock_sm.get_alert.return_value = mock_alert
             result = await ResourceAuthorization.verify_alert_access("alert-1", mock_session)
         assert result == mock_session

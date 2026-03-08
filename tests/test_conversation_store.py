@@ -4,12 +4,21 @@ Covers: search_conversations, get_conversation_messages, get_conversations_by_da
         get_statistics, update/delete conversation, error paths, encryption, g() helper.
 """
 
+import sys
+
 import pytest
 import sqlite3
 from datetime import datetime, timezone, timedelta, date
 from unittest.mock import MagicMock, patch, call
 
 from storage.conversation_store import ConversationStore, Conversation, Message
+
+# Grab the actual module object so patch.object bypasses the name collision
+# between the ``storage.conversation_store`` *submodule* and the
+# ``conversation_store`` *instance* re-exported by ``storage/__init__.py``.
+# On Python 3.10 the instance wins when resolving the dotted patch path,
+# causing AttributeError.  Using the module directly avoids the ambiguity.
+_cs_module = sys.modules["storage.conversation_store"]
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +108,7 @@ def mock_enc():
 @pytest.fixture
 def store(mock_db, mock_enc):
     """ConversationStore with mock DB and encryption, encryption disabled."""
-    with patch("storage.conversation_store.safety_config") as mock_cfg:
+    with patch.object(_cs_module, "safety_config") as mock_cfg:
         mock_cfg.ENCRYPT_CONVERSATIONS = False
         s = ConversationStore(db=mock_db, encryption=mock_enc)
         yield s, mock_db, mock_enc, mock_cfg
@@ -108,7 +117,7 @@ def store(mock_db, mock_enc):
 @pytest.fixture
 def store_enc(mock_db, mock_enc):
     """ConversationStore with mock DB and encryption, encryption enabled."""
-    with patch("storage.conversation_store.safety_config") as mock_cfg:
+    with patch.object(_cs_module, "safety_config") as mock_cfg:
         mock_cfg.ENCRYPT_CONVERSATIONS = True
         s = ConversationStore(db=mock_db, encryption=mock_enc)
         yield s, mock_db, mock_enc, mock_cfg

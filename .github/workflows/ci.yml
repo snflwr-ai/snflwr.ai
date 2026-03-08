@@ -112,19 +112,10 @@ jobs:
       run: mkdir -p data/logs
 
     - name: Start Redis
-      uses: supercharge/redis-github-action@1.8.0
-      with:
-        redis-version: 7
-
-    - name: Verify Redis is running
       run: |
-        for i in 1 2 3 4 5; do
-          if docker exec $(docker ps -q --filter ancestor=redis:7) redis-cli ping 2>/dev/null | grep -q PONG; then
-            echo "PONG"; exit 0
-          fi
-          sleep 1
-        done
-        echo "Redis not responding"; exit 1
+        sudo apt-get update -qq && sudo apt-get install -y -qq redis-server
+        redis-server --daemonize yes
+        redis-cli ping | grep -q PONG && echo "Redis ready"
 
     - name: Run unit tests with coverage
       env:
@@ -307,9 +298,10 @@ jobs:
       run: mkdir -p data/logs
 
     - name: Start Redis
-      uses: supercharge/redis-github-action@1.8.0
-      with:
-        redis-version: 7
+      run: |
+        sudo apt-get update -qq && sudo apt-get install -y -qq redis-server
+        redis-server --daemonize yes
+        redis-cli ping | grep -q PONG && echo "Redis ready"
 
     - name: Run safety pipeline tests
       env:
@@ -345,9 +337,10 @@ jobs:
       run: mkdir -p data/logs
 
     - name: Start Redis
-      uses: supercharge/redis-github-action@1.8.0
-      with:
-        redis-version: 7
+      run: |
+        sudo apt-get update -qq && sudo apt-get install -y -qq redis-server
+        redis-server --daemonize yes
+        redis-cli ping | grep -q PONG && echo "Redis ready"
 
     - name: Run middleware integration tests
       env:

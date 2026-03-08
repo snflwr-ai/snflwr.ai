@@ -10,9 +10,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import sqlite3
 
+import sys
+
 import pytest
 
 from safety.model_trainer import SafetyModelTrainer
+
+_model_trainer_mod = sys.modules["safety.model_trainer"]
 
 
 @pytest.fixture
@@ -25,8 +29,8 @@ def mock_db():
 
 @pytest.fixture
 def trainer(mock_db, tmp_path):
-    with patch("safety.model_trainer.db_manager", mock_db), \
-         patch("safety.model_trainer.ollama_client", MagicMock()):
+    with patch.object(_model_trainer_mod, "db_manager", mock_db), \
+         patch.object(_model_trainer_mod, "ollama_client", MagicMock()):
         t = SafetyModelTrainer.__new__(SafetyModelTrainer)
         t.db = mock_db
         t.ollama = MagicMock()

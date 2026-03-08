@@ -6,6 +6,7 @@ Targets 75%+ coverage on both modules.
 
 import asyncio
 import json
+import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from fastapi import FastAPI
@@ -566,15 +567,15 @@ class TestWebSocketRoute:
         """Valid parent auth results in connection_established message."""
         session = make_auth_session(role="parent", user_id="parent-ws-1")
         client = self._make_client()
+        mock_mgr = MagicMock()
+        mock_mgr.connect = AsyncMock(return_value="conn-id-001")
+        mock_mgr.disconnect = AsyncMock()
         with patch("api.routes.websocket.authenticate_websocket", new=AsyncMock(return_value=session)):
-            with patch("api.routes.websocket.websocket_manager") as mock_mgr:
-                mock_mgr.connect = AsyncMock(return_value="conn-id-001")
-                mock_mgr.disconnect = AsyncMock()
+            with patch("api.routes.websocket.websocket_manager", mock_mgr):
                 with client.websocket_connect("/ws/monitor") as ws:
                     ws.send_json({"type": "auth", "token": "valid-parent-token"})
-                    # The route calls websocket_manager.connect which we mocked;
-                    # the actual connection_established comes from the real manager.
-                    # Just verify connect was called with the right parent_id.
+                    # Allow server thread to process auth before asserting
+                    time.sleep(0.15)
                     mock_mgr.connect.assert_called_once()
                     call_args = mock_mgr.connect.call_args
                     assert call_args[0][1] == "parent-ws-1"
@@ -583,12 +584,15 @@ class TestWebSocketRoute:
         """Admin role also gets accepted by the WS endpoint."""
         session = make_auth_session(role="admin", user_id="admin-ws-1")
         client = self._make_client()
+        mock_mgr = MagicMock()
+        mock_mgr.connect = AsyncMock(return_value="conn-admin-001")
+        mock_mgr.disconnect = AsyncMock()
         with patch("api.routes.websocket.authenticate_websocket", new=AsyncMock(return_value=session)):
-            with patch("api.routes.websocket.websocket_manager") as mock_mgr:
-                mock_mgr.connect = AsyncMock(return_value="conn-admin-001")
-                mock_mgr.disconnect = AsyncMock()
+            with patch("api.routes.websocket.websocket_manager", mock_mgr):
                 with client.websocket_connect("/ws/monitor") as ws:
                     ws.send_json({"type": "auth", "token": "valid-admin-token"})
+                    # Allow server thread to process auth before asserting
+                    time.sleep(0.15)
                     mock_mgr.connect.assert_called_once()
                     call_args = mock_mgr.connect.call_args
                     assert call_args[0][1] == "admin-ws-1"

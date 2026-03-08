@@ -18,9 +18,13 @@ import sqlite3
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import sys
+
 import pytest
 
 from safety.incident_logger import IncidentLogger, SafetyIncident
+
+_incident_logger_mod = sys.modules["safety.incident_logger"]
 
 
 @pytest.fixture
@@ -402,7 +406,7 @@ class TestCleanup:
     def test_cleanup_uses_config_default(self, logger, mock_db):
         mock_db.execute_write.return_value = None
 
-        with patch("safety.incident_logger.safety_config") as cfg:
+        with patch.object(_incident_logger_mod, "safety_config") as cfg:
             cfg.SAFETY_LOG_RETENTION_DAYS = 90
             logger.cleanup_old_incidents()
 
@@ -440,7 +444,7 @@ class TestSendParentAlert:
         ]
         mock_db.execute_write.return_value = None
 
-        with patch("safety.incident_logger.get_email_system", return_value=None):
+        with patch.object(_incident_logger_mod, "get_email_system", return_value=None):
             logger._send_parent_alert("prof1", 1, "critical", "violence")
 
         # Should have inserted into parent_alerts (first write call)
@@ -460,7 +464,7 @@ class TestSendParentAlert:
         ]
         mock_db.execute_write.return_value = None
 
-        with patch("safety.incident_logger.get_email_system", return_value=None), \
+        with patch.object(_incident_logger_mod, "get_email_system", return_value=None), \
              patch.object(logger, 'mark_parent_notified') as mpn:
             logger._send_parent_alert("prof1", 1, "critical", "violence")
             mpn.assert_called_once_with(1)

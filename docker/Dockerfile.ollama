@@ -66,10 +66,20 @@ RUN ollama serve & \
     # Stop background Ollama
     pkill ollama
 
-# Models baked into the image at /root/.ollama:
+# Models baked into the image at /home/ollama/.ollama:
 # - ${CHAT_MODEL}            (admin/parent chat model — used directly)
 # - ${SAFETY_MODEL}          (Llama Guard safety classifier)
 # - snflwr-ai:latest      (student tutor persona, built on ${CHAT_MODEL})
+
+# Run as non-root
+RUN useradd -m -u 1000 -s /bin/bash ollama \
+    && mv /root/.ollama /home/ollama/.ollama \
+    && chown -R ollama:ollama /home/ollama/.ollama
+USER ollama
+ENV OLLAMA_MODELS=/home/ollama/.ollama
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:11434/ || exit 1
 
 EXPOSE 11434
 

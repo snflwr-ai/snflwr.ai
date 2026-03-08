@@ -41,5 +41,12 @@ RUN python -m pip install docker boto3 redis pytest-docker moto typer fastapi py
 COPY ci_run.sh /app/ci_run.sh
 RUN chmod +x /app/ci_run.sh
 
+# Run as non-root
+RUN useradd -m -u 1000 -s /bin/bash snflwr && chown -R snflwr:snflwr /app
+USER snflwr
+
+HEALTHCHECK --interval=60s --timeout=5s --retries=2 \
+  CMD python -c "import sys; sys.exit(0)" || exit 1
+
 # Default command: run CI runner (starts redis, then pytest)
 CMD ["/app/ci_run.sh"]

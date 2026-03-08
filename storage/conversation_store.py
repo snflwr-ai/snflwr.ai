@@ -102,8 +102,7 @@ class ConversationStore:
     def _ensure_search_index_table(self):
         """Create search index table if it doesn't exist (SQLite auto-migration)."""
         try:
-            self.db.execute_write(
-                """
+            self.db.execute_write("""
                 CREATE TABLE IF NOT EXISTS message_search_index (
                     id INTEGER PRIMARY KEY,
                     message_id TEXT NOT NULL,
@@ -112,8 +111,7 @@ class ConversationStore:
                     FOREIGN KEY (message_id) REFERENCES messages(message_id) ON DELETE CASCADE,
                     FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
                 )
-            """
-            )
+            """)
             self.db.execute_write(
                 "CREATE INDEX IF NOT EXISTS idx_search_token ON message_search_index(token_hash)"
             )

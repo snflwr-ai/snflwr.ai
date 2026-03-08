@@ -9,6 +9,8 @@ import threading
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch, PropertyMock
 
+import sys
+
 import pytest
 
 from safety.safety_monitor import (
@@ -18,6 +20,8 @@ from safety.safety_monitor import (
     SafetyMonitor,
 )
 from safety.pipeline import Severity, Category, SafetyResult
+
+_safety_monitor_mod = sys.modules["safety.safety_monitor"]
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +45,7 @@ def _unsafe_result(severity=Severity.MAJOR, reason="blocked"):
 def _make_monitor(db=None, pipeline=None):
     """Create a SafetyMonitor with mocked dependencies."""
     mock_db = db or MagicMock()
-    with patch("safety.safety_monitor.safety_pipeline", pipeline or MagicMock()):
+    with patch.object(_safety_monitor_mod, "safety_pipeline", pipeline or MagicMock()):
         monitor = SafetyMonitor(db=mock_db)
     return monitor
 
@@ -78,7 +82,7 @@ class TestMonitoringProfile:
         )
         assert profile.get_total_incidents() == 6
 
-    @patch("safety.safety_monitor.safety_config")
+    @patch.object(_safety_monitor_mod, "safety_config")
     def test_should_alert_parent_critical_threshold(self, mock_cfg):
         mock_cfg.ALERT_THRESHOLD_CRITICAL = 1
         mock_cfg.ALERT_THRESHOLD_MAJOR = 3
@@ -88,7 +92,7 @@ class TestMonitoringProfile:
         )
         assert profile.should_alert_parent() is True
 
-    @patch("safety.safety_monitor.safety_config")
+    @patch.object(_safety_monitor_mod, "safety_config")
     def test_should_alert_parent_major_threshold(self, mock_cfg):
         mock_cfg.ALERT_THRESHOLD_CRITICAL = 1
         mock_cfg.ALERT_THRESHOLD_MAJOR = 3
@@ -98,7 +102,7 @@ class TestMonitoringProfile:
         )
         assert profile.should_alert_parent() is True
 
-    @patch("safety.safety_monitor.safety_config")
+    @patch.object(_safety_monitor_mod, "safety_config")
     def test_should_alert_parent_minor_threshold(self, mock_cfg):
         mock_cfg.ALERT_THRESHOLD_CRITICAL = 1
         mock_cfg.ALERT_THRESHOLD_MAJOR = 3
@@ -108,7 +112,7 @@ class TestMonitoringProfile:
         )
         assert profile.should_alert_parent() is True
 
-    @patch("safety.safety_monitor.safety_config")
+    @patch.object(_safety_monitor_mod, "safety_config")
     def test_should_alert_parent_below_all_thresholds(self, mock_cfg):
         mock_cfg.ALERT_THRESHOLD_CRITICAL = 1
         mock_cfg.ALERT_THRESHOLD_MAJOR = 3
@@ -258,32 +262,32 @@ class TestAlertSeverityEnum:
 class TestSafetyMonitorInit:
     """Tests for SafetyMonitor constructor."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
-    @patch("safety.safety_monitor.db_manager")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
+    @patch.object(_safety_monitor_mod, "db_manager")
     def test_uses_injected_db(self, mock_db_manager, mock_pipeline):
         mock_db = MagicMock()
         monitor = SafetyMonitor(db=mock_db)
         assert monitor.db is mock_db
 
-    @patch("safety.safety_monitor.safety_pipeline")
-    @patch("safety.safety_monitor.db_manager")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
+    @patch.object(_safety_monitor_mod, "db_manager")
     def test_falls_back_to_module_db_manager(self, mock_db_manager, mock_pipeline):
         monitor = SafetyMonitor()
         assert monitor.db is mock_db_manager
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_filter_is_safety_pipeline(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor.filter is mock_pipeline
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_initial_state_empty(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor._monitoring_profiles == {}
         assert monitor._pending_alerts == []
         assert len(monitor._pattern_detectors) == 4
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_pattern_detectors_names(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         names = {p["name"] for p in monitor._pattern_detectors}
@@ -302,7 +306,7 @@ class TestSafetyMonitorInit:
 class TestStartStopMonitoring:
     """Tests for start_monitoring / stop_monitoring / cleanup_inactive_profiles."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_start_monitoring_creates_profile(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -310,7 +314,7 @@ class TestStartStopMonitoring:
         p = monitor._monitoring_profiles["child1"]
         assert p.parent_id == "parent1"
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_start_monitoring_idempotent(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -320,14 +324,14 @@ class TestStartStopMonitoring:
         assert monitor._monitoring_profiles["child1"] is original
         assert monitor._monitoring_profiles["child1"].parent_id == "parent1"
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_stop_monitoring_removes_profile(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
         monitor.stop_monitoring("child1")
         assert "child1" not in monitor._monitoring_profiles
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_stop_monitoring_cleans_conversation_history(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -335,12 +339,12 @@ class TestStartStopMonitoring:
         monitor.stop_monitoring("child1")
         assert "child1" not in monitor._conversation_history
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_stop_monitoring_nonexistent_profile_no_error(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.stop_monitoring("nonexistent")  # Should not raise
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_thread_safety_start(self, mock_pipeline):
         """Multiple threads calling start_monitoring should not corrupt state."""
         monitor = SafetyMonitor(db=MagicMock())
@@ -369,7 +373,7 @@ class TestStartStopMonitoring:
 class TestCleanup:
     """Tests for cleanup_inactive_profiles."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_removes_history_for_unmonitored_profiles(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         # Add conversation history without a monitoring profile
@@ -385,7 +389,7 @@ class TestCleanup:
         assert "orphan2" not in monitor._conversation_history
         assert "active" in monitor._conversation_history
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_cleanup_no_inactive_is_noop(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -401,8 +405,8 @@ class TestCleanup:
 class TestMonitorMessage:
     """Tests for SafetyMonitor.monitor_message."""
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_safe_message_returns_none(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _safe_result()
         monitor = SafetyMonitor(db=MagicMock())
@@ -412,8 +416,8 @@ class TestMonitorMessage:
 
         assert result is None
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_returns_safety_alert(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(
             severity=Severity.MAJOR, reason="violence detected"
@@ -429,8 +433,8 @@ class TestMonitorMessage:
         assert result.parent_id == "parent1"
         assert result.description == "violence detected"
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_records_incident_in_db(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result()
         mock_db = MagicMock()
@@ -443,8 +447,8 @@ class TestMonitorMessage:
         call_args = mock_db.execute_write.call_args
         assert "INSERT INTO safety_incidents" in call_args[0][0]
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_calls_log_safety_incident(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(reason="test reason")
         mock_db = MagicMock()
@@ -458,8 +462,8 @@ class TestMonitorMessage:
         assert call_kwargs["incident_type"] == "test reason"
         assert call_kwargs["profile_id"] == "child1"
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_auto_starts_monitoring_unknown_profile(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _safe_result()
         mock_db = MagicMock()
@@ -472,8 +476,8 @@ class TestMonitorMessage:
         assert "new_child" in monitor._monitoring_profiles
         assert monitor._monitoring_profiles["new_child"].parent_id == "parent_from_db"
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_auto_start_db_lookup_failure_uses_unknown(self, mock_pipeline, mock_log):
         """When DB lookup fails, parent_id defaults to 'unknown'."""
         import sqlite3
@@ -487,8 +491,8 @@ class TestMonitorMessage:
         assert "new_child" in monitor._monitoring_profiles
         assert monitor._monitoring_profiles["new_child"].parent_id == "unknown"
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_auto_start_db_empty_result_uses_unknown(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _safe_result()
         mock_db = MagicMock()
@@ -499,8 +503,8 @@ class TestMonitorMessage:
 
         assert monitor._monitoring_profiles["new_child"].parent_id == "unknown"
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_keeps_last_20_messages(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _safe_result()
         monitor = SafetyMonitor(db=MagicMock())
@@ -513,8 +517,8 @@ class TestMonitorMessage:
         assert monitor._conversation_history["child1"][0] == "message_5"
         assert monitor._conversation_history["child1"][-1] == "message_24"
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_default_age_when_none(self, mock_pipeline, mock_log):
         """When age is None, the pipeline should be called with age=12."""
         mock_pipeline.check_input.return_value = _safe_result()
@@ -525,8 +529,8 @@ class TestMonitorMessage:
 
         mock_pipeline.check_input.assert_called_once_with("hello", 12, "child1")
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_uses_provided_age(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _safe_result()
         monitor = SafetyMonitor(db=MagicMock())
@@ -536,7 +540,7 @@ class TestMonitorMessage:
 
         mock_pipeline.check_input.assert_called_once_with("hello", 8, "child1")
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_fail_closed_on_exception(self, mock_pipeline):
         """Any unhandled exception should fail closed."""
         mock_pipeline.check_input.side_effect = RuntimeError("boom")
@@ -547,8 +551,8 @@ class TestMonitorMessage:
 
         assert result is None
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_increments_major_incidents(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(severity=Severity.MAJOR)
         mock_db = MagicMock()
@@ -560,8 +564,8 @@ class TestMonitorMessage:
         profile = monitor._monitoring_profiles["child1"]
         assert profile.major_incidents == 1
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_increments_minor_incidents(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(severity=Severity.MINOR)
         mock_db = MagicMock()
@@ -573,8 +577,8 @@ class TestMonitorMessage:
         profile = monitor._monitoring_profiles["child1"]
         assert profile.minor_incidents == 1
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_increments_critical_incidents(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(severity=Severity.CRITICAL)
         mock_db = MagicMock()
@@ -586,8 +590,8 @@ class TestMonitorMessage:
         profile = monitor._monitoring_profiles["child1"]
         assert profile.critical_incidents == 1
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_sets_last_incident_time(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result()
         mock_db = MagicMock()
@@ -602,10 +606,10 @@ class TestMonitorMessage:
         assert profile.last_incident_time is not None
         assert before <= profile.last_incident_time <= after
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor._get_email_service")
-    @patch("safety.safety_monitor.safety_config")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "_get_email_service")
+    @patch.object(_safety_monitor_mod, "safety_config")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_parent_alert_created_when_threshold_reached(
         self, mock_pipeline, mock_cfg, mock_email_svc, mock_log
     ):
@@ -629,8 +633,8 @@ class TestMonitorMessage:
         # At least one pending alert for this profile
         assert len(monitor._pending_alerts) >= 1
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_message_alert_added_to_pending(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(severity=Severity.MAJOR)
         mock_db = MagicMock()
@@ -642,8 +646,8 @@ class TestMonitorMessage:
         assert isinstance(alert, SafetyAlert)
         assert alert in monitor._pending_alerts
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_safe_message_runs_pattern_detection(self, mock_pipeline, mock_log):
         """When message is safe, pattern detection should still run."""
         mock_pipeline.check_input.return_value = _safe_result()
@@ -654,8 +658,8 @@ class TestMonitorMessage:
             monitor.monitor_message("child1", "hello", age=10)
             mock_detect.assert_called_once()
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_pattern_detection_triggers_incident(self, mock_pipeline, mock_log):
         """When pattern detection finds something, an incident is recorded."""
         mock_pipeline.check_input.return_value = _safe_result()
@@ -673,8 +677,8 @@ class TestMonitorMessage:
         # But an incident should have been logged
         mock_db.execute_write.assert_called()
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_critical_severity_maps_to_critical_alert(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(severity=Severity.CRITICAL)
         mock_db = MagicMock()
@@ -687,8 +691,8 @@ class TestMonitorMessage:
         assert alert.severity == AlertSeverity.CRITICAL.value
         assert alert.requires_action is True
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_major_severity_maps_to_high_alert(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(severity=Severity.MAJOR)
         mock_db = MagicMock()
@@ -700,8 +704,8 @@ class TestMonitorMessage:
         assert isinstance(alert, SafetyAlert)
         assert alert.severity == AlertSeverity.HIGH.value
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_unsafe_minor_severity_maps_to_medium_alert(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result(severity=Severity.MINOR)
         mock_db = MagicMock()
@@ -713,8 +717,8 @@ class TestMonitorMessage:
         assert isinstance(alert, SafetyAlert)
         assert alert.severity == AlertSeverity.MEDIUM.value
 
-    @patch("safety.safety_monitor.log_safety_incident")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "log_safety_incident")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_conversation_snippet_truncated_to_200(self, mock_pipeline, mock_log):
         mock_pipeline.check_input.return_value = _unsafe_result()
         mock_db = MagicMock()
@@ -737,13 +741,13 @@ class TestPatternDetection:
 
     # -- _detect_repeated_prohibited --
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_repeated_prohibited_false_under_5_messages(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["a", "b", "c", "d"]
         assert monitor._detect_repeated_prohibited("child1") is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_repeated_prohibited_true_3_of_5_unsafe(self, mock_pipeline):
         # First call is from constructor, subsequent from detection
         mock_pipeline.check_input.side_effect = [
@@ -760,7 +764,7 @@ class TestPatternDetection:
 
         assert result is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_repeated_prohibited_false_only_2_unsafe(self, mock_pipeline):
         mock_pipeline.check_input.side_effect = [
             _unsafe_result(),
@@ -776,7 +780,7 @@ class TestPatternDetection:
 
         assert result is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_repeated_prohibited_checks_last_5(self, mock_pipeline):
         """Should only check the last 5 messages, not earlier ones."""
         # 7 messages, but only last 5 matter
@@ -798,20 +802,20 @@ class TestPatternDetection:
         # Should have been called 5 times (for the last 5)
         assert mock_pipeline.check_input.call_count == 5
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_repeated_prohibited_empty_history(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor._detect_repeated_prohibited("child1") is False
 
     # -- _detect_escalating_requests --
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_escalating_false_under_4_messages(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["a", "b", "c"]
         assert monitor._detect_escalating_requests("child1") is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_escalating_true_increasing_severity(self, mock_pipeline):
         mock_pipeline.check_input.side_effect = [
             _unsafe_result(severity=Severity.MINOR),
@@ -826,7 +830,7 @@ class TestPatternDetection:
 
         assert result is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_escalating_false_decreasing_severity(self, mock_pipeline):
         mock_pipeline.check_input.side_effect = [
             _unsafe_result(severity=Severity.CRITICAL),
@@ -842,7 +846,7 @@ class TestPatternDetection:
         # Only 3 unsafe results, and last severity (1) > first severity (3) is False
         assert result is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_escalating_false_all_safe(self, mock_pipeline):
         mock_pipeline.check_input.side_effect = [
             _safe_result(), _safe_result(), _safe_result(), _safe_result()
@@ -855,7 +859,7 @@ class TestPatternDetection:
         # No unsafe results means severities list is empty, len < 3
         assert result is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_escalating_false_fewer_than_3_unsafe(self, mock_pipeline):
         mock_pipeline.check_input.side_effect = [
             _unsafe_result(severity=Severity.MINOR),
@@ -872,16 +876,16 @@ class TestPatternDetection:
 
     # -- _detect_persistent_off_topic --
 
-    @patch("safety.safety_monitor.safety_config")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_config")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_off_topic_false_under_6_messages(self, mock_pipeline, mock_cfg):
         mock_cfg.REDIRECT_TOPICS = {"politics": "civic learning"}
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["politics"] * 5
         assert monitor._detect_persistent_off_topic("child1") is False
 
-    @patch("safety.safety_monitor.safety_config")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_config")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_off_topic_true_4_of_6_match(self, mock_pipeline, mock_cfg):
         mock_cfg.REDIRECT_TOPICS = {"politics": "civic learning", "religion": "culture"}
         monitor = SafetyMonitor(db=MagicMock())
@@ -898,8 +902,8 @@ class TestPatternDetection:
 
         assert result is True
 
-    @patch("safety.safety_monitor.safety_config")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_config")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_off_topic_false_under_4_matches(self, mock_pipeline, mock_cfg):
         mock_cfg.REDIRECT_TOPICS = {"politics": "civic learning"}
         monitor = SafetyMonitor(db=MagicMock())
@@ -916,8 +920,8 @@ class TestPatternDetection:
 
         assert result is False
 
-    @patch("safety.safety_monitor.safety_config")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_config")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_off_topic_case_insensitive(self, mock_pipeline, mock_cfg):
         mock_cfg.REDIRECT_TOPICS = {"politics": "civic learning"}
         monitor = SafetyMonitor(db=MagicMock())
@@ -934,8 +938,8 @@ class TestPatternDetection:
 
         assert result is True
 
-    @patch("safety.safety_monitor.safety_config")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_config")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_off_topic_checks_last_6_only(self, mock_pipeline, mock_cfg):
         mock_cfg.REDIRECT_TOPICS = {"politics": "civic learning"}
         monitor = SafetyMonitor(db=MagicMock())
@@ -951,36 +955,36 @@ class TestPatternDetection:
 
     # -- _detect_distress_indicators --
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_empty_history_false(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor._detect_distress_indicators("child1") is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_detects_help_me(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["please help me"]
         assert monitor._detect_distress_indicators("child1") is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_detects_scared(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["I am scared"]
         assert monitor._detect_distress_indicators("child1") is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_detects_afraid(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["I'm so afraid"]
         assert monitor._detect_distress_indicators("child1") is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_detects_depressed(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["I feel depressed"]
         assert monitor._detect_distress_indicators("child1") is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_detects_nobody_cares(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["nobody cares about me"]
@@ -989,19 +993,19 @@ class TestPatternDetection:
     @pytest.mark.parametrize("keyword", [
         "help me", "scared", "afraid", "worried", "sad", "depressed", "alone", "nobody cares"
     ])
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_all_keywords(self, mock_pipeline, keyword):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = [f"I feel {keyword}"]
         assert monitor._detect_distress_indicators("child1") is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_case_insensitive(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["I AM SCARED"]
         assert monitor._detect_distress_indicators("child1") is True
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_checks_last_3_messages_only(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = [
@@ -1012,7 +1016,7 @@ class TestPatternDetection:
         ]
         assert monitor._detect_distress_indicators("child1") is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_distress_no_keywords_false(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["I love math", "Science is great"]
@@ -1026,12 +1030,12 @@ class TestPatternDetection:
 class TestCheckForPatterns:
     """Tests for check_for_patterns (public wrapper)."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_none_when_no_profile(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor.check_for_patterns("nonexistent") is None
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_none_when_no_pattern(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1039,7 +1043,7 @@ class TestCheckForPatterns:
         with patch.object(monitor, "_run_pattern_detection", return_value=None):
             assert monitor.check_for_patterns("child1") is None
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_alert_when_pattern_found(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1055,7 +1059,7 @@ class TestCheckForPatterns:
         assert alert.description == "Escalating requests"
         assert alert.severity == AlertSeverity.HIGH.value
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_critical_pattern_sets_requires_action(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1070,7 +1074,7 @@ class TestCheckForPatterns:
         assert alert.requires_action is True
         assert alert.severity == AlertSeverity.CRITICAL.value
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_pattern_alert_added_to_pending(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1092,12 +1096,12 @@ class TestCheckForPatterns:
 class TestAlerts:
     """Tests for alert management: get_pending_alerts, acknowledge_alert, get_latest_alert."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_get_pending_alerts_empty(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor.get_pending_alerts() == []
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_get_pending_alerts_all(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         a1 = SafetyAlert(
@@ -1115,7 +1119,7 @@ class TestAlerts:
         result = monitor.get_pending_alerts()
         assert len(result) == 2
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_get_pending_alerts_filtered_by_parent(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         a1 = SafetyAlert(
@@ -1134,7 +1138,7 @@ class TestAlerts:
         assert len(result) == 1
         assert result[0].alert_id == "a1"
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_get_pending_alerts_no_match(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         a1 = SafetyAlert(
@@ -1147,7 +1151,7 @@ class TestAlerts:
         result = monitor.get_pending_alerts(parent_id="p999")
         assert result == []
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_acknowledge_alert_removes_it(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         a1 = SafetyAlert(
@@ -1161,13 +1165,13 @@ class TestAlerts:
         assert result is True
         assert len(monitor._pending_alerts) == 0
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_acknowledge_alert_nonexistent_returns_false(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         result = monitor.acknowledge_alert("nonexistent")
         assert result is False
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_acknowledge_only_removes_matching(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         a1 = SafetyAlert(
@@ -1187,7 +1191,7 @@ class TestAlerts:
         assert len(monitor._pending_alerts) == 1
         assert monitor._pending_alerts[0].alert_id == "a2"
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_get_latest_alert_returns_most_recent(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         a1 = SafetyAlert(
@@ -1205,12 +1209,12 @@ class TestAlerts:
         result = monitor.get_latest_alert("c1")
         assert result.alert_id == "a2"
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_get_latest_alert_returns_none_no_match(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor.get_latest_alert("c1") is None
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_get_latest_alert_filters_by_profile(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         a1 = SafetyAlert(
@@ -1237,7 +1241,7 @@ class TestAlerts:
 class TestStatistics:
     """Tests for get_profile_statistics and get_system_statistics."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_profile_statistics_returns_dict_for_existing(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1248,12 +1252,12 @@ class TestStatistics:
         assert stats["parent_id"] == "parent1"
         assert stats["minor_incidents"] == 0
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_profile_statistics_empty_for_unknown(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor.get_profile_statistics("nonexistent") == {}
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_system_statistics_empty(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         stats = monitor.get_system_statistics()
@@ -1263,7 +1267,7 @@ class TestStatistics:
         assert stats["pending_alerts"] == 0
         assert stats["pattern_detectors"] == 4
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_system_statistics_with_data(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("c1", "p1")
@@ -1284,7 +1288,7 @@ class TestStatistics:
         assert stats["profiles_with_incidents"] == 1
         assert stats["pending_alerts"] == 1
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_profile_statistics_matches_to_dict(self, mock_pipeline):
         """get_profile_statistics should return the same data as profile.to_dict()."""
         monitor = SafetyMonitor(db=MagicMock())
@@ -1305,7 +1309,7 @@ class TestStatistics:
 class TestRunPatternDetection:
     """Tests for _run_pattern_detection."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_none_when_no_patterns_match(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1318,7 +1322,7 @@ class TestRunPatternDetection:
         result = monitor._run_pattern_detection("child1", profile)
         assert result is None
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_first_matching_pattern(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1336,7 +1340,7 @@ class TestRunPatternDetection:
         assert severity == monitor._pattern_detectors[0]["severity"]
         assert description == monitor._pattern_detectors[0]["description"]
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_short_circuits_on_first_match(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor.start_monitoring("child1", "parent1")
@@ -1361,8 +1365,8 @@ class TestRunPatternDetection:
 class TestCreateParentAlert:
     """Tests for _create_parent_alert."""
 
-    @patch("safety.safety_monitor._get_email_service")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "_get_email_service")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_creates_alert_and_marks_sent(self, mock_pipeline, mock_get_email):
         mock_email = MagicMock()
         mock_email.send_safety_alert.return_value = (True, None)
@@ -1382,8 +1386,8 @@ class TestCreateParentAlert:
         # DB should be updated
         mock_db.execute_write.assert_called()
 
-    @patch("safety.safety_monitor._get_email_service")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "_get_email_service")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_alert_severity_critical_when_critical_incidents(self, mock_pipeline, mock_get_email):
         mock_email = MagicMock()
         mock_email.send_safety_alert.return_value = (True, None)
@@ -1402,8 +1406,8 @@ class TestCreateParentAlert:
         assert alert.severity == "critical"
         assert alert.requires_action is True
 
-    @patch("safety.safety_monitor._get_email_service")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "_get_email_service")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_alert_severity_high_when_major_ge_2(self, mock_pipeline, mock_get_email):
         mock_email = MagicMock()
         mock_email.send_safety_alert.return_value = (True, None)
@@ -1421,8 +1425,8 @@ class TestCreateParentAlert:
         alert = [a for a in monitor._pending_alerts if a.profile_id == "child1"][-1]
         assert alert.severity == "high"
 
-    @patch("safety.safety_monitor._get_email_service")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "_get_email_service")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_alert_severity_medium_otherwise(self, mock_pipeline, mock_get_email):
         mock_email = MagicMock()
         mock_email.send_safety_alert.return_value = (True, None)
@@ -1440,8 +1444,8 @@ class TestCreateParentAlert:
         alert = [a for a in monitor._pending_alerts if a.profile_id == "child1"][-1]
         assert alert.severity == "medium"
 
-    @patch("safety.safety_monitor._get_email_service")
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "_get_email_service")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_email_failure_does_not_prevent_alert(self, mock_pipeline, mock_get_email):
         """Email failure should not stop alert creation."""
         import smtplib
@@ -1470,7 +1474,7 @@ class TestCreateParentAlert:
 class TestGenerateAlertDescription:
     """Tests for _generate_alert_description."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_critical_description(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         profile = MonitoringProfile(
@@ -1482,7 +1486,7 @@ class TestGenerateAlertDescription:
         assert "2 critical" in desc
         assert "1 major" in desc
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_major_description(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         profile = MonitoringProfile(
@@ -1493,7 +1497,7 @@ class TestGenerateAlertDescription:
         assert "Multiple" in desc
         assert "3 major" in desc
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_generic_description(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         profile = MonitoringProfile(
@@ -1512,12 +1516,12 @@ class TestGenerateAlertDescription:
 class TestGetRecentConversationSnippet:
     """Tests for _get_recent_conversation_snippet."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_empty_history_returns_none(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         assert monitor._get_recent_conversation_snippet("child1") is None
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_last_3_messages(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["msg1", "msg2", "msg3", "msg4", "msg5"]
@@ -1529,7 +1533,7 @@ class TestGetRecentConversationSnippet:
         assert "msg5" in snippet
         assert "msg1" not in snippet
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_truncates_long_messages(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         long_msg = "x" * 100
@@ -1541,7 +1545,7 @@ class TestGetRecentConversationSnippet:
         # Truncated to 50 chars + "..."
         assert len(snippet) == 53
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_short_messages_not_truncated(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["hi"]
@@ -1551,7 +1555,7 @@ class TestGetRecentConversationSnippet:
         assert snippet == "hi"
         assert "..." not in snippet
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_messages_joined_by_pipe(self, mock_pipeline):
         monitor = SafetyMonitor(db=MagicMock())
         monitor._conversation_history["child1"] = ["a", "b", "c"]
@@ -1568,7 +1572,7 @@ class TestGetRecentConversationSnippet:
 class TestGetChildProfileName:
     """Tests for _get_child_profile_name."""
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_name_from_db(self, mock_pipeline):
         mock_db = MagicMock()
         mock_db.execute_query.return_value = [{"name": "Alice"}]
@@ -1577,7 +1581,7 @@ class TestGetChildProfileName:
         name = monitor._get_child_profile_name("child1")
         assert name == "Alice"
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_default_when_not_found(self, mock_pipeline):
         mock_db = MagicMock()
         mock_db.execute_query.return_value = []
@@ -1586,7 +1590,7 @@ class TestGetChildProfileName:
         name = monitor._get_child_profile_name("child1")
         assert name == "Your Child"
 
-    @patch("safety.safety_monitor.safety_pipeline")
+    @patch.object(_safety_monitor_mod, "safety_pipeline")
     def test_returns_default_on_db_error(self, mock_pipeline):
         import sqlite3
         mock_db = MagicMock()

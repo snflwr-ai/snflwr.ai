@@ -10,6 +10,8 @@ Uses real EncryptionManager (with temp key dirs) and real SafetyPipeline
 are mocked.
 """
 
+import sys
+
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 from datetime import datetime, timezone
@@ -18,6 +20,8 @@ from storage.encryption import EncryptionManager
 from storage.conversation_store import ConversationStore, Message, Conversation
 from safety.pipeline import SafetyPipeline, SafetyResult, Severity, Category
 from safety.safety_monitor import SafetyMonitor, SafetyAlert, MonitoringProfile
+
+_safety_monitor_mod = sys.modules["safety.safety_monitor"]
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -89,7 +93,7 @@ def pipeline():
 @pytest.fixture
 def monitor(mock_db):
     """SafetyMonitor wired to a mock DB and the real safety pipeline."""
-    with patch("safety.safety_monitor.log_safety_incident"):
+    with patch.object(_safety_monitor_mod, "log_safety_incident"):
         m = SafetyMonitor(db=mock_db)
         yield m
 

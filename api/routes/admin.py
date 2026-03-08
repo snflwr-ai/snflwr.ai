@@ -60,7 +60,7 @@ def _get_owui_token(session: "AuthSession") -> str:
 
 def _owui_find_user_by_email(open_webui_url: str, owui_token: str, email: str):
     """Look up an existing OWU user by email. Returns (user_dict, error) tuple."""
-    import requests as http_client
+    import requests as http_client  # type: ignore[import-untyped]
     from utils.logger import get_logger as _get_logger
 
     _log = _get_logger(__name__)
@@ -85,7 +85,7 @@ def _owui_find_user_by_email(open_webui_url: str, owui_token: str, email: str):
 
 def _owui_activate_user(open_webui_url: str, owui_token: str, user: dict):
     """Set an existing OWU user's role to 'user' (activates pending accounts)."""
-    import requests as http_client
+    import requests as http_client  # type: ignore[import-untyped]
 
     headers = {"Authorization": f"Bearer {owui_token}"}
     user_id = user.get("id", "")
@@ -108,7 +108,7 @@ def _owui_activate_user(open_webui_url: str, owui_token: str, user: dict):
 
 def _owui_delete_user(open_webui_url: str, owui_token: str, owui_user_id: str):
     """Delete an OWU user account. Best-effort — errors are logged, not raised."""
-    import requests as http_client
+    import requests as http_client  # type: ignore[import-untyped]
     from utils.logger import get_logger as _get_logger
 
     _log = _get_logger(__name__)
@@ -138,7 +138,7 @@ def _owui_create_user(
     failed attempt), this activates the existing account instead of erroring.
     Returns (owui_user_id, error_detail) tuple.
     """
-    import requests as http_client
+    import requests as http_client  # type: ignore[import-untyped]
     from utils.logger import get_logger as _get_logger
 
     _log = _get_logger(__name__)
@@ -287,7 +287,7 @@ async def admin_login(
     2. If successful and user has admin role -> sync to Snflwr, create session
     3. Fall back to Snflwr's own auth for bootstrapped admin accounts
     """
-    import requests as http_client
+    import requests as http_client  # type: ignore[import-untyped]
 
     open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
 
@@ -777,7 +777,7 @@ async def update_account(
             raise HTTPException(status_code=404, detail="Account not found")
 
         updates = []
-        params = []
+        params: list = []
 
         if request.name is not None:
             updates.append("name = ?")
@@ -936,7 +936,7 @@ async def create_profile(
     request: CreateProfileRequest, session: AuthSession = Depends(require_admin)
 ):
     """Create a new student profile with Open WebUI login"""
-    import requests as http_client
+    import requests as http_client  # type: ignore[import-untyped]
 
     try:
         db = DatabaseManager()
@@ -1223,7 +1223,7 @@ async def admin_update_profile(
             raise HTTPException(status_code=404, detail="Profile not found")
 
         updates = []
-        params = []
+        params: list = []
 
         if request.name is not None:
             updates.append("name = ?")

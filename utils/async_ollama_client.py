@@ -416,7 +416,7 @@ class AsyncOllamaClient:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Handle exceptions in results
-        processed_results = []
+        processed_results: list = []
         for result in results:
             if isinstance(result, Exception):
                 logger.error(f"Batch generation error: {result}")

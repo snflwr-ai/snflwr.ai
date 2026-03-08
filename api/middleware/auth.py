@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 try:
     from redis.exceptions import RedisError
 except ImportError:
-    RedisError = OSError  # Fallback so except RedisError still works
+    RedisError = OSError  # type: ignore[misc,assignment]  # Fallback so except RedisError still works
 
 
 # ============================================================================

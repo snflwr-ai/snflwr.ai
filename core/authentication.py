@@ -3,7 +3,7 @@ import secrets
 import threading
 import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Tuple, Optional, Dict
+from typing import Any, Tuple, Optional, Dict
 from dataclasses import dataclass
 
 from storage.db_adapters import DB_ERRORS
@@ -11,7 +11,7 @@ from storage.db_adapters import DB_ERRORS
 try:
     from redis.exceptions import RedisError
 except ImportError:
-    RedisError = OSError
+    RedisError = OSError  # type: ignore[misc,assignment]
 
 try:
     from argon2 import PasswordHasher, exceptions as argon2_exceptions
@@ -19,7 +19,7 @@ except ImportError:
     # Secure fallback PasswordHasher using PBKDF2 for environments without argon2
     from storage.encryption import EncryptionManager
 
-    class PasswordHasher:
+    class PasswordHasher:  # type: ignore[no-redef]
         def __init__(self):
             self._enc_manager = EncryptionManager()
 
@@ -309,7 +309,7 @@ class AuthenticationManager:
 
     def authenticate_parent(
         self, username: str, password: str
-    ) -> Tuple[bool, Optional[dict]]:
+    ) -> Tuple[bool, Optional[Any]]:
         rows = self.db.execute_query(
             "SELECT parent_id, password_hash, failed_login_attempts, account_locked_until FROM accounts WHERE username = ?",
             (username,),

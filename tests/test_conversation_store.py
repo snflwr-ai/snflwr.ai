@@ -173,14 +173,14 @@ class TestMaybeDecrypt:
     """
 
     def test_returns_empty_string_for_empty_input(self, mock_db, mock_enc):
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("")
         assert result == ""
 
     def test_returns_stored_value_when_no_encryption_manager(self, mock_db):
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             s = ConversationStore(db=mock_db, encryption=None)
             result = s._maybe_decrypt("some text")
@@ -189,7 +189,7 @@ class TestMaybeDecrypt:
     def test_decrypt_success(self, mock_db, mock_enc):
         mock_enc.decrypt_string.return_value = "plaintext"
         mock_enc.decrypt_string.side_effect = None  # override fixture default
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("ciphertext")
@@ -199,7 +199,7 @@ class TestMaybeDecrypt:
         """If decrypt_string returns None and encryption is OFF, return stored value."""
         mock_enc.decrypt_string.return_value = None
         mock_enc.decrypt_string.side_effect = None
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("raw text")
@@ -209,7 +209,7 @@ class TestMaybeDecrypt:
         """If decrypt_string returns None and ENCRYPT_CONVERSATIONS is on, return sentinel."""
         mock_enc.decrypt_string.return_value = None
         mock_enc.decrypt_string.side_effect = None
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = True
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("raw text")
@@ -218,7 +218,7 @@ class TestMaybeDecrypt:
     def test_decrypt_value_error_enc_off_fallback(self, mock_db, mock_enc):
         """ValueError during decryption with ENCRYPT_OFF → return stored value."""
         mock_enc.decrypt_string.side_effect = ValueError("bad data")
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("stored text")
@@ -227,7 +227,7 @@ class TestMaybeDecrypt:
     def test_decrypt_value_error_enc_on_returns_sentinel(self, mock_db, mock_enc):
         """ValueError during decryption with ENCRYPT_ON → return sentinel."""
         mock_enc.decrypt_string.side_effect = ValueError("bad data")
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = True
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("stored text")
@@ -236,7 +236,7 @@ class TestMaybeDecrypt:
     def test_decrypt_general_exception_enc_on(self, mock_db, mock_enc):
         """Unexpected exception with ENCRYPT_ON → return sentinel."""
         mock_enc.decrypt_string.side_effect = RuntimeError("key mismatch")
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = True
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("ciphertext")
@@ -245,7 +245,7 @@ class TestMaybeDecrypt:
     def test_decrypt_general_exception_enc_off_fallback(self, mock_db, mock_enc):
         """Unexpected exception with ENCRYPT_OFF → return stored text."""
         mock_enc.decrypt_string.side_effect = RuntimeError("unexpected")
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt("fallback text")
@@ -253,7 +253,7 @@ class TestMaybeDecrypt:
 
     def test_none_stored_returns_none(self, mock_db, mock_enc):
         """None input passes through without calling decrypt."""
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             s = ConversationStore(db=mock_db, encryption=mock_enc)
             result = s._maybe_decrypt(None)
@@ -359,7 +359,7 @@ class TestAddMessage:
     def test_encryption_failure_raises_runtime_error(self, mock_db):
         broken_enc = MagicMock()
         broken_enc.encrypt_string.side_effect = Exception("key error")
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = True
             s = ConversationStore(db=mock_db, encryption=broken_enc)
         with pytest.raises(RuntimeError, match="COPPA compliance"):
@@ -1005,7 +1005,7 @@ class TestGetConversationsByDate:
 
 class TestEnsureSearchIndexTable:
     def test_creates_table_on_init(self, mock_db, mock_enc):
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             ConversationStore(db=mock_db, encryption=mock_enc)
         calls = [str(c) for c in mock_db.execute_write.call_args_list]
@@ -1014,7 +1014,7 @@ class TestEnsureSearchIndexTable:
     def test_exception_during_setup_is_swallowed(self, mock_enc):
         bad_db = MagicMock()
         bad_db.execute_write.side_effect = sqlite3.OperationalError("locked")
-        with patch("storage.conversation_store.safety_config") as cfg:
+        with patch.object(_cs_module, "safety_config") as cfg:
             cfg.ENCRYPT_CONVERSATIONS = False
             # Must not raise
             s = ConversationStore(db=bad_db, encryption=mock_enc)

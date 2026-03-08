@@ -26,7 +26,6 @@ import traceback
 
 from config import system_config
 
-
 # =============================================================================
 # Context Variables for Request Tracking
 # =============================================================================

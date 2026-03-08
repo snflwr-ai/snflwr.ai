@@ -100,7 +100,11 @@ async def extract_csrf_token_from_request(request: Request) -> Optional[str]:
     if not token:
         try:
             form_data = await request.form()
-            token = str(form_data.get(CSRF_FORM_FIELD)) if form_data.get(CSRF_FORM_FIELD) else None
+            token = (
+                str(form_data.get(CSRF_FORM_FIELD))
+                if form_data.get(CSRF_FORM_FIELD)
+                else None
+            )
         except (
             Exception
         ) as e:  # Intentional catch-all: CSRF validation must fail safely
@@ -218,9 +222,9 @@ def set_csrf_cookie(response: Response, token: Optional[str] = None) -> str:
         key=CSRF_COOKIE_NAME,
         value=signed_token,
         httponly=False,  # Must be accessible to JavaScript
-        secure=bool(SECURITY_CONFIG.get(
-            "csrf_cookie_secure", True
-        )),  # False for http://localhost dev
+        secure=bool(
+            SECURITY_CONFIG.get("csrf_cookie_secure", True)
+        ),  # False for http://localhost dev
         samesite=str(SECURITY_CONFIG.get("csrf_cookie_samesite", "strict")),  # type: ignore[arg-type]
         max_age=86400,  # 24 hours
         path="/",

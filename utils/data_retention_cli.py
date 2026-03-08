@@ -331,7 +331,8 @@ Examples:
         for cat in categories:
             if int(cat["retention_days"]) > 0:
                 cutoff = (
-                    datetime.now(timezone.utc) - timedelta(days=int(cat["retention_days"]))
+                    datetime.now(timezone.utc)
+                    - timedelta(days=int(cat["retention_days"]))
                 ).isoformat()
             else:
                 cutoff = datetime.now(timezone.utc).isoformat()

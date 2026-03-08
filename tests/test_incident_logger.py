@@ -12,6 +12,10 @@ import pytest
 
 from safety.incident_logger import IncidentLogger, SafetyIncident
 
+import sys
+
+_incident_logger_mod = sys.modules["safety.incident_logger"]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -97,7 +101,7 @@ def mock_db():
 @pytest.fixture
 def mock_encryption():
     """Patch encryption_manager on the incident_logger module."""
-    with patch("safety.incident_logger.encryption_manager") as enc:
+    with patch.object(_incident_logger_mod, "encryption_manager") as enc:
         enc.encrypt_string = MagicMock(side_effect=_encrypt_side_effect)
         enc.decrypt_string = MagicMock(side_effect=_decrypt_side_effect)
         enc.encrypt_dict = MagicMock(side_effect=_encrypt_dict_side_effect)
@@ -108,21 +112,21 @@ def mock_encryption():
 @pytest.fixture
 def mock_websocket():
     """Patch get_websocket_manager to return None."""
-    with patch("safety.incident_logger.get_websocket_manager", return_value=None):
+    with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=None):
         yield
 
 
 @pytest.fixture
 def mock_email():
     """Patch get_email_system to return None."""
-    with patch("safety.incident_logger.get_email_system", return_value=None):
+    with patch.object(_incident_logger_mod, "get_email_system", return_value=None):
         yield
 
 
 @pytest.fixture
 def mock_email_crypto():
     """Patch get_email_crypto."""
-    with patch("safety.incident_logger.get_email_crypto") as ec:
+    with patch.object(_incident_logger_mod, "get_email_crypto") as ec:
         ec.return_value.decrypt_email = MagicMock(return_value="parent@example.com")
         yield ec
 
@@ -374,7 +378,7 @@ class TestLogIncident:
 
     def test_websocket_broadcast_called(self, mock_db, mock_encryption, mock_email, mock_email_crypto):
         """WebSocket broadcast looks up child_profiles for the parent."""
-        with patch("safety.incident_logger.get_websocket_manager", return_value=None):
+        with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=None):
             mock_db.execute_query.side_effect = _log_incident_query_side_effect(1)
 
             il = IncidentLogger(db=mock_db)
@@ -393,7 +397,7 @@ class TestLogIncident:
     @pytest.mark.parametrize("severity", ["major", "critical"])
     def test_parent_alert_sent_for_major_critical(self, mock_db, mock_encryption, mock_websocket, mock_email_crypto, severity):
         """Parent alert is triggered for major and critical severity when send_alert=True."""
-        with patch("safety.incident_logger.get_email_system", return_value=None):
+        with patch.object(_incident_logger_mod, "get_email_system", return_value=None):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],                    # post-insert ID query
                 [{'parent_id': 'p1', 'name': 'Emma'}],  # ws broadcast child_profiles
@@ -1168,7 +1172,7 @@ class TestCleanup:
         diff = datetime.now(timezone.utc) - cutoff
         assert 59 < diff.days < 61
 
-    @patch("safety.incident_logger.safety_config")
+    @patch.object(_incident_logger_mod, "safety_config")
     def test_uses_config_default_when_no_retention_days(self, mock_safety_config, logger, mock_db):
         """Falls back to safety_config.SAFETY_LOG_RETENTION_DAYS when not specified."""
         mock_safety_config.SAFETY_LOG_RETENTION_DAYS = 90

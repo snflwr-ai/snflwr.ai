@@ -331,15 +331,16 @@ def create_profile(
         raise
     except AgeVerificationError as e:
         logger.error(f"Age verification failed: {e}")
-        raise HTTPException(
-            status_code=400, detail=str(e)
-        )  # OK to expose validation errors
+        raise HTTPException(status_code=400, detail="Age verification failed")
     except ProfileValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Profile validation failed: {e}")
+        raise HTTPException(status_code=400, detail="Invalid profile data")
     except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        logger.warning(f"Permission denied creating profile: {e}")
+        raise HTTPException(status_code=403, detail="Access denied")
     except ProfileError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Profile error during creation: {e}")
+        raise HTTPException(status_code=400, detail="Profile operation failed")
     except DB_ERRORS as e:
         logger.error(f"Database error creating profile: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -370,7 +371,8 @@ def get_profile(profile_id: str, session: AuthSession = Depends(VerifyProfileAcc
     except HTTPException:
         raise
     except ProfileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning(f"Profile not found: {e}")
+        raise HTTPException(status_code=404, detail="Profile not found")
     except DB_ERRORS as e:
         logger.error(f"Database error retrieving profile: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -451,13 +453,17 @@ def update_profile(
     except HTTPException:
         raise
     except ProfileValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Profile validation failed: {e}")
+        raise HTTPException(status_code=400, detail="Invalid profile data")
     except ProfileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning(f"Profile not found: {e}")
+        raise HTTPException(status_code=404, detail="Profile not found")
     except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        logger.warning(f"Permission denied updating profile: {e}")
+        raise HTTPException(status_code=403, detail="Access denied")
     except ProfileError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Profile error during update: {e}")
+        raise HTTPException(status_code=400, detail="Profile operation failed")
     except DB_ERRORS as e:
         logger.error(f"Database error updating profile: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -487,11 +493,14 @@ def deactivate_profile(
     except HTTPException:
         raise
     except ProfileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning(f"Profile not found for deactivation: {e}")
+        raise HTTPException(status_code=404, detail="Profile not found")
     except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        logger.warning(f"Permission denied deactivating profile: {e}")
+        raise HTTPException(status_code=403, detail="Access denied")
     except ProfileError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Profile error during deactivation: {e}")
+        raise HTTPException(status_code=400, detail="Profile operation failed")
     except DB_ERRORS as e:
         logger.error(f"Database error deactivating profile: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -534,7 +543,8 @@ def get_profile_statistics(
     except HTTPException:
         raise
     except ProfileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning(f"Profile not found for stats: {e}")
+        raise HTTPException(status_code=404, detail="Profile not found")
     except DB_ERRORS as e:
         logger.error(f"Database error retrieving profile stats: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -651,7 +661,8 @@ def export_profile_data(
     except HTTPException:
         raise
     except ProfileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning(f"Profile not found for export: {e}")
+        raise HTTPException(status_code=404, detail="Profile not found")
     except DB_ERRORS as e:
         logger.error(f"Database error exporting profile data: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")

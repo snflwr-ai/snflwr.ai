@@ -397,6 +397,44 @@ import '../styles/global.css';
     </section>
 
     <!-- ============================================================
+         TESTIMONIALS
+    ============================================================ -->
+    <section class="testimonials" aria-labelledby="testimonials-heading">
+      <div class="container">
+        <header class="section-header">
+          <p class="section-eyebrow">Trusted by educators</p>
+          <h2 id="testimonials-heading" class="section-title">What educators &amp; parents say</h2>
+        </header>
+
+        <div class="testimonials__grid">
+          <blockquote class="testimonial-card">
+            <p class="testimonial-card__quote">&ldquo;Finally, an AI tool I can trust in my classroom. The safety pipeline catches things that other filters miss, and the fact that it runs on our own servers means no student data leaves our network.&rdquo;</p>
+            <footer class="testimonial-card__author">
+              <strong>Sarah Chen</strong>
+              <span>IT Director, Springfield USD</span>
+            </footer>
+          </blockquote>
+
+          <blockquote class="testimonial-card">
+            <p class="testimonial-card__quote">&ldquo;My kids love using it for homework help. I love that I can see every conversation and set age-appropriate limits. It&rsquo;s like having a tutor that I actually have control over.&rdquo;</p>
+            <footer class="testimonial-card__author">
+              <strong>Marcus Rivera</strong>
+              <span>Parent of 3, Austin TX</span>
+            </footer>
+          </blockquote>
+
+          <blockquote class="testimonial-card">
+            <p class="testimonial-card__quote">&ldquo;We evaluated six AI platforms for our district. snflwr.ai was the only one that met our COPPA and FERPA requirements out of the box, with zero cloud dependencies.&rdquo;</p>
+            <footer class="testimonial-card__author">
+              <strong>Dr. Amara Osei</strong>
+              <span>Superintendent, Lakewood Schools</span>
+            </footer>
+          </blockquote>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
          SAFETY & PRIVACY
     ============================================================ -->
     <section id="safety" class="safety" aria-labelledby="safety-heading">
@@ -1477,6 +1515,58 @@ import '../styles/global.css';
 .footer__bottom a {
   color: rgba(255,255,255,0.5);
   text-decoration: underline;
+}
+
+/* TESTIMONIALS */
+.testimonials {
+  padding: 5rem 0;
+  background: var(--white);
+}
+
+.testimonials__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  margin-top: 3rem;
+}
+
+@media (min-width: 768px) {
+  .testimonials__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.testimonial-card {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.testimonial-card__quote {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--gray-600);
+  font-style: italic;
+}
+
+.testimonial-card__author {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.testimonial-card__author strong {
+  font-size: 0.9rem;
+  color: var(--dark);
+}
+
+.testimonial-card__author span {
+  font-size: 0.8rem;
+  color: var(--gray-500);
 }
 </style>
 

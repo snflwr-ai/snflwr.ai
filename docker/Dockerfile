@@ -9,9 +9,8 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends gcc g++ \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -28,8 +27,9 @@ WORKDIR /app
 # Copy pre-built Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Install only runtime system deps (curl for healthcheck)
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# Apply Debian security patches and install runtime deps (curl for healthcheck)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

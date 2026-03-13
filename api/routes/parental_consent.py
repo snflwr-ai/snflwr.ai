@@ -185,7 +185,8 @@ async def request_parental_consent(
     except HTTPException:
         raise
     except AgeVerificationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Age verification failed during consent request: {e}")
+        raise HTTPException(status_code=400, detail="Age verification failed")
     except DB_ERRORS as e:
         logger.error(f"Database error requesting parental consent: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -328,7 +329,8 @@ async def verify_parental_consent(
     except HTTPException:
         raise
     except AgeVerificationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Age verification failed during consent verification: {e}")
+        raise HTTPException(status_code=400, detail="Age verification failed")
     except DB_ERRORS as e:
         logger.error(f"Database error verifying parental consent: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -396,7 +398,8 @@ async def revoke_parental_consent(
     except HTTPException:
         raise
     except AgeVerificationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Age verification failed during consent revocation: {e}")
+        raise HTTPException(status_code=400, detail="Age verification failed")
     except DB_ERRORS as e:
         logger.error(f"Database error revoking parental consent: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -484,7 +487,8 @@ async def get_consent_status(
     except HTTPException:
         raise
     except AgeVerificationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Age verification failed during consent status check: {e}")
+        raise HTTPException(status_code=400, detail="Age verification failed")
     except DB_ERRORS as e:
         logger.error(f"Database error retrieving consent status: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")

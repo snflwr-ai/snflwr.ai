@@ -122,11 +122,13 @@ def login(
         raise
     except AccountLockedError as e:
         logger.warning(f"Account locked during login: {e}")
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail="Account temporarily locked")
     except InvalidCredentialsError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        logger.info(f"Invalid credentials during login: {e}")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     except AuthenticationError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        logger.warning(f"Authentication failed during login: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
     except DB_ERRORS as e:
         logger.error(f"Database error during login: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -171,7 +173,8 @@ def register(
     except HTTPException:
         raise
     except AuthenticationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Registration failed: {e}")
+        raise HTTPException(status_code=400, detail="Registration failed")
     except DB_ERRORS as e:
         logger.error(f"Database error during registration: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -246,7 +249,8 @@ def validate_session(
     except HTTPException:
         raise
     except AuthenticationError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        logger.warning(f"Session validation failed: {e}")
+        raise HTTPException(status_code=401, detail="Session validation failed")
     except DB_ERRORS as e:
         logger.error(f"Database error during session validation: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -281,7 +285,8 @@ def verify_email(request: VerifyEmailRequest):
     except HTTPException:
         raise
     except AuthenticationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Email verification failed: {e}")
+        raise HTTPException(status_code=400, detail="Email verification failed")
     except DB_ERRORS as e:
         logger.error(f"Database error during email verification: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -414,7 +419,8 @@ def reset_password(
     except HTTPException:
         raise
     except AuthenticationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Password reset failed: {e}")
+        raise HTTPException(status_code=400, detail="Password reset failed")
     except DB_ERRORS as e:
         logger.error(f"Database error during password reset: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")

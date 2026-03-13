@@ -317,7 +317,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app — disable OpenAPI schema in production to prevent
 # unauthenticated API reconnaissance.  Set ENABLE_API_DOCS=true to override.
 _enable_docs = os.getenv("ENABLE_API_DOCS", "").lower() in ("1", "true", "yes")
-_is_production = system_config.DEPLOY_MODE == "production"
+_is_production = system_config.is_production() or system_config.is_production_like()
 
 app = FastAPI(
     title="snflwr.ai API",

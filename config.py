@@ -334,10 +334,14 @@ class _SystemConfig:
         # =================================================================
         csrf_cookie_secure = os.getenv('CSRF_COOKIE_SECURE', 'false').lower() == 'true'
         if not csrf_cookie_secure:
-            warnings_list.append(
+            msg = (
                 "CSRF_COOKIE_SECURE is not enabled. Set CSRF_COOKIE_SECURE=true "
                 "for production to prevent CSRF cookie transmission over HTTP."
             )
+            if is_prod:
+                errors.append(msg)
+            else:
+                warnings_list.append(msg)
 
         # =================================================================
         # HIGH: Conversation Encryption (COPPA/FERPA Compliance)

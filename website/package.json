@@ -10,7 +10,9 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^4.16.0"
+    "@fontsource/inter": "^5.2.8",
+    "astro": "^4.16.0",
+    "satori": "^0.25.0"
   },
   "devDependencies": {
     "sharp": "^0.33.5"

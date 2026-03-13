@@ -260,7 +260,9 @@ async def send_chat_message(
                 except SessionLimitError as e:
                     raise HTTPException(status_code=429, detail=str(e))
                 except SessionError as e:
-                    logger.error(f"Failed to create session: {sanitize_log_value(str(e))!r}")
+                    logger.error(
+                        f"Failed to create session: {sanitize_log_value(str(e))!r}"
+                    )
                     raise HTTPException(
                         status_code=500, detail="Failed to create session"
                     )
@@ -412,7 +414,8 @@ async def send_chat_message(
             )
             logger.error(f"Ollama chat failed: {sanitize_log_value(err_msg)!r}")
             raise HTTPException(
-                status_code=503, detail=f"AI model unavailable: {sanitize_log_value(err_msg)}"
+                status_code=503,
+                detail=f"AI model unavailable: {sanitize_log_value(err_msg)}",
             )
 
         # Strip thinking tokens — qwen3.5 embeds <think>...</think> blocks in

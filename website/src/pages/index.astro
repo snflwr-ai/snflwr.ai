@@ -90,6 +90,92 @@ import '../styles/global.css';
           </a>
         </div>
 
+        <div class="hero__visual" aria-hidden="true">
+          <svg class="hero__mockup" viewBox="0 0 800 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Browser frame -->
+            <rect x="0" y="0" width="800" height="500" rx="12" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.5"/>
+            <!-- Title bar -->
+            <rect x="0" y="0" width="800" height="44" rx="12" fill="#F9FAFB"/>
+            <rect x="0" y="32" width="800" height="12" fill="#F9FAFB"/>
+            <line x1="0" y1="44" x2="800" y2="44" stroke="#E5E7EB" stroke-width="1"/>
+            <!-- Window dots -->
+            <circle cx="24" cy="22" r="6" fill="#EF4444"/>
+            <circle cx="44" cy="22" r="6" fill="#F59E0B"/>
+            <circle cx="64" cy="22" r="6" fill="#22C55E"/>
+            <!-- URL bar -->
+            <rect x="120" y="12" width="560" height="22" rx="6" fill="#E5E7EB"/>
+            <text x="400" y="27" text-anchor="middle" font-family="Inter, system-ui" font-size="11" fill="#6B7280">snflwr.ai/chat</text>
+
+            <!-- Sidebar: Safety Pipeline -->
+            <rect x="16" y="56" width="200" height="428" rx="8" fill="#F9FAFB"/>
+            <text x="116" y="80" text-anchor="middle" font-family="Inter, system-ui" font-size="11" font-weight="600" fill="#111827">Safety Pipeline</text>
+
+            <!-- Pipeline stages -->
+            <rect x="32" y="96" width="168" height="36" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/>
+            <circle cx="52" cy="114" r="8" fill="#22C55E"/>
+            <text x="50" y="118" text-anchor="middle" font-family="Inter, system-ui" font-size="10" fill="white" font-weight="700">1</text>
+            <text x="70" y="118" font-family="Inter, system-ui" font-size="11" fill="#111827">Input Validation</text>
+
+            <path d="M116 132 L116 144" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+            <rect x="32" y="144" width="168" height="36" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/>
+            <circle cx="52" cy="162" r="8" fill="#22C55E"/>
+            <text x="50" y="166" text-anchor="middle" font-family="Inter, system-ui" font-size="10" fill="white" font-weight="700">2</text>
+            <text x="70" y="166" font-family="Inter, system-ui" font-size="11" fill="#111827">Normalization</text>
+
+            <path d="M116 180 L116 192" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+            <rect x="32" y="192" width="168" height="36" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/>
+            <circle cx="52" cy="210" r="8" fill="#22C55E"/>
+            <text x="50" y="214" text-anchor="middle" font-family="Inter, system-ui" font-size="10" fill="white" font-weight="700">3</text>
+            <text x="70" y="214" font-family="Inter, system-ui" font-size="11" fill="#111827">Pattern Matching</text>
+
+            <path d="M116 228 L116 240" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+            <rect x="32" y="240" width="168" height="36" rx="6" fill="#DCFCE7" stroke="#22C55E" stroke-width="1"/>
+            <circle cx="52" cy="258" r="8" fill="#22C55E"/>
+            <text x="50" y="262" text-anchor="middle" font-family="Inter, system-ui" font-size="10" fill="white" font-weight="700">4</text>
+            <text x="70" y="262" font-family="Inter, system-ui" font-size="11" fill="#111827">LLM Classification</text>
+
+            <path d="M116 276 L116 288" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+            <rect x="32" y="288" width="168" height="36" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1"/>
+            <circle cx="52" cy="306" r="8" fill="#F59E0B"/>
+            <text x="50" y="310" text-anchor="middle" font-family="Inter, system-ui" font-size="10" fill="white" font-weight="700">5</text>
+            <text x="70" y="310" font-family="Inter, system-ui" font-size="11" fill="#111827">Age-Adaptive Rules</text>
+
+            <!-- Status badge -->
+            <rect x="50" y="340" width="132" height="28" rx="14" fill="#22C55E"/>
+            <text x="116" y="358" text-anchor="middle" font-family="Inter, system-ui" font-size="11" font-weight="600" fill="white">All Checks Passed</text>
+
+            <!-- Chat area -->
+            <rect x="232" y="56" width="552" height="388" rx="0" fill="#FFFFFF"/>
+
+            <!-- Chat messages -->
+            <rect x="460" y="72" width="308" height="52" rx="12" fill="#111827"/>
+            <text x="476" y="92" font-family="Inter, system-ui" font-size="12" fill="#FFFFFF">Can you help me understand</text>
+            <text x="476" y="108" font-family="Inter, system-ui" font-size="12" fill="#FFFFFF">how photosynthesis works?</text>
+
+            <rect x="248" y="140" width="380" height="100" rx="12" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="1"/>
+            <text x="264" y="162" font-family="Inter, system-ui" font-size="12" fill="#111827" font-weight="600">snflwr.ai</text>
+            <text x="264" y="180" font-family="Inter, system-ui" font-size="12" fill="#4B5563">Great question! Photosynthesis is how</text>
+            <text x="264" y="196" font-family="Inter, system-ui" font-size="12" fill="#4B5563">plants convert sunlight into energy.</text>
+            <text x="264" y="212" font-family="Inter, system-ui" font-size="12" fill="#4B5563">Think of it like a solar panel...</text>
+            <text x="264" y="228" font-family="Inter, system-ui" font-size="12" fill="#22C55E">Verified safe for Grade 5+</text>
+
+            <rect x="248" y="256" width="180" height="32" rx="16" fill="#FEF3C7"/>
+            <text x="274" y="276" font-family="Inter, system-ui" font-size="12" fill="#D97706" font-weight="500">Shield Active  |  Latency: 12ms</text>
+
+            <!-- Input bar -->
+            <rect x="232" y="452" width="552" height="48" fill="#F9FAFB"/>
+            <line x1="232" y1="452" x2="784" y2="452" stroke="#E5E7EB" stroke-width="1"/>
+            <rect x="248" y="462" width="460" height="28" rx="14" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+            <text x="268" y="480" font-family="Inter, system-ui" font-size="12" fill="#9CA3AF">Ask anything — your safety pipeline is active...</text>
+            <rect x="720" y="462" width="48" height="28" rx="14" fill="#F59E0B"/>
+            <text x="744" y="480" text-anchor="middle" font-family="Inter, system-ui" font-size="11" fill="white" font-weight="600">Send</text>
+          </svg>
+        </div>
+
         <div class="hero__stats" role="list" aria-label="Platform statistics">
           <div class="hero__stat" role="listitem">
             <span class="hero__stat-num">2,590+</span>
@@ -883,6 +969,30 @@ import '../styles/global.css';
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.hero__visual {
+  margin-top: 3rem;
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.1));
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.hero__mockup {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .hero__visual {
+    margin-top: 2rem;
+    border-radius: 8px;
+  }
 }
 
 .hero__stat-divider {

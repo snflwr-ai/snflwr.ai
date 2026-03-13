@@ -11,7 +11,7 @@ import psutil
 import time
 from typing import Any, Dict, List
 
-from utils.logger import get_logger, logger_manager
+from utils.logger import get_logger, logger_manager, sanitize_log_value
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
 from config import system_config
@@ -497,7 +497,7 @@ async def detailed_health(session: AuthSession = Depends(require_admin)):
         logger.warning(f"Could not check Redis health: {e}")
         health_status["components"]["redis"] = {
             "status": "unknown",
-            "error": str(e),
+            "error": sanitize_log_value(str(e)),
         }
 
     # Safety monitoring

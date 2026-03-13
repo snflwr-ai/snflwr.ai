@@ -15,7 +15,7 @@ pytest==8.3.5                 # Testing framework
 pytest-asyncio==0.24.0        # Async test support (required by pytest.ini asyncio_mode=auto)
 pytest-cov==6.0.0             # Coverage reporting
 pytest-mock==3.14.0           # Mocking utilities
-black==24.10.0                # Code formatter
+black==26.3.1                # Code formatter
 pylint==3.3.3                 # Code linter
 mypy==1.14.0                  # Type checking
 

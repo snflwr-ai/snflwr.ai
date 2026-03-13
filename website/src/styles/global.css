@@ -1,8 +1,6 @@
 /* snflwr.ai — Global Stylesheet */
 /* Stripe/Linear aesthetic, mobile-first */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 :root {
   --yellow: #F59E0B;
   --yellow-light: #FEF3C7;
@@ -77,4 +75,24 @@ a {
   outline: 2px solid var(--yellow);
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+/* Scroll-triggered animations */
+.animate-on-scroll {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.animate-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-on-scroll {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }

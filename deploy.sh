@@ -51,6 +51,50 @@ warn()    { echo "  $(_yellow '[!]') $*"; }
 error()   { echo "  $(_red '[x]') $*" >&2; }
 section() { echo ""; echo "  $(_bold "$*")"; echo "  $(printf '%0.s-' $(seq 1 ${#1}))"; }
 
+# --- Port availability check -------------------------------------------------
+# check_port PORT LABEL
+#   Exits with a clear error if PORT is already bound on the host AND the
+#   process holding it is NOT one of our own Docker containers.
+check_port() {
+    local port="$1" label="$2"
+
+    # 1. Check if one of our containers already owns the port (previous run)
+    local container_id
+    container_id=$(docker ps -q --filter "publish=${port}" 2>/dev/null || true)
+    if [[ -n "$container_id" ]]; then
+        local container_name
+        container_name=$(docker inspect --format '{{.Name}}' "$container_id" 2>/dev/null | sed 's|^/||')
+        if [[ "$container_name" == snflwr-* ]]; then
+            # Our own container — compose will handle restart/replace
+            return 0
+        fi
+        error "Port ${port} (${label}) is already in use by Docker container '${container_name}'."
+        echo "      Stop it first:  docker stop ${container_name}"
+        exit 1
+    fi
+
+    # 2. Check for non-Docker processes occupying the port
+    local pids=""
+    if command -v lsof &>/dev/null; then
+        pids=$(lsof -ti :"${port}" 2>/dev/null || true)
+    elif command -v ss &>/dev/null; then
+        pids=$(ss -tlnp sport = :"${port}" 2>/dev/null | grep -oP 'pid=\K[0-9]+' || true)
+    elif command -v fuser &>/dev/null; then
+        pids=$(fuser "${port}/tcp" 2>/dev/null || true)
+    fi
+
+    if [[ -n "$pids" ]]; then
+        local proc_info=""
+        if command -v ps &>/dev/null; then
+            proc_info=$(ps -p "$(echo "$pids" | head -1)" -o comm= 2>/dev/null || true)
+        fi
+        error "Port ${port} (${label}) is already in use${proc_info:+ by '${proc_info}'}."
+        echo "      PID(s): $pids"
+        echo "      Free the port and re-run, or use --port to pick a different one."
+        exit 1
+    fi
+}
+
 # --- Argument parsing --------------------------------------------------------
 GPU_MODE=""        # auto | force | none
 OPEN_BROWSER=auto  # auto | yes | no
@@ -272,6 +316,12 @@ set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 set +a
+
+# --- Pre-flight port check ---------------------------------------------------
+section "Checking ports"
+
+check_port "$RESOLVED_PORT" "Web UI"
+info "Port ${RESOLVED_PORT} (Web UI) is available."
 
 # --- Build snflwr-api image --------------------------------------------------
 section "Building images"

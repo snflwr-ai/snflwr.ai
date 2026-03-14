@@ -59,17 +59,26 @@ check_port() {
     local port="$1" label="$2"
 
     # 1. Check if one of our containers already owns the port (previous run)
-    local container_id
-    container_id=$(docker ps -q --filter "publish=${port}" 2>/dev/null || true)
-    if [[ -n "$container_id" ]]; then
-        local container_name
-        container_name=$(docker inspect --format '{{.Name}}' "$container_id" 2>/dev/null | sed 's|^/||')
-        if [[ "$container_name" == snflwr-* ]]; then
-            # Our own container — compose will handle restart/replace
+    local container_ids
+    container_ids=$(docker ps -q --filter "publish=${port}" 2>/dev/null || true)
+    if [[ -n "$container_ids" ]]; then
+        local all_ours=true
+        local foreign_name=""
+        while IFS= read -r cid; do
+            local cname
+            cname=$(docker inspect --format '{{.Name}}' "$cid" 2>/dev/null | sed 's|^/||')
+            if [[ "$cname" != snflwr-* ]]; then
+                all_ours=false
+                foreign_name="$cname"
+                break
+            fi
+        done <<< "$container_ids"
+        if [[ "$all_ours" == "true" ]]; then
+            # Our own container(s) — compose will handle restart/replace
             return 0
         fi
-        error "Port ${port} (${label}) is already in use by Docker container '${container_name}'."
-        echo "      Stop it first:  docker stop ${container_name}"
+        error "Port ${port} (${label}) is already in use by Docker container '${foreign_name}'."
+        echo "      Stop it first:  docker stop ${foreign_name}"
         exit 1
     fi
 
@@ -84,14 +93,26 @@ check_port() {
     fi
 
     if [[ -n "$pids" ]]; then
+        # Filter out docker-proxy — it's Docker's own port forwarder and is
+        # already covered by the container check above.
+        local non_docker_pids=""
         local proc_info=""
-        if command -v ps &>/dev/null; then
-            proc_info=$(ps -p "$(echo "$pids" | head -1)" -o comm= 2>/dev/null || true)
+        while IFS= read -r pid; do
+            [[ -z "$pid" ]] && continue
+            local comm
+            comm=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+            if [[ "$comm" != "docker-proxy" ]]; then
+                non_docker_pids="${non_docker_pids:+${non_docker_pids} }${pid}"
+                proc_info="$comm"
+            fi
+        done <<< "$pids"
+
+        if [[ -n "$non_docker_pids" ]]; then
+            error "Port ${port} (${label}) is already in use${proc_info:+ by '${proc_info}'}."
+            echo "      PID(s): $non_docker_pids"
+            echo "      Free the port and re-run, or use --port to pick a different one."
+            exit 1
         fi
-        error "Port ${port} (${label}) is already in use${proc_info:+ by '${proc_info}'}."
-        echo "      PID(s): $pids"
-        echo "      Free the port and re-run, or use --port to pick a different one."
-        exit 1
     fi
 }
 

@@ -290,6 +290,15 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Stop WebSocket Redis Pub/Sub
+    try:
+        from api.websocket_server import websocket_manager
+
+        await websocket_manager.stop_pubsub()
+        logger.info("WebSocket Redis Pub/Sub stopped")
+    except Exception as e:
+        logger.warning(f"WebSocket Pub/Sub could not stop cleanly: {e}")
+
     # Stop email alert worker thread
     try:
         from utils.email_alerts import email_alert_system

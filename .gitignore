@@ -48,6 +48,14 @@ config/audit/
 # Test coverage reports
 .coverage
 
+# SSL certificates and private keys
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+
 # Generated credentials file — never commit
 CREDENTIALS.md
 CREDENTIALS*.md

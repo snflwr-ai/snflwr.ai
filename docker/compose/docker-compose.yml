@@ -4,7 +4,7 @@
 services:
   # Nginx - SSL termination, reverse proxy, rate limiting
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27.4-alpine
     container_name: snflwr-nginx
     ports:
       - "80:80"
@@ -159,7 +159,7 @@ services:
 
   # PostgreSQL - Database for users, profiles, incidents
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.8-alpine
     container_name: snflwr-db
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -181,7 +181,7 @@ services:
 
   # Redis - Caching and rate limiting
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: snflwr-redis
     volumes:
       - redis-data:/data

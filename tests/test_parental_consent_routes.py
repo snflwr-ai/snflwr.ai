@@ -583,7 +583,12 @@ class TestRequestConsentErrorHandlers:
 
 
 class TestRequestConsentParentNameLookup:
-    """Cover parent name lookup paths (lines 147-156)."""
+    """Cover parent name lookup paths (lines 147-156).
+
+    The source does ``from storage.database import db_manager`` at line 140,
+    so we must patch ``storage.database.db_manager`` (not ``mock_db`` which
+    backs ``auth_manager.db``).
+    """
 
     @pytest.mark.asyncio
     async def test_parent_name_lookup_db_error(
@@ -595,55 +600,146 @@ class TestRequestConsentParentNameLookup:
         import sqlite3
 
         mock_db.execute_query.side_effect = [
-            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup
+            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup (auth_manager.db)
         ]
         mock_db.execute_write.return_value = None
 
-        # Patch db_manager import inside the function to raise DB error
         mock_dbm = MagicMock()
         mock_dbm.execute_query.side_effect = sqlite3.OperationalError("db locked")
 
         with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
-            with patch.dict("sys.modules", {}):
-                # Patch the db_manager import to raise
-                with patch("storage.database.db_manager", mock_dbm):
-                    req_data = ConsentRequest(
-                        profile_id="prof1",
-                        parent_email="parent@test.com",
-                        child_name="Tommy",
-                        child_age=8,
-                    )
-                    request = MagicMock()
-                    request.base_url = "http://localhost/"
+            with patch("storage.database.db_manager", mock_dbm):
+                req_data = ConsentRequest(
+                    profile_id="prof1",
+                    parent_email="parent@test.com",
+                    child_name="Tommy",
+                    child_age=8,
+                )
+                request = MagicMock()
+                request.base_url = "http://localhost/"
 
-                    result = await request_parental_consent(request, req_data, parent_session)
-                    assert result["status"] == "success"
+                result = await request_parental_consent(request, req_data, parent_session)
+                assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_parent_name_lookup_no_rows(
         self, parent_session, mock_auth_manager, mock_email, mock_audit, mock_db
     ):
-        """When username lookup returns empty rows, falls back to user_id (line 146-152)."""
+        """When username lookup returns empty rows, falls back to user_id (line 146)."""
         from api.routes.parental_consent import request_parental_consent, ConsentRequest
 
         mock_db.execute_query.side_effect = [
-            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup
-            [],  # empty username lookup
+            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup (auth_manager.db)
         ]
         mock_db.execute_write.return_value = None
 
-        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
-            req_data = ConsentRequest(
-                profile_id="prof1",
-                parent_email="parent@test.com",
-                child_name="Tommy",
-                child_age=8,
-            )
-            request = MagicMock()
-            request.base_url = "http://localhost/"
+        # Mock db_manager (the object imported at line 140) to return empty rows
+        mock_dbm = MagicMock()
+        mock_dbm.execute_query.return_value = []
 
-            result = await request_parental_consent(request, req_data, parent_session)
-            assert result["status"] == "success"
+        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
+            with patch("storage.database.db_manager", mock_dbm):
+                req_data = ConsentRequest(
+                    profile_id="prof1",
+                    parent_email="parent@test.com",
+                    child_name="Tommy",
+                    child_age=8,
+                )
+                request = MagicMock()
+                request.base_url = "http://localhost/"
+
+                result = await request_parental_consent(request, req_data, parent_session)
+                assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_parent_name_lookup_username_found(
+        self, parent_session, mock_auth_manager, mock_email, mock_audit, mock_db
+    ):
+        """Username found in rows → parent_name set (lines 147-150)."""
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        mock_db.execute_query.side_effect = [
+            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup (auth_manager.db)
+        ]
+        mock_db.execute_write.return_value = None
+
+        mock_dbm = MagicMock()
+        mock_dbm.execute_query.return_value = [{"username": "JaneDoe"}]
+
+        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
+            with patch("storage.database.db_manager", mock_dbm):
+                req_data = ConsentRequest(
+                    profile_id="prof1",
+                    parent_email="parent@test.com",
+                    child_name="Tommy",
+                    child_age=8,
+                )
+                request = MagicMock()
+                request.base_url = "http://localhost/"
+
+                result = await request_parental_consent(request, req_data, parent_session)
+                assert result["status"] == "success"
+                # Verify parent_name was set from db lookup
+                call_kwargs = mock_email.send_parental_consent_request.call_args
+                assert call_kwargs[1]["parent_name"] == "JaneDoe" or call_kwargs.kwargs["parent_name"] == "JaneDoe"
+
+    @pytest.mark.asyncio
+    async def test_parent_name_lookup_key_error(
+        self, parent_session, mock_auth_manager, mock_email, mock_audit, mock_db
+    ):
+        """Rows exist but missing 'username' key → KeyError caught (line 151)."""
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        mock_db.execute_query.side_effect = [
+            [{'parent_id': 'parent123', 'age': 8}],
+        ]
+        mock_db.execute_write.return_value = None
+
+        mock_dbm = MagicMock()
+        mock_dbm.execute_query.return_value = [{"wrong_column": "value"}]
+
+        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
+            with patch("storage.database.db_manager", mock_dbm):
+                req_data = ConsentRequest(
+                    profile_id="prof1",
+                    parent_email="parent@test.com",
+                    child_name="Tommy",
+                    child_age=8,
+                )
+                request = MagicMock()
+                request.base_url = "http://localhost/"
+
+                result = await request_parental_consent(request, req_data, parent_session)
+                assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_parent_name_lookup_username_none(
+        self, parent_session, mock_auth_manager, mock_email, mock_audit, mock_db
+    ):
+        """Username is None → falls back to user_id (line 149 falsy check)."""
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        mock_db.execute_query.side_effect = [
+            [{'parent_id': 'parent123', 'age': 8}],
+        ]
+        mock_db.execute_write.return_value = None
+
+        mock_dbm = MagicMock()
+        mock_dbm.execute_query.return_value = [{"username": None}]
+
+        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
+            with patch("storage.database.db_manager", mock_dbm):
+                req_data = ConsentRequest(
+                    profile_id="prof1",
+                    parent_email="parent@test.com",
+                    child_name="Tommy",
+                    child_age=8,
+                )
+                request = MagicMock()
+                request.base_url = "http://localhost/"
+
+                result = await request_parental_consent(request, req_data, parent_session)
+                assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_parent_name_lookup_generic_exception(
@@ -653,7 +749,7 @@ class TestRequestConsentParentNameLookup:
         from api.routes.parental_consent import request_parental_consent, ConsentRequest
 
         mock_db.execute_query.side_effect = [
-            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup
+            [{'parent_id': 'parent123', 'age': 8}],
         ]
         mock_db.execute_write.return_value = None
 

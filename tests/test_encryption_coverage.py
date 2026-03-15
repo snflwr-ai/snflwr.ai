@@ -531,25 +531,24 @@ class TestInitializationEdgePaths:
     """Cover _initialize_encryption fallback and key conversion error paths."""
 
     def test_fernet_key_conversion_fallback(self, tmp_path):
-        """When base64 key conversion fails, _initialize_encryption uses raw key."""
+        """When base64 key conversion fails, _initialize_encryption uses raw key (lines 168-173)."""
         from storage.encryption import EncryptionManager
 
-        # Create a manager first to get a valid key file
+        # Create a manager first to get a valid key file and capture its master key
         mgr = EncryptionManager(key_dir=tmp_path)
+        stored_key = mgr._master_key  # The 44-byte base64 key loaded from disk
 
-        # Corrupt the in-memory key so base64 decode raises, forcing the fallback
-        # Patch base64.b64decode to fail inside _initialize_encryption
         import base64 as b64mod
 
         original_b64decode = b64mod.b64decode
-
-        call_count = [0]
+        failed_once = [False]
 
         def patched_b64decode(data, *args, **kwargs):
-            call_count[0] += 1
-            # Let the first call (key loading) succeed; fail on the second (Fernet conversion)
-            if call_count[0] == 2:
-                raise ValueError("forced decode failure")
+            # Fail on the first call that decodes the master key (line 165).
+            # Let the second call (inside Fernet constructor at line 173) through.
+            if data == stored_key and not failed_once[0]:
+                failed_once[0] = True
+                raise ValueError("forced decode failure for Fernet conversion")
             return original_b64decode(data, *args, **kwargs)
 
         with patch("storage.encryption.base64.b64decode", side_effect=patched_b64decode):
@@ -813,9 +812,21 @@ class TestSecureStorageErrorPaths:
             result = storage.store("key", {"data": "value"})
             assert result is False
 
+    def test_retrieve_falls_back_to_dict_decryption(self, storage):
+        """retrieve() falls back to decrypt_dict when decrypt returns None (lines 673-675)."""
+        enc_file = storage.storage_dir / "dictkey.enc"
+        enc_file.write_text("some-encrypted-data")
+
+        with patch.object(
+            storage.encryption, "decrypt", return_value=None
+        ), patch.object(
+            storage.encryption, "decrypt_dict", return_value={"key": "value"}
+        ):
+            result = storage.retrieve("dictkey")
+            assert result == {"key": "value"}
+
     def test_retrieve_decrypt_exception_returns_none(self, storage):
-        """retrieve() returns None when decrypt raises (lines 673-685)."""
-        # Write a file manually so exists() check passes
+        """retrieve() returns None when both decrypt and decrypt_dict fail (lines 677-685)."""
         enc_file = storage.storage_dir / "broken.enc"
         enc_file.write_text("corrupted-data-here")
 

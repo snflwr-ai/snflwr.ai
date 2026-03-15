@@ -29,7 +29,7 @@
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue" alt="Python 3.10 | 3.11 | 3.12" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0" />
   <img src="https://img.shields.io/badge/tests-2590%2B-brightgreen" alt="2590+ Tests" />
-  <img src="https://img.shields.io/badge/coverage-86%25-brightgreen" alt="86% Coverage" />
+  <img src="https://img.shields.io/badge/coverage-86%25-brightgreen" alt="88.41% Coverage" />
   <img src="https://img.shields.io/badge/COPPA%2FFERPA-designed-green" alt="COPPA/FERPA" />
 </p>
 

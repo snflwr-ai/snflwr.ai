@@ -520,3 +520,319 @@ class TestVerifyPasswordEdgeCases:
         hashed1 = enc_manager.hash_password("samepass", salt=salt)
         hashed2 = enc_manager.hash_password("samepass", salt=salt)
         assert hashed1 == hashed2  # Same salt -> same hash
+
+
+# ==========================================================================
+# Uncovered edge-case / error-path tests
+# ==========================================================================
+
+
+class TestInitializationEdgePaths:
+    """Cover _initialize_encryption fallback and key conversion error paths."""
+
+    def test_fernet_key_conversion_fallback(self, tmp_path):
+        """When base64 key conversion fails, _initialize_encryption uses raw key."""
+        from storage.encryption import EncryptionManager
+
+        # Create a manager first to get a valid key file
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        # Corrupt the in-memory key so base64 decode raises, forcing the fallback
+        # Patch base64.b64decode to fail inside _initialize_encryption
+        import base64 as b64mod
+
+        original_b64decode = b64mod.b64decode
+
+        call_count = [0]
+
+        def patched_b64decode(data, *args, **kwargs):
+            call_count[0] += 1
+            # Let the first call (key loading) succeed; fail on the second (Fernet conversion)
+            if call_count[0] == 2:
+                raise ValueError("forced decode failure")
+            return original_b64decode(data, *args, **kwargs)
+
+        with patch("storage.encryption.base64.b64decode", side_effect=patched_b64decode):
+            # Re-initialize to hit the fallback path (line 168-173)
+            mgr2 = EncryptionManager(key_dir=tmp_path)
+            assert mgr2._fernet is not None
+
+    def test_initialization_failure_raises(self, tmp_path):
+        """Cover the outer exception handler in _initialize_encryption (line 175-177)."""
+        from storage.encryption import EncryptionManager
+
+        # Create key file that will cause InvalidToken/ValueError during Fernet init
+        key_file = tmp_path / ".encryption_key"
+        # Write 44 bytes of non-base64 garbage that passes length check but breaks Fernet
+        key_file.write_bytes(b"!" * 44)
+        key_file.chmod(0o600)
+
+        with pytest.raises((ValueError, RuntimeError, OSError, Exception)):
+            EncryptionManager(key_dir=tmp_path)
+
+
+class TestSaveMasterKeyEdgePaths:
+    """Cover _save_master_key permission and error paths."""
+
+    def test_save_key_permissions_warning_non_group_readable(self, tmp_path):
+        """Cover the warning path when permissions != 0o600 but not group/other readable."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        original_stat = os.stat
+
+        def fake_stat(path, **kwargs):
+            result = original_stat(path, **kwargs)
+            if str(path).endswith(".encryption_key"):
+                mock_result = MagicMock()
+                mock_result.st_mode = 0o100700
+                return mock_result
+            return result
+
+        with patch("storage.encryption.os.stat", side_effect=fake_stat):
+            with patch("storage.encryption.os.chmod"):
+                mgr._save_master_key()
+
+    def test_save_key_group_readable_deletes_and_raises(self, tmp_path):
+        """Cover the fail-closed path: group/other readable → unlink + raise (lines 208-213)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        original_stat = os.stat
+
+        def fake_stat(path, **kwargs):
+            result = original_stat(path, **kwargs)
+            if str(path).endswith(".encryption_key"):
+                mock_result = MagicMock()
+                mock_result.st_mode = 0o100644
+                return mock_result
+            return result
+
+        with patch("storage.encryption.os.stat", side_effect=fake_stat):
+            with patch("storage.encryption.os.chmod"):
+                with pytest.raises(RuntimeError, match="CRITICAL"):
+                    mgr._save_master_key()
+
+    def test_save_key_oserror(self, tmp_path):
+        """Cover OSError in _save_master_key (lines 222-224)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="disk full"):
+                mgr._save_master_key()
+
+
+class TestGetMasterKeyEdgePaths:
+    """Cover _get_master_key UTF-8 fallback path."""
+
+    def test_get_master_key_non_utf8_bytes(self, tmp_path):
+        """When master key bytes can't decode as UTF-8, falls back to base64 re-encode (lines 259-263)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        # Set master key to non-UTF-8 bytes
+        mgr._master_key = b"\xff\xfe\xfd" * 10
+
+        result = mgr._get_master_key()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_get_master_key_string_type(self, tmp_path):
+        """When master key is already a string, return it directly (line 264)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+        mgr._master_key = "already-a-string-key"
+
+        result = mgr._get_master_key()
+        assert result == "already-a-string-key"
+
+
+class TestEncryptStringErrorPath:
+    """Cover encrypt_string exception handler (lines 290-292)."""
+
+    def test_encrypt_string_fernet_error(self, tmp_path):
+        """When Fernet.encrypt raises, encrypt_string re-raises."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        with patch.object(mgr._fernet, "encrypt", side_effect=ValueError("bad data")):
+            with pytest.raises(ValueError, match="bad data"):
+                mgr.encrypt_string("hello")
+
+
+class TestEncryptDecryptWrapperErrors:
+    """Cover encrypt/decrypt wrapper exception paths (lines 329-331, 339-341)."""
+
+    def test_encrypt_wrapper_catches_error_returns_none(self, tmp_path):
+        """encrypt() wrapper catches ValueError and returns None (lines 329-331)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        with patch.object(mgr._fernet, "encrypt", side_effect=TypeError("bad type")):
+            result = mgr.encrypt("hello")
+            assert result is None
+
+    def test_decrypt_wrapper_catches_error_returns_none(self, tmp_path):
+        """decrypt() wrapper catches ValueError and returns None (lines 339-341)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        with patch.object(
+            mgr, "decrypt_string", side_effect=TypeError("bad type")
+        ):
+            result = mgr.decrypt("some-data")
+            assert result is None
+
+
+class TestEncryptDictErrorPath:
+    """Cover encrypt_dict exception handler (lines 356-358)."""
+
+    def test_encrypt_dict_json_error_raises(self, tmp_path):
+        """encrypt_dict raises on non-serializable data."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        # Pass an object that json.dumps can't serialize
+        class Unserializable:
+            pass
+
+        with pytest.raises(TypeError):
+            mgr.encrypt_dict({"key": Unserializable()})
+
+
+class TestEncryptFileErrorPath:
+    """Cover encrypt_file/decrypt_file error handlers (lines 405-407, 437-439)."""
+
+    def test_encrypt_file_write_error_returns_false(self, tmp_path):
+        """encrypt_file returns False when output write fails (lines 405-407)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        input_file = tmp_path / "input.txt"
+        input_file.write_text("secret data")
+
+        # Point output to a directory (can't write)
+        output_dir = tmp_path / "output_dir"
+        output_dir.mkdir()
+
+        result = mgr.encrypt_file(input_file, output_dir / "sub" / "nope.enc")
+        assert result is False
+
+
+class TestHashPasswordErrorPath:
+    """Cover hash_password exception handler (lines 475-477)."""
+
+    def test_hash_password_kdf_error_raises(self, tmp_path):
+        """hash_password raises when PBKDF2 fails."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        with patch("storage.encryption.PBKDF2HMAC", side_effect=ValueError("bad kdf")):
+            with pytest.raises(ValueError, match="bad kdf"):
+                mgr.hash_password("password123")
+
+
+class TestVerifyPasswordErrorPaths:
+    """Cover verify_password exception paths (lines 517-521, 527-529)."""
+
+    def test_verify_password_derive_error_returns_false(self, tmp_path):
+        """When key derivation fails during verify, returns False (lines 517-521)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        # Create a valid hash first
+        hashed = mgr.hash_password("test-password")
+
+        # Patch the KDF derive to fail on the second call (during verify)
+        with patch("storage.encryption.PBKDF2HMAC") as mock_kdf:
+            mock_instance = MagicMock()
+            mock_instance.derive.side_effect = ValueError("kdf error")
+            mock_kdf.return_value = mock_instance
+
+            result = mgr.verify_password("test-password", hashed)
+            assert result is False
+
+    def test_verify_password_invalid_base64_salt_returns_false(self, tmp_path):
+        """When salt base64 decode fails, returns False (lines 527-529)."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        # Pass a combined hash with invalid base64 salt
+        result = mgr.verify_password("password", "not-valid-b64!!!$hashpart")
+        assert result is False
+
+    def test_verify_password_separate_salt_invalid_returns_false(self, tmp_path):
+        """When separate salt can't be decoded, returns False."""
+        from storage.encryption import EncryptionManager
+
+        mgr = EncryptionManager(key_dir=tmp_path)
+
+        result = mgr.verify_password("password", "hashpart", salt="not-valid-b64!!!")
+        assert result is False
+
+
+class TestSecureStorageErrorPaths:
+    """Cover SecureStorage error paths."""
+
+    @pytest.fixture
+    def storage(self, tmp_path):
+        from storage.encryption import SecureStorage
+
+        db_mock = MagicMock()
+        storage_dir = tmp_path / "store"
+        key_dir = tmp_path / "keys"
+        storage_dir.mkdir()
+        key_dir.mkdir()
+        return SecureStorage(db=db_mock, storage_dir=storage_dir, key_dir=key_dir)
+
+    def test_store_encryption_returns_none_returns_false(self, storage):
+        """store() returns False when encryption returns None (lines 631-635)."""
+        with patch.object(storage.encryption, "encrypt", return_value=None):
+            result = storage.store("key", "value-not-dict")
+            assert result is False
+
+    def test_store_oserror_returns_false(self, storage):
+        """store() returns False on OSError (lines 643-645)."""
+        with patch.object(
+            storage.encryption, "encrypt_dict", side_effect=OSError("disk error")
+        ):
+            result = storage.store("key", {"data": "value"})
+            assert result is False
+
+    def test_retrieve_decrypt_exception_returns_none(self, storage):
+        """retrieve() returns None when decrypt raises (lines 673-685)."""
+        # Write a file manually so exists() check passes
+        enc_file = storage.storage_dir / "broken.enc"
+        enc_file.write_text("corrupted-data-here")
+
+        with patch.object(
+            storage.encryption, "decrypt", return_value=None
+        ), patch.object(
+            storage.encryption, "decrypt_dict", side_effect=ValueError("bad data")
+        ):
+            result = storage.retrieve("broken")
+            assert result is None
+
+    def test_delete_oserror_returns_false(self, storage):
+        """delete() returns False on OSError (lines 704-706)."""
+        # Create a file so exists() passes, then mock unlink to fail
+        enc_file = storage.storage_dir / "errorkey.enc"
+        enc_file.write_text("data")
+
+        with patch.object(Path, "unlink", side_effect=OSError("permission denied")):
+            result = storage.delete("errorkey")
+            assert result is False

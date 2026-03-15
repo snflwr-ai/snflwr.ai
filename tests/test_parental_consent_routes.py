@@ -468,3 +468,454 @@ class TestGetConsentStatus:
         with pytest.raises(HTTPException) as exc:
             await get_consent_status("prof1", other_parent_session)
         assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_consent_status_not_found(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        from api.routes.parental_consent import get_consent_status
+
+        mock_db.execute_query.return_value = []
+
+        with pytest.raises(HTTPException) as exc:
+            await get_consent_status("missing", parent_session)
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_consent_status_error_in_status(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        """When age_manager.get_consent_status returns an error dict, 404 is raised (line 444)."""
+        from api.routes.parental_consent import get_consent_status
+
+        mock_db.execute_query.side_effect = [
+            [{'parent_id': 'parent123'}],  # profile ownership
+            [{'error': 'No consent record found'}],  # age_manager returns error
+        ]
+
+        with patch("api.routes.parental_consent.AgeVerificationManager") as mock_avm:
+            mock_avm_instance = MagicMock()
+            mock_avm_instance.get_consent_status.return_value = {
+                "error": "No consent record found"
+            }
+            mock_avm.return_value = mock_avm_instance
+
+            with pytest.raises(HTTPException) as exc:
+                await get_consent_status("prof1", parent_session)
+            assert exc.value.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Error handler coverage (DB_ERRORS, AgeVerificationError, generic Exception)
+# --------------------------------------------------------------------------
+
+class TestRequestConsentErrorHandlers:
+    """Cover error handler branches in request_parental_consent (lines 187-195)."""
+
+    @pytest.mark.asyncio
+    async def test_age_verification_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+        from core.age_verification import AgeVerificationError
+
+        mock_db.execute_query.return_value = [
+            {'parent_id': 'parent123', 'age': 8}
+        ]
+
+        with patch(
+            "api.routes.parental_consent.generate_consent_verification_token",
+            side_effect=AgeVerificationError("age check failed"),
+        ):
+            req_data = ConsentRequest(
+                profile_id="prof1",
+                parent_email="parent@test.com",
+                child_name="Tommy",
+                child_age=8,
+            )
+            request = MagicMock()
+
+            with pytest.raises(HTTPException) as exc:
+                await request_parental_consent(request, req_data, parent_session)
+            assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_db_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        # First query raises a DB error
+        import sqlite3
+        mock_db.execute_query.side_effect = sqlite3.OperationalError("db locked")
+
+        req_data = ConsentRequest(
+            profile_id="prof1",
+            parent_email="parent@test.com",
+            child_name="Tommy",
+            child_age=8,
+        )
+        request = MagicMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await request_parental_consent(request, req_data, parent_session)
+        assert exc.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        mock_db.execute_query.side_effect = RuntimeError("unexpected boom")
+
+        req_data = ConsentRequest(
+            profile_id="prof1",
+            parent_email="parent@test.com",
+            child_name="Tommy",
+            child_age=8,
+        )
+        request = MagicMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await request_parental_consent(request, req_data, parent_session)
+        assert exc.value.status_code == 500
+
+
+class TestRequestConsentParentNameLookup:
+    """Cover parent name lookup paths (lines 147-156)."""
+
+    @pytest.mark.asyncio
+    async def test_parent_name_lookup_db_error(
+        self, parent_session, mock_auth_manager, mock_email, mock_audit, mock_db
+    ):
+        """DB error during parent name lookup is caught, falls back to user_id (lines 153-154)."""
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        import sqlite3
+
+        mock_db.execute_query.side_effect = [
+            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup
+        ]
+        mock_db.execute_write.return_value = None
+
+        # Patch db_manager import inside the function to raise DB error
+        mock_dbm = MagicMock()
+        mock_dbm.execute_query.side_effect = sqlite3.OperationalError("db locked")
+
+        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
+            with patch.dict("sys.modules", {}):
+                # Patch the db_manager import to raise
+                with patch("storage.database.db_manager", mock_dbm):
+                    req_data = ConsentRequest(
+                        profile_id="prof1",
+                        parent_email="parent@test.com",
+                        child_name="Tommy",
+                        child_age=8,
+                    )
+                    request = MagicMock()
+                    request.base_url = "http://localhost/"
+
+                    result = await request_parental_consent(request, req_data, parent_session)
+                    assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_parent_name_lookup_no_rows(
+        self, parent_session, mock_auth_manager, mock_email, mock_audit, mock_db
+    ):
+        """When username lookup returns empty rows, falls back to user_id (line 146-152)."""
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        mock_db.execute_query.side_effect = [
+            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup
+            [],  # empty username lookup
+        ]
+        mock_db.execute_write.return_value = None
+
+        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
+            req_data = ConsentRequest(
+                profile_id="prof1",
+                parent_email="parent@test.com",
+                child_name="Tommy",
+                child_age=8,
+            )
+            request = MagicMock()
+            request.base_url = "http://localhost/"
+
+            result = await request_parental_consent(request, req_data, parent_session)
+            assert result["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_parent_name_lookup_generic_exception(
+        self, parent_session, mock_auth_manager, mock_email, mock_audit, mock_db
+    ):
+        """Generic exception during parent name lookup is caught (lines 155-156)."""
+        from api.routes.parental_consent import request_parental_consent, ConsentRequest
+
+        mock_db.execute_query.side_effect = [
+            [{'parent_id': 'parent123', 'age': 8}],  # profile lookup
+        ]
+        mock_db.execute_write.return_value = None
+
+        mock_dbm = MagicMock()
+        mock_dbm.execute_query.side_effect = RuntimeError("something weird")
+
+        with patch("api.routes.parental_consent.generate_consent_verification_token", return_value=("token123", "hash123")):
+            with patch("storage.database.db_manager", mock_dbm):
+                req_data = ConsentRequest(
+                    profile_id="prof1",
+                    parent_email="parent@test.com",
+                    child_name="Tommy",
+                    child_age=8,
+                )
+                request = MagicMock()
+                request.base_url = "http://localhost/"
+
+                result = await request_parental_consent(request, req_data, parent_session)
+                assert result["status"] == "success"
+
+
+class TestVerifyConsentErrorHandlers:
+    """Cover error handler branches in verify_parental_consent (lines 266, 273-279, 331-339)."""
+
+    @pytest.mark.asyncio
+    async def test_profile_not_found_in_verify(self, mock_auth_manager, mock_db):
+        """Profile not found during ownership check raises 404 (line 266)."""
+        from api.routes.parental_consent import verify_parental_consent, ConsentVerification
+
+        future = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        mock_db.execute_query.side_effect = [
+            [{'user_id': 'parent123', 'expires_at': future, 'is_valid': 1}],
+            [],  # profile not found
+        ]
+
+        verification = ConsentVerification(
+            token="valid-token",
+            electronic_signature="Jane Doe",
+            accept_terms=True,
+        )
+        request = MagicMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_parental_consent(verification, "missing_prof", request)
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_token_user_does_not_own_profile(self, mock_auth_manager, mock_db):
+        """Token user != profile parent raises 403 (lines 273-279)."""
+        from api.routes.parental_consent import verify_parental_consent, ConsentVerification
+
+        future = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        mock_db.execute_query.side_effect = [
+            [{'user_id': 'parent123', 'expires_at': future, 'is_valid': 1}],
+            [{'parent_id': 'different_parent'}],  # different parent owns profile
+        ]
+
+        verification = ConsentVerification(
+            token="valid-token",
+            electronic_signature="Jane Doe",
+            accept_terms=True,
+        )
+        request = MagicMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_parental_consent(verification, "prof1", request)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_verify_db_error(self, mock_auth_manager, mock_db):
+        """DB error during verify raises 503 (lines 334-336)."""
+        from api.routes.parental_consent import verify_parental_consent, ConsentVerification
+
+        import sqlite3
+        mock_db.execute_query.side_effect = sqlite3.OperationalError("db locked")
+
+        verification = ConsentVerification(
+            token="token",
+            electronic_signature="Jane Doe",
+            accept_terms=True,
+        )
+        request = MagicMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_parental_consent(verification, "prof1", request)
+        assert exc.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_verify_unexpected_error(self, mock_auth_manager, mock_db):
+        """Unexpected error during verify raises 500 (lines 337-339)."""
+        from api.routes.parental_consent import verify_parental_consent, ConsentVerification
+
+        mock_db.execute_query.side_effect = RuntimeError("unexpected")
+
+        verification = ConsentVerification(
+            token="token",
+            electronic_signature="Jane Doe",
+            accept_terms=True,
+        )
+        request = MagicMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_parental_consent(verification, "prof1", request)
+        assert exc.value.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_verify_age_verification_error(self, mock_auth_manager, mock_db):
+        """AgeVerificationError during verify raises 400 (lines 331-333)."""
+        from api.routes.parental_consent import verify_parental_consent, ConsentVerification
+        from core.age_verification import AgeVerificationError
+
+        future = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        mock_db.execute_query.side_effect = [
+            [{'user_id': 'parent123', 'expires_at': future, 'is_valid': 1}],
+            [{'parent_id': 'parent123'}],
+        ]
+
+        with patch(
+            "api.routes.parental_consent.AgeVerificationManager"
+        ) as mock_avm:
+            mock_avm_instance = MagicMock()
+            mock_avm_instance.log_parental_consent.side_effect = AgeVerificationError("failed")
+            mock_avm.return_value = mock_avm_instance
+
+            verification = ConsentVerification(
+                token="valid-token",
+                electronic_signature="Jane Doe",
+                accept_terms=True,
+            )
+            request = MagicMock()
+            request.client.host = "127.0.0.1"
+            request.headers = {"user-agent": "test"}
+
+            with pytest.raises(HTTPException) as exc:
+                await verify_parental_consent(verification, "prof1", request)
+            assert exc.value.status_code == 400
+
+
+class TestRevokeConsentErrorHandlers:
+    """Cover error handler branches in revoke_parental_consent (lines 383, 400-408)."""
+
+    @pytest.mark.asyncio
+    async def test_revoke_fails_returns_500(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        """When revoke_parental_consent returns False, 500 is raised (line 383)."""
+        from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
+
+        mock_db.execute_query.return_value = [{'parent_id': 'parent123'}]
+
+        with patch(
+            "api.routes.parental_consent.AgeVerificationManager"
+        ) as mock_avm:
+            mock_avm_instance = MagicMock()
+            mock_avm_instance.revoke_parental_consent.return_value = False
+            mock_avm.return_value = mock_avm_instance
+
+            revocation = ConsentRevocation(profile_id="prof1")
+
+            with pytest.raises(HTTPException) as exc:
+                await revoke_parental_consent(revocation, parent_session)
+            assert exc.value.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_revoke_age_verification_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        """AgeVerificationError during revoke raises 400 (lines 400-402)."""
+        from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
+        from core.age_verification import AgeVerificationError
+
+        mock_db.execute_query.return_value = [{'parent_id': 'parent123'}]
+
+        with patch(
+            "api.routes.parental_consent.AgeVerificationManager"
+        ) as mock_avm:
+            mock_avm_instance = MagicMock()
+            mock_avm_instance.revoke_parental_consent.side_effect = AgeVerificationError("failed")
+            mock_avm.return_value = mock_avm_instance
+
+            revocation = ConsentRevocation(profile_id="prof1")
+
+            with pytest.raises(HTTPException) as exc:
+                await revoke_parental_consent(revocation, parent_session)
+            assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_revoke_db_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        """DB error during revoke raises 503 (lines 403-405)."""
+        from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
+
+        import sqlite3
+        mock_db.execute_query.side_effect = sqlite3.OperationalError("db locked")
+
+        revocation = ConsentRevocation(profile_id="prof1")
+
+        with pytest.raises(HTTPException) as exc:
+            await revoke_parental_consent(revocation, parent_session)
+        assert exc.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_revoke_unexpected_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        """Unexpected error during revoke raises 500 (lines 406-408)."""
+        from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
+
+        mock_db.execute_query.side_effect = RuntimeError("unexpected")
+
+        revocation = ConsentRevocation(profile_id="prof1")
+
+        with pytest.raises(HTTPException) as exc:
+            await revoke_parental_consent(revocation, parent_session)
+        assert exc.value.status_code == 500
+
+
+class TestGetConsentStatusErrorHandlers:
+    """Cover error handler branches in get_consent_status (lines 489-497)."""
+
+    @pytest.mark.asyncio
+    async def test_status_age_verification_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        from api.routes.parental_consent import get_consent_status
+        from core.age_verification import AgeVerificationError
+
+        mock_db.execute_query.return_value = [{'parent_id': 'parent123'}]
+
+        with patch(
+            "api.routes.parental_consent.AgeVerificationManager"
+        ) as mock_avm:
+            mock_avm_instance = MagicMock()
+            mock_avm_instance.get_consent_status.side_effect = AgeVerificationError("failed")
+            mock_avm.return_value = mock_avm_instance
+
+            with pytest.raises(HTTPException) as exc:
+                await get_consent_status("prof1", parent_session)
+            assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_status_db_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        from api.routes.parental_consent import get_consent_status
+
+        import sqlite3
+        mock_db.execute_query.side_effect = sqlite3.OperationalError("db locked")
+
+        with pytest.raises(HTTPException) as exc:
+            await get_consent_status("prof1", parent_session)
+        assert exc.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_status_unexpected_error(
+        self, parent_session, mock_auth_manager, mock_db
+    ):
+        from api.routes.parental_consent import get_consent_status
+
+        mock_db.execute_query.side_effect = RuntimeError("unexpected")
+
+        with pytest.raises(HTTPException) as exc:
+            await get_consent_status("prof1", parent_session)
+        assert exc.value.status_code == 500

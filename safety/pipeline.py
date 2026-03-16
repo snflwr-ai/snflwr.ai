@@ -1634,6 +1634,9 @@ class SafetyPipeline:
             Category.AGE_INAPPROPRIATE: "That topic isn't suitable for our learning session. How about we explore something else?",
             Category.VALIDATION_ERROR: "Could you rephrase your question? I want to make sure I understand you correctly.",
             Category.CLASSIFIER_ERROR: "I'm having trouble processing that. Could you try asking in a different way?",
+            Category.HATE_SPEECH: "I can't help with that. Let's keep our conversation respectful and focus on learning together.",
+            Category.PROFANITY: "Let's keep our language respectful. How can I help with your schoolwork?",
+            Category.DEROGATORY: "Let's keep our conversation kind and respectful. What would you like to learn about?",
         }
 
         return _MESSAGES.get(
@@ -1697,6 +1700,9 @@ class SafetyPipeline:
             Category.BYPASS_ATTEMPT: "I'm here to help you learn.",
             Category.TOPIC_REDIRECT: "Let's explore that topic in an age-appropriate way.",
             Category.AGE_INAPPROPRIATE: "That topic isn't suitable right now. Let's try something else.",
+            Category.HATE_SPEECH: "I can't provide that. Let's keep our conversation respectful and focus on learning.",
+            Category.PROFANITY: "Let's keep our language respectful.",
+            Category.DEROGATORY: "Let's keep our conversation kind and respectful.",
         }
         return _FALLBACKS.get(
             category,

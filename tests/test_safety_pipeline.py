@@ -104,7 +104,8 @@ class TestCategoryEnum:
         from safety.pipeline import Category
         expected = {
             "valid", "violence", "self_harm", "exploitation", "sexual",
-            "drugs", "weapons", "pii", "bullying", "bypass_attempt",
+            "drugs", "weapons", "pii", "bullying", "hate_speech",
+            "profanity", "derogatory", "bypass_attempt",
             "topic_redirect", "age_inappropriate", "validation_error",
             "classifier_error",
         }
@@ -113,7 +114,7 @@ class TestCategoryEnum:
 
     def test_category_count(self):
         from safety.pipeline import Category
-        assert len(Category) == 14
+        assert len(Category) == 17
 
     def test_category_from_value(self):
         from safety.pipeline import Category

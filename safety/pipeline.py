@@ -28,6 +28,11 @@ from enum import Enum
 from typing import Dict, Optional, Tuple
 
 from config import safety_config
+from safety.patterns import (
+    COMPILED_PATTERNS as _SHARED_COMPILED,
+    SUBSTR_CHECKS as _SHARED_SUBSTR,
+    FALSE_POSITIVE_ALLOWLIST as _SHARED_ALLOWLIST,
+)
 from utils.logger import get_logger, log_safety_incident
 
 logger = get_logger(__name__)
@@ -59,6 +64,9 @@ class Category(Enum):
     WEAPONS = "weapons"
     PII = "pii"
     BULLYING = "bullying"
+    HATE_SPEECH = "hate_speech"
+    PROFANITY = "profanity"
+    DEROGATORY = "derogatory"
     BYPASS_ATTEMPT = "bypass_attempt"
     TOPIC_REDIRECT = "topic_redirect"
     AGE_INAPPROPRIATE = "age_inappropriate"
@@ -744,7 +752,20 @@ class _PatternMatcher:
                     compiled.append((pat, kw, category_enum))
                 except re.error:
                     logger.warning("Failed to compile keyword pattern: %s", kw)
+
         return compiled
+
+    # -- Shared bilingual patterns (from safety.patterns) ----------------------
+
+    _SHARED_CAT_MAP = {
+        "HATE_SPEECH": Category.HATE_SPEECH,
+        "SEXUAL_CONTENT": Category.SEXUAL,
+        "VIOLENCE": Category.VIOLENCE,
+        "SELF_HARM": Category.SELF_HARM,
+        "PROFANITY": Category.PROFANITY,
+        "DRUGS": Category.DRUGS,
+        "DEROGATORY": Category.DEROGATORY,
+    }
 
     # -- PII patterns (MAJOR) -------------------------------------------------
 
@@ -843,6 +864,60 @@ class _PatternMatcher:
                         keywords=(kw,),
                         possible_false_positive=pfp,
                     )
+
+            # 2b. Shared bilingual regex patterns (MAJOR)
+            # These use the pre-compiled patterns from safety.patterns,
+            # checked on both the original lowercased form and a separator-
+            # normalised form to catch underscore/hyphen-separated evasion.
+            pre_norm = re.sub(r"[_\-.]", " ", original_lower)
+            input_words = set(re.sub(r"[_\-.~\s]+", " ", original_lower).split())
+            allowlisted_words = input_words & _SHARED_ALLOWLIST
+
+            for shared_cat, patterns in _SHARED_COMPILED.items():
+                category_enum = self._SHARED_CAT_MAP.get(
+                    shared_cat, Category.VIOLENCE
+                )
+                for regex, desc in patterns:
+                    hit_orig = regex.search(original_lower)
+                    hit_pre = regex.search(pre_norm)
+                    if hit_orig or hit_pre:
+                        # Skip false positives from allowlisted words
+                        if allowlisted_words:
+                            hit = hit_orig or hit_pre
+                            matched_text = hit.group(0).strip()
+                            if any(
+                                matched_text in aw for aw in allowlisted_words
+                            ):
+                                continue
+                        # Educational exemption for contextual violence terms
+                        if shared_cat == "VIOLENCE" and desc.startswith(
+                            "violence term"
+                        ):
+                            if self._has_educational_context(original_lower):
+                                continue
+                        return _block(
+                            Severity.MAJOR,
+                            category_enum,
+                            f"Shared pattern matched: {desc}",
+                            stage="pattern",
+                            keywords=(desc,),
+                        )
+
+            # 2c. Substring evasion checks (letters-only normalised form)
+            if original_lower not in _SHARED_ALLOWLIST:
+                for shared_cat, substr_list in _SHARED_SUBSTR.items():
+                    category_enum = self._SHARED_CAT_MAP.get(
+                        shared_cat, Category.VIOLENCE
+                    )
+                    for substr, desc in substr_list:
+                        if substr in normalized:
+                            return _block(
+                                Severity.MAJOR,
+                                category_enum,
+                                f"Substring evasion detected: {desc}",
+                                stage="pattern",
+                                keywords=(substr,),
+                            )
 
             # 3. PII patterns (MAJOR, checked on original text)
             for pat, description in self._pii_patterns:

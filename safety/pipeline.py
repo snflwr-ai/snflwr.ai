@@ -874,9 +874,7 @@ class _PatternMatcher:
             allowlisted_words = input_words & _SHARED_ALLOWLIST
 
             for shared_cat, patterns in _SHARED_COMPILED.items():
-                category_enum = self._SHARED_CAT_MAP.get(
-                    shared_cat, Category.VIOLENCE
-                )
+                category_enum = self._SHARED_CAT_MAP.get(shared_cat, Category.VIOLENCE)
                 for regex, desc in patterns:
                     hit_orig = regex.search(original_lower)
                     hit_pre = regex.search(pre_norm)
@@ -885,9 +883,7 @@ class _PatternMatcher:
                         if allowlisted_words:
                             hit = hit_orig or hit_pre
                             matched_text = hit.group(0).strip()
-                            if any(
-                                matched_text in aw for aw in allowlisted_words
-                            ):
+                            if any(matched_text in aw for aw in allowlisted_words):
                                 continue
                         # Educational exemption for contextual violence terms
                         if shared_cat == "VIOLENCE" and desc.startswith(

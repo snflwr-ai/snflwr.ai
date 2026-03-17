@@ -191,6 +191,7 @@ def _stage_validate(text: str) -> Optional[SafetyResult]:
 # 3. Stage 2 -- Text Normalization
 # =============================================================================
 
+
 def _stage_normalize(text: str) -> str:
     """
     Stage 2: best-effort text normalization.

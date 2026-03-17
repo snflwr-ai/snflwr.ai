@@ -11,6 +11,14 @@ from datetime import datetime
 from pathlib import Path
 import re
 
+from safety.patterns import (
+    normalize_text,
+    COMPILED_PATTERNS,
+    SUBSTR_CHECKS,
+    FALSE_POSITIVE_ALLOWLIST,
+    SEVERITY_MAP,
+)
+
 
 class Filter:
     """
@@ -192,10 +200,13 @@ class Filter:
             print(f"[SAFETY FILTER] Logging error: {e}")
 
     def _calculate_severity(self, category: str) -> str:
-        """Calculate incident severity"""
+        """Calculate incident severity using shared map + legacy codes"""
+        # Check shared severity map first (covers new categories)
+        if category in SEVERITY_MAP:
+            return SEVERITY_MAP[category]
+        # Legacy category codes used by this filter
         high_severity = ['S11', 'S4', 'S1', 'JAILBREAK']
         medium_severity = ['S10', 'S3', 'S12']
-
         if category in high_severity:
             return 'high'
         elif category in medium_severity:
@@ -206,48 +217,13 @@ class Filter:
     def check_keywords(self, message: str, user_age: Optional[int] = None) -> tuple[bool, str]:
         """
         Comprehensive keyword-based safety checks with age-adaptive filtering.
+        Uses shared bilingual (EN/ES) patterns from safety.patterns plus
+        chatbot-specific checks (jailbreak, age-adaptive S12, educational synthesis).
         Returns: (should_block, category)
         """
         message_lower = message.lower()
 
-        # S1: VIOLENT CRIMES (ALL AGES - highest priority)
-        violent_keywords = [
-            r"\bmake a bomb",
-            r"\bbuild (a )?bomb",
-            r"\bcreate (a )?bomb",
-            r"\bhow to (make|build|create) (a )?weapon",
-            r"\bhomemade weapon",
-            r"\bbuild a weapon at home",
-            r"\bhurt someone",
-            r"\bharm someone",
-            r"\bkill someone",
-            r"\bmurder",
-            r"\bassault",
-            r"\battack someone"
-        ]
-
-        for pattern in violent_keywords:
-            if re.search(pattern, message_lower):
-                return (True, "S1")
-
-        # S11: SUICIDE & SELF-HARM (ALL AGES - critical)
-        self_harm_keywords = [
-            r"\bi want to (hurt|harm|kill) myself",
-            r"\bhurt myself",
-            r"\bcommit suicide",
-            r"\bend my life",
-            r"\bkill myself",
-            r"\bsuicide method",
-            r"\bhow to die",
-            r"\bself harm",
-            r"\bcut myself"
-        ]
-
-        for pattern in self_harm_keywords:
-            if re.search(pattern, message_lower):
-                return (True, "S11")
-
-        # S4: CHILD EXPLOITATION (ALL AGES - immediate block)
+        # ----- Chatbot-specific: S4 CHILD EXPLOITATION (immediate block) -----
         child_exploit_keywords = [
             r"\bpictures? of (young )?children",
             r"\bimages? of (young )?children",
@@ -256,12 +232,11 @@ class Filter:
             r"\bminor.*sexual",
             r"\bunderage"
         ]
-
         for pattern in child_exploit_keywords:
             if re.search(pattern, message_lower):
                 return (True, "S4")
 
-        # S9: INDISCRIMINATE WEAPONS & POISONS (ALL AGES)
+        # ----- Chatbot-specific: S9 WEAPONS & POISONS -----
         weapons_keywords = [
             r"\bmake poison",
             r"\bcreate poison",
@@ -272,26 +247,11 @@ class Filter:
             r"\bmake explosives",
             r"\bhomemade explosive"
         ]
-
         for pattern in weapons_keywords:
             if re.search(pattern, message_lower):
                 return (True, "S9")
 
-        # S10: HATE SPEECH (ALL AGES)
-        hate_keywords = [
-            r"\bwhy are .* (bad|inferior|worse)",
-            r"\bcertain groups.*bad",
-            r"\bpeople.*inferior",
-            r"\brace.*superior",
-            r"\bhate.*group",
-            r"\bdiscrimination against"
-        ]
-
-        for pattern in hate_keywords:
-            if re.search(pattern, message_lower):
-                return (True, "S10")
-
-        # JAILBREAK PATTERNS (ALL AGES - highest priority)
+        # ----- Chatbot-specific: JAILBREAK PATTERNS -----
         jailbreak_patterns = [
             r"pretend you'?re",
             r"act as",
@@ -308,87 +268,144 @@ class Filter:
             r"hypothetically",
             r"in (a|my) (novel|book|fiction)"
         ]
-
         for pattern in jailbreak_patterns:
             if re.search(pattern, message_lower):
                 return (True, "JAILBREAK")
 
-        # AGE-ADAPTIVE SEXUAL CONTENT FILTERING
+        # ----- Chatbot-specific: AGE-ADAPTIVE SEXUAL CONTENT (S12) -----
         if user_age is None or user_age < 16:
-            # STRICT: Ages 5-15 (Grades K-10) - Block ALL sexual content
-            # Rationale: Sex education should come from parents/teachers with proper curriculum
-            # COPPA compliant for under 13, extended to 15 for safety and parental rights
             sexual_keywords_strict = [
-                "let's talk about sex",
-                "tell me about sex",
-                "what is sex",
-                "how to have sex",
-                "sexual intercourse",
-                "making love",
-                "talk about dating",
-                "romantic relationship",
-                "boyfriend",
-                "girlfriend",
-                "kissing",
-                "crush on someone",
-                "sex education",
-                "reproduction",
-                "puberty"
+                "let's talk about sex", "tell me about sex", "what is sex",
+                "how to have sex", "sexual intercourse", "making love",
+                "talk about dating", "romantic relationship", "boyfriend",
+                "girlfriend", "kissing", "crush on someone",
+                "sex education", "reproduction", "puberty"
             ]
-
             for keyword in sexual_keywords_strict:
                 if keyword in message_lower:
                     return (True, "S12")
-
         elif 16 <= user_age <= 18:
-            # MODERATE: Ages 16-18 (Grades 11-12) - Allow clinical health education only
-            # Block explicit/casual content but allow scientific health questions
             sexual_keywords_moderate = [
-                "let's talk about sex",
-                "how to have sex",
-                "making love",
-                "sex positions",
-                "sexual fantasies",
-                "porn",
-                "pornography",
-                "talk about dating",
-                "boyfriend",
-                "girlfriend"
+                "let's talk about sex", "how to have sex", "making love",
+                "sex positions", "sexual fantasies", "porn", "pornography",
+                "talk about dating", "boyfriend", "girlfriend"
             ]
-
             for keyword in sexual_keywords_moderate:
                 if keyword in message_lower:
                     return (True, "S12")
 
-            # Allow clinical health questions like "what is contraception", "STI prevention"
-            # These will go to classifier for educational_boundary handling
+        # ----- Chatbot-specific: S11 SELF-HARM (priority over violence) -----
+        # These must run BEFORE shared patterns so "kill myself" maps to
+        # self-harm (S11) rather than violence (S1).
+        self_harm_patterns = [
+            r"\bkill\s*myself\b",
+            r"\bi\s*want\s*to\s*die\b",
+            r"\bwant\s*to\s*die\b",
+            r"\bsuicid\w*\b",
+            r"\bself\s*harm\w*\b",
+            r"\bselfharm\w*\b",
+            r"\bcut\s*myself\b",
+            r"\bend\s*my\s*life\b",
+            r"\bend\s*it\s*all\b",
+            r"\bbetter\s*off\s*dead\b",
+            r"\bno\s*reason\s*to\s*live\b",
+            r"\bslit\s*(my\s*)?(wrist|throat)\b",
+            r"\bhang\s*myself\b",
+            r"\bjump\s*off\s*(a\s*)?(bridge|building|roof)\b",
+            r"\boverdose\b",
+            r"\bquiero\s*morir\b",
+            r"\bmatarme\b",
+            r"\bcortarme\b",
+            r"\bsuicidio\b",
+            r"\bahorcarme\b",
+        ]
+        for pattern in self_harm_patterns:
+            if re.search(pattern, message_lower):
+                return (True, "S11")
 
-        # EDUCATIONAL BOUNDARIES - Check for synthesis/how-to instructions
-        # Allow educational questions but block synthesis instructions
+        # ----- Chatbot-specific: EDUCATIONAL SYNTHESIS -----
         synthesis_keywords = [
             r"\bhow to (synthesize|make|create|produce) (tnt|meth|methamphetamine)",
             r"\bsynthesize.*at home",
             r"\b(recipe|instructions) for (tnt|meth|explosive)",
             r"\bmake.*at home.*(explosive|drug|weapon)"
         ]
-
         for pattern in synthesis_keywords:
             if re.search(pattern, message_lower):
                 return (True, "EDUCATIONAL_SYNTHESIS")
 
-        # Allow these educational questions (just asking what something is)
+        # ----- Chatbot-specific: EDUCATIONAL ALLOW -----
         educational_allow_patterns = [
             r"^what is (the )?(chemical formula|structure)",
             r"^how do (explosions|reactions) work",
             r"^what chemicals are",
             r"^what is the structure"
         ]
-
         for pattern in educational_allow_patterns:
             if re.search(pattern, message_lower):
                 return (False, "EDUCATIONAL_ALLOWED")
 
-        # If no keyword match, content is safe
+        # =====================================================================
+        # SHARED PATTERNS — bilingual (EN/ES) with evasion detection
+        # Normalise text to defeat leet-speak, homoglyphs, spacing tricks
+        # =====================================================================
+        lightly, letters_only = normalize_text(message)
+        pre_norm = re.sub(r"[_\-.]", " ", message_lower)
+
+        # Build set of input words for allowlist checking
+        input_words = set(re.sub(r"[_\-.~\s]+", " ", message_lower).split())
+        allowlisted_words = input_words & FALSE_POSITIVE_ALLOWLIST
+
+        # Category -> legacy code mapping for redirect messages
+        _cat_to_legacy = {
+            "HATE_SPEECH": "S10",
+            "SEXUAL_CONTENT": "S12",
+            "VIOLENCE": "S1",
+            "SELF_HARM": "S11",
+            "PROFANITY": "PROFANITY",
+            "DRUGS": "DRUGS",
+            "DEROGATORY": "DEROGATORY",
+        }
+
+        # Broad single-word violence patterns that are too common in
+        # everyday educational conversation to block in a chatbot.
+        # These are still blocked in account creation and pipeline contexts.
+        _chatbot_skip_violence = frozenset({
+            r"\bdie\b", r"\bdeath\b", r"\bdead\s*body\b",
+            r"\bcorpse\b", r"\bbleed\s*out\b", r"\bhostage\b",
+            r"\bassault\b", r"\bbatter\w*\b", r"\bmuerte\b",
+            r"\bmuerto\b", r"\bcadaver\b", r"\bsangre\b",
+            r"\bgore\b", r"\bsmother\b",
+        })
+
+        for category, patterns in COMPILED_PATTERNS.items():
+            # Regex check on normalised + pre-normalised forms
+            for regex, desc in patterns:
+                # Skip overly-broad violence terms in chatbot context
+                if category == "VIOLENCE" and regex.pattern in _chatbot_skip_violence:
+                    continue
+                hit_lightly = regex.search(lightly)
+                hit_pre = regex.search(pre_norm)
+                if hit_lightly or hit_pre:
+                    # Skip if matched inside an allowlisted word
+                    if allowlisted_words:
+                        hit = hit_lightly or hit_pre
+                        matched_text = hit.group(0).strip()
+                        if any(matched_text in aw for aw in allowlisted_words):
+                            continue
+                    return (True, _cat_to_legacy.get(category, category))
+
+            # Substring evasion check on letters-only form
+            for substr, desc in SUBSTR_CHECKS.get(category, []):
+                if substr in letters_only:
+                    # Skip if substring matches inside an allowlisted word
+                    if allowlisted_words and any(
+                        substr in aw for aw in allowlisted_words
+                    ):
+                        continue
+                    return (True, _cat_to_legacy.get(category, category))
+
+        # If no match, content is safe
         return (False, "")
 
     def get_redirect_message(self, category: str, user_age: Optional[int] = None) -> str:
@@ -411,6 +428,9 @@ class Filter:
             "S4": "I'm here to help you learn about science, math, and other school subjects in a safe way. Let's explore an educational topic together!",
             "S3": "Let's keep our conversation focused on learning! What STEM topic would you like to explore?",
             "EDUCATIONAL_SYNTHESIS": "I can help you understand the science behind that topic, but I can't provide instructions for making or synthesizing it. Let's explore the educational aspects instead! What would you like to know?",
+            "PROFANITY": "I'm here to help with science, math, technology, and engineering! Let's keep our conversation respectful and focused on learning. What would you like to explore?",
+            "DRUGS": "I focus on helping with school subjects like math, science, and engineering. For questions about substances, please talk to a parent, teacher, or school counselor. What STEM topic would you like to explore today?",
+            "DEROGATORY": "I'm here to help with science, math, technology, and engineering! Let's keep our conversation kind and focused on learning. What would you like to explore?",
             "default": "I'm here to help with science, math, technology, and engineering questions! Let's explore a STEM topic together. What interests you?"
         }
         return redirects.get(category, redirects["default"])

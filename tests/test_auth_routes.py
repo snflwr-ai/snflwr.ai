@@ -184,7 +184,7 @@ class TestLogin:
         with pytest.raises(HTTPException) as exc:
             login(request, response, rate_limit_info=_make_rate_limit_info())
         assert exc.value.status_code == 401
-        assert "Auth system error" in exc.value.detail
+        assert "Authentication failed" in exc.value.detail
 
     def test_login_db_error(self, mock_deps):
         """Database error maps to 503 (line 120-122)."""
@@ -367,7 +367,7 @@ class TestRegister:
         with pytest.raises(HTTPException) as exc:
             register(request, response, rate_limit_info=_make_rate_limit_info())
         assert exc.value.status_code == 400
-        assert "Weak password" in exc.value.detail
+        assert "Registration failed" in exc.value.detail
 
     def test_register_db_error(self, mock_deps):
         """DB error during registration maps to 503 (line 165-167)."""
@@ -667,7 +667,7 @@ class TestVerifyEmail:
         with pytest.raises(HTTPException) as exc:
             verify_email(request)
         assert exc.value.status_code == 400
-        assert "Token tampered" in exc.value.detail
+        assert "Email verification failed" in exc.value.detail
 
     def test_verify_email_db_error(self, mock_deps):
         """DB error during email verification maps to 503 (line 266-268)."""
@@ -1082,7 +1082,7 @@ class TestResetPassword:
         with pytest.raises(HTTPException) as exc:
             reset_password(request, rate_limit_info=_make_rate_limit_info())
         assert exc.value.status_code == 400
-        assert "Token invalid" in exc.value.detail
+        assert "Password reset failed" in exc.value.detail
 
     def test_reset_password_db_error(self, mock_deps):
         """DB error during reset maps to 503 (line 393-395)."""

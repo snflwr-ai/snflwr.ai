@@ -36,7 +36,6 @@ jobs:
       run: pip install pip-audit
 
     - name: Check Python dependencies for vulnerabilities
-      continue-on-error: true
       run: |
         pip install -r requirements.txt
         pip-audit --format json --output safety-report.json || echo '[]' > safety-report.json
@@ -66,7 +65,6 @@ jobs:
       run: pip install bandit[toml]
 
     - name: Run Bandit security scan
-      continue-on-error: true
       run: |
         bandit -r api/ core/ safety/ storage/ utils/ \
           -f json -o bandit-report.json \
@@ -94,7 +92,7 @@ jobs:
         fetch-depth: 0 # Full history for secret scanning
 
     - name: TruffleHog Secret Scan
-      uses: trufflesecurity/trufflehog@main
+      uses: trufflesecurity/trufflehog@v3.88.0
       with:
         extra_args: --only-verified
 
@@ -110,14 +108,12 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build Docker image for scanning
-      continue-on-error: true
       id: docker-build
       run: |
         docker build -f docker/Dockerfile -t snflwr-api:scan .
 
     - name: Run Trivy vulnerability scanner
       if: steps.docker-build.outcome == 'success'
-      continue-on-error: true
       uses: aquasecurity/trivy-action@0.34.2
       with:
         image-ref: 'snflwr-api:scan'
@@ -169,3 +165,14 @@ jobs:
         echo "| Secret Scan | ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Docker Security | ${{ needs.docker-security.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| CodeQL Analysis | ${{ needs.codeql-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
+
+    - name: Fail if any security scan failed
+      if: >-
+        needs.dependency-scan.result == 'failure' ||
+        needs.code-security-scan.result == 'failure' ||
+        needs.secret-scan.result == 'failure' ||
+        needs.docker-security.result == 'failure' ||
+        needs.codeql-analysis.result == 'failure'
+      run: |
+        echo "::error::One or more security scans failed. See summary above."
+        exit 1

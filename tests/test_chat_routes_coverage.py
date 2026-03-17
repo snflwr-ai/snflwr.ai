@@ -569,7 +569,7 @@ class TestErrorHandling(_HandlerTestBase):
         with pytest.raises(HTTPException) as exc_info:
             self._run_handler(session_error="session is corrupted")
         assert exc_info.value.status_code == 400
-        assert "session is corrupted" in str(exc_info.value.detail)
+        assert "Session error" in str(exc_info.value.detail)
 
     def test_ollama_error_returns_503(self):
         """OllamaError exception during chat returns 503."""

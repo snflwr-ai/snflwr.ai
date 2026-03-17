@@ -290,6 +290,15 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Stop WebSocket Redis Pub/Sub
+    try:
+        from api.websocket_server import websocket_manager
+
+        await websocket_manager.stop_pubsub()
+        logger.info("WebSocket Redis Pub/Sub stopped")
+    except Exception as e:
+        logger.warning(f"WebSocket Pub/Sub could not stop cleanly: {e}")
+
     # Stop email alert worker thread
     try:
         from utils.email_alerts import email_alert_system
@@ -317,7 +326,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app — disable OpenAPI schema in production to prevent
 # unauthenticated API reconnaissance.  Set ENABLE_API_DOCS=true to override.
 _enable_docs = os.getenv("ENABLE_API_DOCS", "").lower() in ("1", "true", "yes")
-_is_production = system_config.DEPLOY_MODE == "production"
+_is_production = system_config.is_production() or system_config.is_production_like()
 
 app = FastAPI(
     title="snflwr.ai API",

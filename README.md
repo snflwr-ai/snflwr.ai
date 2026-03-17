@@ -28,8 +28,8 @@
   <!-- Static -->
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue" alt="Python 3.10 | 3.11 | 3.12" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0" />
-  <img src="https://img.shields.io/badge/tests-2590%2B-brightgreen" alt="2590+ Tests" />
-  <img src="https://img.shields.io/badge/coverage-86%25-brightgreen" alt="86% Coverage" />
+  <img src="https://img.shields.io/badge/tests-3080%2B-brightgreen" alt="3080+ Tests" />
+  <img src="https://img.shields.io/badge/coverage-88%25-brightgreen" alt="88% Coverage" />
   <img src="https://img.shields.io/badge/COPPA%2FFERPA-designed-green" alt="COPPA/FERPA" />
 </p>
 
@@ -298,7 +298,7 @@ See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
 pytest tests/ -v -m "not integration"
 ```
 
-**2,590+ tests** across 71 test files at **86% coverage** — authentication, profiles, safety pipeline, encryption, database, API routes, middleware, WebSockets, caching, and model management.
+**3,080+ tests** across 73 test files at **88% coverage** — authentication, profiles, safety pipeline, encryption, database, API routes, middleware, WebSockets, caching, and model management.
 
 <br>
 

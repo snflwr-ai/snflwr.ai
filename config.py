@@ -9,9 +9,10 @@ from typing import List, Optional
 # .env.production takes priority — it's what setup_production.py generates.
 try:
     from dotenv import load_dotenv
+
     _project_root = Path(__file__).parent
-    _env_production = _project_root / '.env.production'
-    _env_default = _project_root / '.env'
+    _env_production = _project_root / ".env.production"
+    _env_default = _project_root / ".env"
     if _env_production.exists():
         load_dotenv(_env_production)
     if _env_default.exists():
@@ -24,6 +25,7 @@ except ImportError:
 # for workers / pool sizes. Every value is overridable via its env var.
 # ---------------------------------------------------------------------------
 from resource_detection import get_resource_profile as _get_resource_profile
+
 _resources = _get_resource_profile()
 
 
@@ -33,126 +35,142 @@ _resources = _get_resource_profile()
 
 # Known insecure default values that MUST NOT be used in production
 INSECURE_JWT_DEFAULTS = {
-    'change-this-secret-key-in-production',
-    'secret',
-    'supersecret',
-    'jwt-secret',
-    'dev-secret',
-    'test-secret',
-    '',
+    "change-this-secret-key-in-production",
+    "secret",
+    "supersecret",
+    "jwt-secret",
+    "dev-secret",
+    "test-secret",
+    "",
 }
 
 # Minimum JWT secret length for security
 MIN_JWT_SECRET_LENGTH = 32
 
 
-
 @dataclass
 class _SystemConfig:
     # Use SNFLWR_DATA_DIR if set, otherwise ./data (relative to working directory)
     # Note: Do NOT use APPDATA - on Windows it points to C:\Users\...\AppData\Roaming
-    APP_DATA_DIR: Path = Path(os.getenv('SNFLWR_DATA_DIR', './data')).resolve()
-    DB_PATH: Path = APP_DATA_DIR / 'snflwr.db'
+    APP_DATA_DIR: Path = Path(os.getenv("SNFLWR_DATA_DIR", "./data")).resolve()
+    DB_PATH: Path = APP_DATA_DIR / "snflwr.db"
     DB_TIMEOUT: int = 5
     DB_CHECK_SAME_THREAD: bool = False
     # Database selection: 'sqlite' or 'postgresql'
     # Accepts DB_TYPE or DATABASE_TYPE env var (DB_TYPE takes priority)
-    DB_TYPE: str = os.getenv('DB_TYPE', os.getenv('DATABASE_TYPE', 'sqlite'))
+    DB_TYPE: str = os.getenv("DB_TYPE", os.getenv("DATABASE_TYPE", "sqlite"))
     DATABASE_TYPE: str = DB_TYPE
 
     # Database Encryption (SQLCipher for SQLite)
-    DB_ENCRYPTION_ENABLED: bool = os.getenv('DB_ENCRYPTION_ENABLED', 'false').lower() == 'true'
-    DB_ENCRYPTION_KEY: Optional[str] = os.getenv('DB_ENCRYPTION_KEY', None)
-    DB_KDF_ITERATIONS: int = int(os.getenv('DB_KDF_ITERATIONS') or '256000')
+    DB_ENCRYPTION_ENABLED: bool = (
+        os.getenv("DB_ENCRYPTION_ENABLED", "false").lower() == "true"
+    )
+    DB_ENCRYPTION_KEY: Optional[str] = os.getenv("DB_ENCRYPTION_KEY", None)
+    DB_KDF_ITERATIONS: int = int(os.getenv("DB_KDF_ITERATIONS") or "256000")
 
     # PostgreSQL Configuration (production deployments)
-    POSTGRES_HOST: str = os.getenv('POSTGRES_HOST', 'localhost')
-    POSTGRES_PORT: int = int(os.getenv('POSTGRES_PORT') or '5432')
+    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT") or "5432")
     # Accepts POSTGRES_DATABASE or POSTGRES_DB env var (POSTGRES_DATABASE takes priority)
-    POSTGRES_DB: str = os.getenv('POSTGRES_DATABASE', os.getenv('POSTGRES_DB', 'snflwr_db'))
-    POSTGRES_USER: str = os.getenv('POSTGRES_USER', 'snflwr')
-    POSTGRES_PASSWORD: str = os.getenv('POSTGRES_PASSWORD', '')
-    POSTGRES_SSLMODE: str = os.getenv('POSTGRES_SSLMODE', 'prefer')
+    POSTGRES_DB: str = os.getenv(
+        "POSTGRES_DATABASE", os.getenv("POSTGRES_DB", "snflwr_db")
+    )
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "snflwr")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "")
+    POSTGRES_SSLMODE: str = os.getenv("POSTGRES_SSLMODE", "prefer")
     POSTGRES_MIN_CONNECTIONS: int = _resources.postgres_min_connections
     POSTGRES_MAX_CONNECTIONS: int = _resources.postgres_max_connections
 
-    LOG_DIR: Path = APP_DATA_DIR / 'logs'
-    LOG_FORMAT: str = '%(levelname)s:%(name)s:%(message)s'
-    LOG_DATE_FORMAT: str = '%Y-%m-%d %H:%M:%S'
-    LOG_LEVEL: str = 'INFO'
+    LOG_DIR: Path = APP_DATA_DIR / "logs"
+    LOG_FORMAT: str = "%(levelname)s:%(name)s:%(message)s"
+    LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
+    LOG_LEVEL: str = "INFO"
     LOG_MAX_SIZE_MB: int = 10
     LOG_BACKUP_COUNT: int = 5
 
     # Accepts OLLAMA_BASE_URL or OLLAMA_HOST env var (OLLAMA_BASE_URL takes priority)
-    OLLAMA_HOST: str = os.getenv('OLLAMA_BASE_URL', os.getenv('OLLAMA_HOST', 'http://localhost:11434'))
-    OLLAMA_TIMEOUT: int = int(os.getenv('OLLAMA_TIMEOUT', '300'))
+    OLLAMA_HOST: str = os.getenv(
+        "OLLAMA_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    )
+    OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "300"))
     OLLAMA_MAX_RETRIES: int = 3
     OLLAMA_RETRY_DELAY: int = 2
     # HTTP request timeout for RequestTimeoutMiddleware — must exceed OLLAMA_TIMEOUT
     # so the middleware never kills a request while Ollama is still generating.
-    REQUEST_TIMEOUT_SECONDS: int = int(os.getenv('REQUEST_TIMEOUT_SECONDS', '360'))
+    REQUEST_TIMEOUT_SECONDS: int = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "360"))
     # Set by install.py / setup based on hardware detection — no hardcoded fallback
-    OLLAMA_DEFAULT_MODEL: str = os.getenv('OLLAMA_DEFAULT_MODEL', '')
+    OLLAMA_DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "")
 
-    APPLICATION_NAME: str = 'snflwr.ai'
-    VERSION: str = os.getenv('SNFLWR_VERSION', '1.0.0')
-    PLATFORM: str = 'linux'
+    APPLICATION_NAME: str = "snflwr.ai"
+    VERSION: str = os.getenv("SNFLWR_VERSION", "1.0.0")
+    PLATFORM: str = "linux"
 
     # Deployment mode: 'auto' (try USB then local), 'usb', 'local', 'thin_client'
-    DEPLOY_MODE: str = os.getenv('SNFLWR_DEPLOY_MODE', 'auto')
+    DEPLOY_MODE: str = os.getenv("SNFLWR_DEPLOY_MODE", "auto")
     # Management server URL for thin client deployments
-    MANAGEMENT_SERVER_URL: str = os.getenv('MANAGEMENT_SERVER_URL', '')
+    MANAGEMENT_SERVER_URL: str = os.getenv("MANAGEMENT_SERVER_URL", "")
 
     # API runtime configuration
-    API_HOST: str = os.getenv('API_HOST', '0.0.0.0')
-    API_PORT: int = int(os.getenv('API_PORT') or '39150')
-    API_RELOAD: bool = os.getenv('API_RELOAD', 'False').lower() in ('1', 'true', 'yes')
+    API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
+    API_PORT: int = int(os.getenv("API_PORT") or "39150")
+    API_RELOAD: bool = os.getenv("API_RELOAD", "False").lower() in ("1", "true", "yes")
     API_WORKERS: int = _resources.api_workers
-    ENABLE_SAFETY_MONITORING: bool = os.getenv('ENABLE_SAFETY_MONITORING', 'True').lower() in ('1', 'true', 'yes')
+    ENABLE_SAFETY_MONITORING: bool = os.getenv(
+        "ENABLE_SAFETY_MONITORING", "True"
+    ).lower() in ("1", "true", "yes")
 
     # Email Configuration (SMTP for parent alerts)
-    SMTP_ENABLED: bool = os.getenv('SMTP_ENABLED', 'false').lower() == 'true'
-    SMTP_HOST: str = os.getenv('SMTP_HOST', 'smtp.gmail.com')
-    SMTP_PORT: int = int(os.getenv('SMTP_PORT') or '587')
-    SMTP_USERNAME: str = os.getenv('SMTP_USERNAME', '')
-    SMTP_PASSWORD: str = os.getenv('SMTP_PASSWORD', '')
-    SMTP_FROM_EMAIL: str = os.getenv('SMTP_FROM_EMAIL', 'noreply@snflwr.ai')
-    SMTP_FROM_NAME: str = os.getenv('SMTP_FROM_NAME', 'snflwr.ai Safety Monitor')
-    SMTP_USE_TLS: bool = os.getenv('SMTP_USE_TLS', 'true').lower() == 'true'
+    SMTP_ENABLED: bool = os.getenv("SMTP_ENABLED", "false").lower() == "true"
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT") or "587")
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "noreply@snflwr.ai")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "snflwr.ai Safety Monitor")
+    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
     # Admin email for audit failure alerts
-    ADMIN_EMAIL: str = os.getenv('ADMIN_EMAIL', '')
+    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "")
 
     # JWT Authentication
     # CRITICAL: Must be set to a secure random value in production
     JWT_SECRET_KEY: str = field(default_factory=lambda: _SystemConfig._get_jwt_secret())
-    JWT_ALGORITHM: str = 'HS256'
+    JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
 
     # Redis Configuration (REQUIRED for production rate limiting)
     # Default false for development; production validation enforces Redis is enabled
-    REDIS_ENABLED: bool = os.getenv('REDIS_ENABLED', 'false').lower() == 'true'
-    REDIS_HOST: str = os.getenv('REDIS_HOST', 'localhost')
-    REDIS_PORT: int = int(os.getenv('REDIS_PORT') or '6379')
-    REDIS_PASSWORD: str = os.getenv('REDIS_PASSWORD', '')
-    REDIS_DB: int = int(os.getenv('REDIS_DB') or '0')
+    REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT") or "6379")
+    REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
+    REDIS_DB: int = int(os.getenv("REDIS_DB") or "0")
 
     # CORS Configuration
-    CORS_ORIGINS: List[str] = field(default_factory=lambda: os.getenv(
-        'CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173,http://localhost:8080'
-    ).split(','))
+    CORS_ORIGINS: List[str] = field(
+        default_factory=lambda: os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://localhost:5173,http://localhost:8080",
+        ).split(",")
+    )
 
     # Flower Configuration (Celery monitoring UI)
-    FLOWER_ENABLED: bool = field(default_factory=lambda: os.getenv('FLOWER_ENABLED', 'false').lower() == 'true')
-    FLOWER_PORT: int = field(default_factory=lambda: int(os.getenv('FLOWER_PORT') or '5555'))
-    FLOWER_USER: str = field(default_factory=lambda: os.getenv('FLOWER_USER', 'admin'))
-    FLOWER_PASSWORD: str = field(default_factory=lambda: os.getenv('FLOWER_PASSWORD', ''))
+    FLOWER_ENABLED: bool = field(
+        default_factory=lambda: os.getenv("FLOWER_ENABLED", "false").lower() == "true"
+    )
+    FLOWER_PORT: int = field(
+        default_factory=lambda: int(os.getenv("FLOWER_PORT") or "5555")
+    )
+    FLOWER_USER: str = field(default_factory=lambda: os.getenv("FLOWER_USER", "admin"))
+    FLOWER_PASSWORD: str = field(
+        default_factory=lambda: os.getenv("FLOWER_PASSWORD", "")
+    )
 
     # Base URL for the application
-    BASE_URL: str = os.getenv('BASE_URL', 'http://localhost:39150')
+    BASE_URL: str = os.getenv("BASE_URL", "http://localhost:39150")
 
     # Open WebUI URL (for admin auth bridge — proxy login through Open WebUI)
-    OPEN_WEBUI_URL: str = os.getenv('OPEN_WEBUI_URL', 'http://localhost:3000')
+    OPEN_WEBUI_URL: str = os.getenv("OPEN_WEBUI_URL", "http://localhost:3000")
 
     @property
     def REDIS_URL(self) -> str:
@@ -168,7 +186,7 @@ class _SystemConfig:
 
         In production, JWT_SECRET_KEY environment variable MUST be set.
         """
-        env_secret = os.getenv('JWT_SECRET_KEY')
+        env_secret = os.getenv("JWT_SECRET_KEY")
 
         if env_secret:
             # Validate the provided secret
@@ -185,8 +203,8 @@ class _SystemConfig:
             return env_secret
 
         # Check if we're in a production-like environment
-        environment = os.getenv('ENVIRONMENT', 'development').lower()
-        is_production = environment in ('production', 'prod', 'staging')
+        environment = os.getenv("ENVIRONMENT", "development").lower()
+        is_production = environment in ("production", "prod", "staging")
 
         if is_production:
             raise RuntimeError(
@@ -196,18 +214,22 @@ class _SystemConfig:
             )
 
         # Development: generate and persist so sessions survive restarts
-        env_path = Path(__file__).parent / '.env'
+        env_path = Path(__file__).parent / ".env"
 
         # Check if .env already has a JWT secret (not loaded into process env)
         try:
             if env_path.exists():
                 for line in env_path.read_text().splitlines():
                     stripped = line.strip()
-                    if stripped.startswith('JWT_SECRET_KEY=') and not stripped.startswith('#'):
-                        existing = stripped.split('=', 1)[1].strip()
-                        if (existing
-                                and existing not in INSECURE_JWT_DEFAULTS
-                                and len(existing) >= MIN_JWT_SECRET_LENGTH):
+                    if stripped.startswith(
+                        "JWT_SECRET_KEY="
+                    ) and not stripped.startswith("#"):
+                        existing = stripped.split("=", 1)[1].strip()
+                        if (
+                            existing
+                            and existing not in INSECURE_JWT_DEFAULTS
+                            and len(existing) >= MIN_JWT_SECRET_LENGTH
+                        ):
                             return existing
         except OSError:
             pass
@@ -216,36 +238,35 @@ class _SystemConfig:
         generated_secret = secrets.token_hex(32)
         try:
             fd = os.open(str(env_path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-            with os.fdopen(fd, 'a') as f:
+            with os.fdopen(fd, "a") as f:
                 f.write(f"\n# Auto-generated JWT secret for session persistence\n")
                 f.write(f"JWT_SECRET_KEY={generated_secret}\n")
             warnings.warn(
-                "JWT_SECRET_KEY not set - generated and saved to .env.",
-                RuntimeWarning
+                "JWT_SECRET_KEY not set - generated and saved to .env.", RuntimeWarning
             )
         except OSError:
             warnings.warn(
                 "JWT_SECRET_KEY not set - using ephemeral secret. "
                 "Sessions will be invalidated on restart. Set JWT_SECRET_KEY for persistence.",
-                RuntimeWarning
+                RuntimeWarning,
             )
         return generated_secret
 
     def is_production(self) -> bool:
         """Check if running in production environment"""
-        environment = os.getenv('ENVIRONMENT', 'development').lower()
-        return environment in ('production', 'prod', 'staging')
+        environment = os.getenv("ENVIRONMENT", "development").lower()
+        return environment in ("production", "prod", "staging")
 
     def is_production_like(self) -> bool:
         """Check if configuration suggests production-like deployment"""
         # Note: API_WORKERS is now auto-detected (always >= 2), so we check
         # whether the admin *explicitly* set it via env var instead.
-        explicit_workers = os.getenv('API_WORKERS') is not None
+        explicit_workers = os.getenv("API_WORKERS") is not None
         return (
-            self.DB_TYPE == 'postgresql' or
-            'localhost' not in self.BASE_URL or
-            self.SMTP_ENABLED or
-            explicit_workers
+            self.DB_TYPE == "postgresql"
+            or "localhost" not in self.BASE_URL
+            or self.SMTP_ENABLED
+            or explicit_workers
         )
 
     def validate_production_security(self) -> List[str]:
@@ -283,7 +304,7 @@ class _SystemConfig:
         # CRITICAL: Database Encryption for FERPA Compliance
         # =================================================================
         if is_prod or is_prod_like:
-            if self.DB_TYPE == 'sqlite' and not self.DB_ENCRYPTION_ENABLED:
+            if self.DB_TYPE == "sqlite" and not self.DB_ENCRYPTION_ENABLED:
                 errors.append(
                     "Database encryption is REQUIRED for production (FERPA compliance). "
                     "Set DB_ENCRYPTION_ENABLED=true and DB_ENCRYPTION_KEY."
@@ -307,7 +328,7 @@ class _SystemConfig:
         # =================================================================
         # HIGH: PostgreSQL Password
         # =================================================================
-        if self.DB_TYPE == 'postgresql' and not self.POSTGRES_PASSWORD:
+        if self.DB_TYPE == "postgresql" and not self.POSTGRES_PASSWORD:
             if is_prod:
                 errors.append("PostgreSQL password is not set for production database.")
             else:
@@ -316,7 +337,11 @@ class _SystemConfig:
         # =================================================================
         # CRITICAL: PostgreSQL SSL Mode
         # =================================================================
-        if self.DB_TYPE == 'postgresql' and self.POSTGRES_SSLMODE in ('disable', 'allow', 'prefer'):
+        if self.DB_TYPE == "postgresql" and self.POSTGRES_SSLMODE in (
+            "disable",
+            "allow",
+            "prefer",
+        ):
             if is_prod:
                 errors.append(
                     f"POSTGRES_SSLMODE is '{self.POSTGRES_SSLMODE}'. "
@@ -332,12 +357,16 @@ class _SystemConfig:
         # =================================================================
         # HIGH: CSRF Cookie Security
         # =================================================================
-        csrf_cookie_secure = os.getenv('CSRF_COOKIE_SECURE', 'false').lower() == 'true'
+        csrf_cookie_secure = os.getenv("CSRF_COOKIE_SECURE", "false").lower() == "true"
         if not csrf_cookie_secure:
-            warnings_list.append(
+            msg = (
                 "CSRF_COOKIE_SECURE is not enabled. Set CSRF_COOKIE_SECURE=true "
                 "for production to prevent CSRF cookie transmission over HTTP."
             )
+            if is_prod:
+                errors.append(msg)
+            else:
+                warnings_list.append(msg)
 
         # =================================================================
         # HIGH: Conversation Encryption (COPPA/FERPA Compliance)
@@ -353,7 +382,7 @@ class _SystemConfig:
         # HIGH: CORS Configuration
         # =================================================================
         if is_prod:
-            wildcard_origins = [o for o in self.CORS_ORIGINS if '*' in o]
+            wildcard_origins = [o for o in self.CORS_ORIGINS if "*" in o]
             if wildcard_origins:
                 errors.append(
                     f"CORS origins contain wildcards in production: {wildcard_origins}. "
@@ -364,7 +393,7 @@ class _SystemConfig:
         # HIGH: Flower Monitoring Credentials
         # =================================================================
         if self.FLOWER_ENABLED:
-            if not self.FLOWER_PASSWORD or self.FLOWER_PASSWORD == 'admin':
+            if not self.FLOWER_PASSWORD or self.FLOWER_PASSWORD == "admin":
                 errors.append(
                     "Flower monitoring UI has weak/missing credentials. "
                     "Set FLOWER_USER and FLOWER_PASSWORD environment variables."
@@ -373,10 +402,10 @@ class _SystemConfig:
         # =================================================================
         # CRITICAL: Internal API Key (server-to-server auth)
         # =================================================================
-        internal_key = os.getenv('INTERNAL_API_KEY', 'snflwr-internal-dev-key')
+        internal_key = os.getenv("INTERNAL_API_KEY", "snflwr-internal-dev-key")
         _KNOWN_INSECURE_KEYS = {
-            'snflwr-internal-dev-key',
-            'CHANGE-THIS-generate-with-secrets-token-hex-32',
+            "snflwr-internal-dev-key",
+            "CHANGE-THIS-generate-with-secrets-token-hex-32",
         }
         if internal_key in _KNOWN_INSECURE_KEYS or len(internal_key) < 32:
             if is_prod or is_prod_like:
@@ -398,39 +427,41 @@ class _SystemConfig:
 
         # Raise on critical errors in production
         if errors and (is_prod or is_prod_like):
-            error_msg = "Production security validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            error_msg = "Production security validation failed:\n" + "\n".join(
+                f"  - {e}" for e in errors
+            )
             raise RuntimeError(error_msg)
 
         return errors
 
     def get_info(self):
         return {
-            'application': self.APPLICATION_NAME,
-            'version': self.VERSION,
-            'platform': self.PLATFORM,
-            'app_data_dir': str(self.APP_DATA_DIR),
-            'production': self.is_production(),
-            'production_like': self.is_production_like(),
-            'db_type': self.DB_TYPE,
-            'db_encryption': self.DB_ENCRYPTION_ENABLED,
-            'redis_enabled': self.REDIS_ENABLED,
+            "application": self.APPLICATION_NAME,
+            "version": self.VERSION,
+            "platform": self.PLATFORM,
+            "app_data_dir": str(self.APP_DATA_DIR),
+            "production": self.is_production(),
+            "production_like": self.is_production_like(),
+            "db_type": self.DB_TYPE,
+            "db_encryption": self.DB_ENCRYPTION_ENABLED,
+            "redis_enabled": self.REDIS_ENABLED,
         }
 
 
 @dataclass
 class _SafetyConfig:
     PROHIBITED_KEYWORDS = {
-        'violence': ['kill', 'murder', 'weapon', 'gun', 'knife', 'bomb'],
-        'self_harm': ['suicide', 'kill myself', 'self-harm', 'cut myself'],
-        'sexual': ['sex', 'porn', 'naked', 'nude'],
-        'drugs': ['drugs', 'cocaine', 'heroin', 'marijuana', 'weed'],
-        'personal_info': ['social security', 'ssn', 'credit card', 'address'],
-        'bullying': ['bully', 'bullying', 'harass', 'threat'],
-        'dangerous_activity': ['how to make bomb', 'how to hurt']
+        "violence": ["kill", "murder", "weapon", "gun", "knife", "bomb"],
+        "self_harm": ["suicide", "kill myself", "self-harm", "cut myself"],
+        "sexual": ["sex", "porn", "naked", "nude"],
+        "drugs": ["drugs", "cocaine", "heroin", "marijuana", "weed"],
+        "personal_info": ["social security", "ssn", "credit card", "address"],
+        "bullying": ["bully", "bullying", "harass", "threat"],
+        "dangerous_activity": ["how to make bomb", "how to hurt"],
     }
     REDIRECT_TOPICS = {
-        'politics': 'age-appropriate civic learning',
-        'religion': 'age-appropriate cultural overviews',
+        "politics": "age-appropriate civic learning",
+        "religion": "age-appropriate cultural overviews",
     }
 
     # Data retention (COPPA compliance)
@@ -447,7 +478,9 @@ class _SafetyConfig:
     # Encryption
     ENCRYPT_INCIDENT_LOGS = True
     ENCRYPT_PERSONAL_DATA = True
-    ENCRYPT_CONVERSATIONS: bool = os.getenv('ENCRYPT_CONVERSATIONS', 'true').lower() == 'true'
+    ENCRYPT_CONVERSATIONS: bool = (
+        os.getenv("ENCRYPT_CONVERSATIONS", "true").lower() == "true"
+    )
     KEY_ROTATION_DAYS = 365
 
     # Audit logging
@@ -491,39 +524,36 @@ class _SafetyConfig:
 
     # Grade-based filter levels
     FILTER_LEVELS = {
-        'elementary': {
-            'strictness': 'maximum',
-            'block_all_external_links': True,
-            'allow_ai_explanations': True,
-            'max_conversation_turns': 20
+        "elementary": {
+            "strictness": "maximum",
+            "block_all_external_links": True,
+            "allow_ai_explanations": True,
+            "max_conversation_turns": 20,
         },
-        'middle': {
-            'strictness': 'high',
-            'block_all_external_links': False,
-            'allow_ai_explanations': True,
-            'max_conversation_turns': 30
+        "middle": {
+            "strictness": "high",
+            "block_all_external_links": False,
+            "allow_ai_explanations": True,
+            "max_conversation_turns": 30,
         },
-        'high': {
-            'strictness': 'moderate',
-            'block_all_external_links': False,
-            'allow_ai_explanations': True,
-            'max_conversation_turns': 50
-        }
+        "high": {
+            "strictness": "moderate",
+            "block_all_external_links": False,
+            "allow_ai_explanations": True,
+            "max_conversation_turns": 50,
+        },
     }
 
     def get_retention_policy(self):
         """Get retention policy summary"""
         return {
-            'safety_incidents': self.SAFETY_LOG_RETENTION_DAYS,
-            'safety_logs': self.SAFETY_LOG_RETENTION_DAYS,
-            'audit_logs': self.AUDIT_LOG_RETENTION_DAYS,
-            'sessions': self.SESSION_RETENTION_DAYS,
-            'conversations': self.CONVERSATION_RETENTION_DAYS,
-            'analytics': self.ANALYTICS_RETENTION_DAYS,
-            'compliance': {
-                'framework': 'COPPA/FERPA',
-                'data_minimization': True
-            }
+            "safety_incidents": self.SAFETY_LOG_RETENTION_DAYS,
+            "safety_logs": self.SAFETY_LOG_RETENTION_DAYS,
+            "audit_logs": self.AUDIT_LOG_RETENTION_DAYS,
+            "sessions": self.SESSION_RETENTION_DAYS,
+            "conversations": self.CONVERSATION_RETENTION_DAYS,
+            "analytics": self.ANALYTICS_RETENTION_DAYS,
+            "compliance": {"framework": "COPPA/FERPA", "data_minimization": True},
         }
 
 
@@ -538,46 +568,50 @@ def get_database_url() -> str:
     Returns:
         str: Database URL (sqlite:// or postgresql://)
     """
-    if system_config.DB_TYPE == 'postgresql':
-        return (f"postgresql://{system_config.POSTGRES_USER}:{system_config.POSTGRES_PASSWORD}"
-                f"@{system_config.POSTGRES_HOST}:{system_config.POSTGRES_PORT}/{system_config.POSTGRES_DB}")
+    if system_config.DB_TYPE == "postgresql":
+        return (
+            f"postgresql://{system_config.POSTGRES_USER}:{system_config.POSTGRES_PASSWORD}"
+            f"@{system_config.POSTGRES_HOST}:{system_config.POSTGRES_PORT}/{system_config.POSTGRES_DB}"
+        )
     else:
         # SQLite
         return f"sqlite:///{system_config.DB_PATH}"
 
 
-
 # Session defaults for session management tests
 SESSION_CONFIG = {
-    'idle_timeout_minutes': 30,
-    'max_session_hours': 4,
-    'max_sessions_per_day': 50,  # Increased to support testing scenarios including pagination tests
+    "idle_timeout_minutes": 30,
+    "max_session_hours": 4,
+    "max_sessions_per_day": 50,  # Increased to support testing scenarios including pagination tests
 }
+
 
 # Security configuration for CSRF, rate limiting, etc.
 # CSRF secret must be stable across restarts and workers. If CSRF_SECRET is
 # not explicitly set, derive it from the JWT secret (which is already persisted
 # in .env) using HMAC so that it's deterministic but distinct.
 def _derive_csrf_secret() -> str:
-    explicit = os.getenv('CSRF_SECRET')
+    explicit = os.getenv("CSRF_SECRET")
     if explicit:
         return explicit
     import hmac as _hmac
     import hashlib as _hashlib
+
     jwt_key = system_config.JWT_SECRET_KEY
     return _hmac.new(
-        jwt_key.encode(), b'snflwr-csrf-secret', _hashlib.sha256
+        jwt_key.encode(), b"snflwr-csrf-secret", _hashlib.sha256
     ).hexdigest()
 
+
 SECURITY_CONFIG = {
-    'csrf_secret': _derive_csrf_secret(),
-    'csrf_enabled': os.getenv('CSRF_ENABLED', 'true').lower() == 'true',
-    'csrf_cookie_secure': os.getenv('CSRF_COOKIE_SECURE', 'false').lower() == 'true',
-    'csrf_cookie_samesite': os.getenv('CSRF_COOKIE_SAMESITE', 'strict'),
+    "csrf_secret": _derive_csrf_secret(),
+    "csrf_enabled": os.getenv("CSRF_ENABLED", "true").lower() == "true",
+    "csrf_cookie_secure": os.getenv("CSRF_COOKIE_SECURE", "false").lower() == "true",
+    "csrf_cookie_samesite": os.getenv("CSRF_COOKIE_SAMESITE", "strict"),
 }
 
 # Shared secret for internal server-to-server calls (Open WebUI -> Snflwr API)
-_internal_key_from_env = os.getenv('INTERNAL_API_KEY')
+_internal_key_from_env = os.getenv("INTERNAL_API_KEY")
 if _internal_key_from_env:
     INTERNAL_API_KEY = _internal_key_from_env
 else:

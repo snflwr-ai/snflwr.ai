@@ -11,7 +11,7 @@ import psutil
 import time
 from typing import Any, Dict, List
 
-from utils.logger import get_logger, logger_manager
+from utils.logger import get_logger, logger_manager, sanitize_log_value
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
 from config import system_config
@@ -228,12 +228,10 @@ class PrometheusMetrics:
             )
 
             # Count messages (last 24 hours)
-            messages_24h = db_manager.execute_read(
-                """
+            messages_24h = db_manager.execute_read("""
                 SELECT COUNT(*) as count FROM messages
                 WHERE timestamp > datetime('now', '-24 hours')
-                """
-            )
+                """)
             message_count = messages_24h[0]["count"] if messages_24h else 0
 
             metrics.append(
@@ -258,12 +256,10 @@ class PrometheusMetrics:
 
         try:
             # Count safety incidents (last 24 hours)
-            incidents_24h = db_manager.execute_read(
-                """
+            incidents_24h = db_manager.execute_read("""
                 SELECT COUNT(*) as count FROM safety_incidents
                 WHERE timestamp > datetime('now', '-24 hours')
-                """
-            )
+                """)
             incident_count = incidents_24h[0]["count"] if incidents_24h else 0
 
             metrics.append(
@@ -497,7 +493,7 @@ async def detailed_health(session: AuthSession = Depends(require_admin)):
         logger.warning(f"Could not check Redis health: {e}")
         health_status["components"]["redis"] = {
             "status": "unknown",
-            "error": str(e),
+            "error": sanitize_log_value(str(e)),
         }
 
     # Safety monitoring

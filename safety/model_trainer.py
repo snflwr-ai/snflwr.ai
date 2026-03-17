@@ -258,8 +258,7 @@ class SafetyModelTrainer:
         """Log edge case to database"""
         try:
             # Create edge_cases table if it doesn't exist
-            self.db.execute_query(
-                """
+            self.db.execute_query("""
                 CREATE TABLE IF NOT EXISTS safety_edge_cases (
                     id INTEGER PRIMARY KEY,
                     timestamp TEXT NOT NULL,
@@ -272,8 +271,7 @@ class SafetyModelTrainer:
                     reviewed_at TEXT,
                     reviewed_by TEXT
                 )
-            """
-            )
+            """)
 
             # Insert edge case
             self.db.execute_query(
@@ -344,15 +342,13 @@ Output: {json.dumps(correct_classification)}"""
                     total_cases = sum(1 for line in f if line.strip())
 
             # Get database stats
-            results = self.db.execute_query(
-                """
+            results = self.db.execute_query("""
                 SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN human_override = 1 THEN 1 ELSE 0 END) as overrides,
                     SUM(CASE WHEN reviewed = 1 THEN 1 ELSE 0 END) as reviewed
                 FROM safety_edge_cases
-            """
-            )
+            """)
 
             if results and len(results) > 0:
                 stats = dict(results[0])  # Convert sqlite3.Row to dict

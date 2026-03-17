@@ -456,6 +456,7 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bmatanza\b", "violence term (ES)"),
         (r"\basesina[rt]\w*\b", "violence term (ES)"),
         (r"\basesino\b", "violence term (ES)"),
+        (r"\basesinato\b", "violence term (ES)"),
         (r"\bmasacre\b", "violence term (ES)"),
         (r"\bterrorista\b", "violence term (ES)"),
         (r"\bdecapitar\b", "violence term (ES)"),
@@ -478,6 +479,19 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bapuñalar\b", "violence term (ES)"),
         (r"\bestrangular\b", "violence term (ES)"),
         (r"\bincendio\s*provocado\b", "violence term (ES)"),
+        # -- Spanish additions: shooting / stabbing / beating --
+        (r"\btiroteo\b", "violence term (ES)"),
+        (r"\bbalazo\w*\b", "violence term (ES)"),
+        (r"\bdisparo\w*\b", "violence term (ES)"),
+        (r"\bgolpiza\b", "violence term (ES)"),
+        (r"\bpu[ñn]alada\b", "violence term (ES)"),
+        (r"\bacuchillar\b", "violence term (ES)"),
+        (r"\bnavajazo\b", "violence term (ES)"),
+        # -- Spanish additions: methods / outcomes --
+        (r"\bdescuartizar\b", "violence term (ES)"),
+        (r"\bfusilar\b", "violence term (ES)"),
+        (r"\bejecuci[oó]n\b", "violence term (ES)"),
+        (r"\bmutilar\b", "violence term (ES)"),
     ],
     # =================================================================
     # SELF_HARM
@@ -521,6 +535,15 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bmejor\s*muert[oa]\b", "self-harm term (ES)"),
         (r"\banorexia\b", "self-harm term (ES)"),
         (r"\bbulimia\b", "self-harm term (ES)"),
+        # -- Spanish additions: methods + ideation --
+        (r"\bquemar(me|se)\b", "self-harm term (ES)"),
+        (r"\b(me\s*)?quiero\s*quemar(me)?\b", "self-harm term (ES)"),
+        (r"\benvenenar(me|se)\b", "self-harm term (ES)"),
+        (r"\bhacerme\s*da[ñn]o\b", "self-harm term (ES)"),
+        (r"\blastimarme\b", "self-harm term (ES)"),
+        (r"\bme\s*quiero\s*morir\b", "self-harm term (ES)"),
+        (r"\bno\s*sirvo\s*para\s*nada\b", "self-harm term (ES)"),
+        (r"\bno\s*vale\s*la\s*pena\s*vivir\b", "self-harm term (ES)"),
     ],
     # =================================================================
     # PROFANITY — general swear words (not slurs, not sexual)
@@ -621,6 +644,14 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bdrogad[oa]\b", "drug reference (ES)"),
         (r"\bpasti(lla|s)\b", "drug reference (ES)"),
         (r"\btraficante\b", "drug reference (ES)"),
+        # -- Spanish additions: street slang --
+        (r"\bchiva\b", "drug reference (ES)"),
+        (r"\byonqui\b", "drug reference (ES)"),
+        (r"\bbasuco\b", "drug reference (ES)"),
+        (r"\bfalopa\b", "drug reference (ES)"),
+        (r"\bdroga(rse|r|ndo)\b", "drug reference (ES)"),
+        (r"\bfum[oó]n\w*\b", "drug reference (ES)"),
+        (r"\bgrifo\b", "drug reference (ES)"),
     ],
     # =================================================================
     # DEROGATORY — ableist, demeaning, body-shaming language
@@ -655,7 +686,7 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bweeb\b", "derogatory (EN)"),
         (r"\bneckbeard\b", "derogatory (EN)"),
         (r"\bvirgin\b", "derogatory (EN)"),
-        (r"\btrigger\w*\b", "derogatory (EN)"),
+        (r"\btrigger(ed|ing)\b", "derogatory (EN)"),
         (r"\bsnowflake\b", "derogatory (EN)"),
         (r"\blibtard\b", "derogatory (EN)"),
         (r"\bcuck\b", "derogatory (EN)"),
@@ -685,6 +716,11 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bmuert[oa]\s*de\s*hambre\b", "derogatory (ES)"),
         (r"\barrastrad[oa]\b", "derogatory (ES)"),
         (r"\bcorrient[oe]\b", "derogatory (ES)"),
+        # -- Spanish additions: ableist + regional --
+        (r"\bsubnormal\b", "ableist slur (ES)"),
+        (r"\bhuev[oó]n\w*\b", "derogatory (ES)"),
+        (r"\bcerote\b", "derogatory (ES)"),
+        (r"\banormal\b", "ableist slur (ES)"),
     ],
 }
 
@@ -779,6 +815,12 @@ SUBSTR_CHECKS: Dict[str, List[Tuple[str, str]]] = {
         ("narco", "violence term (ES)"),
         ("decapitar", "violence term (ES)"),
         ("degollar", "violence term (ES)"),
+        ("tiroteo", "violence term (ES)"),
+        ("golpiza", "violence term (ES)"),
+        ("descuartizar", "violence term (ES)"),
+        ("fusilar", "violence term (ES)"),
+        ("acuchillar", "violence term (ES)"),
+        ("navajazo", "violence term (ES)"),
     ],
     "SELF_HARM": [
         ("suicide", "self-harm term"),
@@ -798,6 +840,11 @@ SUBSTR_CHECKS: Dict[str, List[Tuple[str, str]]] = {
         ("autolesion", "self-harm term (ES)"),
         ("suicidio", "self-harm term (ES)"),
         ("ahorcarme", "self-harm term (ES)"),
+        ("quemarme", "self-harm term (ES)"),
+        ("envenenarme", "self-harm term (ES)"),
+        ("lastimarme", "self-harm term (ES)"),
+        ("hacermedano", "self-harm term (ES)"),
+        ("nosirvoparanada", "self-harm term (ES)"),
     ],
     "PROFANITY": [
         ("shit", "profanity"),
@@ -839,6 +886,11 @@ SUBSTR_CHECKS: Dict[str, List[Tuple[str, str]]] = {
         ("oxycontin", "drug reference"),
         ("drogadicto", "drug reference (ES)"),
         ("traficante", "drug reference (ES)"),
+        ("chiva", "drug reference (ES)"),
+        ("yonqui", "drug reference (ES)"),
+        ("basuco", "drug reference (ES)"),
+        ("falopa", "drug reference (ES)"),
+        ("drogar", "drug reference (ES)"),
     ],
     "DEROGATORY": [
         ("retard", "ableist slur"),
@@ -854,6 +906,9 @@ SUBSTR_CHECKS: Dict[str, List[Tuple[str, str]]] = {
         ("lardass", "body shaming"),
         ("retrasado", "ableist slur (ES)"),
         ("escoria", "derogatory (ES)"),
+        ("subnormal", "ableist slur (ES)"),
+        ("huevon", "derogatory (ES)"),
+        ("cerote", "derogatory (ES)"),
     ],
 }
 
@@ -884,6 +939,7 @@ FALSE_POSITIVE_ALLOWLIST = frozenset(
         "assign",
         "assist",
         "associate",
+        "assassin",
         "class",
         "bass",
         "brass",
@@ -919,6 +975,7 @@ FALSE_POSITIVE_ALLOWLIST = frozenset(
         "analog",
         "analysis",
         "analyst",
+        "analytics",
         "canal",
         # contains "kill"
         "skill",
@@ -984,6 +1041,12 @@ FALSE_POSITIVE_ALLOWLIST = frozenset(
         "molecule",
         # contains "pimp"
         "pimple",
+        # contains "matar" (ES: kill)
+        "tomate",
+        # contains "disparo" (ES: gunshot)
+        "disparate",
+        # contains "anormal"
+        "paranormal",
     }
 )
 

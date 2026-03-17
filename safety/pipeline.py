@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import re
-import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, Tuple
@@ -32,6 +31,8 @@ from safety.patterns import (
     COMPILED_PATTERNS as _SHARED_COMPILED,
     SUBSTR_CHECKS as _SHARED_SUBSTR,
     FALSE_POSITIVE_ALLOWLIST as _SHARED_ALLOWLIST,
+    STRIP_CHARS as _STRIP_CHARS,
+    normalize_text as _normalize_text,
 )
 from utils.logger import get_logger, log_safety_incident
 
@@ -190,171 +191,19 @@ def _stage_validate(text: str) -> Optional[SafetyResult]:
 # 3. Stage 2 -- Text Normalization
 # =============================================================================
 
-# Leet-speak substitution map
-_LEET_MAP: Dict[str, str] = {
-    "0": "o",
-    "1": "i",
-    "3": "e",
-    "4": "a",
-    "5": "s",
-    "7": "t",
-    "8": "b",
-    "!": "i",
-    "@": "a",
-    "$": "s",
-    "|": "i",
-}
-
-# Unicode homoglyph map: visually similar non-Latin chars -> ASCII equivalents.
-# Covers Cyrillic and Greek characters commonly used to bypass text filters.
-_HOMOGLYPH_MAP: Dict[str, str] = {
-    # Cyrillic lowercase
-    "\u0430": "a",  # а
-    "\u0435": "e",  # е
-    "\u0456": "i",  # і (Ukrainian i)
-    "\u043e": "o",  # о
-    "\u0440": "p",  # р
-    "\u0441": "c",  # с
-    "\u0443": "y",  # у
-    "\u0445": "x",  # х
-    "\u04bb": "h",  # һ (Bashkir)
-    "\u043a": "k",  # к
-    "\u043c": "m",  # м
-    "\u043d": "h",  # н
-    "\u0442": "t",  # т
-    # Cyrillic uppercase
-    "\u0410": "a",  # А
-    "\u0412": "b",  # В
-    "\u0415": "e",  # Е
-    "\u041a": "k",  # К
-    "\u041c": "m",  # М
-    "\u041d": "h",  # Н
-    "\u041e": "o",  # О
-    "\u0420": "p",  # Р
-    "\u0421": "c",  # С
-    "\u0422": "t",  # Т
-    "\u0423": "y",  # У
-    "\u0425": "x",  # Х
-    # Greek lowercase
-    "\u03b1": "a",  # α
-    "\u03b5": "e",  # ε
-    "\u03b9": "i",  # ι
-    "\u03bf": "o",  # ο
-    "\u03ba": "k",  # κ
-    "\u03c1": "p",  # ρ
-    "\u03c5": "u",  # υ
-    "\u03c7": "x",  # χ
-    # Greek uppercase
-    "\u0391": "a",  # Α
-    "\u0395": "e",  # Ε
-    "\u0397": "h",  # Η
-    "\u0399": "i",  # Ι
-    "\u039a": "k",  # Κ
-    "\u039c": "m",  # Μ
-    "\u039d": "n",  # Ν
-    "\u039f": "o",  # Ο
-    "\u03a1": "p",  # Ρ
-    "\u03a4": "t",  # Τ
-    "\u03a5": "y",  # Υ
-    "\u03a7": "x",  # Χ
-}
-
-# Zero-width and invisible formatting characters that can be inserted between
-# letters to break word-boundary regex without changing visual appearance.
-_INVISIBLE_CHARS = frozenset(
-    {
-        "\u200b",  # Zero-Width Space
-        "\u200c",  # Zero-Width Non-Joiner
-        "\u200d",  # Zero-Width Joiner
-        "\u200e",  # Left-to-Right Mark
-        "\u200f",  # Right-to-Left Mark
-        "\u2060",  # Word Joiner
-        "\u2061",  # Function Application
-        "\u2062",  # Invisible Times
-        "\u2063",  # Invisible Separator
-        "\u2064",  # Invisible Plus
-        "\ufeff",  # BOM / Zero-Width No-Break Space
-        "\u00ad",  # Soft Hyphen
-        "\u034f",  # Combining Grapheme Joiner
-        "\u061c",  # Arabic Letter Mark
-        "\u180e",  # Mongolian Vowel Separator
-    }
-)
-
-# Bidirectional control characters that can reorder text visually.
-_BIDI_CONTROLS = frozenset(
-    {
-        "\u202a",  # Left-to-Right Embedding
-        "\u202b",  # Right-to-Left Embedding
-        "\u202c",  # Pop Directional Formatting
-        "\u202d",  # Left-to-Right Override
-        "\u202e",  # Right-to-Left Override
-        "\u2066",  # Left-to-Right Isolate
-        "\u2067",  # Right-to-Left Isolate
-        "\u2068",  # First Strong Isolate
-        "\u2069",  # Pop Directional Isolate
-    }
-)
-
-# Combined set for fast lookup
-_STRIP_CHARS = _INVISIBLE_CHARS | _BIDI_CONTROLS
-
-# Pre-compiled pattern for collapsing single-letter spacing ("k i l l" -> "kill")
-_SINGLE_LETTER_SPACING_RE = re.compile(r"\b([a-z])\s+(?=[a-z]\b)")
-
-
 def _stage_normalize(text: str) -> str:
     """
     Stage 2: best-effort text normalization.
 
-    Produces a normalized form used by downstream pattern matching to defeat
-    obfuscation techniques:
-      1. Strip invisible/zero-width characters and bidi controls
-      2. Map Unicode homoglyphs (Cyrillic, Greek) to Latin equivalents
-      3. NFKD normalization (fullwidth, enclosed, compatibility chars)
-      4. Strip combining diacritics (accents)
-      5. Leet-speak substitution
-      6. Collapse single-letter spacing
-      7. Strip non-alpha for letters-only form
+    Delegates to the shared ``safety.patterns.normalize_text`` function,
+    returning only the *letters_only* form (used by downstream substring
+    checks to defeat obfuscation).  This includes dual leet-speak
+    interpretation (``1→l`` *and* ``1→i``) joined by ``|``.
 
-    Never raises -- returns lowercase original on error.
+    Never raises -- ``normalize_text`` returns a safe fallback on error.
     """
-    try:
-        lowered = text.lower()
-
-        # Step 1: Strip invisible characters and bidi controls
-        cleaned = "".join(ch for ch in lowered if ch not in _STRIP_CHARS)
-
-        # Step 2: Map homoglyphs (Cyrillic а -> a, Greek ο -> o, etc.)
-        chars = list(cleaned)
-        for i, ch in enumerate(chars):
-            if ch in _HOMOGLYPH_MAP:
-                chars[i] = _HOMOGLYPH_MAP[ch]
-        homoglyph_mapped = "".join(chars)
-
-        # Step 3: Unicode NFKD normalization (fullwidth chars, compatibility forms)
-        nfkd = unicodedata.normalize("NFKD", homoglyph_mapped)
-
-        # Step 4: Strip combining diacritics (é -> e, ñ -> n)
-        stripped = "".join(ch for ch in nfkd if not unicodedata.combining(ch))
-
-        # Step 5: Leet-speak substitution
-        chars = list(stripped)
-        for i, ch in enumerate(chars):
-            if ch in _LEET_MAP:
-                chars[i] = _LEET_MAP[ch]
-        substituted = "".join(chars)
-
-        # Step 6: Collapse whitespace between single letters: "k i l l" -> "kill"
-        collapsed = _SINGLE_LETTER_SPACING_RE.sub(r"\1", substituted)
-
-        # Step 7: Strip non-alpha for a letters-only form (used for obfuscated keyword match)
-        letters_only = re.sub(r"[^a-z]", "", collapsed)
-
-        return letters_only
-
-    except Exception:  # Intentional: normalization must not crash
-        return text.lower()
+    _lightly, letters_only = _normalize_text(text)
+    return letters_only
 
 
 def _strip_invisible(text: str) -> str:
@@ -971,12 +820,6 @@ class _SemanticClassifier:
     call the result is BLOCK (fail closed).
     """
 
-    SAFETY_MODEL = "llama-guard3:8b"
-    # Fallback models in preference order (llama-guard only — purpose-built
-    # for content-safety classification by Meta).
-    FALLBACK_MODELS = [
-        "llama-guard3:1b",  # Meta Llama Guard small (faster, less RAM)
-    ]
     CONFIDENCE_THRESHOLD = 0.7
 
     def __init__(self) -> None:
@@ -1007,14 +850,18 @@ class _SemanticClassifier:
                 )
                 return
 
-            # Determine which model to use (prefer custom > larger guard > smaller guard)
+            # Determine which model to use (prefer configured > fallbacks)
+            preferred = getattr(safety_config, "SAFETY_MODEL", "llama-guard3:8b")
+            fallbacks = getattr(
+                safety_config, "SAFETY_MODEL_FALLBACKS", ["llama-guard3:1b"]
+            )
             success, models, _err = self._client.list_models()
             if success and models:
                 names = [m.get("name", "") for m in models]
-                if self.SAFETY_MODEL in names:
-                    self._model = self.SAFETY_MODEL
+                if preferred in names:
+                    self._model = preferred
                 else:
-                    for fallback in self.FALLBACK_MODELS:
+                    for fallback in fallbacks:
                         if fallback in names:
                             self._model = fallback
                             break

@@ -490,7 +490,7 @@ class Filter:
 
             messages.append({
                 "role": "system",
-                "content": f"You must respond with EXACTLY this message and nothing else: '{redirect_msg}'"
+                "content": f"You must respond with EXACTLY this message and nothing else:\n\n{redirect_msg}"
             })
 
             body["messages"] = messages

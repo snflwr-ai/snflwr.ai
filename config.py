@@ -464,6 +464,19 @@ class _SafetyConfig:
         "religion": "age-appropriate cultural overviews",
     }
 
+    # Ollama safety model for semantic classifier (Stage 4).
+    # These set the *preference order* only — the classifier queries Ollama's
+    # local model list at startup and picks the first match that is actually
+    # installed.  If neither the preferred model nor any fallback is present,
+    # the semantic classifier disables itself and the deterministic stages
+    # (1-3, 5) continue to protect.
+    SAFETY_MODEL: str = os.getenv("SAFETY_MODEL", "llama-guard3:8b")
+    SAFETY_MODEL_FALLBACKS: tuple = tuple(
+        s.strip()
+        for s in os.getenv("SAFETY_MODEL_FALLBACKS", "llama-guard3:1b").split(",")
+        if s.strip()
+    )
+
     # Data retention (COPPA compliance)
     SAFETY_LOG_RETENTION_DAYS = 90
     AUDIT_LOG_RETENTION_DAYS = 365

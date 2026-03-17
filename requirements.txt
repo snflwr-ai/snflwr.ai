@@ -46,13 +46,13 @@ flower==2.0.1                 # Celery monitoring UI
 structlog==24.4.0             # Structured logging
 python-json-logger==2.0.7     # JSON logging formatter (kept at 2.x; 3.x/4.x have breaking API changes)
 schedule==1.2.2               # Task scheduling for data retention
-sentry-sdk>=2.0.0,<3.0.0      # Error tracking and performance monitoring
+sentry-sdk==2.53.0            # Error tracking and performance monitoring (CVE-2024-40647 fix in 2.8.0)
 prometheus_client==0.21.1     # Prometheus metrics export
 
 # Build & Packaging
 setuptools==78.1.1            # Package utilities (security patches for CVE-2024-6345)
 wheel==0.46.3                 # Wheel package format (includes fix for CVE-2026-24049)
-jaraco-context>=6.1.0         # Transitive dep — pin floor for CVE-2026-23949
+jaraco-context==6.1.1         # Transitive dep — pin for CVE-2026-23949
 
 # Database Encryption (Optional - requires system SQLCipher libraries)
 # Install separately if needed: pip install pysqlcipher3==1.2.0

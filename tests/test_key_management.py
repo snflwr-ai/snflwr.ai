@@ -473,3 +473,121 @@ class TestKeyManagerPrivateErrorPaths:
         key = km.initialize_from_random_key(save_backup=False)
         assert key is not None
         assert not km.metadata_file.exists()
+
+
+# ==========================================================================
+# setup_encryption_interactive — CLI flow coverage (lines 806-886)
+# ==========================================================================
+
+
+class TestSetupEncryptionInteractive:
+    """Cover setup_encryption_interactive() with mocked input/print."""
+
+    def test_passphrase_setup_happy_path(self, tmp_dir):
+        """Choice 1: passphrase entry succeeds on first attempt."""
+        from core.key_management import setup_encryption_interactive
+
+        inputs = iter(["1", "my-secure-passphrase-long", "my-secure-passphrase-long"])
+
+        with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+            with patch("builtins.print"):
+                with patch("core.key_management.KeyManager") as mock_km_cls:
+                    mock_km = MagicMock()
+                    mock_km.initialize_from_passphrase.return_value = "derived-key-b64"
+                    mock_km.metadata_file = tmp_dir / "encryption.meta.json"
+                    mock_km_cls.return_value = mock_km
+
+                    result = setup_encryption_interactive()
+
+        assert result == "derived-key-b64"
+        mock_km.initialize_from_passphrase.assert_called_once_with(
+            "my-secure-passphrase-long", save_backup=True
+        )
+
+    def test_passphrase_mismatch_then_success(self, tmp_dir):
+        """Choice 1: first attempt mismatches, second succeeds."""
+        from core.key_management import setup_encryption_interactive
+
+        inputs = iter([
+            "1",
+            "passphrase-one-long", "passphrase-two-long",  # mismatch
+            "correct-passphrase-long", "correct-passphrase-long",  # match
+        ])
+
+        with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+            with patch("builtins.print"):
+                with patch("core.key_management.KeyManager") as mock_km_cls:
+                    mock_km = MagicMock()
+                    mock_km.initialize_from_passphrase.return_value = "derived-key"
+                    mock_km.metadata_file = tmp_dir / "encryption.meta.json"
+                    mock_km_cls.return_value = mock_km
+
+                    result = setup_encryption_interactive()
+
+        assert result == "derived-key"
+
+    def test_passphrase_too_short_then_success(self, tmp_dir):
+        """Choice 1: first passphrase raises KeyStrengthError, second succeeds."""
+        from core.key_management import setup_encryption_interactive, KeyStrengthError
+
+        inputs = iter([
+            "1",
+            "short", "short",  # too short
+            "long-enough-passphrase", "long-enough-passphrase",  # good
+        ])
+
+        with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+            with patch("builtins.print"):
+                with patch("core.key_management.KeyManager") as mock_km_cls:
+                    mock_km = MagicMock()
+                    mock_km.initialize_from_passphrase.side_effect = [
+                        KeyStrengthError("too short"),
+                        "derived-key",
+                    ]
+                    mock_km.metadata_file = tmp_dir / "encryption.meta.json"
+                    mock_km_cls.return_value = mock_km
+
+                    result = setup_encryption_interactive()
+
+        assert result == "derived-key"
+
+    def test_random_key_happy_path(self, tmp_dir):
+        """Choice 2: user confirms and gets random key."""
+        from core.key_management import setup_encryption_interactive
+
+        inputs = iter(["2", "I UNDERSTAND", ""])  # choice, confirm, press Enter
+
+        with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+            with patch("builtins.print"):
+                with patch("core.key_management.KeyManager") as mock_km_cls:
+                    mock_km = MagicMock()
+                    mock_km.initialize_from_random_key.return_value = "random-key-b64-abcdef"
+                    mock_km_cls.return_value = mock_km
+
+                    result = setup_encryption_interactive()
+
+        assert result == "random-key-b64-abcdef"
+
+    def test_random_key_cancelled(self, tmp_dir):
+        """Choice 2: user doesn't type 'I UNDERSTAND' → returns None."""
+        from core.key_management import setup_encryption_interactive
+
+        inputs = iter(["2", "nope"])
+
+        with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+            with patch("builtins.print"):
+                result = setup_encryption_interactive()
+
+        assert result is None
+
+    def test_invalid_choice(self):
+        """Invalid choice (not 1 or 2) → returns None."""
+        from core.key_management import setup_encryption_interactive
+
+        inputs = iter(["3"])
+
+        with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+            with patch("builtins.print"):
+                result = setup_encryption_interactive()
+
+        assert result is None

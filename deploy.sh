@@ -51,6 +51,71 @@ warn()    { echo "  $(_yellow '[!]') $*"; }
 error()   { echo "  $(_red '[x]') $*" >&2; }
 section() { echo ""; echo "  $(_bold "$*")"; echo "  $(printf '%0.s-' $(seq 1 ${#1}))"; }
 
+# --- Port availability check -------------------------------------------------
+# check_port PORT LABEL
+#   Exits with a clear error if PORT is already bound on the host AND the
+#   process holding it is NOT one of our own Docker containers.
+check_port() {
+    local port="$1" label="$2"
+
+    # 1. Check if one of our containers already owns the port (previous run)
+    local container_ids
+    container_ids=$(docker ps -q --filter "publish=${port}" 2>/dev/null || true)
+    if [[ -n "$container_ids" ]]; then
+        local all_ours=true
+        local foreign_name=""
+        while IFS= read -r cid; do
+            local cname
+            cname=$(docker inspect --format '{{.Name}}' "$cid" 2>/dev/null | sed 's|^/||')
+            if [[ "$cname" != snflwr-* ]]; then
+                all_ours=false
+                foreign_name="$cname"
+                break
+            fi
+        done <<< "$container_ids"
+        if [[ "$all_ours" == "true" ]]; then
+            # Our own container(s) — compose will handle restart/replace
+            return 0
+        fi
+        error "Port ${port} (${label}) is already in use by Docker container '${foreign_name}'."
+        echo "      Stop it first:  docker stop ${foreign_name}"
+        exit 1
+    fi
+
+    # 2. Check for non-Docker processes occupying the port
+    local pids=""
+    if command -v lsof &>/dev/null; then
+        pids=$(lsof -ti :"${port}" 2>/dev/null || true)
+    elif command -v ss &>/dev/null; then
+        pids=$(ss -tlnp sport = :"${port}" 2>/dev/null | grep -oP 'pid=\K[0-9]+' || true)
+    elif command -v fuser &>/dev/null; then
+        pids=$(fuser "${port}/tcp" 2>/dev/null || true)
+    fi
+
+    if [[ -n "$pids" ]]; then
+        # Filter out docker-proxy — it's Docker's own port forwarder and is
+        # already covered by the container check above.
+        local non_docker_pids=""
+        local proc_info=""
+        while IFS= read -r pid; do
+            [[ -z "$pid" ]] && continue
+            local comm
+            comm=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+            if [[ "$comm" != "docker-proxy" ]]; then
+                non_docker_pids="${non_docker_pids:+${non_docker_pids} }${pid}"
+                proc_info="$comm"
+            fi
+        done <<< "$pids"
+
+        if [[ -n "$non_docker_pids" ]]; then
+            error "Port ${port} (${label}) is already in use${proc_info:+ by '${proc_info}'}."
+            echo "      PID(s): $non_docker_pids"
+            echo "      Free the port and re-run, or use --port to pick a different one."
+            exit 1
+        fi
+    fi
+}
+
 # --- Argument parsing --------------------------------------------------------
 GPU_MODE=""        # auto | force | none
 OPEN_BROWSER=auto  # auto | yes | no
@@ -272,6 +337,12 @@ set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 set +a
+
+# --- Pre-flight port check ---------------------------------------------------
+section "Checking ports"
+
+check_port "$RESOLVED_PORT" "Web UI"
+info "Port ${RESOLVED_PORT} (Web UI) is available."
 
 # --- Build snflwr-api image --------------------------------------------------
 section "Building images"

@@ -258,10 +258,16 @@ async def send_chat_message(
                         session_type="student",
                     )
                 except SessionLimitError as e:
-                    raise HTTPException(status_code=429, detail=str(e))
-                except SessionError as e:
+                    logger.warning(f"Session limit exceeded: {e}")
                     raise HTTPException(
-                        status_code=500, detail=f"Failed to create session: {e}"
+                        status_code=429, detail="Session limit exceeded"
+                    )
+                except SessionError as e:
+                    logger.error(
+                        f"Failed to create session: {sanitize_log_value(str(e))!r}"
+                    )
+                    raise HTTPException(
+                        status_code=500, detail="Failed to create session"
                     )
 
         # Load prior conversation messages for multi-turn context (skipped for admin test)
@@ -411,7 +417,8 @@ async def send_chat_message(
             )
             logger.error(f"Ollama chat failed: {sanitize_log_value(err_msg)!r}")
             raise HTTPException(
-                status_code=503, detail=f"AI model unavailable: {err_msg}"
+                status_code=503,
+                detail=f"AI model unavailable: {sanitize_log_value(err_msg)}",
             )
 
         # Strip thinking tokens — qwen3.5 embeds <think>...</think> blocks in
@@ -534,7 +541,8 @@ async def send_chat_message(
     except HTTPException:
         raise
     except SessionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Session error during chat: {e}")
+        raise HTTPException(status_code=400, detail="Session error")
     except OllamaError as e:
         logger.error(f"Ollama error during chat: {e}")
         raise HTTPException(
@@ -572,7 +580,8 @@ async def end_session(
     except HTTPException:
         raise
     except SessionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"Session error ending session: {e}")
+        raise HTTPException(status_code=400, detail="Session error")
     except DB_ERRORS as e:
         logger.error(f"Database error ending session: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")

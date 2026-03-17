@@ -9,9 +9,8 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends gcc g++ \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -28,8 +27,8 @@ WORKDIR /app
 # Copy pre-built Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Install only runtime system deps (curl for healthcheck)
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# Apply Debian security patches (no extra runtime deps needed)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -60,9 +59,9 @@ ENV PYTHONPATH=/app
 ENV API_PORT=8000
 EXPOSE ${API_PORT}
 
-# Health check
+# Health check (using Python instead of curl to avoid curl CVEs)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:${API_PORT}/health || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
 
 # Run the API server (exec form for proper PID 1 signal forwarding)
 CMD ["python", "-m", "api.server"]

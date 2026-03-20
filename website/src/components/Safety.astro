@@ -1,0 +1,237 @@
+<section id="safety" class="safety" aria-labelledby="safety-heading">
+  <div class="container">
+    <div class="safety__inner">
+      <header class="safety__header">
+        <p class="section-eyebrow section-eyebrow--light">Built-in, not bolted-on</p>
+        <h2 id="safety-heading" class="section-title section-title--light">
+          Safety &amp; Privacy
+        </h2>
+        <p class="section-desc section-desc--light">
+          Backend-enforced filtering that cannot be bypassed from the frontend,
+          combined with full local deployment and regulatory compliance by design.
+        </p>
+      </header>
+
+      <div class="safety__grid">
+        <div class="safety__col animate-on-scroll" style="transition-delay: 0ms">
+          <h3 class="safety__col-title">Privacy Guarantees</h3>
+          <ul class="safety__list" role="list">
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              Backend-enforced filtering — cannot be bypassed from the frontend
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              No cloud dependency, no data leaving your network
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              USB deployment option for complete physical data control
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              All AI inference runs locally via Ollama
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              PII never stored in plaintext
+            </li>
+          </ul>
+        </div>
+
+        <div class="safety__col animate-on-scroll" style="transition-delay: 100ms">
+          <h3 class="safety__col-title">Compliance</h3>
+          <ul class="safety__list" role="list">
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              COPPA — parental consent flow, data minimization, retention cleanup
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              FERPA — student record protections, parent/guardian access controls
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              GDPR — data deletion and export endpoints
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              AES-256 at rest via SQLCipher
+            </li>
+            <li class="safety__item">
+              <span class="safety__check" aria-hidden="true">✓</span>
+              TLS 1.3 in transit, Argon2id password hashing
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="safety__deployments">
+        <h3 class="safety__deploy-title">Deployment options</h3>
+        <div class="safety__deploy-grid">
+          <div class="safety__deploy-card">
+            <div class="safety__deploy-icon" aria-hidden="true">🏠</div>
+            <h4 class="safety__deploy-name">Family / USB</h4>
+            <p class="safety__deploy-desc">SQLite, AES-256, fully offline. No Docker required.</p>
+            <code class="safety__deploy-cmd">./setup.sh &amp;&amp; ./start_snflwr.sh</code>
+          </div>
+          <div class="safety__deploy-card">
+            <div class="safety__deploy-icon" aria-hidden="true">🖥️</div>
+            <h4 class="safety__deploy-name">Home Server</h4>
+            <p class="safety__deploy-desc">Docker, auto GPU detection, persistent services.</p>
+            <code class="safety__deploy-cmd">./deploy.sh</code>
+          </div>
+          <div class="safety__deploy-card">
+            <div class="safety__deploy-icon" aria-hidden="true">🏫</div>
+            <h4 class="safety__deploy-name">School / Enterprise</h4>
+            <p class="safety__deploy-desc">PostgreSQL, Redis, Celery, Prometheus, Grafana, COPPA/FERPA.</p>
+            <code class="safety__deploy-cmd">enterprise/build.sh</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+/* ================================================================
+   SAFETY & PRIVACY
+================================================================ */
+.safety {
+  padding: 6rem 0;
+  background: linear-gradient(135deg, var(--dark) 0%, #1a2744 100%);
+  color: var(--white);
+  position: relative;
+  overflow: hidden;
+}
+
+.safety::before {
+  content: '';
+  position: absolute;
+  top: -30%;
+  left: -10%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(16,185,129,0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.safety__inner {
+  position: relative;
+}
+
+.safety__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.5rem;
+  margin-bottom: 3.5rem;
+}
+
+@media (min-width: 768px) {
+  .safety__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.safety__col-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--yellow);
+  margin-bottom: 1.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.safety__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.safety__item {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.85);
+  line-height: 1.5;
+}
+
+.safety__check {
+  color: var(--green);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.safety__deployments {
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 3rem;
+}
+
+.safety__deploy-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.safety__deploy-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .safety__deploy-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.safety__deploy-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 1.5rem;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.safety__deploy-card:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.safety__deploy-icon {
+  font-size: 1.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.safety__deploy-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 0.5rem;
+}
+
+.safety__deploy-desc {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.6);
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+.safety__deploy-cmd {
+  display: block;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--green);
+  background: rgba(16,185,129,0.08);
+  border: 1px solid rgba(16,185,129,0.2);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  word-break: break-all;
+}
+</style>

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://snflwr.ai/sitemap-index.xml

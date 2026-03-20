@@ -1,0 +1,184 @@
+<section id="features" class="features" aria-labelledby="features-heading">
+  <div class="container">
+    <header class="section-header">
+      <p class="section-eyebrow">Why snflwr.ai?</p>
+      <h2 id="features-heading" class="section-title">
+        Everything you need for safe AI in K-12
+      </h2>
+      <p class="section-desc">
+        Designed for educators, parents, and school districts who need real safety
+        guarantees — not just content policies that can be edited in a browser.
+      </p>
+    </header>
+
+    <ul class="features__grid" role="list">
+      <li class="feature-card animate-on-scroll" style="transition-delay: 0ms">
+        <div class="feature-card__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <h3 class="feature-card__title">Runs Offline</h3>
+        <p class="feature-card__desc">
+          No cloud, no accounts, no data leaving your network. Deploy on a USB drive
+          for complete physical data control. All AI inference runs locally via Ollama.
+        </p>
+      </li>
+
+      <li class="feature-card feature-card--accent animate-on-scroll" style="transition-delay: 100ms">
+        <div class="feature-card__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 12l2 2 4-4"/>
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <h3 class="feature-card__title">Fail-Closed Safety</h3>
+        <p class="feature-card__desc">
+          5-stage content pipeline: input validation, normalization, pattern matching,
+          LLM classification, and age-adaptive rules. If any stage errors, content
+          is <strong>blocked</strong> — never passed through.
+        </p>
+      </li>
+
+      <li class="feature-card animate-on-scroll" style="transition-delay: 200ms">
+        <div class="feature-card__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M3 9h18M9 21V9"/>
+          </svg>
+        </div>
+        <h3 class="feature-card__title">Parent Dashboard</h3>
+        <p class="feature-card__desc">
+          Real-time monitoring of every conversation. Safety incident alerts, usage
+          analytics, and full chat history review. Know exactly what your child
+          is asking.
+        </p>
+      </li>
+
+      <li class="feature-card animate-on-scroll" style="transition-delay: 300ms">
+        <div class="feature-card__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <h3 class="feature-card__title">K-5 through 12th Grade</h3>
+        <p class="feature-card__desc">
+          Age-adaptive filtering per child profile. Content rules tighten for younger
+          students and relax appropriately for older ones — calibrated, not one-size-fits-all.
+        </p>
+      </li>
+
+      <li class="feature-card animate-on-scroll" style="transition-delay: 400ms">
+        <div class="feature-card__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+        </div>
+        <h3 class="feature-card__title">Enterprise Ready</h3>
+        <p class="feature-card__desc">
+          PostgreSQL, Redis, Celery, Prometheus/Grafana, horizontal scaling, and
+          COPPA/FERPA audit trails. Built for school districts and enterprises,
+          not just home deployments.
+        </p>
+      </li>
+
+      <li class="feature-card animate-on-scroll" style="transition-delay: 500ms">
+        <div class="feature-card__icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h3 class="feature-card__title">Encrypted Everything</h3>
+        <p class="feature-card__desc">
+          AES-256 at rest via SQLCipher, TLS 1.3 in transit, Argon2id password
+          hashing. PII is never stored in plaintext. COPPA, FERPA, and GDPR
+          endpoints included.
+        </p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<style>
+/* ================================================================
+   FEATURES
+================================================================ */
+.features {
+  padding: 6rem 0;
+  background: var(--white);
+}
+
+.features__grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .features__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .features__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.feature-card {
+  padding: 1.75rem;
+  border-radius: 16px;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+}
+
+.feature-card:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+  border-color: var(--gray-300);
+}
+
+.feature-card--accent {
+  background: linear-gradient(135deg, var(--yellow-light) 0%, rgba(16,185,129,0.06) 100%);
+  border-color: rgba(245,158,11,0.25);
+}
+
+.feature-card__icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  background: var(--yellow-light);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--yellow-dark);
+  margin-bottom: 1.1rem;
+}
+
+.feature-card--accent .feature-card__icon {
+  background: var(--yellow);
+  color: var(--dark);
+}
+
+.feature-card__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--dark);
+  margin-bottom: 0.6rem;
+  letter-spacing: -0.01em;
+}
+
+.feature-card__desc {
+  font-size: 0.9rem;
+  color: var(--gray-600);
+  line-height: 1.65;
+}
+</style>

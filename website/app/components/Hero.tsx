@@ -108,7 +108,7 @@ export default function Hero() {
           className="flex flex-col sm:flex-row gap-6 justify-center mt-10 mb-32"
         >
           <div
-            className="relative inline-flex"
+            className="relative inline-flex self-center"
             onMouseEnter={() => setGhHovered(true)}
             onMouseLeave={() => setGhHovered(false)}
           >

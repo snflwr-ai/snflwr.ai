@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import SunflowerLogo from './SunflowerLogo'
 
 const navLinks: { heading: string; links: { label: string; href: string; external?: boolean }[] }[] = [
   {
@@ -57,7 +58,7 @@ export default function Footer(): JSX.Element {
       className="border-t border-white/[0.06] bg-[#050506]"
       role="contentinfo"
     >
-      <div className="max-w-6xl mx-auto px-6 py-14 grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-10">
+      <div className="max-w-5xl mx-auto px-6 py-14 grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-10">
         {/* Brand */}
         <div>
           <a
@@ -65,7 +66,7 @@ export default function Footer(): JSX.Element {
             className="inline-flex items-center gap-2 text-white font-bold text-lg mb-4 hover:opacity-80 transition-opacity"
             aria-label="snflwr.ai home"
           >
-            <span role="img" aria-label="sunflower">🌻</span>
+            <SunflowerLogo />
             snflwr.ai
           </a>
           <p className="text-sm text-white/60 leading-relaxed max-w-xs mb-3">
@@ -116,9 +117,9 @@ export default function Footer(): JSX.Element {
       </div>
 
       <div className="border-t border-white/[0.04]">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
+        <div className="max-w-5xl mx-auto px-6 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-xs text-white/50">
-            © 2025 snflwr.ai · Open source under AGPL-3.0
+            © 2026 snflwr.ai · Open source under AGPL-3.0
           </p>
           <p className="text-xs text-white/50">
             Commercial licensing:{' '}

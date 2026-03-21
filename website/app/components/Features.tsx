@@ -74,10 +74,12 @@ const features = [
 ]
 
 const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 32 },
+  hidden: { opacity: 0, y: 32, scale: 0.95, filter: 'blur(8px)' },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
+    scale: 1,
+    filter: 'blur(0px)',
     transition: { duration: 0.5, delay: i * 0.08, ease: [0.25, 0.1, 0.25, 1] },
   }),
 }
@@ -103,7 +105,7 @@ export default function Features() {
         aria-hidden="true"
       />
 
-      <div className="relative z-10 max-w-6xl mx-auto px-6">
+      <div className="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 lg:px-12 xl:px-16">
         {/* Section header */}
         <div className="text-center mb-16 max-w-2xl mx-auto">
           <motion.p

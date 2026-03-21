@@ -57,7 +57,7 @@ export default function HowItWorks() {
         aria-hidden="true"
       />
 
-      <div className="relative z-10 max-w-6xl mx-auto px-6">
+      <div className="relative z-10 max-w-5xl mx-auto px-6 sm:px-8 lg:px-12">
         {/* Section header */}
         <div className="text-center mb-16 max-w-2xl mx-auto">
           <motion.p
@@ -147,15 +147,18 @@ export default function HowItWorks() {
                     aria-label="Pipeline stages"
                   >
                     {step.extra.map((stage, si) => (
-                      <li
+                      <motion.li
                         key={stage}
+                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.8 }}
+                        animate={prefersReducedMotion ? { opacity: 1, scale: 1 } : (inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 })}
+                        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.3, delay: i * 0.12 + 0.4 + si * 0.06, ease: 'easeOut' }}
                         className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-white/[0.08] bg-white/[0.03] text-xs text-white/50 font-medium"
                       >
                         <span className="text-amber-500 font-bold text-xs" aria-hidden="true">
                           {si + 1}
                         </span>
                         {stage}
-                      </li>
+                      </motion.li>
                     ))}
                   </ul>
                 )}

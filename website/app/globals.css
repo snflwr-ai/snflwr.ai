@@ -14,11 +14,6 @@
   --font-sans: var(--font-inter), 'system-ui', sans-serif;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
 
 html {
   scroll-behavior: smooth;
@@ -50,14 +45,6 @@ body {
   50% { transform: translate(-40px, 25px) scale(1.08); }
 }
 
-@keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-
-.animate-marquee {
-  animation: marquee 28s linear infinite;
-}
 
 /* Scrollbar */
 ::-webkit-scrollbar {
@@ -96,7 +83,4 @@ body {
     scroll-behavior: auto;
   }
 
-  .animate-marquee {
-    animation: none;
-  }
 }

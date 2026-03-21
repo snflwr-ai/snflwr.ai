@@ -45,6 +45,7 @@ export const metadata: Metadata = {
     description: 'Your child talks to AI. You control what it says back.',
     images: ['/og-image.png'],
   },
+  icons: { icon: '/favicon.svg' },
   robots: {
     index: true,
     follow: true,

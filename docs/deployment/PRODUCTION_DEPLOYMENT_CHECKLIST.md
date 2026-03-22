@@ -41,7 +41,7 @@
 - [ ] Send test safety alert email
 - [ ] Verify email received and not in spam
 
-**Reference:** [docs/SMTP_SETUP_GUIDE.md](SMTP_SETUP_GUIDE.md)
+**Reference:** [SMTP Setup Guide](../guides/SMTP_SETUP_GUIDE.md)
 
 ### 3. Database Initialization ✅
 
@@ -79,7 +79,7 @@
 - [ ] Test SSL configuration
 - [ ] Verify A+ rating on SSL Labs
 
-**Reference:** [docs/SSL_SETUP_GUIDE.md](SSL_SETUP_GUIDE.md)
+**Reference:** [HTTPS Deployment Guide](HTTPS_DEPLOYMENT_GUIDE.md)
 
 ### 6. Monitoring & Logging 📋
 
@@ -102,7 +102,7 @@
 - [ ] Check memory usage and leaks
 - [ ] Test database query performance
 
-**Reference:** [tests/load/](../tests/load/)
+**Reference:** See `tests/load/` in the [repository](https://github.com/snflwr-ai/snflwr.ai/tree/main/tests/load)
 
 ### 8. Backup & Recovery 📋
 

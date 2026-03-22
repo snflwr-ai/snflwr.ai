@@ -6,6 +6,13 @@ baseurl: "/snflwr.ai"
 markdown: kramdown
 highlighter: rouge
 
+plugins:
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: true
+
 exclude:
   - plans/
 

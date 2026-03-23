@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai - Production Readiness Assessment
 ## Comprehensive Repository Analysis
 

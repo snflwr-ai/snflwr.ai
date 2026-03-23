@@ -1,3 +1,6 @@
+---
+---
+
 # Parent Dashboard Security Model
 
 ## ✅ YES - Parents Can ONLY Access Their Own Dashboard

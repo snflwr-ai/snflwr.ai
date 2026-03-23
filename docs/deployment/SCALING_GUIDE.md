@@ -1,3 +1,6 @@
+---
+---
+
 # Horizontal Scaling Guide
 **snflwr.ai - Production Scaling Strategies**
 

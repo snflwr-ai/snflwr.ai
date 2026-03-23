@@ -1,3 +1,6 @@
+---
+---
+
 # Technical Debt & Future Improvements
 
 **Last Updated**: 2026-01-01

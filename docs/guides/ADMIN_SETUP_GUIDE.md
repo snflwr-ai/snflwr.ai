@@ -1,3 +1,6 @@
+---
+---
+
 # Open WebUI Admin Setup - K-12 Model Restrictions
 
 ## Setting Model Permissions via Admin Panel

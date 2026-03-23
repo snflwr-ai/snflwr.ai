@@ -1,3 +1,6 @@
+---
+---
+
 # Admin Account Bootstrap Guide
 ## Creating the First Admin Account
 

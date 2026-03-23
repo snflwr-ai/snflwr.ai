@@ -1,3 +1,6 @@
+---
+---
+
 # Student Onboarding Setup
 
 snflwr.ai can ask students qualifying questions (grade level, interests) on first interaction to personalize responses.

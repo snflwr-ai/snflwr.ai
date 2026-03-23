@@ -1,3 +1,6 @@
+---
+---
+
 # SMTP Email Setup Guide
 ## Configuring Parent Safety Alert Notifications
 

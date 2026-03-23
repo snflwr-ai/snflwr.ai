@@ -1,3 +1,6 @@
+---
+---
+
 # Chat Controls UI Hiding for K-12 Safety
 
 ## Overview

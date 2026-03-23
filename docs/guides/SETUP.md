@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai Setup Guide
 
 Complete setup instructions for the snflwr.ai K-12 Safe Learning Platform.

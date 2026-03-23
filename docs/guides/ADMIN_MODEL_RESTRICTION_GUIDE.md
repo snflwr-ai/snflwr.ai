@@ -1,3 +1,6 @@
+---
+---
+
 # How to Restrict Models for Students in Open WebUI
 
 The `MODEL_FILTER_LIST` environment variable doesn't work in all Open WebUI versions. Here's how to restrict models using the Admin Panel instead:

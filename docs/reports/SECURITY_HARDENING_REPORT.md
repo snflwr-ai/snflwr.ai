@@ -1,3 +1,6 @@
+---
+---
+
 # Security Hardening Audit Report
 **Date:** 2025-12-29
 **Codebase:** snflwr.ai v0.1.0

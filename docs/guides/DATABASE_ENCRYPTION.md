@@ -1,3 +1,6 @@
+---
+---
+
 # Database Encryption at Rest
 
 snflwr.ai supports AES-256 encryption at rest for SQLite databases using SQLCipher, providing enterprise-grade database security.

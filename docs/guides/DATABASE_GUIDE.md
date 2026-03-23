@@ -1,3 +1,6 @@
+---
+---
+
 # Database Configuration Guide
 
 snflwr.ai supports two database backends, each optimized for different deployment scenarios.

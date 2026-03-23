@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai API Usage Examples
 
 This document provides practical examples for using the snflwr.ai API.

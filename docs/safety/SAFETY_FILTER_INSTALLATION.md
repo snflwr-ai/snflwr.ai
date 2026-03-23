@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai Safety Filter Installation Guide
 
 This guide explains how to install the multi-layer safety system for snflwr.ai.

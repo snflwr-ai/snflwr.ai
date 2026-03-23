@@ -1,3 +1,6 @@
+---
+---
+
 # Database Optimization Guide
 **snflwr.ai - Production Performance Tuning**
 

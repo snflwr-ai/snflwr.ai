@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai Production Readiness Scorecard
 **Assessment Date:** December 27, 2025
 **Version:** 1.0.0

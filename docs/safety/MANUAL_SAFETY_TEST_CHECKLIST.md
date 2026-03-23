@@ -1,3 +1,6 @@
+---
+---
+
 # Manual Safety Testing Checklist
 
 Test these in Open WebUI as a **student account** (not admin - admin bypasses filters).

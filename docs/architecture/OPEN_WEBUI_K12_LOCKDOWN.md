@@ -1,3 +1,6 @@
+---
+---
+
 # Open WebUI K-12 Safety Lockdown Guide
 
 ## Overview

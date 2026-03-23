@@ -1,3 +1,6 @@
+---
+---
+
 # Troubleshooting Guide
 ## snflwr.ai Common Issues & Solutions
 

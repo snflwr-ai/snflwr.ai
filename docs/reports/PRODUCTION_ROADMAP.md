@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai - Production Readiness Roadmap
 
 **Current Status:** Core architecture complete, components tested

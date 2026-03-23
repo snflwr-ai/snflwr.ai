@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai Architecture
 
 ## System Overview

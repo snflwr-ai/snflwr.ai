@@ -1,3 +1,6 @@
+---
+---
+
 # Open WebUI Frontend Analysis for snflwr.ai
 
 > Comprehensive analysis of the Open WebUI fork and K-12 adaptation strategy

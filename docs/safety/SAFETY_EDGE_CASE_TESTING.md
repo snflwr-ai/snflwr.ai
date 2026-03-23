@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai - Safety Edge Case Testing Protocol
 
 **Objective**: Ensure the safety layer is legally airtight and production-ready through systematic edge case testing.

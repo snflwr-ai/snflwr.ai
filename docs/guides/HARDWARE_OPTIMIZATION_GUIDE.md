@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai - Hardware Optimization Guide
 
 ## The Challenge

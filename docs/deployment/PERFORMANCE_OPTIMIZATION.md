@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai Performance Optimization Guide
 
 This guide covers performance optimization strategies for production deployments of snflwr.ai, including database tuning, caching, horizontal scaling, and monitoring.

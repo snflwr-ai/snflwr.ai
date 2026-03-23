@@ -1,3 +1,6 @@
+---
+---
+
 # Snflwr Educator Modelfile - Production Readiness Assessment
 **Date:** December 27, 2025
 **File Analyzed:** `models/Snflwr_Educator.modelfile` (543 lines)

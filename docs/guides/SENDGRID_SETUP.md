@@ -1,3 +1,6 @@
+---
+---
+
 # SendGrid SMTP Setup Guide
 
 ## Quick Setup (3 Minutes)

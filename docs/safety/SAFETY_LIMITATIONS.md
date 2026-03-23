@@ -1,3 +1,6 @@
+---
+---
+
 # Known Safety Limitations
 
 This document records known gaps and intentional tradeoffs in the snflwr.ai safety pipeline.

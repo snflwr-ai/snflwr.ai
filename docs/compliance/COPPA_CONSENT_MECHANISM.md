@@ -1,3 +1,6 @@
+---
+---
+
 # COPPA Parental Consent Mechanism
 ## snflwr.ai K-12 Safety Platform
 

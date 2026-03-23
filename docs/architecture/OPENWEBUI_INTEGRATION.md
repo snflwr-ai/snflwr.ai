@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai - Open WebUI Integration Guide
 
 **Last Updated:** 2025-12-20

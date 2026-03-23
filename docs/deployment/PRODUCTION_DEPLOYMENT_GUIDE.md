@@ -1,3 +1,6 @@
+---
+---
+
 # snflwr.ai - Production Deployment Guide
 
 Complete guide for deploying snflwr.ai in production environments (schools, homes, or cloud).

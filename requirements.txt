@@ -21,7 +21,7 @@ pydantic[email]==2.12.5       # Data validation (includes email-validator)
 email-validator==2.3.0        # Required for Pydantic EmailStr
 uvicorn[standard]==0.34.3     # ASGI server for FastAPI
 # starlette pin removed — FastAPI manages its own Starlette dependency
-requests==2.32.4              # HTTP client for auth server (CVE-2024-47081 fix)
+requests==2.33.0              # HTTP client for auth server (CVE-2024-47081 fix)
 httpx==0.28.1                 # Async HTTP client (health checks, API probes)
 urllib3==2.6.3                # HTTP library (CVE-2025-66471, CVE-2026-21441 fix)
 

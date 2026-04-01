@@ -1,6 +1,6 @@
 # snflwr.ai - Production Dependencies
 # Python 3.10+ Required
-# Updated 2026-02-25
+# Updated 2026-04-01
 
 # Core Dependencies
 python-dotenv==1.0.1          # Environment configuration
@@ -10,7 +10,7 @@ python-dotenv==1.0.1          # Environment configuration
 psycopg2-binary==2.9.10       # PostgreSQL adapter for production deployments
 
 # Cryptography & Security
-cryptography==46.0.5          # Encryption utilities (CVE-2026-26007 fix)
+cryptography==46.0.6          # Encryption utilities (CVE-2026-26007, CVE-2026-34073 fix)
 argon2-cffi==25.1.0           # Password hashing (Argon2)
 pynacl==1.6.2                 # Additional cryptographic primitives
 
@@ -21,7 +21,7 @@ pydantic[email]==2.12.5       # Data validation (includes email-validator)
 email-validator==2.3.0        # Required for Pydantic EmailStr
 uvicorn[standard]==0.34.3     # ASGI server for FastAPI
 # starlette pin removed — FastAPI manages its own Starlette dependency
-requests==2.32.4              # HTTP client for auth server (CVE-2024-47081 fix)
+requests==2.33.0              # HTTP client for auth server (CVE-2024-47081, CVE-2026-25645 fix)
 httpx==0.28.1                 # Async HTTP client (health checks, API probes)
 urllib3==2.6.3                # HTTP library (CVE-2025-66471, CVE-2026-21441 fix)
 

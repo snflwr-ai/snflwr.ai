@@ -26,7 +26,7 @@ redis==5.2.1                  # Redis client
 
 # AI/ML Integration
 ollama==0.4.7                 # Ollama Python client
-aiohttp==3.13.3               # Async HTTP client (CVE-2025-69223–69230 fix)
+aiohttp==3.13.4               # Async HTTP client (CVE-2025-69223–69230 fix)
 
 # Logging
 structlog==24.4.0             # Structured logging

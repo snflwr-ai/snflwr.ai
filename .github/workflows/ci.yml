@@ -64,13 +64,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install safety bandit
+        pip install pip-audit bandit
 
-    - name: Run Safety check for vulnerable dependencies
+    - name: Run pip-audit for vulnerable dependencies
       run: |
         pip install -r requirements.txt
-        safety check --json
-      continue-on-error: false
+        pip-audit --format json --output pip-audit-report.json || true
+        pip-audit
 
     - name: Run Bandit security linter
       run: |

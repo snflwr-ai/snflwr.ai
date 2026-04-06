@@ -34,7 +34,7 @@ typer==0.24.1                 # CLI framework (Open WebUI dependency)
 
 # AI/ML Integration
 ollama==0.4.7                 # Ollama Python client
-aiohttp==3.13.3               # Async HTTP client for async Ollama client (CVE-2025-69223–69230 fix)
+aiohttp==3.13.4               # Async HTTP client for async Ollama client (CVE-2026-22815, CVE-2026-34513–34520, CVE-2026-34525 fix)
 
 # Background Task Queue
 celery==5.4.0                 # Distributed task queue

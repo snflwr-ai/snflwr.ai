@@ -1898,6 +1898,10 @@ async def upload_model(
     file_path = os.path.join(UPLOAD_DIR, filename)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+    # Validate resolved path stays within UPLOAD_DIR to prevent path traversal
+    if not os.path.realpath(file_path).startswith(os.path.realpath(UPLOAD_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
     # --- P1: save file locally ---
     chunk_size = 1024 * 1024 * 2  # 2 MB chunks
     with open(file_path, "wb") as out_f:

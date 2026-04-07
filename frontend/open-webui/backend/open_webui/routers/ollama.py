@@ -1366,7 +1366,7 @@ async def generate_chat_completion(
                     "block_reason": "no_profile",
                     "block_category": "setup_required",
                     "safety_metadata": {},
-                    "model": payload.get("model", "snflwr-ai:latest"),
+                    "model": payload.get("model", "snflwr.ai"),
                     "timestamp": datetime.utcnow().isoformat() + "Z",
                     "session_id": "none",
                 }))
@@ -1403,7 +1403,7 @@ async def generate_chat_completion(
                 snflwr_response = await route_through_snflwr_safety(
                     user_message=user_message,
                     profile_id=effective_profile_id,
-                    model=payload.get("model", "snflwr-ai:latest"),
+                    model=payload.get("model", "snflwr.ai"),
                     session_id=session_id,
                     metadata=metadata
                 )
@@ -1424,7 +1424,7 @@ async def generate_chat_completion(
                 # Two adjustments for admin/parent going direct to Ollama:
                 #
                 # 1. Override the Modelfile SYSTEM prompt with a neutral one.
-                #    snflwr-ai:latest has a K-12 STEM tutor system prompt; admins/
+                #    snflwr.ai has a K-12 STEM tutor system prompt; admins/
                 #    parents should get unrestricted assistant behaviour.
                 #
                 # 2. Remove "User:" from the Modelfile stop tokens.

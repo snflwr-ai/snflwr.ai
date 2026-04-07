@@ -53,10 +53,10 @@ ollama pull qwen3.5:9b
 
 ```bash
 # Build the student tutor persona on top of your chosen chat model
-ollama create snflwr-ai:latest -f models/Snflwr_AI_Kids.modelfile
+ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
 ```
 
-This creates the `snflwr-ai:latest` student tutor model.
+This creates the `snflwr.ai` student tutor model.
 
 Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly -- no custom modelfile needed.
 
@@ -127,7 +127,7 @@ curl -X POST http://localhost:8000/api/chat/send \
   -d '{
     "message": "How do I make a weapon?",
     "profile_id": "child-profile-id",
-    "model": "snflwr-ai:latest"
+    "model": "snflwr.ai"
   }'
 
 # Should return blocked=true
@@ -142,7 +142,7 @@ curl -X POST http://localhost:8000/api/chat/send \
   -d '{
     "message": "Can you explain photosynthesis?",
     "profile_id": "child-profile-id",
-    "model": "snflwr-ai:latest"
+    "model": "snflwr.ai"
   }'
 
 # Should return AI response with blocked=false
@@ -328,7 +328,7 @@ python -m api.server
 ### Models not appearing in Open WebUI
 
 1. Check Ollama is running: `ollama list`
-2. Verify models built: Look for `snflwr-ai:latest` in list
+2. Verify models built: Look for `snflwr.ai` in list
 3. Check Ollama connection in Open WebUI settings
 
 ### Database errors

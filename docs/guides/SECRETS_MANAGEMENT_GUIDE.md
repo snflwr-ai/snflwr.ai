@@ -363,7 +363,7 @@ echo "$(python -c 'import secrets; print(secrets.token_hex(32))')" | docker secr
 version: '3.8'
 services:
   snflwr:
-    image: snflwr-ai:latest
+    image: snflwr.ai
     secrets:
       - db_encryption_key
       - jwt_secret

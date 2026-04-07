@@ -16,13 +16,13 @@ This guide explains how to lock down Open WebUI so K-12 students can only access
 
 ```yaml
 environment:
-  - 'MODEL_FILTER_LIST=snflwr-ai:latest'
+  - 'MODEL_FILTER_LIST=snflwr.ai'
   - 'ENABLE_MODEL_FILTER=true'
-  - 'DEFAULT_MODELS=snflwr-ai:latest'
+  - 'DEFAULT_MODELS=snflwr.ai'
 ```
 
 **Models shown:**
-- ✅ `snflwr-ai:latest` - K-12 tutor (default, custom persona for students/children)
+- ✅ `snflwr.ai` - K-12 tutor (default, custom persona for students/children)
 - ❌ All other models hidden (qwen3.5:9b, llama-guard3:1b, etc.)
 
 Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly -- no custom modelfile needed.
@@ -63,15 +63,15 @@ environment:
 ### Step 3: Configure Model Access
 **Via Admin Panel (after login):**
 1. Go to Settings → Admin Settings → Models
-2. Set "Default Model" to `snflwr-ai:latest`
+2. Set "Default Model" to `snflwr.ai`
 3. Under "Model Visibility", uncheck all models except:
-   - snflwr-ai:latest (for students/children)
+   - snflwr.ai (for students/children)
 
 **Via Environment Variables:**
 ```yaml
 environment:
   # Only admin can see all models
-  - 'USER_PERMISSIONS_CHAT_MODELS=snflwr-ai:latest'
+  - 'USER_PERMISSIONS_CHAT_MODELS=snflwr.ai'
   # Disable model switching for non-admin
   - 'USER_PERMISSIONS_CHAT_MODEL_SWITCHING=false'
 ```
@@ -102,9 +102,9 @@ services:
     environment:
       - 'OLLAMA_BASE_URL=http://host.docker.internal:11434'
       # STRICT K-12 LOCKDOWN
-      - 'MODEL_FILTER_LIST=snflwr-ai:latest'  # Only tutor
+      - 'MODEL_FILTER_LIST=snflwr.ai'  # Only tutor
       - 'ENABLE_MODEL_FILTER=true'
-      - 'DEFAULT_MODELS=snflwr-ai:latest'
+      - 'DEFAULT_MODELS=snflwr.ai'
       - 'ENABLE_SIGNUP=false'  # Parent creates accounts
       - 'SHOW_ADMIN_DETAILS=false'  # Hide admin info
       # Disable dangerous features
@@ -115,7 +115,7 @@ services:
 ```
 
 **Usage:**
-- Students use: http://localhost:3000 (locked to `snflwr-ai:latest` only)
+- Students use: http://localhost:3000 (locked to `snflwr.ai` only)
 - Parents/teachers use the base chat model (e.g., `qwen3.5:9b`) directly via the admin Open WebUI instance -- no separate educator container or custom modelfile needed
 
 ---
@@ -136,7 +136,7 @@ OLLAMA_MODELS=~/.ollama-k12 ollama serve --port 11435
 ### Pull only safe models
 ```bash
 OLLAMA_HOST=http://localhost:11435 ollama pull qwen3.5:9b
-OLLAMA_HOST=http://localhost:11435 ollama create snflwr-ai:latest -f models/Snflwr_AI_Kids.modelfile
+OLLAMA_HOST=http://localhost:11435 ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
 ```
 
 ### Point Open WebUI to K-12 Ollama
@@ -183,7 +183,7 @@ environment:
 ### Test 1: Verify Only Safe Models Visible
 1. Open http://localhost:3000
 2. Click model dropdown (top left)
-3. Should only see: `snflwr-ai:latest`
+3. Should only see: `snflwr.ai`
 
 ### Test 2: Verify Direct API Access Blocked
 ```bash
@@ -193,7 +193,7 @@ curl http://localhost:3000/api/models
 
 ### Test 3: Verify Default Model
 1. Start new chat
-2. Model should auto-select `snflwr-ai:latest`
+2. Model should auto-select `snflwr.ai`
 3. Student doesn't need to choose
 
 ---
@@ -203,9 +203,9 @@ curl http://localhost:3000/api/models
 ✅ **Applied:** Method 1 (Environment variable filtering)
 
 **What's protected:**
-- Only `snflwr-ai:latest` visible to students
+- Only `snflwr.ai` visible to students
 - Other models (llama3.2, llama-guard3, etc.) are hidden
-- Default model set to `snflwr-ai:latest`
+- Default model set to `snflwr.ai`
 - Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly
 
 **To activate:**
@@ -258,7 +258,7 @@ environment:
   - 'OLLAMA_BASE_URL=http://host.docker.internal:11434'
   - 'WEBUI_SECRET_KEY='
   # Comment out or remove these lines:
-  # - 'MODEL_FILTER_LIST=snflwr-ai:latest'
+  # - 'MODEL_FILTER_LIST=snflwr.ai'
   # - 'ENABLE_MODEL_FILTER=true'
 ```
 

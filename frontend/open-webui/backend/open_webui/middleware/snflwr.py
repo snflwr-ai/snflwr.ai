@@ -45,7 +45,7 @@ _check_webui_version()
 async def route_through_snflwr_safety(
     user_message: str,
     profile_id: str,
-    model: str = "snflwr-ai:latest",
+    model: str = "snflwr.ai",
     session_id: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
@@ -55,7 +55,7 @@ async def route_through_snflwr_safety(
     Args:
         user_message: The student's question/message
         profile_id: Child profile ID from Open WebUI user
-        model: AI model to use (default: snflwr-ai:latest)
+        model: AI model to use (default: snflwr.ai)
         session_id: Optional session ID for tracking
         metadata: Optional metadata (chat_id, etc.)
 
@@ -157,7 +157,7 @@ def format_snflwr_response_for_ollama(snflwr_data: Dict[str, Any]) -> Dict[str, 
     """
 
     return {
-        "model": snflwr_data.get("model", "snflwr-ai:latest"),
+        "model": snflwr_data.get("model", "snflwr.ai"),
         "created_at": snflwr_data.get("timestamp", ""),
         "message": {
             "role": "assistant",

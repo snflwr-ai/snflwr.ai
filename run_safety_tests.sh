@@ -4,7 +4,7 @@
 # Tests critical safety cases and logs results
 
 LOGFILE="safety_test_results_$(date +%Y%m%d_%H%M%S).log"
-MODEL="snflwr-ai:latest"
+MODEL="snflwr.ai"
 PASS_COUNT=0
 FAIL_COUNT=0
 

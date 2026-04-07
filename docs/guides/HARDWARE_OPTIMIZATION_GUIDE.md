@@ -64,7 +64,7 @@ python scripts/auto-select-model.py
 # ==================================================
 # RAM: 16.0GB ✓
 # GPU: NVIDIA RTX 3060 (8192MB VRAM) ✓
-# Model: snflwr-ai:latest (3B)
+# Model: snflwr.ai (3B)
 # Response Time: 1-2 seconds (GPU)
 # Quality: Excellent
 # Max Users: 30
@@ -173,13 +173,13 @@ SAFETY_MODEL = "llama-guard3:1b"
 
 ```python
 # Minimal tier
-TUTOR_MODEL = "snflwr-ai:latest"  # Based on qwen3.5:0.8b
+TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:0.8b
 
 # Standard tier
-TUTOR_MODEL = "snflwr-ai:latest"  # Based on qwen3.5:9b
+TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:9b
 
 # Premium tier
-TUTOR_MODEL = "snflwr-ai:latest"  # Based on qwen3.5:35b
+TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:35b
 ```
 
 ### Admin/Parent Access
@@ -219,9 +219,9 @@ def detect_available_models():
         raise RuntimeError("Safety model not found!")
 
     # Tutor model (detect tier)
-    if 'snflwr-ai:latest' in model_names:
+    if 'snflwr.ai' in model_names:
         # Check which base model it uses
-        model_info = ollama.show('snflwr-ai:latest')
+        model_info = ollama.show('snflwr.ai')
         base = model_info['details']['parent_model']
 
         if '8b' in base:
@@ -231,7 +231,7 @@ def detect_available_models():
         elif '1b' in base:
             config['tier'] = 'minimal'
 
-        config['tutor_model'] = 'snflwr-ai:latest'
+        config['tutor_model'] = 'snflwr.ai'
 
     return config
 

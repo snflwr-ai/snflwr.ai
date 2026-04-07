@@ -23,9 +23,9 @@ The environment variables for user permissions might not work in all Open WebUI 
 #### Option A: Workspace Settings (if available)
 1. Go to **Settings → Admin Panel → Workspace**
 2. Under **Models**, configure:
-   - **Default Model**: `snflwr-ai:latest`
+   - **Default Model**: `snflwr.ai`
    - **Available Models**: Check only:
-     - ☑ snflwr-ai:latest (for students/children)
+     - ☑ snflwr.ai (for students/children)
    - **Model Visibility**: Set to "Custom" or "Restricted"
    - Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly — no custom modelfile needed
 
@@ -33,7 +33,7 @@ The environment variables for user permissions might not work in all Open WebUI 
 1. Go to **Settings → Admin Panel → Users**
 2. Click on the student account
 3. Under **Permissions** or **Models**:
-   - Set allowed models to: `snflwr-ai:latest`
+   - Set allowed models to: `snflwr.ai`
    - Disable "Can access all models"
 
 #### Option C: Role-Based (if available)
@@ -68,9 +68,9 @@ services:
       - 'OLLAMA_BASE_URL=http://host.docker.internal:11434'
       - 'WEBUI_SECRET_KEY='
       # HARD FILTER - affects everyone on this instance
-      - 'MODEL_FILTER_LIST=snflwr-ai:latest'
+      - 'MODEL_FILTER_LIST=snflwr.ai'
       - 'ENABLE_MODEL_FILTER=true'
-      - 'DEFAULT_MODELS=snflwr-ai:latest'
+      - 'DEFAULT_MODELS=snflwr.ai'
       - 'ENABLE_SIGNUP=false'  # Parent/teacher creates accounts
     extra_hosts:
       - host.docker.internal:host-gateway
@@ -88,7 +88,7 @@ docker-compose -f docker-compose.k12.yaml up -d
 
 **Result:**
 - Admin uses: http://localhost:3000 (all models, full access)
-- Students use: http://localhost:3001 (only `snflwr-ai:latest`, locked down)
+- Students use: http://localhost:3001 (only `snflwr.ai`, locked down)
 
 ---
 
@@ -99,7 +99,7 @@ If you want to test the student experience right now, temporarily enable hard fi
 1. Edit `docker-compose.yaml`:
 ```yaml
 environment:
-  - 'MODEL_FILTER_LIST=snflwr-ai:latest'
+  - 'MODEL_FILTER_LIST=snflwr.ai'
   - 'ENABLE_MODEL_FILTER=true'
 ```
 
@@ -108,7 +108,7 @@ environment:
 docker-compose down && docker-compose up -d
 ```
 
-3. **Everyone** (including admin) will only see `snflwr-ai:latest`
+3. **Everyone** (including admin) will only see `snflwr.ai`
 4. This lets you test the student experience
 5. Remove those lines to get full admin access back
 

@@ -18,7 +18,7 @@
 #     llama-guard3:8b   (~4.9 GB, +8 GB RAM) - Higher accuracy
 #
 # Profile → Model mapping:
-#   Student profiles → snflwr-ai:latest (custom tutor persona w/ safety rules)
+#   Student profiles → snflwr.ai (custom tutor persona w/ safety rules)
 #   Admin/Parent profiles → ${CHAT_MODEL} directly (no custom modelfile needed)
 #
 # Usage (both build args are required — choose based on server hardware):
@@ -56,9 +56,9 @@ RUN ollama serve & \
     ollama pull ${SAFETY_MODEL} && \
     \
     # Build student tutor persona using CHAT_MODEL as base
-    echo "Creating snflwr-ai:latest (student tutor on ${CHAT_MODEL})..." && \
+    echo "Creating snflwr.ai (student tutor on ${CHAT_MODEL})..." && \
     sed "s|^FROM .*|FROM ${CHAT_MODEL}|" /tmp/Snflwr_AI_Kids.modelfile > /tmp/student.modelfile && \
-    ollama create snflwr-ai:latest -f /tmp/student.modelfile && \
+    ollama create snflwr.ai -f /tmp/student.modelfile && \
     \
     # Cleanup
     rm /tmp/*.modelfile && \
@@ -69,7 +69,7 @@ RUN ollama serve & \
 # Models baked into the image at /home/ollama/.ollama:
 # - ${CHAT_MODEL}            (admin/parent chat model — used directly)
 # - ${SAFETY_MODEL}          (Llama Guard safety classifier)
-# - snflwr-ai:latest      (student tutor persona, built on ${CHAT_MODEL})
+# - snflwr.ai      (student tutor persona, built on ${CHAT_MODEL})
 
 # Run as non-root
 RUN useradd -m -u 1000 -s /bin/bash ollama \

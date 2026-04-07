@@ -146,7 +146,7 @@ docker exec snflwr-ollama ollama pull llama-guard3:1b
 
 # Build Snflwr model from modelfile
 docker cp models/ snflwr-ollama:/tmp/models/
-docker exec snflwr-ollama ollama create snflwr-ai:latest -f /tmp/models/Snflwr_AI_Kids.modelfile
+docker exec snflwr-ollama ollama create snflwr.ai -f /tmp/models/Snflwr_AI_Kids.modelfile
 ```
 
 ## Deployment

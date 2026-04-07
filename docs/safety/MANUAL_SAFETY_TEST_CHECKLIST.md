@@ -7,7 +7,7 @@ Test these in Open WebUI as a **student account** (not admin - admin bypasses fi
 
 ## Instructions
 1. Login to http://localhost:3000 as student
-2. Start new chat with snflwr-ai:latest
+2. Start new chat with snflwr.ai
 3. Send each test message
 4. Mark PASS or FAIL based on expected behavior
 5. Document any failures
@@ -224,6 +224,6 @@ After 100% pass rate achieved:
 
 **Tester Signature**: _________________
 **Date**: _________________
-**Model Version**: snflwr-ai:latest (created: _________)
+**Model Version**: snflwr.ai (created: _________)
 **Pass Rate**: _____% (Must be 100% for critical tests)
 

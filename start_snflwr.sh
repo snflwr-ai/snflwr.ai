@@ -226,11 +226,17 @@ if [ "$LOADED_MODELS" = "0" ]; then
     echo -e "${YELLOW}No models loaded in Ollama yet — a model will be pulled below.${NC}"
 fi
 
-# Determine chat model — prefer env var, otherwise detect from hardware
-if [ -n "$OLLAMA_DEFAULT_MODEL" ]; then
+# Determine the BASE model — prefer env var (BASE_MODEL or legacy
+# OLLAMA_DEFAULT_MODEL pointing at a qwen3.5 tag), otherwise detect from
+# hardware. The user-facing chat model is always 'snflwr.ai', built locally
+# below as a wrapper around this base.
+if [ -n "$BASE_MODEL" ]; then
+    CHAT_MODEL="$BASE_MODEL"
+elif [ -n "$OLLAMA_DEFAULT_MODEL" ] && [ "$OLLAMA_DEFAULT_MODEL" != "snflwr.ai" ]; then
+    # Legacy: env held a qwen3.5 tag directly
     CHAT_MODEL="$OLLAMA_DEFAULT_MODEL"
 else
-    # Detect RAM and recommend a model
+    # Detect RAM and recommend a base model
     if [ -f /proc/meminfo ]; then
         ram_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
         ram_gb=$(( (ram_kb + 524288) / 1024 / 1024 ))
@@ -256,24 +262,49 @@ else
     fi
 
     if [ "$ram_gb" -gt 0 ]; then
-        echo -e "${GREEN}Detected ${ram_gb} GB RAM → recommending ${CHAT_MODEL}${NC}"
+        echo -e "${GREEN}Detected ${ram_gb} GB RAM → base model ${CHAT_MODEL}${NC}"
     else
-        echo -e "${YELLOW}Could not detect RAM → using ${CHAT_MODEL}${NC}"
+        echo -e "${YELLOW}Could not detect RAM → base model ${CHAT_MODEL}${NC}"
     fi
 fi
 
-# Export so the API server (and Open WebUI) see the detected model
-export OLLAMA_DEFAULT_MODEL="$CHAT_MODEL"
+# Export so the API server (and Open WebUI) talk to the snflwr.ai wrapper
+# (built below). BASE_MODEL is preserved for downstream visibility.
+export BASE_MODEL="$CHAT_MODEL"
+export OLLAMA_DEFAULT_MODEL="snflwr.ai"
 
-# Pull chat model if not already available
+# Pull base model if not already available
 if ! ollama list | awk '{print $1}' | grep -qxF "$CHAT_MODEL"; then
-    echo -e "${YELLOW}Model '$CHAT_MODEL' not found. Pulling...${NC}"
+    echo -e "${YELLOW}Base model '$CHAT_MODEL' not found. Pulling...${NC}"
     echo "This may take several minutes on the first run..."
     if ! ollama pull "$CHAT_MODEL"; then
-        echo -e "${YELLOW}WARNING: Failed to pull model '$CHAT_MODEL'${NC}"
+        echo -e "${YELLOW}WARNING: Failed to pull base model '$CHAT_MODEL'${NC}"
         echo "You can retry manually: ollama pull $CHAT_MODEL"
         echo "The API server will still start — AI chat will not work until a model is available."
     fi
+fi
+
+# Build (or rebuild) the snflwr.ai wrapper. This is what kids see in the
+# chat dropdown — the K-12 STEM tutor system prompt + sampling parameters
+# from models/Snflwr_AI_Kids.modelfile, on top of the base model above.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MODELFILE_SRC="${SCRIPT_DIR}/models/Snflwr_AI_Kids.modelfile"
+if [ -f "$MODELFILE_SRC" ]; then
+    echo -e "${GREEN}Building 'snflwr.ai' on top of '${CHAT_MODEL}'...${NC}"
+    TMP_MODELFILE="$(mktemp)"
+    sed "s|^FROM .*|FROM ${CHAT_MODEL}|" "$MODELFILE_SRC" > "$TMP_MODELFILE"
+    if ollama create snflwr.ai -f "$TMP_MODELFILE" >/dev/null 2>&1; then
+        echo -e "${GREEN}'snflwr.ai' built successfully.${NC}"
+    else
+        echo -e "${YELLOW}WARNING: Failed to build 'snflwr.ai' wrapper.${NC}"
+        echo "Falling back to base model — kids will see '${CHAT_MODEL}' in the dropdown."
+        export OLLAMA_DEFAULT_MODEL="$CHAT_MODEL"
+    fi
+    rm -f "$TMP_MODELFILE"
+else
+    echo -e "${YELLOW}WARNING: Modelfile not found at $MODELFILE_SRC${NC}"
+    echo "Falling back to base model — kids will see '${CHAT_MODEL}' in the dropdown."
+    export OLLAMA_DEFAULT_MODEL="$CHAT_MODEL"
 fi
 
 # Pull child-safety model if enabled

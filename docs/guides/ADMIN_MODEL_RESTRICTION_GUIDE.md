@@ -26,7 +26,7 @@ Look for one of these sections:
 1. Find **Settings → Admin Settings → Models**
 2. Look for **"Model Visibility"** or **"Available Models"**
 3. Uncheck all models except:
-   - ☑ snflwr-ai:latest (for students/children)
+   - ☑ snflwr.ai (for students/children)
 4. Save changes
 5. Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly — no custom modelfile needed
 
@@ -34,7 +34,7 @@ Look for one of these sections:
 1. Find **Settings → Admin Settings → Permissions**
 2. Look for **"User Permissions"** or **"Default User Permissions"**
 3. Under **"Models"**, select:
-   - snflwr-ai:latest
+   - snflwr.ai
 4. Uncheck **"Allow users to see all models"** or **"Can access all models"**
 5. Save changes
 
@@ -43,7 +43,7 @@ Look for one of these sections:
 2. Click on the student account
 3. Look for **"Permissions"** or **"Allowed Models"**
 4. Set allowed models to only:
-   - snflwr-ai:latest
+   - snflwr.ai
 5. Save
 
 ---
@@ -94,7 +94,7 @@ docker-compose -f docker-compose.ollama-k12.yaml up -d
 # Create snflwr-ai on K-12 Ollama
 docker exec ollama-k12 ollama pull qwen3.5:9b
 docker cp models/Snflwr_AI_Kids.modelfile ollama-k12:/tmp/
-docker exec ollama-k12 ollama create snflwr-ai:latest -f /tmp/Snflwr_AI_Kids.modelfile
+docker exec ollama-k12 ollama create snflwr.ai -f /tmp/Snflwr_AI_Kids.modelfile
 ```
 
 #### Step 4: Point K-12 Open WebUI to K-12 Ollama
@@ -125,7 +125,7 @@ docker-compose -f docker-compose.k12.yaml up -d
 
 **Result:**
 - Port 3000 → Main Ollama (all models)
-- Port 3001 → K-12 Ollama (only `snflwr-ai:latest` exists)
+- Port 3001 → K-12 Ollama (only `snflwr.ai` exists)
 - Students physically cannot access unsafe models
 
 ---

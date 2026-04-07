@@ -114,7 +114,7 @@ async with httpx.AsyncClient(timeout=300.0) as client:
 **Step 5: Rebuild the Ollama model**
 
 ```bash
-ollama create snflwr-ai:latest -f models/Snflwr_AI_Kids.modelfile
+ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
 ```
 
 Expected output: `success` (takes 10-30 seconds, doesn't re-download weights)
@@ -162,7 +162,7 @@ TEMPLATE """{{- if .System }}<|im_start|>system
 **Step 2: Rebuild and verify**
 
 ```bash
-ollama create snflwr-ai:latest -f models/Snflwr_AI_Kids.modelfile
+ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
 ```
 
 Start a new chat. Open WebUI should show "Thought for X seconds" collapsed, with only the clean response visible. The reasoning steps should no longer appear in the main chat bubble.

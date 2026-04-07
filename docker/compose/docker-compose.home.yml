@@ -48,7 +48,7 @@ services:
       - ENVIRONMENT=production
       # Ollama (internal service URL)
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_DEFAULT_MODEL=${OLLAMA_MODEL:-qwen3.5:9b}
+      - OLLAMA_DEFAULT_MODEL=${OLLAMA_MODEL:-snflwr.ai}
       # Database - SQLite, no external dependency
       - DB_TYPE=sqlite
       - SNFLWR_DATA_DIR=/app/data
@@ -104,7 +104,7 @@ services:
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
       - DEFAULT_USER_ROLE=user
-      - DEFAULT_MODELS=${OLLAMA_MODEL:-qwen3.5:9b}
+      - DEFAULT_MODELS=${OLLAMA_MODEL:-snflwr.ai}
       # Lock down student accounts - chat only
       - USER_PERMISSIONS_CHAT_CONTROLS=false
       - USER_PERMISSIONS_CHAT_VALVES=false

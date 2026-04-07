@@ -103,7 +103,7 @@ IMPORTANT: Only ask these questions ONCE at the start. Don't repeat onboarding.
 After editing Modelfiles:
 
 ```bash
-ollama create snflwr-ai:latest -f loving-morse/models/Snflwr_AI_Kids.modelfile
+ollama create snflwr.ai -f loving-morse/models/Snflwr_AI_Kids.modelfile
 ```
 
 ### Update Database

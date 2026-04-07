@@ -49,7 +49,7 @@ We've successfully integrated **snflwr.ai's 5-stage safety pipeline** into **Ope
 │      ✅ RUNNING                             │
 │                                             │
 │  - llama-guard3:1b (safety classifier)       │
-│  - snflwr-ai:latest (K-12 tutor)         │
+│  - snflwr.ai (K-12 tutor)         │
 │  - qwen3.5:9b (chat model)                   │
 └─────────────────────────────────────────────┘
 ```
@@ -110,7 +110,7 @@ We've successfully integrated **snflwr.ai's 5-stage safety pipeline** into **Ope
    snflwr_response = await route_through_snflwr_safety(
        user_message=user_message,
        profile_id=profile_id,
-       model="snflwr-ai:latest"
+       model="snflwr.ai"
    )
    ```
 
@@ -124,7 +124,7 @@ We've successfully integrated **snflwr.ai's 5-stage safety pipeline** into **Ope
 5. **Response returned to Open WebUI**
    ```json
    {
-       "model": "snflwr-ai:latest",
+       "model": "snflwr.ai",
        "message": {
            "role": "assistant",
            "content": "I'd love to help with algebra! What topic?"
@@ -176,7 +176,7 @@ Open WebUI displays: "I'm here to help with STEM subjects! Let's explore science
    ollama list
    # Should show:
    # - llama-guard3:1b
-   # - snflwr-ai:latest
+   # - snflwr.ai
    # - qwen3.5:9b
    ```
 

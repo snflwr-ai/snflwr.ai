@@ -1403,10 +1403,76 @@ def pull_default_model(model='qwen3.5:9b'):
         return False
 
 
-def choose_model(total_ram_gb: Optional[float] = None) -> str:
-    """Choose a qwen3.5 model size based on system RAM.
+def build_snflwr_wrapper(base_model: str) -> bool:
+    """Build the user-facing 'snflwr.ai' model on top of a qwen3.5 base.
 
-    Returns the model tag to pull (e.g. 'qwen3.5:9b').
+    Reads models/Snflwr_AI_Kids.modelfile, substitutes the FROM line with
+    the chosen base, and runs `ollama create snflwr.ai -f <tmpfile>`.
+
+    The user-facing chat model is always 'snflwr.ai' — kids never see the
+    raw qwen3.5 tag in the Open WebUI dropdown. The wrapper bundles the
+    K-12 STEM tutor system prompt + sampling parameters (incl. repeat_penalty
+    to prevent reasoning loops) + safety stop sequences from the modelfile.
+
+    Returns True on success, False on any failure (caller should fall back
+    to using the base model directly).
+    """
+    repo_root = Path(__file__).parent.resolve()
+    modelfile_src = repo_root / "models" / "Snflwr_AI_Kids.modelfile"
+    if not modelfile_src.is_file():
+        print_warning(f"Modelfile not found at {modelfile_src}")
+        return False
+
+    print_info(f"Building 'snflwr.ai' on top of '{base_model}'...")
+
+    # Substitute FROM line
+    try:
+        original = modelfile_src.read_text()
+    except OSError as exc:
+        print_warning(f"Could not read modelfile: {exc}")
+        return False
+
+    rewritten_lines = []
+    for line in original.splitlines():
+        if line.startswith("FROM "):
+            rewritten_lines.append(f"FROM {base_model}")
+        else:
+            rewritten_lines.append(line)
+    rewritten = "\n".join(rewritten_lines) + "\n"
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".modelfile", delete=False
+    ) as tmp:
+        tmp.write(rewritten)
+        tmp_path = tmp.name
+
+    try:
+        subprocess.run(
+            ["ollama", "create", "snflwr.ai", "-f", tmp_path],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        print_success("'snflwr.ai' built successfully")
+        return True
+    except subprocess.CalledProcessError as exc:
+        print_warning("Failed to build 'snflwr.ai' wrapper")
+        if exc.stderr:
+            print_info(exc.stderr.strip())
+        return False
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def choose_model(total_ram_gb: Optional[float] = None) -> str:
+    """Choose a qwen3.5 base model size based on system RAM.
+
+    Returns the qwen3.5 base tag to pull (e.g. 'qwen3.5:9b'). The user-facing
+    chat model is always 'snflwr.ai', built as a wrapper around this base.
     """
     # Model options: tag, param count, approximate download size, minimum RAM
     models = [
@@ -1427,13 +1493,20 @@ def choose_model(total_ram_gb: Optional[float] = None) -> str:
     else:
         recommended = 'qwen3.5:9b'  # assumes 8 GB+ when RAM detection fails
 
-    # Allow env var override
+    # Allow env var override. Accept either BASE_MODEL or a legacy
+    # OLLAMA_DEFAULT_MODEL pointing at a qwen3.5 tag (we ignore the new
+    # 'snflwr.ai' value here — that's the wrapper, not a base).
+    env_base = os.getenv('BASE_MODEL')
+    if env_base:
+        print_info(f"Using base model from BASE_MODEL: {env_base}")
+        return env_base
     env_model = os.getenv('OLLAMA_DEFAULT_MODEL')
-    if env_model:
-        print_info(f"Using model from OLLAMA_DEFAULT_MODEL: {env_model}")
+    if env_model and env_model != 'snflwr.ai':
+        print_info(f"Using base model from OLLAMA_DEFAULT_MODEL: {env_model}")
         return env_model
 
-    print_info("Choose an AI model size (all use the qwen3.5 family):\n")
+    print_info("Choose a base model size (all use the qwen3.5 family;\n"
+               "snflwr.ai is built as a wrapper on top of your choice):\n")
 
     for i, (tag, params, size, min_ram) in enumerate(models, 1):
         rec = " ← recommended" if tag == recommended else ""
@@ -1488,10 +1561,12 @@ def detect_existing_model() -> str:
 
 
 def setup_ollama(total_ram_gb: Optional[float] = None) -> str:
-    """Full Ollama setup: install, start, and pull model.
+    """Full Ollama setup: install, start, pull base, and build snflwr.ai.
 
-    Returns the chosen model tag (e.g. 'qwen3.5:9b'), or empty string on
-    failure/skip so callers can persist the choice to .env.
+    Returns the model tag to write into OLLAMA_DEFAULT_MODEL — typically
+    'snflwr.ai' (the wrapper), falling back to the raw base tag if the
+    wrapper build fails. Returns '' on failure/skip so callers know to
+    leave the .env unset.
     """
     print_header("Ollama Setup")
 
@@ -1528,9 +1603,9 @@ This ensures all data stays on your device - nothing is sent to the cloud.
             print_success("Ollama setup complete")
             return existing_model
 
-    # Step 4: Choose and pull a model
-    model = choose_model(total_ram_gb)
-    if not model:
+    # Step 4: Choose and pull a base model
+    base_model = choose_model(total_ram_gb)
+    if not base_model:
         if existing_model:
             print_info(f"Keeping existing model: {existing_model}")
             return existing_model
@@ -1539,12 +1614,24 @@ This ensures all data stays on your device - nothing is sent to the cloud.
         print_success("Ollama setup complete (no model pulled)")
         return ''
 
-    if not pull_default_model(model):
-        print_warning(f"Model pull failed - you can retry with: ollama pull {model}")
-        return model  # still return the choice so .env records it
+    if not pull_default_model(base_model):
+        print_warning(
+            f"Base model pull failed - you can retry with: ollama pull {base_model}"
+        )
+        return base_model  # fall back to base so .env records something usable
 
-    print_success("Ollama setup complete")
-    return model
+    # Step 5: Build the snflwr.ai wrapper. This is what kids see in the
+    # Open WebUI dropdown — never the raw qwen3.5 tag.
+    if build_snflwr_wrapper(base_model):
+        print_success("Ollama setup complete")
+        return 'snflwr.ai'
+
+    # Wrapper build failed — fall back to the raw base so chat still works
+    print_warning(
+        "snflwr.ai wrapper build failed — falling back to base model. "
+        f"Kids will see '{base_model}' in the dropdown until rebuilt."
+    )
+    return base_model
 
 
 def setup_safety_model(ollama_available: bool = True) -> bool:

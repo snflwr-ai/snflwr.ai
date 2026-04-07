@@ -45,7 +45,7 @@ services:
       - snflwr-home-data:/app/data
       - snflwr-home-logs:/app/logs
     environment:
-      - ENVIRONMENT=production
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       # Ollama (internal service URL)
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_DEFAULT_MODEL=${OLLAMA_MODEL:-qwen3.5:9b}
@@ -83,7 +83,7 @@ services:
     expose:
       - "39150"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:39150/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:39150/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

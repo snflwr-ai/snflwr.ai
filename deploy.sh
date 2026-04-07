@@ -229,7 +229,7 @@ fi
 
 # Verify NVIDIA Container Toolkit if GPU mode enabled
 if [[ "$USE_GPU" == "true" ]]; then
-    if ! docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu20.04 \
+    if ! docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 \
             nvidia-smi &>/dev/null 2>&1; then
         warn "GPU mode requested but NVIDIA Container Toolkit may not be configured."
         warn "Install: sudo apt install nvidia-container-toolkit"
@@ -301,8 +301,11 @@ INTERNAL_API_KEY=$(_gen_secret)
 WEBUI_SECRET_KEY=$(_gen_secret)
 PARENT_DASHBOARD_PASSWORD=$(_gen_secret)
 
-# Allow new user signups (false = admin must create accounts)
-ENABLE_SIGNUP=false
+# Allow new user signups
+# Must be 'true' for the very first run so you can create the admin account
+# (Open WebUI promotes the first registered user to admin). Once your admin
+# exists, set this to 'false' and re-run ./deploy.sh to lock down signups.
+ENABLE_SIGNUP=true
 
 # Log level (INFO, DEBUG, WARNING)
 LOG_LEVEL=INFO
@@ -378,7 +381,7 @@ MAX_WAIT=120
 ELAPSED=0
 
 printf "  Waiting for API"
-while ! curl -sf "$API_HEALTH_URL" &>/dev/null; do
+while ! docker exec snflwr-api curl -sf http://localhost:39150/health &>/dev/null; do
     sleep 3
     ELAPSED=$(( ELAPSED + 3 ))
     printf "."

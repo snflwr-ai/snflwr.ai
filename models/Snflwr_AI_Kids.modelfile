@@ -304,12 +304,19 @@ PARAMETER stop "</s>"
 PARAMETER stop "Student:"
 PARAMETER stop "Human:"
 PARAMETER stop "User:"
-# Suppress the model's improvised "Thinking Process:" / step-by-step reasoning
-# preamble. qwen3.5 base models do not emit native <think> tags, so any
-# free-form reasoning leaks into the visible response. The system prompt above
-# already structures the response — the model should answer directly.
-PARAMETER stop "Thinking Process:"
-PARAMETER stop "Thinking:"
-PARAMETER stop "Analyze the Request:"
-PARAMETER stop "Let me think"
-PARAMETER stop "<think>"
+# NOTE: We previously listed "Thinking Process:" / "Thinking:" /
+# "Analyze the Request:" / "Let me think" / "<think>" here to suppress
+# reasoning leaks, but those stops are inert on Ollama 0.17+. Ollama
+# auto-attaches `RENDERER qwen3.5` + `PARSER qwen3.5` on any model built
+# on top of qwen3.5, and the parser extracts reasoning into a separate
+# `thinking` field BEFORE the Modelfile stops are evaluated — so a
+# "Thinking Process:" stop has nothing to match against in the `content`
+# stream. Worse, under some conditions the parser's content→thinking
+# handoff can leave the first few content tokens matching one of these
+# stops, producing an empty response.
+#
+# Thinking is now suppressed by passing `think: false` on every request:
+#   - student path:  api/routes/chat.py → ollama_client.chat(think=False)
+#   - admin path:    frontend/open-webui/backend/open_webui/routers/
+#                    ollama.py → payload["think"] = False
+# See tests/test_no_thinking_leak.py for the regression guard.

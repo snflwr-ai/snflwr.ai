@@ -24,7 +24,7 @@ services:
       - 'INTERNAL_API_KEY=${INTERNAL_API_KEY}'
       - 'BYPASS_MODEL_ACCESS_CONTROL=false'
       - 'WEBUI_AUTH=true'
-      - 'DEFAULT_MODELS=snflwr-ai:latest'
+      - 'DEFAULT_MODELS=snflwr.ai'
       # Lock down student accounts — chat only, no advanced controls
       - 'USER_PERMISSIONS_CHAT_CONTROLS=false'
       - 'USER_PERMISSIONS_CHAT_VALVES=false'

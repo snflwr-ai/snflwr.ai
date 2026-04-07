@@ -157,11 +157,16 @@ if (-not $ollamaRunning) {
     Write-Host "Ollama is running" -ForegroundColor Green
 }
 
-# Determine chat model from env or hardware detection
-if ($env:OLLAMA_DEFAULT_MODEL) {
+# Determine the BASE model from env or hardware detection. The user-facing
+# chat model is always 'snflwr.ai', built locally below as a wrapper around
+# this base.
+if ($env:BASE_MODEL) {
+    $chatModel = $env:BASE_MODEL
+} elseif ($env:OLLAMA_DEFAULT_MODEL -and $env:OLLAMA_DEFAULT_MODEL -ne "snflwr.ai") {
+    # Legacy: env held a qwen3.5 tag directly
     $chatModel = $env:OLLAMA_DEFAULT_MODEL
 } else {
-    # Detect RAM and recommend a model
+    # Detect RAM and recommend a base model
     $ramBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
     $ramGB = [math]::Round($ramBytes / 1GB)
 
@@ -172,23 +177,47 @@ if ($env:OLLAMA_DEFAULT_MODEL) {
                  elseif ($ramGB -ge 4)  { "qwen3.5:2b" }
                  else                   { "qwen3.5:0.8b" }
 
-    Write-Host "Detected $ramGB GB RAM -> recommending $chatModel" -ForegroundColor Green
+    Write-Host "Detected $ramGB GB RAM -> base model $chatModel" -ForegroundColor Green
 }
 
-# Export so the API server (and Open WebUI) see the detected model
-$env:OLLAMA_DEFAULT_MODEL = $chatModel
+# Export so the API server (and Open WebUI) talk to the snflwr.ai wrapper
+$env:BASE_MODEL = $chatModel
+$env:OLLAMA_DEFAULT_MODEL = "snflwr.ai"
 
-# Pull chat model if not already available
+# Pull base model if not already available
 $modelNames = (ollama list 2>&1) | ForEach-Object { ($_ -split '\s+')[0] }
 if ($chatModel -notin $modelNames) {
-    Write-Host "Model '$chatModel' not found. Pulling..." -ForegroundColor Yellow
+    Write-Host "Base model '$chatModel' not found. Pulling..." -ForegroundColor Yellow
     Write-Host "This may take several minutes on the first run..."
     ollama pull $chatModel
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Failed to pull model '$chatModel'" -ForegroundColor Red
+        Write-Host "ERROR: Failed to pull base model '$chatModel'" -ForegroundColor Red
         Write-Host "You can retry manually: ollama pull $chatModel"
         exit 1
     }
+}
+
+# Build (or rebuild) the snflwr.ai wrapper from the modelfile, substituting
+# the chosen base. This is what kids see in the Open WebUI dropdown.
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$modelfileSrc = Join-Path $scriptDir "models\Snflwr_AI_Kids.modelfile"
+if (Test-Path $modelfileSrc) {
+    Write-Host "Building 'snflwr.ai' on top of '$chatModel'..." -ForegroundColor Green
+    $tmpModelfile = [System.IO.Path]::GetTempFileName()
+    (Get-Content $modelfileSrc) -replace '^FROM .*', "FROM $chatModel" | Set-Content $tmpModelfile
+    ollama create snflwr.ai -f $tmpModelfile | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "'snflwr.ai' built successfully." -ForegroundColor Green
+    } else {
+        Write-Host "WARNING: Failed to build 'snflwr.ai' wrapper." -ForegroundColor Yellow
+        Write-Host "Falling back to base model — kids will see '$chatModel' in the dropdown."
+        $env:OLLAMA_DEFAULT_MODEL = $chatModel
+    }
+    Remove-Item $tmpModelfile -Force -ErrorAction SilentlyContinue
+} else {
+    Write-Host "WARNING: Modelfile not found at $modelfileSrc" -ForegroundColor Yellow
+    Write-Host "Falling back to base model — kids will see '$chatModel' in the dropdown."
+    $env:OLLAMA_DEFAULT_MODEL = $chatModel
 }
 
 # Pull child-safety model if enabled

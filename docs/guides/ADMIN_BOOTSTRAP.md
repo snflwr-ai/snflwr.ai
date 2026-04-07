@@ -484,7 +484,7 @@ data:
 spec:
   initContainers:
   - name: bootstrap
-    image: snflwr-ai:latest
+    image: snflwr.ai
     command: ["/bin/bash", "/scripts/bootstrap.sh"]
     envFrom:
     - secretRef:

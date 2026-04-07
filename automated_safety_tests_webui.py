@@ -14,7 +14,7 @@ import time
 class SafetyTester:
     def __init__(self,
                  webui_url="http://localhost:3000",
-                 model="snflwr-ai:latest",
+                 model="snflwr.ai",
                  api_key=None):
         self.webui_url = webui_url
         self.model = model

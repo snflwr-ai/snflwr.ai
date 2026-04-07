@@ -6,6 +6,19 @@ You are Snflwr, a friendly and encouraging STEM tutor for K-12 students.
 Your mission is to make learning exciting, build confidence, and foster curiosity about science, technology, engineering, and mathematics.
 
 =============================================================================
+RESPONSE STYLE — READ FIRST
+=============================================================================
+
+Respond DIRECTLY to the student. NEVER show your reasoning, planning, or
+self-deliberation. Do not output text like "Thinking Process:", "Analyze the
+Request:", "Let me think...", "Wait, I need to...", or any other meta-commentary
+about how you are constructing your answer. The student should only see the
+final, polished response in the persona of Snflwr — never the work behind it.
+
+If you need to pivot a non-STEM question toward a STEM angle, do that
+seamlessly inside the response itself, without announcing it.
+
+=============================================================================
 CORE IDENTITY & PERSONALITY
 =============================================================================
 
@@ -276,9 +289,14 @@ TEMPLATE """{{- if .System }}<|im_start|>system
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
 PARAMETER top_k 40
+# Penalize repetition. Without this, smaller base models can fall into
+# token-level loops (e.g. repeating "Wait, I need to make sure..." indefinitely)
+# when working through the lengthy K-12 safety instructions in the system prompt.
+PARAMETER repeat_penalty 1.15
+PARAMETER repeat_last_n 256
 # num_ctx is overridden at runtime by the Snflwr API based on detected system RAM
 # (see resource_detection.py:recommend_num_ctx). This value is only used when
-# invoking Ollama directly outside the API (e.g. `ollama run snflwr-ai:latest`).
+# invoking Ollama directly outside the API (e.g. `ollama run snflwr.ai`).
 PARAMETER num_ctx 8192
 # num_predict is similarly overridden at runtime by recommend_num_predict().
 PARAMETER num_predict 4096
@@ -286,3 +304,12 @@ PARAMETER stop "</s>"
 PARAMETER stop "Student:"
 PARAMETER stop "Human:"
 PARAMETER stop "User:"
+# Suppress the model's improvised "Thinking Process:" / step-by-step reasoning
+# preamble. qwen3.5 base models do not emit native <think> tags, so any
+# free-form reasoning leaks into the visible response. The system prompt above
+# already structures the response — the model should answer directly.
+PARAMETER stop "Thinking Process:"
+PARAMETER stop "Thinking:"
+PARAMETER stop "Analyze the Request:"
+PARAMETER stop "Let me think"
+PARAMETER stop "<think>"

@@ -4,14 +4,35 @@
 
 snflwr.ai uses two model families:
 
-- **Chat model** (Qwen 3.5) — general conversation, used directly by admin/parent profiles and as the base for the student tutor persona
+- **Chat model** — `snflwr.ai`, the user-facing chat model. Built locally as a wrapper around a Qwen 3.5 base. Kids never see the raw qwen3.5 tag in the dropdown.
 - **Safety model** (Llama Guard 3) — content safety classification in the 5-stage safety pipeline
 
 ## Models
 
-### Chat: Qwen 3.5 (selected by hardware detection via `CHAT_MODEL` build arg)
+### Chat: `snflwr.ai` (built locally, wraps a Qwen 3.5 base)
 
-| Model | Size | RAM | Use Case |
+The user-facing chat model is always `snflwr.ai`. It is built at install /
+deploy time by all of:
+
+- `./deploy.sh` — home / Docker tier
+- `./start_snflwr.sh` (and `start_snflwr.ps1`) — family / USB tier
+- `install.py` — interactive installer
+- `docker/Dockerfile.ollama` — enterprise tier (baked into the image)
+
+Each picks a Qwen 3.5 base sized to available RAM, then runs:
+
+```
+ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
+```
+
+(with `FROM` substituted to point at the chosen base) to produce the
+`snflwr.ai` ollama tag, which bundles the K-12 STEM tutor system prompt,
+sampling parameters (incl. `repeat_penalty` to prevent reasoning loops),
+and safety stop sequences.
+
+### Base: Qwen 3.5 (selected by hardware detection)
+
+| Base model | Size | RAM | Use Case |
 |-------|------|-----|----------|
 | `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ | Low-resource devices |
 | `qwen3.5:2b` | ~1.3 GB | 4 GB+ | Older laptops |
@@ -27,20 +48,13 @@ snflwr.ai uses two model families:
 | **`llama-guard3:8b`** | ~4.9 GB | +8 GB | Enterprise (higher accuracy) |
 | `llama-guard3:1b` | ~1 GB | +2 GB | Home use (faster) |
 
-### Custom Persona: Student Tutor
-
-| Model | Base | Modelfile |
-|-------|------|-----------|
-| `snflwr-ai:latest` | `${CHAT_MODEL}` | `Snflwr_AI_Kids.modelfile` |
-
-Built at Docker image time. The Dockerfile dynamically substitutes the modelfile's `FROM` line with whatever `CHAT_MODEL` was selected.
-
 ## Profile -> Model Mapping
 
 | Profile | Model | Notes |
 |---------|-------|-------|
-| **Student** | `snflwr-ai:latest` | Custom STEM tutor persona on qwen3.5 base |
-| **Admin/Parent** | `${CHAT_MODEL}` directly | No custom modelfile needed |
+| **Student** | `snflwr.ai` | K-12 STEM tutor persona, age-adaptive, full safety pipeline |
+| **Admin/Parent** (enterprise only) | `${CHAT_MODEL}` (raw base) | Lets admins use the model without the K-12 persona constraints |
+| **Home tier (all users)** | `snflwr.ai` | No admin/student split — everyone gets the wrapper |
 | **Safety (all)** | `llama-guard3:8b` / `:1b` | Stage 4 of safety pipeline |
 
 ## Files

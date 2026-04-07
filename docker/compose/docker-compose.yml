@@ -33,7 +33,7 @@ services:
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
       - DEFAULT_USER_ROLE=user
-      - DEFAULT_MODELS=snflwr-ai:latest
+      - DEFAULT_MODELS=snflwr.ai
       # Lock down student accounts — chat only, no advanced controls
       - USER_PERMISSIONS_CHAT_CONTROLS=false
       - USER_PERMISSIONS_CHAT_VALVES=false

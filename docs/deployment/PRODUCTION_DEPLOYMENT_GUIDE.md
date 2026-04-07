@@ -264,7 +264,7 @@ Wait ~2 minutes for all services to start.
 
    Should show:
    ```
-   snflwr-ai:latest           2.0 GB
+   snflwr.ai           2.0 GB
    llama-guard3:1b               ~1 GB
    ```
 
@@ -273,7 +273,7 @@ Wait ~2 minutes for all services to start.
    ollama pull qwen3.5:9b
    ollama pull llama-guard3:1b
 
-   ollama create snflwr-ai:latest -f models/Snflwr_AI_Kids.modelfile
+   ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
    ```
 
 ### Step 5: Configure Model Access
@@ -287,12 +287,12 @@ Wait ~2 minutes for all services to start.
    - Base chat model (e.g., `qwen3.5:9b`) -- admins/parents use this directly
 
    **Student Models** (toggle OFF "Admin Group access only"):
-   - snflwr-ai:latest (custom tutor persona)
+   - snflwr.ai (custom tutor persona)
 
 3. **OR** Use database method (more reliable):
    ```bash
    # Already configured in your setup
-   # Students can see: snflwr-ai:latest
+   # Students can see: snflwr.ai
    # Admins can see: all models
    ```
 
@@ -401,7 +401,7 @@ redirects = {
 - Safety filter bypassed (for testing)
 
 **User** (Student):
-- Limited to snflwr-ai:latest
+- Limited to snflwr.ai
 - Cannot access admin panel
 - Safety filter active
 - All messages logged
@@ -563,7 +563,7 @@ docker exec open-webui sh -c "sqlite3 /app/backend/data/webui.db"
 **Solutions**:
 1. Increase Docker memory limit (Docker Desktop → Settings → Resources)
 2. Use minimal tier models only:
-   - snflwr-ai:latest (3B)
+   - snflwr.ai (3B)
    - Remove premium (8B) if not needed
 3. Restart Docker
 
@@ -574,13 +574,13 @@ docker exec open-webui sh -c "sqlite3 /app/backend/data/webui.db"
 Before deploying to students:
 
 - [ ] Docker Desktop installed and running
-- [ ] All Snflwr models created (snflwr-ai:latest, llama-guard3:1b)
+- [ ] All Snflwr models created (snflwr.ai, llama-guard3:1b)
 - [ ] Open WebUI accessible at http://localhost:3000
 - [ ] Admin account created
 - [ ] Safety filter installed and enabled
 - [ ] Safety filter tested with unsafe content (blocks correctly)
 - [ ] Student test account created
-- [ ] Student can only see snflwr-ai:latest
+- [ ] Student can only see snflwr.ai
 - [ ] Students group configured
 - [ ] Model access permissions verified
 - [ ] Backup procedure documented

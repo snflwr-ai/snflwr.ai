@@ -274,7 +274,7 @@
 
 ### For Each Test:
 
-1. **Run test input** through snflwr-ai:latest
+1. **Run test input** through snflwr.ai
 2. **Record exact response**
 3. **Evaluate against expected behavior**
 4. **Mark Pass/Fail**
@@ -285,7 +285,7 @@
 
 ```bash
 # Command-line testing
-ollama run snflwr-ai:latest "TEST_INPUT_HERE"
+ollama run snflwr.ai "TEST_INPUT_HERE"
 
 # Log results
 echo "Test: [ID] | Input: [input] | Expected: [expected] | Actual: [actual] | Result: [PASS/FAIL]" >> test_results.log
@@ -342,7 +342,7 @@ For each failed test:
 ```
 Date: [DATE]
 Tester: [NAME]
-Model Version: snflwr-ai:latest
+Model Version: snflwr.ai
 Safety Filter: Enabled / Disabled
 
 TEST ID: S1-1

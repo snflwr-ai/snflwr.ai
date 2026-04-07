@@ -8,11 +8,15 @@
 # The script accounts for combined RAM usage of chat + safety models plus
 # services overhead (PostgreSQL, Redis, nginx, API, Celery, OS).
 #
+# The user-facing chat model is always 'snflwr.ai' — built locally by
+# docker/Dockerfile.ollama as a wrapper around the BASE qwen3.5 model
+# selected here. Kids never see the raw qwen3.5 tag in the chat dropdown.
+#
 # Usage:
-#   enterprise/build.sh                                               # interactive
-#   enterprise/build.sh --model qwen3.5:27b                             # specify chat model
-#   enterprise/build.sh --model qwen3.5:27b --safety llama-guard3:8b    # specify both
-#   enterprise/build.sh --auto                                        # auto-select by RAM
+#   enterprise/build.sh                                                  # interactive
+#   enterprise/build.sh --model qwen3.5:27b                              # specify base model
+#   enterprise/build.sh --model qwen3.5:27b --safety llama-guard3:8b     # specify both
+#   enterprise/build.sh --auto                                           # auto-select by RAM
 
 set -e
 
@@ -44,12 +48,15 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: enterprise/build.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --model MODEL     Chat model (e.g., qwen3.5:27b)"
+            echo "  --model MODEL     Base model used to build snflwr.ai (e.g., qwen3.5:27b)"
             echo "  --safety MODEL    Safety classifier model (e.g., llama-guard3:8b)"
             echo "  --auto            Auto-select models based on server RAM"
             echo "  -h, --help        Show this help"
             echo ""
-            echo "Chat model tiers (Qwen3.5 family):"
+            echo "The user-facing chat model is always 'snflwr.ai' — built locally"
+            echo "by docker/Dockerfile.ollama as a wrapper around the base below."
+            echo ""
+            echo "Base model tiers (Qwen3.5 family):"
             echo "  qwen3.5:0.8b  ~1 GB runtime    Low-resource devices"
             echo "  qwen3.5:2b    ~2 GB runtime    Older laptops"
             echo "  qwen3.5:4b    ~3 GB runtime    Everyday use"
@@ -204,7 +211,12 @@ fi
 # ── Interactive chat model selection ─────────────────────────────────────────
 
 if [ -z "$CHAT_MODEL" ]; then
-    heading "Chat Model Selection"
+    heading "Base Model Selection"
+    echo ""
+    echo "   The user-facing chat model is always 'snflwr.ai' — built as a wrapper"
+    echo "   around the base model you choose below. Kids never see the raw"
+    echo "   qwen3.5 tag in the Open WebUI dropdown."
+    echo ""
 
     if [ "$RAM_GB" -gt 0 ]; then
         PAIR=$(recommend_models "$RAM_GB")
@@ -213,14 +225,14 @@ if [ -z "$CHAT_MODEL" ]; then
         echo "   Detected server RAM:  ${RAM_GB} GB"
         echo "   Services overhead:    ~${SERVICES_OVERHEAD} GB (PostgreSQL, Redis, nginx, API, OS)"
         echo "   Available for models: ~${MODEL_BUDGET} GB (chat + safety combined)"
-        echo "   Recommended chat:     ${REC_CHAT}"
+        echo "   Recommended base:     ${REC_CHAT}"
     else
         REC_CHAT="qwen3.5:9b"
         echo "   Could not detect RAM. Default: ${REC_CHAT}"
     fi
 
     echo ""
-    echo "   Available chat models (Qwen3.5):"
+    echo "   Available base models (Qwen3.5):"
     echo "   ─────────────────────────────────────────────────────────"
     echo "    1) qwen3.5:0.8b   ~1 GB runtime    Low-resource"
     echo "    2) qwen3.5:2b     ~2 GB runtime    Older laptops"
@@ -231,7 +243,7 @@ if [ -z "$CHAT_MODEL" ]; then
     echo "   ─────────────────────────────────────────────────────────"
     echo ""
 
-    read -rp "   Select chat model [1-6] or Enter for ${REC_CHAT}: " choice
+    read -rp "   Select base model [1-6] or Enter for ${REC_CHAT}: " choice
 
     case "${choice}" in
         1) CHAT_MODEL="qwen3.5:0.8b" ;;
@@ -247,9 +259,9 @@ if [ -z "$CHAT_MODEL" ]; then
             ;;
     esac
 
-    info "Chat model: ${CHAT_MODEL}"
+    info "Base model: ${CHAT_MODEL}  (snflwr.ai will be built on top of this)"
 elif [ "$AUTO_SELECT" = false ]; then
-    info "Chat model: ${CHAT_MODEL} (from --model flag)"
+    info "Base model: ${CHAT_MODEL} (from --model flag; snflwr.ai built on top)"
 fi
 
 # ── Interactive safety model selection ───────────────────────────────────────

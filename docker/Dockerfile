@@ -27,9 +27,12 @@ WORKDIR /app
 # Copy pre-built Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Apply Debian security patches (no extra runtime deps needed)
+# Apply Debian security patches and install gosu (used by the entrypoint to
+# drop privileges from root → snflwr after fixing volume ownership).
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && gosu nobody true  # smoke-test gosu binary
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash snflwr
@@ -49,8 +52,15 @@ COPY --chown=snflwr:snflwr tasks/ ./tasks/
 COPY --chown=snflwr:snflwr config.py .
 COPY --chown=snflwr:snflwr resource_detection.py .
 
-# Run as non-root
-USER snflwr
+# Entrypoint (runs as root, fixes volume ownership, then drops to snflwr)
+COPY docker/entrypoint.sh /usr/local/bin/snflwr-entrypoint.sh
+RUN chmod +x /usr/local/bin/snflwr-entrypoint.sh
+
+# NOTE: intentionally NOT setting `USER snflwr` here. The entrypoint runs as
+# root to chown any bind-mounted / named volumes (owned by root at mount time
+# before dropping privileges via gosu. Running the app itself as root would
+# defeat the point — gosu hands off to the unprivileged snflwr user.
+ENTRYPOINT ["/usr/local/bin/snflwr-entrypoint.sh"]
 
 # Set Python path
 ENV PYTHONPATH=/app

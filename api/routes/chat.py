@@ -46,6 +46,30 @@ router = APIRouter()
 rate_limiter = RateLimiter()
 
 
+def _age_band(age: int) -> str:
+    """Map a student's age to the named band in Snflwr_AI_Kids.modelfile.
+
+    The modelfile's AGE ADAPTATION SYSTEM section defines four bands, each
+    with its own response-length, vocabulary, and teaching-style rules:
+
+        AGES 5-7   (K-2):  30-50 words,  simple vocabulary, concrete examples
+        AGES 8-10  (3-5):  50-75 words,  grade-appropriate scientific terms
+        AGES 11-13 (6-8):  75-125 words, proper scientific terminology
+        AGES 14-18 (9-12): 125-200 words, full technical terminology
+
+    Naming the band explicitly in the per-turn tutor context (instead of
+    leaving the model to infer band from age) gives smaller base models a
+    much stronger signal for picking the right section of the system prompt.
+    """
+    if age <= 7:
+        return "AGES 5-7"
+    if age <= 10:
+        return "AGES 8-10"
+    if age <= 13:
+        return "AGES 11-13"
+    return "AGES 14-18"
+
+
 def _get_or_create_conversation_id(session_id: str, profile_id: str) -> str:
     """Return the active conversation_id for a session, creating one if absent."""
     rows = conversation_store.db.execute_query(
@@ -429,11 +453,19 @@ async def send_chat_message(
         # persisted in conversation history). This gives the modelfile's
         # age-adaptive rules something to key off without us having to
         # replace the modelfile SYSTEM to do it.
+        #
+        # The band name (AGES 5-7, AGES 8-10, AGES 11-13, AGES 14-18) maps
+        # directly to the headings in Snflwr_AI_Kids.modelfile's AGE
+        # ADAPTATION SYSTEM section. Naming it explicitly short-circuits the
+        # model from having to infer the band from the raw age integer and
+        # is a noticeably stronger signal for smaller base models (9b).
         if not skip_safety and model_has_baked_system and profile is not None:
             grade_str = profile.grade or "unknown"
+            band = _age_band(profile.age)
             user_content = (
                 f"(Tutor context: speaking with {profile.name}, age {profile.age}, "
-                f"grade {grade_str})\n\n{request.message}"
+                f"grade {grade_str}. Apply the {band} rules from your system prompt.)"
+                f"\n\n{request.message}"
             )
         else:
             user_content = request.message

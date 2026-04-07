@@ -1421,7 +1421,7 @@ async def generate_chat_completion(
                     return _SnflwrResponse(format_snflwr_response_for_ollama(snflwr_response))
             else:
                 log.info(f"Direct Ollama: no student profile for {user.role} user (profile_id={profile_id})")
-                # Two adjustments for admin/parent going direct to Ollama:
+                # Three adjustments for admin/parent going direct to Ollama:
                 #
                 # 1. Override the Modelfile SYSTEM prompt with a neutral one.
                 #    snflwr.ai has a K-12 STEM tutor system prompt; admins/
@@ -1432,6 +1432,19 @@ async def generate_chat_completion(
                 #    "the user is asking..." — the Modelfile's PARAMETER stop "User:"
                 #    fires immediately during the think block, leaving an empty response.
                 #    The stop tokens "Student:" / "Human:" / "</s>" are kept.
+                #
+                # 3. Disable Qwen3.5 thinking mode (`think: false`).
+                #    Ollama 0.17+ auto-attaches a Qwen3.5 RENDERER/PARSER to
+                #    any model built on top of qwen3.5, which emits a
+                #    separate `thinking` field in the response. Open WebUI
+                #    renders that field as a collapsible "Thinking for X
+                #    seconds" block, exposing the raw model self-deliberation
+                #    (including "Thinking Process:", "Wait, let me reconsider",
+                #    etc.) to whoever is holding the admin account — parents
+                #    and educators trialling the system. The student path
+                #    already sets think=False via ollama_client.chat() in
+                #    api/routes/chat.py, so we mirror that here to keep both
+                #    paths visually consistent and avoid the leak.
                 messages = payload.get("messages", [])
                 if not any(m.get("role") == "system" for m in messages):
                     payload["messages"] = [
@@ -1442,6 +1455,7 @@ async def generate_chat_completion(
                     **existing_opts,
                     "stop": ["</s>", "Student:", "Human:"],
                 }
+                payload["think"] = False
 
         except HTTPException as e:
             # Re-raise HTTP exceptions (profile not found, subscription issues, etc.)

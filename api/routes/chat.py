@@ -366,40 +366,79 @@ async def send_chat_message(
             f"Generating response with {sanitize_log_value(model_name)!r} ({len(history_messages)} prior messages in context)"
         )
 
-        # Build a system prompt appropriate for the audience.
+        # Build messages for Ollama.
+        #
+        # IMPORTANT: snflwr.ai has an authoritative K-12 STEM tutor SYSTEM
+        # prompt baked into its Modelfile (models/Snflwr_AI_Kids.modelfile)
+        # with age-adaptive response rules, anti-reasoning directives, and
+        # safety protocols. Ollama's chat API treats any {"role":"system"}
+        # message in `messages` as a REPLACEMENT for the modelfile SYSTEM
+        # (it flows into `.System` in the template), so injecting one here
+        # silently discards the entire tuned persona. For snflwr.ai we
+        # therefore do NOT send a system message — we let the modelfile
+        # speak, and pass per-student context as a small prefix on the
+        # current user turn instead.
+        #
+        # Other models (admin test models, or any future non-snflwr.ai
+        # student model) still get a lightweight K-12 framing from Python.
+        model_has_baked_system = model_name == "snflwr.ai"
+
+        messages: list = []
+
         if skip_safety:
-            # Admin: no educational framing, no length limits.
-            system_content = "You are a helpful AI assistant. Provide complete, detailed, and accurate responses without any length restrictions."
-        else:
-            # Student: tailor tone, reading level, and pedagogy to the profile.
+            # Admin: generic assistant, no K-12 framing, no length limits.
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful AI assistant. Provide complete, "
+                        "detailed, and accurate responses without any length "
+                        "restrictions."
+                    ),
+                }
+            )
+        elif not model_has_baked_system:
+            # Student on a non-snflwr.ai model — provide fallback framing.
             grade_str = profile.grade if profile else "unknown"
             age = profile.age if profile else 13
             name = profile.name if profile else "Student"
             level = (profile.learning_level if profile else "adaptive") or "adaptive"
-
-            # Map learning level to an instructional tone directive.
             level_note = {
                 "beginner": "Use very simple words and short sentences. Avoid jargon.",
                 "advanced": "You may use technical vocabulary and challenge the student with deeper explanations.",
             }.get(
                 level, "Match your vocabulary and depth to the student's grade level."
             )
-
-            system_content = (
-                f"You are snflwr-ai, a friendly and encouraging AI tutor for K-12 students. "
-                f"You are talking with {name}, a {age}-year-old in grade {grade_str}. "
-                f"{level_note} "
-                f"Always be positive, patient, and supportive. "
-                f"When explaining concepts, break them into clear steps and use relatable examples. "
-                f"When asked for code, always include the complete, working code in properly formatted code blocks (```language ... ```) and explain what each part does. "
-                f"Keep responses focused and educational. Never produce harmful, adult, or off-topic content."
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are snflwr-ai, a friendly and encouraging AI tutor for K-12 students. "
+                        f"You are talking with {name}, a {age}-year-old in grade {grade_str}. "
+                        f"{level_note} "
+                        f"Always be positive, patient, and supportive. "
+                        f"Keep responses focused and educational. Never produce harmful, adult, or off-topic content."
+                    ),
+                }
             )
+        # else: student + snflwr.ai → no system injection. Modelfile speaks.
 
-        messages = (
-            [{"role": "system", "content": system_content}]
-            + history_messages
-            + [{"role": "user", "content": request.message}]
-        )
+        messages.extend(history_messages)
+
+        # Prepend per-student context to the CURRENT user turn only (not
+        # persisted in conversation history). This gives the modelfile's
+        # age-adaptive rules something to key off without us having to
+        # replace the modelfile SYSTEM to do it.
+        if not skip_safety and model_has_baked_system and profile is not None:
+            grade_str = profile.grade or "unknown"
+            user_content = (
+                f"(Tutor context: speaking with {profile.name}, age {profile.age}, "
+                f"grade {grade_str})\n\n{request.message}"
+            )
+        else:
+            user_content = request.message
+
+        messages.append({"role": "user", "content": user_content})
         success, response_text, metadata = ollama_client.chat(
             model=model_name,
             messages=messages,

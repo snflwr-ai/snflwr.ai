@@ -132,8 +132,6 @@ All AI inference runs locally via [Ollama](https://ollama.com). The safety pipel
 
 ## Screenshots
 
-<!-- Replace these placeholders with actual screenshots -->
-
 <table>
 <tr>
 <td width="33%" align="center">
@@ -154,11 +152,31 @@ All AI inference runs locally via [Ollama](https://ollama.com). The safety pipel
 </td>
 <td width="33%" align="center">
 
-<img src="https://placehold.co/600x400/f8f9fa/495057?text=Setup+Wizard" alt="Setup Wizard" width="100%" />
+<img src="assets/setup-wizard.png" alt="Setup Wizard" width="100%" />
 
 **Setup Wizard**<br>
 <sub>Interactive installer detects your hardware</sub>
 
+</td>
+</tr>
+<tr>
+<td width="33%" align="center">
+
+<img src="assets/setup-wizard-step2.png" alt="Create Parent Account" width="100%" />
+
+**Create Parent Account**<br>
+<sub>Set up your parent credentials</sub>
+
+</td>
+<td width="33%" align="center">
+
+<img src="assets/setup-wizard-step3.png" alt="Set Up Child Profile" width="100%" />
+
+**Set Up Child Profile**<br>
+<sub>Configure age-adaptive filtering per child</sub>
+
+</td>
+<td width="33%" align="center">
 </td>
 </tr>
 </table>

@@ -571,8 +571,8 @@ class TestAuditTrail:
             f"Expected a conversation record for profile {profile_id}"
         )
 
-    def test_multiple_messages_share_session(self, student_accounts):
-        """Multiple messages from the same student should create records."""
+    def test_multiple_messages_in_conversation(self, student_accounts):
+        """Multiple messages from the same student should land in a conversation."""
         student = student_accounts[2]
         profile_id = student["profile_id"]
 
@@ -585,6 +585,10 @@ class TestAuditTrail:
             "SELECT * FROM conversations WHERE profile_id = ?",
             (profile_id,),
         )
-        assert len(conversations) >= 2, (
-            f"Expected at least 2 conversation records, got {len(conversations)}"
+        assert len(conversations) >= 1, (
+            f"Expected at least 1 conversation record, got {len(conversations)}"
+        )
+        # Multiple messages should increment the message count
+        assert conversations[0].get("message_count", 0) >= 2, (
+            f"Expected message_count >= 2, got {conversations[0].get('message_count')}"
         )

@@ -368,7 +368,8 @@ class SetupWizard:
             "Password requirements:\n"
             "- At least 8 characters\n"
             "- Include uppercase and lowercase letters\n"
-            "- Include at least one number"
+            "- Include at least one number\n"
+            "- Include at least one special character (!@#$%^&* etc.)"
         )
         
         if ctk:
@@ -634,7 +635,12 @@ class SetupWizard:
             if not any(c.isdigit() for c in password):
                 messagebox.showwarning("Weak Password", "Password must include a number.")
                 return False
-        
+
+            special_chars = set('!@#$%^&*()_+-=[]{}|;:,.<>?')
+            if not any(c in special_chars for c in password):
+                messagebox.showwarning("Weak Password", "Password must include a special character (!@#$%^&* etc.).")
+                return False
+
         elif self.current_step == 2:
             # Validate child profile
             name = self.child_name_entry.get().strip()
@@ -654,7 +660,11 @@ class SetupWizard:
         
         elif self.current_step == 2:
             self.child_name = self.child_name_entry.get().strip()
-            # Age and grade saved when creating account
+            try:
+                self.child_age = int(self.age_spinbox.get()) if hasattr(self, 'age_spinbox') else 10
+            except (ValueError, TypeError):
+                self.child_age = 10
+            self.child_grade = self.grade_combo.get() if hasattr(self, 'grade_combo') else "5th"
     
     def _create_account(self):
         """Create parent account and child profile"""
@@ -680,13 +690,10 @@ class SetupWizard:
                 # Update progress
                 self._update_progress("Creating child profile...")
 
-                # Get age and grade from entries
-                try:
-                    age = int(self.age_spinbox.get()) if hasattr(self, 'age_spinbox') else 10
-                except (ValueError, TypeError, AttributeError):
-                    age = 10
-
-                grade = self.grade_combo.get() if hasattr(self, 'grade_combo') else "5th"
+                # Use values saved by _save_current_step_data (widgets are
+                # destroyed by the time we reach Step 4)
+                age = self.child_age
+                grade = self.child_grade
 
                 # Create child profile
                 profile_mgr = ProfileManager(auth_manager.db)
@@ -734,7 +741,9 @@ class SetupWizard:
                 f"Failed to create account:\n\n{str(e)}\n\n"
                 "Please try again or contact support."
             )
-            self._complete_setup(False)
+            # Go back to the account creation step so the user can fix it
+            self.current_step = 1
+            self._show_step(1)
     
     def _update_progress(self, text: str):
         """Update progress label"""

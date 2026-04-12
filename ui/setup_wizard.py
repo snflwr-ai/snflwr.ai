@@ -68,7 +68,26 @@ class SetupWizard:
         self.back_button = None
         self.next_button = None
         
+        # Ensure database schema exists (first-time installs may not
+        # have run init_db.py yet)
+        self._ensure_schema()
+
         logger.info("Setup wizard initialized")
+
+    @staticmethod
+    def _ensure_schema():
+        """Create database tables if they don't exist."""
+        from storage.database import db_manager
+        try:
+            db_manager.execute_query("SELECT 1 FROM accounts LIMIT 1")
+        except Exception:
+            logger.info("Database schema missing — initializing...")
+            try:
+                from database.init_db import init_database
+                init_database()
+                logger.info("Database schema initialized by setup wizard")
+            except Exception as e:
+                logger.warning(f"Auto-init failed (will retry at account creation): {e}")
     
     def show(self):
         """Show setup wizard window"""

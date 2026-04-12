@@ -170,7 +170,10 @@ class _SystemConfig:
     BASE_URL: str = os.getenv("BASE_URL", "http://localhost:39150")
 
     # Open WebUI URL (for admin auth bridge — proxy login through Open WebUI)
-    OPEN_WEBUI_URL: str = os.getenv("OPEN_WEBUI_URL", "http://localhost:3000")
+    OPEN_WEBUI_URL: str = os.getenv(
+        "OPEN_WEBUI_URL",
+        f"http://localhost:{os.getenv('WEBUI_PORT', '3000')}",
+    )
 
     @property
     def REDIS_URL(self) -> str:

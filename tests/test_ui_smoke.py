@@ -176,7 +176,7 @@ class TestSetupWizardValidation:
     """Test form validation on each step."""
 
     def _setup_parent_form(self, wizard, username="testuser",
-                           password="SecurePass1", confirm="SecurePass1",
+                           password="SecurePass1!", confirm="SecurePass1!",
                            email=""):
         wizard.current_step = 1
         wizard.username_entry = MagicMock()
@@ -230,15 +230,25 @@ class TestSetupWizardValidation:
         assert wizard._validate_current_step() is False
 
     @patch('ui.setup_wizard.messagebox')
-    def test_child_name_required_when_not_skipping(self, mock_mb, wizard):
+    def test_child_profile_required_when_not_skipping(self, mock_mb, wizard):
         wizard.current_step = 2
+        wizard.child_profiles = []
         wizard.child_name_entry = MagicMock()
         wizard.child_name_entry.get.return_value = ""
         assert wizard._validate_current_step() is False
 
     @patch('ui.setup_wizard.messagebox')
-    def test_child_name_accepted(self, mock_mb, wizard):
+    def test_child_profile_accepted_when_profiles_exist(self, mock_mb, wizard):
         wizard.current_step = 2
+        wizard.child_profiles = [{"name": "Emma", "age": 10, "grade": "5th"}]
+        wizard.child_name_entry = MagicMock()
+        wizard.child_name_entry.get.return_value = ""
+        assert wizard._validate_current_step() is True
+
+    @patch('ui.setup_wizard.messagebox')
+    def test_child_profile_accepted_when_form_has_name(self, mock_mb, wizard):
+        wizard.current_step = 2
+        wizard.child_profiles = []
         wizard.child_name_entry = MagicMock()
         wizard.child_name_entry.get.return_value = "Emma"
         assert wizard._validate_current_step() is True
@@ -262,21 +272,22 @@ class TestSkipChildProfile:
         wizard._skip_child_profile()
         assert wizard.skip_child_profile is True
 
-    def test_skip_clears_child_name(self, wizard):
-        wizard.child_name = "Emma"
+    def test_skip_clears_child_profiles(self, wizard):
+        wizard.child_profiles = [{"name": "Emma", "age": 10, "grade": "5th"}]
         wizard._skip_child_profile()
-        assert wizard.child_name == ""
+        assert wizard.child_profiles == []
 
     def test_skip_jumps_to_completion_step(self, wizard):
         wizard._skip_child_profile()
         assert wizard.current_step == 3
 
     def test_next_on_step2_resets_skip_flag(self, wizard):
-        """If user goes back to step 2 and fills in a name, skip is cleared."""
+        """If user goes back to step 2 and has profiles, skip is cleared."""
         wizard.skip_child_profile = True
         wizard.current_step = 2
+        wizard.child_profiles = [{"name": "Emma", "age": 10, "grade": "5th"}]
         wizard.child_name_entry = MagicMock()
-        wizard.child_name_entry.get.return_value = "Emma"
+        wizard.child_name_entry.get.return_value = ""
         wizard._on_next()
         assert wizard.skip_child_profile is False
 
@@ -304,20 +315,18 @@ class TestSkipChildProfile:
         """When skip flag is not set, both parent and child are created."""
         wizard.skip_child_profile = False
         wizard.parent_username = "testuser"
-        wizard.parent_password = "SecurePass1"
+        wizard.parent_password = "SecurePass1!"
         wizard.parent_email = ""
-        wizard.child_name = "Emma"
+        wizard.child_profiles = [{"name": "Emma", "age": 10, "grade": "5th"}]
         wizard.progress_label = MagicMock()
-        wizard.age_spinbox = MagicMock()
-        wizard.age_spinbox.get.return_value = "10"
-        wizard.grade_combo = MagicMock()
-        wizard.grade_combo.get.return_value = "5th"
 
         mock_auth.create_parent_account.return_value = (True, "parent_001")
         mock_auth.authenticate_parent.return_value = (True, {"parent_id": "parent_001", "session_token": "tok"})
         mock_pm_cls.return_value.create_profile.return_value = MagicMock(profile_id="child_001")
 
-        wizard._create_account()
+        with patch.object(wizard, '_get_owui_admin_token', return_value=""):
+            with patch.object(wizard, '_create_owui_student_account', return_value=None):
+                wizard._create_account()
 
         mock_auth.create_parent_account.assert_called_once()
         mock_auth.authenticate_parent.assert_called_once()
@@ -349,12 +358,11 @@ class TestSetupWizardDataPersistence:
         assert wizard.parent_email == "me@test.com"
 
     def test_save_child_data(self, wizard):
+        """Step 2 save is a no-op — profiles are added via _add_child_to_list."""
         wizard.current_step = 2
-        wizard.child_name_entry = MagicMock()
-        wizard.child_name_entry.get.return_value = "Alex"
-
         wizard._save_current_step_data()
-        assert wizard.child_name == "Alex"
+        # No error raised; profiles list unchanged
+        assert wizard.child_profiles == []
 
     def test_save_on_unrelated_step_is_noop(self, wizard):
         wizard.current_step = 0
@@ -778,8 +786,9 @@ class TestWizardSessionCleanup:
 
             # Stage: account already created, now creating child profile
             wiz.parent_username = "admin"
-            wiz.parent_password = "Pass1234"
-            wiz.child_name = "Kiddo"
+            wiz.parent_password = "Pass1234!"
+            wiz.parent_email = ""
+            wiz.child_profiles = [{"name": "Kiddo", "age": 10, "grade": "5th"}]
             wiz.skip_child_profile = False
 
             # Mock account creation as already done (jump to child profile path)
@@ -791,7 +800,9 @@ class TestWizardSessionCleanup:
             )
             MockPM.return_value.create_profile.return_value = MagicMock(profile_id="child_001")
 
-            wiz._create_account()
+            with patch.object(wiz, '_get_owui_admin_token', return_value=""):
+                with patch.object(wiz, '_create_owui_student_account', return_value=None):
+                    wiz._create_account()
 
             # The wizard should log out the verification token
             mock_auth.logout.assert_called_once_with("tok_wizard")

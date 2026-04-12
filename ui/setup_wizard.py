@@ -7,8 +7,10 @@ Step-by-step guided setup for non-technical parents (<5 minutes)
 import tkinter as tk
 from tkinter import messagebox
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List, Dict
 import re
+import secrets
+import string
 
 try:
     import customtkinter as ctk
@@ -55,9 +57,7 @@ class SetupWizard:
         self.parent_username = ""
         self.parent_password = ""
         self.parent_email = ""
-        self.child_name = ""
-        self.child_age = 10
-        self.child_grade = "5th"
+        self.child_profiles = []  # list of {"name": str, "age": int, "grade": str}
         self.skip_child_profile = False
         # Completion callback
         self.on_complete: Optional[Callable[[bool], None]] = None
@@ -396,13 +396,13 @@ class SetupWizard:
         if ctk:
             title = ctk.CTkLabel(
                 self.content_frame,
-                text="Set Up a Child Profile",
+                text="Set Up Child Profiles",
                 font=("Arial", 24, "bold")
             )
         else:
             title = tk.Label(
                 self.content_frame,
-                text="Set Up a Child Profile",
+                text="Set Up Child Profiles",
                 font=("Arial", 24, "bold"),
                 bg="white"
             )
@@ -429,63 +429,89 @@ class SetupWizard:
                 cursor="hand2",
                 command=self._skip_child_profile
             )
-        skip_button.pack(pady=(0, 20))
-        
+        skip_button.pack(pady=(0, 10))
+
+        # Already-added profiles list
+        if ctk:
+            self.profiles_list_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        else:
+            self.profiles_list_frame = tk.Frame(self.content_frame, bg=self.content_frame.cget("bg"))
+        self.profiles_list_frame.pack(fill=tk.X, padx=40)
+        self._refresh_profiles_list()
+
         # Form
         if ctk:
             form_frame = ctk.CTkFrame(self.content_frame)
         else:
             form_frame = tk.Frame(self.content_frame, bg="white")
-        form_frame.pack(pady=20)
-        
+        form_frame.pack(pady=10)
+
         # Child name
         if ctk:
             name_label = ctk.CTkLabel(form_frame, text="Child's Name:", font=("Arial", 13))
         else:
             name_label = tk.Label(form_frame, text="Child's Name:", font=("Arial", 13), bg="white")
         name_label.grid(row=0, column=0, sticky=tk.W, padx=10, pady=10)
-        
+
         if ctk:
             self.child_name_entry = ctk.CTkEntry(form_frame, width=300, font=("Arial", 13))
         else:
             self.child_name_entry = tk.Entry(form_frame, width=30, font=("Arial", 13))
         self.child_name_entry.grid(row=0, column=1, padx=10, pady=10)
-        self.child_name_entry.insert(0, self.child_name)
-        
+
         # Age
         if ctk:
             age_label = ctk.CTkLabel(form_frame, text="Age:", font=("Arial", 13))
         else:
             age_label = tk.Label(form_frame, text="Age:", font=("Arial", 13), bg="white")
         age_label.grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
-        
+
         if ctk:
             self.age_spinbox = ctk.CTkEntry(form_frame, width=100, font=("Arial", 13))
         else:
             self.age_spinbox = tk.Spinbox(form_frame, from_=5, to=18, width=10, font=("Arial", 13))
         self.age_spinbox.grid(row=1, column=1, sticky=tk.W, padx=10, pady=10)
-        
+
         # Grade
         if ctk:
             grade_label = ctk.CTkLabel(form_frame, text="Grade:", font=("Arial", 13))
         else:
             grade_label = tk.Label(form_frame, text="Grade:", font=("Arial", 13), bg="white")
         grade_label.grid(row=2, column=0, sticky=tk.W, padx=10, pady=10)
-        
+
         grades = ["K", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th", "12th"]
-        
+
         if ctk:
             self.grade_combo = ctk.CTkComboBox(form_frame, values=grades, width=150, font=("Arial", 13))
         else:
             from tkinter import ttk
             self.grade_combo = ttk.Combobox(form_frame, values=grades, width=15, font=("Arial", 13))
         self.grade_combo.grid(row=2, column=1, sticky=tk.W, padx=10, pady=10)
-        
+
+        # Add Another Child button
+        if ctk:
+            add_btn = ctk.CTkButton(
+                self.content_frame,
+                text="+ Add This Child",
+                font=("Arial", 13),
+                command=self._add_child_to_list
+            )
+        else:
+            add_btn = tk.Button(
+                self.content_frame,
+                text="+ Add This Child",
+                font=("Arial", 13),
+                cursor="hand2",
+                command=self._add_child_to_list
+            )
+        add_btn.pack(pady=(10, 5))
+
         # Note
         note = (
-            "You can add or manage child profiles later from the dashboard."
+            "Add each child, then click Next when done.\n"
+            "You can also manage profiles later from the dashboard."
         )
-        
+
         if ctk:
             note_label = ctk.CTkLabel(
                 self.content_frame,
@@ -501,7 +527,7 @@ class SetupWizard:
                 bg="white",
                 fg="gray"
             )
-        note_label.pack(pady=20)
+        note_label.pack(pady=10)
     
     def _show_completion_step(self):
         """Step 4: Creating account and finalizing"""
@@ -566,10 +592,95 @@ class SetupWizard:
             else:
                 self.next_button.config(state=tk.NORMAL)
     
+    def _add_child_to_list(self):
+        """Add current form data to the child profiles list"""
+        name = self.child_name_entry.get().strip()
+        if not name or len(name) < 2:
+            messagebox.showwarning("Required", "Please enter the child's name (at least 2 characters).")
+            return
+
+        try:
+            age = int(self.age_spinbox.get())
+            if age < 5 or age > 18:
+                raise ValueError()
+        except (ValueError, TypeError):
+            messagebox.showwarning("Invalid Age", "Age must be between 5 and 18.")
+            return
+
+        grade = self.grade_combo.get() if hasattr(self, 'grade_combo') else "5th"
+        if not grade:
+            messagebox.showwarning("Required", "Please select a grade.")
+            return
+
+        # Check for duplicate name
+        for p in self.child_profiles:
+            if p["name"].lower() == name.lower():
+                messagebox.showwarning("Duplicate", f"A profile for '{name}' has already been added.")
+                return
+
+        self.child_profiles.append({"name": name, "age": age, "grade": grade})
+        logger.info(f"Added child profile to wizard list: {name}, age {age}, grade {grade}")
+
+        # Clear form for next child
+        self.child_name_entry.delete(0, tk.END)
+        if ctk:
+            self.age_spinbox.delete(0, tk.END)
+        # Refresh the displayed list
+        self._refresh_profiles_list()
+
+    def _remove_child_from_list(self, index):
+        """Remove a child profile from the list by index"""
+        if 0 <= index < len(self.child_profiles):
+            removed = self.child_profiles.pop(index)
+            logger.info(f"Removed child profile from wizard list: {removed['name']}")
+            self._refresh_profiles_list()
+
+    def _refresh_profiles_list(self):
+        """Refresh the displayed list of added child profiles"""
+        if not hasattr(self, 'profiles_list_frame'):
+            return
+        for widget in self.profiles_list_frame.winfo_children():
+            widget.destroy()
+
+        if not self.child_profiles:
+            return
+
+        if ctk:
+            header = ctk.CTkLabel(self.profiles_list_frame, text="Added children:", font=("Arial", 12, "bold"))
+        else:
+            header = tk.Label(self.profiles_list_frame, text="Added children:", font=("Arial", 12, "bold"),
+                              bg=self.profiles_list_frame.cget("bg"))
+        header.pack(anchor=tk.W)
+
+        for i, p in enumerate(self.child_profiles):
+            if ctk:
+                row = ctk.CTkFrame(self.profiles_list_frame, fg_color="transparent")
+            else:
+                row = tk.Frame(self.profiles_list_frame, bg=self.profiles_list_frame.cget("bg"))
+            row.pack(fill=tk.X, pady=2)
+
+            text = f"  {p['name']}  —  Age {p['age']}, {p['grade']} grade"
+            if ctk:
+                lbl = ctk.CTkLabel(row, text=text, font=("Arial", 12))
+            else:
+                lbl = tk.Label(row, text=text, font=("Arial", 12), bg=row.cget("bg"))
+            lbl.pack(side=tk.LEFT)
+
+            idx = i  # capture for closure
+            if ctk:
+                rm_btn = ctk.CTkButton(row, text="Remove", width=70, font=("Arial", 11),
+                                        fg_color="transparent", text_color="gray",
+                                        command=lambda j=idx: self._remove_child_from_list(j))
+            else:
+                rm_btn = tk.Button(row, text="Remove", font=("Arial", 10), fg="gray",
+                                   relief=tk.FLAT, cursor="hand2",
+                                   command=lambda j=idx: self._remove_child_from_list(j))
+            rm_btn.pack(side=tk.RIGHT)
+
     def _skip_child_profile(self):
         """Skip child profile creation and proceed to account creation"""
         self.skip_child_profile = True
-        self.child_name = ""
+        self.child_profiles = []
         self._show_step(3)
 
     def _on_back(self):
@@ -585,9 +696,14 @@ class SetupWizard:
         if not self._validate_current_step():
             return
 
-        # If proceeding from child profile step via Next, they want a profile
+        # If proceeding from child profile step via Next, check if they
+        # have a partially filled form that hasn't been added yet
         if self.current_step == 2:
-            self.skip_child_profile = False
+            name = self.child_name_entry.get().strip() if hasattr(self, 'child_name_entry') else ""
+            if name and len(name) >= 2:
+                # Auto-add the current form entry before proceeding
+                self._add_child_to_list()
+            self.skip_child_profile = len(self.child_profiles) == 0
 
         # Save data
         self._save_current_step_data()
@@ -642,11 +758,10 @@ class SetupWizard:
                 return False
 
         elif self.current_step == 2:
-            # Validate child profile
-            name = self.child_name_entry.get().strip()
-            
-            if not name:
-                messagebox.showwarning("Required", "Please enter your child's name.")
+            # Valid if profiles already added or form has a name (will be auto-added)
+            name = self.child_name_entry.get().strip() if hasattr(self, 'child_name_entry') else ""
+            if not self.child_profiles and not name:
+                messagebox.showwarning("Required", "Please add at least one child profile, or click Skip.")
                 return False
         
         return True
@@ -659,12 +774,7 @@ class SetupWizard:
             self.parent_email = self.email_entry.get().strip()
         
         elif self.current_step == 2:
-            self.child_name = self.child_name_entry.get().strip()
-            try:
-                self.child_age = int(self.age_spinbox.get()) if hasattr(self, 'age_spinbox') else 10
-            except (ValueError, TypeError):
-                self.child_age = 10
-            self.child_grade = self.grade_combo.get() if hasattr(self, 'grade_combo') else "5th"
+            pass  # profiles are added via _add_child_to_list
     
     def _create_account(self):
         """Create parent account and child profile"""
@@ -686,19 +796,11 @@ class SetupWizard:
             
             logger.info(f"Parent account created: {parent_id}")
 
-            if not self.skip_child_profile:
-                # Update progress
-                self._update_progress("Creating child profile...")
-
-                # Use values saved by _save_current_step_data (widgets are
-                # destroyed by the time we reach Step 4)
-                age = self.child_age
-                grade = self.child_grade
-
-                # Create child profile
+            if not self.skip_child_profile and self.child_profiles:
+                # Create child profiles
                 profile_mgr = ProfileManager(auth_manager.db)
 
-                # Authenticate to verify credentials before creating profile
+                # Authenticate to verify credentials before creating profiles
                 auth_success, auth_result = auth_manager.authenticate_parent(
                     self.parent_username,
                     self.parent_password
@@ -714,25 +816,42 @@ class SetupWizard:
                 if wizard_token:
                     auth_manager.logout(wizard_token)
 
-                # Create profile
                 parent_id = auth_result.get('parent_id')
                 if not parent_id:
                     raise Exception("Missing parent_id from authentication result")
 
-                profile = profile_mgr.create_profile(
-                    parent_id=parent_id,
-                    name=self.child_name,
-                    age=age,
-                    grade=grade
-                )
+                # Get Open WebUI admin token for creating student accounts
+                owui_token = self._get_owui_admin_token()
 
-                logger.info(f"Child profile created: {profile.profile_id}")
+                self.created_credentials = []
+
+                for i, child in enumerate(self.child_profiles):
+                    self._update_progress(
+                        f"Creating child profile ({i + 1}/{len(self.child_profiles)})..."
+                    )
+                    profile = profile_mgr.create_profile(
+                        parent_id=parent_id,
+                        name=child["name"],
+                        age=child["age"],
+                        grade=child["grade"],
+                    )
+                    logger.info(f"Child profile created: {profile.profile_id} ({child['name']})")
+
+                    # Create Open WebUI login for this child
+                    creds = self._create_owui_student_account(
+                        owui_token, child["name"], profile.profile_id
+                    )
+                    if creds:
+                        self.created_credentials.append(creds)
 
             # Update progress
             self._update_progress("Setup complete!")
-            
-            # Wait a moment then close
-            self.window.after(1500, lambda: self._complete_setup(True))
+
+            # Show credentials summary if any were created
+            if hasattr(self, 'created_credentials') and self.created_credentials:
+                self.window.after(500, self._show_credentials_summary)
+            else:
+                self.window.after(1500, lambda: self._complete_setup(True))
             
         except Exception as e:
             logger.error(f"Account creation failed: {e}")
@@ -745,6 +864,211 @@ class SetupWizard:
             self.current_step = 1
             self._show_step(1)
     
+    @staticmethod
+    def _generate_password(length=12):
+        """Generate a random password that meets all requirements"""
+        # Ensure at least one of each required character type
+        pwd = [
+            secrets.choice(string.ascii_uppercase),
+            secrets.choice(string.ascii_lowercase),
+            secrets.choice(string.digits),
+            secrets.choice("!@#$%^&*"),
+        ]
+        # Fill remaining length with mixed characters
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        pwd += [secrets.choice(alphabet) for _ in range(length - len(pwd))]
+        # Shuffle so the required chars aren't always at the start
+        import random
+        random.shuffle(pwd)
+        return "".join(pwd)
+
+    def _get_owui_admin_token(self) -> str:
+        """Sign into Open WebUI as the parent (admin) and return the JWT token.
+
+        If the parent doesn't have an Open WebUI account yet, create one via
+        the signup endpoint first.
+        """
+        import requests as http_client
+
+        open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+        email = self.parent_email or f"{self.parent_username}@snflwr.local"
+
+        # Try signing in first (account may already exist)
+        try:
+            resp = http_client.post(
+                f"{open_webui_url}/api/v1/auths/signin",
+                json={"email": email, "password": self.parent_password},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("token", "")
+        except Exception as e:
+            logger.warning(f"Open WebUI signin attempt failed: {e}")
+
+        # Account doesn't exist — create via signup
+        try:
+            resp = http_client.post(
+                f"{open_webui_url}/api/v1/auths/signup",
+                json={
+                    "name": self.parent_username,
+                    "email": email,
+                    "password": self.parent_password,
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("token", "")
+            logger.warning(f"Open WebUI signup failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.warning(f"Open WebUI signup failed: {e}")
+
+        return ""
+
+    def _create_owui_student_account(
+        self, owui_token: str, child_name: str, profile_id: str
+    ) -> Optional[Dict[str, str]]:
+        """Create an Open WebUI account for a child and link it to the snflwr profile.
+
+        Returns a dict with login credentials, or None on failure.
+        """
+        import requests as http_client
+
+        if not owui_token:
+            logger.warning("No Open WebUI admin token — skipping student account creation")
+            return None
+
+        open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+        # Generate credentials
+        safe_name = re.sub(r"[^a-zA-Z0-9]", "", child_name).lower()
+        email = f"{safe_name}@snflwr.local"
+        password = self._generate_password()
+
+        try:
+            resp = http_client.post(
+                f"{open_webui_url}/api/v1/auths/add",
+                json={
+                    "name": child_name,
+                    "email": email,
+                    "password": password,
+                    "role": "user",
+                },
+                headers={"Authorization": f"Bearer {owui_token}"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                owui_user_id = resp.json().get("id", "")
+                # Link the Open WebUI user ID to the snflwr profile
+                try:
+                    from storage.database import db_manager
+                    db_manager.execute_write(
+                        "UPDATE child_profiles SET owui_user_id = ? WHERE profile_id = ?",
+                        (owui_user_id, profile_id),
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to link owui_user_id to profile: {e}")
+
+                logger.info(f"Created Open WebUI account for {child_name}: {email}")
+                return {"name": child_name, "email": email, "password": password}
+            else:
+                logger.warning(
+                    f"Failed to create Open WebUI account for {child_name}: "
+                    f"{resp.status_code} {resp.text}"
+                )
+        except Exception as e:
+            logger.warning(f"Open WebUI account creation failed for {child_name}: {e}")
+
+        return None
+
+    def _show_credentials_summary(self):
+        """Show auto-generated login credentials so the parent can save them."""
+        # Clear the content frame
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+
+        if ctk:
+            title = ctk.CTkLabel(
+                self.content_frame,
+                text="Setup Complete!",
+                font=("Arial", 24, "bold"),
+            )
+        else:
+            title = tk.Label(
+                self.content_frame,
+                text="Setup Complete!",
+                font=("Arial", 24, "bold"),
+                bg="white",
+            )
+        title.pack(pady=(20, 10))
+
+        if ctk:
+            subtitle = ctk.CTkLabel(
+                self.content_frame,
+                text="Save these login credentials for your children:",
+                font=("Arial", 14),
+            )
+        else:
+            subtitle = tk.Label(
+                self.content_frame,
+                text="Save these login credentials for your children:",
+                font=("Arial", 14),
+                bg="white",
+            )
+        subtitle.pack(pady=(0, 15))
+
+        # Credentials list
+        for cred in self.created_credentials:
+            if ctk:
+                frame = ctk.CTkFrame(self.content_frame)
+            else:
+                frame = tk.Frame(self.content_frame, bg="#f0f0f0", relief=tk.RIDGE, bd=1)
+            frame.pack(fill=tk.X, padx=60, pady=5)
+
+            text = f"  {cred['name']}    Email: {cred['email']}    Password: {cred['password']}"
+            if ctk:
+                lbl = ctk.CTkLabel(frame, text=text, font=("Courier", 12), anchor="w")
+            else:
+                lbl = tk.Label(frame, text=text, font=("Courier", 12), bg="#f0f0f0", anchor="w")
+            lbl.pack(fill=tk.X, padx=10, pady=8)
+
+        # Note
+        note_text = (
+            "You can change these passwords later from the parent dashboard.\n"
+            "Write them down or take a screenshot before closing."
+        )
+        if ctk:
+            note = ctk.CTkLabel(
+                self.content_frame, text=note_text, font=("Arial", 12), text_color="gray"
+            )
+        else:
+            note = tk.Label(
+                self.content_frame, text=note_text, font=("Arial", 12), bg="white", fg="gray"
+            )
+        note.pack(pady=20)
+
+        # Done button
+        if ctk:
+            done_btn = ctk.CTkButton(
+                self.content_frame,
+                text="Done",
+                font=("Arial", 14),
+                command=lambda: self._complete_setup(True),
+            )
+        else:
+            done_btn = tk.Button(
+                self.content_frame,
+                text="Done",
+                font=("Arial", 14),
+                cursor="hand2",
+                command=lambda: self._complete_setup(True),
+            )
+        done_btn.pack(pady=10)
+
+        # Hide navigation buttons
+        if hasattr(self, 'back_button'):
+            self.back_button.pack_forget()
+        if hasattr(self, 'next_button'):
+            self.next_button.pack_forget()
+
     def _update_progress(self, text: str):
         """Update progress label"""
         if hasattr(self, 'progress_label') and self.progress_label:

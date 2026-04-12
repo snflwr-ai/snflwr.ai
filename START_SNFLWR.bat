@@ -336,7 +336,7 @@ echo.
 
 :: Check if the Open WebUI image already exists locally
 set "WEBUI_IMAGE=ghcr.io/open-webui/open-webui:%WEBUI_DOCKER_TAG%"
-if "%WEBUI_DOCKER_TAG%"=="" set "WEBUI_IMAGE=ghcr.io/open-webui/open-webui:v0.8.3"
+if "%WEBUI_DOCKER_TAG%"=="" set "WEBUI_IMAGE=ghcr.io/open-webui/open-webui:v0.8.12"
 docker image inspect %WEBUI_IMAGE% >nul 2>&1
 if %ERRORLEVEL%==0 (
     echo Open WebUI image already cached locally, skipping pull.

@@ -91,7 +91,7 @@ services:
 
   # Open WebUI - Chat interface
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.8.3
+    image: ghcr.io/open-webui/open-webui:v0.8.12
     container_name: snflwr-frontend
     ports:
       - "${WEBUI_PORT:-3000}:8080"

@@ -3,7 +3,7 @@ services:
     # Pin to a tested version — the mounted ollama.py router must match
     # the Open WebUI codebase.  Update this tag together with
     # docker/compose/docker-compose.yml when upgrading.
-    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.8.3}
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.8.12}
     container_name: open-webui
     network_mode: host
     # ports and extra_hosts are not used with network_mode: host —

@@ -21,7 +21,7 @@ SNFLWR_ENABLED = True  # Toggle for emergency disable
 
 # The Open WebUI image version this middleware was tested against.
 # If the container's actual version differs, log a warning at import time.
-TESTED_WEBUI_VERSION = "v0.8.3"
+TESTED_WEBUI_VERSION = "v0.8.12"
 
 def _check_webui_version():
     try:

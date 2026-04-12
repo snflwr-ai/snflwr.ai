@@ -10,7 +10,7 @@ python-dotenv==1.0.1          # Environment configuration
 psycopg2-binary==2.9.10       # PostgreSQL adapter for production deployments
 
 # Cryptography & Security
-cryptography==46.0.6          # Encryption utilities (CVE-2026-26007, CVE-2026-34073 fix)
+cryptography==46.0.7          # Encryption utilities (CVE-2026-26007, CVE-2026-34073 fix)
 argon2-cffi==25.1.0           # Password hashing (Argon2)
 pynacl==1.6.2                 # Additional cryptographic primitives
 

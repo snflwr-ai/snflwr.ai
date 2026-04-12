@@ -133,13 +133,16 @@ class ProfileManager:
         # Insert into DB if possible
         try:
             self.db.execute_write(
-                "INSERT INTO child_profiles (profile_id, parent_id, name, age, grade, created_at, avatar, learning_level, daily_time_limit_minutes, is_active, total_sessions, total_questions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO child_profiles (profile_id, parent_id, name, age, grade, grade_level, tier, model_role, created_at, avatar, learning_level, daily_time_limit_minutes, is_active, total_sessions, total_questions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     profile_id,
                     parent_id,
                     name,
                     age,
                     grade,
+                    grade,
+                    "standard",
+                    "student",
                     created_at,
                     avatar,
                     learning_level,

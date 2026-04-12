@@ -138,7 +138,7 @@ All AI inference runs locally via [Ollama](https://ollama.com). The safety pipel
 <tr>
 <td width="33%" align="center">
 
-<img src="https://placehold.co/600x400/f8f9fa/495057?text=Chat+Interface" alt="Chat Interface" width="100%" />
+<img src="assets/chat-interface.png" alt="Chat Interface" width="100%" />
 
 **Chat Interface**<br>
 <sub>Students interact with a polished AI tutor</sub>
@@ -146,7 +146,7 @@ All AI inference runs locally via [Ollama](https://ollama.com). The safety pipel
 </td>
 <td width="33%" align="center">
 
-<img src="https://placehold.co/600x400/f8f9fa/495057?text=Parent+Dashboard" alt="Parent Dashboard" width="100%" />
+<img src="assets/parent-dashboard.png" alt="Parent Dashboard" width="100%" />
 
 **Parent Dashboard**<br>
 <sub>Monitor conversations and safety incidents</sub>

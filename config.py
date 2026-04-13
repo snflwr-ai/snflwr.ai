@@ -100,7 +100,9 @@ class _SystemConfig:
     # backend to forward requests to.  Defaults to OLLAMA_HOST.
     OLLAMA_PROXY_TARGET: str = os.getenv(
         "OLLAMA_PROXY_TARGET",
-        os.getenv("OLLAMA_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
+        os.getenv(
+            "OLLAMA_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        ),
     )
     # HTTP request timeout for RequestTimeoutMiddleware — must exceed OLLAMA_TIMEOUT
     # so the middleware never kills a request while Ollama is still generating.

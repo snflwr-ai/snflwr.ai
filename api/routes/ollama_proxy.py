@@ -27,7 +27,9 @@ _OLLAMA_READ_TIMEOUT = 300.0  # seconds — matches OLLAMA_TIMEOUT default
 async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     """Send *method* + *path* to the real Ollama backend and return the raw response."""
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}{path}"
-    async with httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT)) as client:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT)
+    ) as client:
         return await client.request(method, url, **kwargs)
 
 
@@ -155,7 +157,10 @@ async def _stream_chat_from_ollama(
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     try:
         req = client.build_request(
-            "POST", url, content=body, headers=headers,
+            "POST",
+            url,
+            content=body,
+            headers=headers,
         )
         resp = await client.send(req, stream=True)
     except httpx.ConnectError:
@@ -206,6 +211,9 @@ async def proxy_chat(request: Request) -> Response:
     # Admins bypass the safety pipeline entirely
     if role == "admin":
         logger.debug("Admin user %s — forwarding /api/chat directly", user_id)
+        # Suppress extended-thinking so OWU doesn't render a raw <thinking> block
+        body["think"] = False
+        body_bytes = _json.dumps(body).encode()
         fwd_headers = {
             k: v
             for k, v in request.headers.items()
@@ -215,7 +223,10 @@ async def proxy_chat(request: Request) -> Response:
             return await _stream_chat_from_ollama(body_bytes, fwd_headers)
         try:
             upstream = await _forward_request(
-                "POST", "/api/chat", content=body_bytes, headers=fwd_headers,
+                "POST",
+                "/api/chat",
+                content=body_bytes,
+                headers=fwd_headers,
             )
         except httpx.ConnectError:
             return JSONResponse(
@@ -281,7 +292,10 @@ async def proxy_chat(request: Request) -> Response:
 
     try:
         upstream = await _forward_request(
-            "POST", "/api/chat", content=body_bytes, headers=fwd_headers,
+            "POST",
+            "/api/chat",
+            content=body_bytes,
+            headers=fwd_headers,
         )
     except httpx.ConnectError:
         return JSONResponse(
@@ -299,6 +313,7 @@ async def proxy_chat(request: Request) -> Response:
 # ---------------------------------------------------------------------------
 # Pass-through endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/tags")
 async def proxy_tags(request: Request) -> Response:

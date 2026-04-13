@@ -248,3 +248,22 @@ class TestChatSafety:
                 )
 
         assert resp.status_code == 503
+
+
+class TestForkedFilesDeleted:
+    """The OWU router fork and middleware must not exist."""
+
+    def test_router_fork_deleted(self):
+        assert not os.path.exists(
+            "frontend/open-webui/backend/open_webui/routers/ollama.py"
+        ), "Router fork still exists — should be deleted"
+
+    def test_middleware_deleted(self):
+        assert not os.path.exists(
+            "frontend/open-webui/backend/open_webui/middleware/snflwr.py"
+        ), "Middleware still exists — should be deleted"
+
+    def test_middleware_init_deleted(self):
+        assert not os.path.exists(
+            "frontend/open-webui/backend/open_webui/middleware/__init__.py"
+        ), "Middleware __init__.py still exists — should be deleted"

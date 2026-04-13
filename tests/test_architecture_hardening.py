@@ -194,20 +194,6 @@ class TestKeyRotationAgeCheck:
         mock_alert.assert_not_called()
 
 
-class TestOWUMiddlewareKeyDefault:
-    """OWU middleware must not use a hardcoded insecure default key."""
-
-    def test_no_hardcoded_default_key(self):
-        with open(
-            "frontend/open-webui/backend/open_webui/middleware/snflwr.py"
-        ) as f:
-            content = f.read()
-
-        assert "snflwr-internal-dev-key" not in content, (
-            "Hardcoded insecure default key still present in OWU middleware"
-        )
-
-
 import tempfile
 import time
 

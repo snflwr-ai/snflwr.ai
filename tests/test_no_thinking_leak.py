@@ -43,15 +43,6 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-OWUI_FORK_PATH = (
-    REPO_ROOT
-    / "frontend"
-    / "open-webui"
-    / "backend"
-    / "open_webui"
-    / "routers"
-    / "ollama.py"
-)
 MODELFILE_PATH = REPO_ROOT / "models" / "Snflwr_AI_Kids.modelfile"
 
 
@@ -154,57 +145,36 @@ class TestSnflwrBackendDisablesThinking:
 
 
 # ---------------------------------------------------------------------------
-# Structural: OWUI fork admin-bypass branch sets payload["think"] = False
+# Structural: Ollama proxy admin-bypass branch sets body["think"] = False
 # ---------------------------------------------------------------------------
 
+PROXY_PATH = REPO_ROOT / "api" / "routes" / "ollama_proxy.py"
 
-class TestOwuiForkAdminBypassDisablesThinking:
+
+class TestProxyAdminBypassDisablesThinking:
     """
-    The admin-bypass branch in the OWUI fork must set payload["think"] = False
-    before forwarding the request directly to Ollama. This is a structural
-    text check because the fork file lives at
-    frontend/open-webui/backend/open_webui/routers/ollama.py and imports
-    from open_webui.*, which is not available inside the snflwr test
-    environment — we cannot exercise it as a Python module here.
+    The admin-bypass branch in the Ollama proxy must set body["think"] = False
+    before forwarding the request to Ollama.  Without this, admin/parent users
+    get a response with a populated ``thinking`` field which OWU renders as a
+    collapsible block, exposing raw model self-deliberation.
     """
 
     @pytest.fixture(scope="class")
-    def fork_source(self) -> str:
-        assert OWUI_FORK_PATH.is_file(), (
-            f"OWUI fork not found at {OWUI_FORK_PATH} — has the file been "
-            f"moved or renamed? If so, update OWUI_FORK_PATH in this test."
+    def proxy_source(self) -> str:
+        assert PROXY_PATH.is_file(), (
+            f"Ollama proxy not found at {PROXY_PATH}"
         )
-        return OWUI_FORK_PATH.read_text()
+        return PROXY_PATH.read_text()
 
-    def test_admin_bypass_sets_think_false(self, fork_source: str):
-        """
-        Confirm that the admin/parent direct-Ollama branch sets
-        payload["think"] = False. The exact assignment line lives near the
-        end of the `else:` arm of the `if not bypass_safety:` block (~lines
-        1422-1450 of ollama.py).
-        """
-        assert 'payload["think"] = False' in fork_source, (
-            "OWUI fork at frontend/open-webui/backend/open_webui/routers/"
-            "ollama.py must set payload['think'] = False on the admin "
-            "bypass branch. Without this, admin/parent users sending chat "
-            "requests through Open WebUI receive a response with a "
-            "populated `thinking` field which OWUI renders as a collapsible "
-            "block, exposing raw model self-deliberation. See "
-            "tests/test_no_thinking_leak.py module docstring for context."
+    def test_admin_bypass_sets_think_false(self, proxy_source: str):
+        assert 'body["think"] = False' in proxy_source, (
+            "Ollama proxy must set body['think'] = False on the admin "
+            "bypass branch to prevent thinking-field leaks in OWU."
         )
 
-    def test_admin_bypass_branch_still_present(self, fork_source: str):
-        """
-        Sanity check that the bypass branch we are guarding still exists.
-        If the OWUI router is rewritten to remove the admin bypass entirely
-        this test will fail loudly so the assertion above can be re-evaluated.
-        """
-        assert "Direct Ollama: no student profile" in fork_source, (
-            "The admin-bypass log marker is missing from the OWUI fork. "
-            "If the bypass branch has been intentionally removed, delete "
-            "TestOwuiForkAdminBypassDisablesThinking. Otherwise the fork "
-            "may have been overwritten by an upstream re-rebase — see "
-            "docker/compose/docker-compose.home.yml for the bind mount path."
+    def test_admin_bypass_branch_still_present(self, proxy_source: str):
+        assert 'role == "admin"' in proxy_source, (
+            "The admin-bypass branch is missing from the Ollama proxy."
         )
 
 

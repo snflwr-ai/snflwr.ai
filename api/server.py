@@ -705,6 +705,11 @@ app.include_router(dashboard.router, tags=["dashboard"])
 app.include_router(admin_dashboard.router, tags=["admin-dashboard"])
 app.include_router(thin_client.router, prefix="/api/thin-client", tags=["thin-client"])
 
+# Ollama-compatible proxy — OWU sends requests here instead of directly to Ollama
+from api.routes.ollama_proxy import router as ollama_proxy_router
+
+app.include_router(ollama_proxy_router)
+
 # Serve dashboard static assets (JS, CSS)
 from pathlib import Path as _Path
 from fastapi.staticfiles import StaticFiles

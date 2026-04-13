@@ -96,6 +96,12 @@ class _SystemConfig:
     OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "300"))
     OLLAMA_MAX_RETRIES: int = 3
     OLLAMA_RETRY_DELAY: int = 2
+    # When snflwr-api acts as an Ollama proxy, this is the real Ollama
+    # backend to forward requests to.  Defaults to OLLAMA_HOST.
+    OLLAMA_PROXY_TARGET: str = os.getenv(
+        "OLLAMA_PROXY_TARGET",
+        os.getenv("OLLAMA_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
+    )
     # HTTP request timeout for RequestTimeoutMiddleware — must exceed OLLAMA_TIMEOUT
     # so the middleware never kills a request while Ollama is still generating.
     REQUEST_TIMEOUT_SECONDS: int = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "360"))

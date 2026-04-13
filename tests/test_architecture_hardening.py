@@ -209,3 +209,86 @@ class TestOWUMiddlewareKeyDefault:
         assert "snflwr-internal-dev-key" not in content, (
             "Hardcoded insecure default key still present in OWU middleware"
         )
+
+
+import tempfile
+import time
+
+
+class TestSqliteRateLimiter:
+    """SQLite-backed rate limiter for home mode."""
+
+    def test_enforces_limit(self):
+        from api.middleware.auth import SqliteRateLimiter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "test.db")
+            limiter = SqliteRateLimiter(db_path)
+            for _ in range(3):
+                assert limiter.check("user1", "default", 3, 60) is True
+            assert limiter.check("user1", "default", 3, 60) is False
+
+    def test_persists_across_instances(self):
+        from api.middleware.auth import SqliteRateLimiter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "test.db")
+            limiter1 = SqliteRateLimiter(db_path)
+            for _ in range(3):
+                limiter1.check("user1", "default", 3, 60)
+
+            limiter2 = SqliteRateLimiter(db_path)
+            assert limiter2.check("user1", "default", 3, 60) is False
+
+    def test_cleans_expired_entries(self):
+        from api.middleware.auth import SqliteRateLimiter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "test.db")
+            limiter = SqliteRateLimiter(db_path)
+            for _ in range(3):
+                limiter.check("user1", "default", 3, 1)
+
+            time.sleep(1.1)
+            assert limiter.check("user1", "default", 3, 1) is True
+
+
+class TestRedisFailClosed:
+    """Production rate limiting must block on Redis errors."""
+
+    @patch("api.middleware.auth.system_config")
+    def test_blocks_request_on_redis_error(self, mock_cfg):
+        mock_cfg.REDIS_ENABLED = True
+        from api.middleware.auth import RedisRateLimiter
+
+        limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+        limiter.limits = {"default": (100, 60)}
+        limiter._redis = MagicMock()
+        limiter._redis.pipeline.side_effect = Exception("Connection refused")
+        limiter._fallback_requests = {}
+        limiter._fallback_lock = MagicMock()
+        limiter._sqlite_limiter = None
+        limiter._redis_healthy = True
+        limiter._redis_alert_sent = False
+
+        result = limiter._check_redis_rate_limit("user1", "default", 100, 60)
+        assert result is False
+
+    @patch("api.middleware.auth.system_config")
+    def test_redis_recovery_clears_flag(self, mock_cfg):
+        mock_cfg.REDIS_ENABLED = True
+        from api.middleware.auth import RedisRateLimiter
+
+        limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+        limiter.limits = {"default": (100, 60)}
+        limiter._redis_healthy = False
+        limiter._redis_alert_sent = True
+
+        mock_pipe = MagicMock()
+        mock_pipe.execute.return_value = [1]
+        limiter._redis = MagicMock()
+        limiter._redis.pipeline.return_value = mock_pipe
+
+        result = limiter._check_redis_rate_limit("user1", "default", 100, 60)
+        assert result is True
+        assert limiter._redis_healthy is True

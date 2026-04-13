@@ -292,3 +292,129 @@ class TestRedisFailClosed:
         result = limiter._check_redis_rate_limit("user1", "default", 100, 60)
         assert result is True
         assert limiter._redis_healthy is True
+
+
+class TestClassifierStateMachine:
+    """Stage 4 classifier state machine and recovery."""
+
+    def test_classify_returns_none_when_degraded(self):
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._available = False
+        clf._client = None
+        clf._state = "degraded"
+        result = clf.classify("test input")
+        assert result is None
+
+    def test_classify_blocks_and_transitions_on_error(self):
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._available = True
+        clf._state = "available"
+        clf._model = "test-model"
+        clf._state_since = datetime.now(timezone.utc)
+
+        mock_client = MagicMock()
+        mock_client.generate.side_effect = Exception("connection lost")
+        clf._client = mock_client
+        clf._OllamaError = Exception
+
+        result = clf.classify("test input")
+        assert result is not None
+        assert result.is_safe is False
+        assert clf._state == "degraded"
+
+    @patch("core.email_service.email_service.send_operator_alert")
+    def test_transition_to_degraded_sends_alert(self, mock_alert):
+        mock_alert.return_value = (True, None)
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._state = "available"
+        clf._state_since = datetime.now(timezone.utc)
+        clf._available = True
+
+        clf._transition_state("degraded")
+        assert clf._state == "degraded"
+        assert clf._available is False
+        mock_alert.assert_called_once()
+
+    @patch("core.email_service.email_service.send_operator_alert")
+    def test_transition_to_available_sends_recovery_alert(self, mock_alert):
+        mock_alert.return_value = (True, None)
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._state = "degraded"
+        clf._state_since = datetime.now(timezone.utc)
+        clf._available = False
+        clf._model = "test-model"
+
+        clf._transition_state("available")
+        assert clf._state == "available"
+        assert clf._available is True
+        mock_alert.assert_called_once()
+        call_str = str(mock_alert.call_args)
+        assert "recover" in call_str.lower()
+
+    def test_probe_returns_true_when_model_available(self):
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._model = "llama-guard3:8b"
+        mock_client = MagicMock()
+        mock_client.check_connection.return_value = (True, "0.1")
+        mock_client.list_models.return_value = (
+            True, [{"name": "llama-guard3:8b"}], None,
+        )
+        clf._client = mock_client
+        assert clf._probe_ollama() is True
+
+    def test_probe_returns_false_when_unreachable(self):
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._model = "llama-guard3:8b"
+        mock_client = MagicMock()
+        mock_client.check_connection.return_value = (False, None)
+        clf._client = mock_client
+        assert clf._probe_ollama() is False
+
+    def test_no_op_transition_same_state(self):
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._state = "disabled"
+        clf._state_since = datetime.now(timezone.utc)
+        original_since = clf._state_since
+
+        clf._transition_state("disabled")
+        assert clf._state_since == original_since  # Unchanged
+
+    def test_state_and_since_exposed(self):
+        from safety.pipeline import _SemanticClassifier
+
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._state = "available"
+        clf._state_since = datetime(2026, 4, 13, tzinfo=timezone.utc)
+        assert clf._state == "available"
+        assert clf._state_since.year == 2026
+
+
+class TestHealthEndpoint:
+    """Health endpoint reports rate limiter and classifier state."""
+
+    def test_health_includes_operational_fields(self):
+        from fastapi.testclient import TestClient
+        from api.server import app
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/health")
+        data = resp.json()
+        assert "rate_limiter" in data
+        assert data["rate_limiter"] in ("redis", "sqlite", "memory")
+        assert "safety_classifier" in data
+        assert data["safety_classifier"] in ("available", "degraded", "disabled")
+        assert "safety_classifier_since" in data

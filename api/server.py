@@ -980,8 +980,37 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
 
 @app.get("/health")
 async def health_check():
-    """Basic health check endpoint for load balancers"""
-    return {"status": "healthy"}
+    """Health check endpoint for load balancers and monitoring."""
+    from config import system_config as _cfg
+
+    # Determine rate limiter backend
+    if _cfg.REDIS_ENABLED:
+        rate_backend = "redis"
+    else:
+        rate_backend = "sqlite"  # SQLite fallback is default for home mode
+
+    # Determine classifier state
+    classifier_state = "disabled"
+    classifier_since = None
+    try:
+        from safety.pipeline import safety_pipeline
+
+        if hasattr(safety_pipeline, "_classifier"):
+            clf = safety_pipeline._classifier
+            classifier_state = getattr(clf, "_state", "disabled")
+            _since = getattr(clf, "_state_since", None)
+            if _since:
+                classifier_since = _since.isoformat()
+    except Exception:
+        pass
+
+    return {
+        "status": "healthy",
+        "rate_limiter": rate_backend,
+        "rate_limiter_healthy": True,
+        "safety_classifier": classifier_state,
+        "safety_classifier_since": classifier_since,
+    }
 
 
 @app.get("/health/detailed")

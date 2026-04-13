@@ -566,8 +566,7 @@ class SqliteRateLimiter:
             "(key TEXT NOT NULL, timestamp REAL NOT NULL)"
         )
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rate_limits_key "
-            "ON rate_limits (key)"
+            "CREATE INDEX IF NOT EXISTS idx_rate_limits_key " "ON rate_limits (key)"
         )
         conn.commit()
         conn.close()
@@ -707,7 +706,11 @@ class RedisRateLimiter:
             if current_count > max_requests:
                 logger.warning(
                     "Rate limit exceeded: %s (%s) — %d/%d in %ds",
-                    key, limit_type, current_count, max_requests, window_seconds,
+                    key,
+                    limit_type,
+                    current_count,
+                    max_requests,
+                    window_seconds,
                 )
                 return False
             return True
@@ -741,7 +744,9 @@ class RedisRateLimiter:
     ) -> bool:
         """Fallback rate limiting: SQLite if available, else in-memory."""
         if self._sqlite_limiter:
-            return self._sqlite_limiter.check(key, limit_type, max_requests, window_seconds)
+            return self._sqlite_limiter.check(
+                key, limit_type, max_requests, window_seconds
+            )
 
         # In-memory fallback (per-process only)
         with self._fallback_lock:

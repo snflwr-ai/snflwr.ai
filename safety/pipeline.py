@@ -891,9 +891,7 @@ class _SemanticClassifier:
 
         if new_state == "available":
             self._available = True
-            logger.info(
-                "Safety classifier state: %s -> available", old_state
-            )
+            logger.info("Safety classifier state: %s -> available", old_state)
             try:
                 from core.email_service import email_service
 
@@ -908,9 +906,7 @@ class _SemanticClassifier:
                 pass  # Alert is best-effort
         else:
             self._available = False
-            logger.warning(
-                "Safety classifier state: %s -> %s", old_state, new_state
-            )
+            logger.warning("Safety classifier state: %s -> %s", old_state, new_state)
             if old_state == "available":
                 try:
                     from core.email_service import email_service

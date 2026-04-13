@@ -323,9 +323,7 @@ async def lifespan(app: FastAPI):
         if hasattr(safety_pipeline, "_classifier"):
             clf = safety_pipeline._classifier
             classifier_probe_task = asyncio.create_task(clf.run_health_probe())
-            logger.info(
-                "Classifier health probe started (state=%s)", clf._state
-            )
+            logger.info("Classifier health probe started (state=%s)", clf._state)
     except Exception as exc:
         logger.warning("Could not start classifier health probe: %s", exc)
 

@@ -85,3 +85,55 @@ class TestKeyRotationConfig:
             validator = ProductionConfigValidator()
             errors, _warnings = validator.validate()
             assert any("insecure" in e.lower() for e in errors)
+
+
+class TestDualKeyAuth:
+    """Dual-key authentication in auth middleware."""
+
+    def test_primary_key_authenticates(self):
+        with patch("api.middleware.auth.INTERNAL_API_KEY", "new-key-primary"), \
+             patch("api.middleware.auth.INTERNAL_API_KEY_PREVIOUS", None):
+            from api.middleware.auth import get_current_session
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            try:
+                result = loop.run_until_complete(
+                    get_current_session("Bearer new-key-primary")
+                )
+            finally:
+                loop.close()
+            assert result is not None
+            assert result.user_id == "internal_service"
+
+    def test_previous_key_authenticates_during_rotation(self):
+        with patch("api.middleware.auth.INTERNAL_API_KEY", "new-key-primary"), \
+             patch("api.middleware.auth.INTERNAL_API_KEY_PREVIOUS", "old-key-previous"):
+            from api.middleware.auth import get_current_session
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            try:
+                result = loop.run_until_complete(
+                    get_current_session("Bearer old-key-previous")
+                )
+            finally:
+                loop.close()
+            assert result is not None
+            assert result.user_id == "internal_service"
+
+    def test_random_key_rejected(self):
+        with patch("api.middleware.auth.INTERNAL_API_KEY", "new-key-primary"), \
+             patch("api.middleware.auth.INTERNAL_API_KEY_PREVIOUS", "old-key-previous"):
+            from api.middleware.auth import get_current_session
+            import asyncio
+            from fastapi import HTTPException
+
+            loop = asyncio.new_event_loop()
+            try:
+                with pytest.raises(HTTPException):
+                    loop.run_until_complete(
+                        get_current_session("Bearer totally-wrong-key")
+                    )
+            finally:
+                loop.close()

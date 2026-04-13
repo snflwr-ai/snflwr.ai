@@ -12,7 +12,7 @@ from functools import wraps
 from core.authentication import auth_manager, AuthSession
 from core.profile_manager import ProfileManager
 from storage.db_adapters import DB_ERRORS
-from config import INTERNAL_API_KEY
+from config import INTERNAL_API_KEY, INTERNAL_API_KEY_PREVIOUS
 from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
@@ -61,9 +61,23 @@ async def get_current_session(authorization: str = Header(None)) -> AuthSession:
     token = authorization.split(" ")[1]
 
     # Check for internal API key (server-to-server calls from Open WebUI)
-    # Use constant-time comparison to prevent timing side-channel attacks
+    # Use constant-time comparison to prevent timing side-channel attacks.
+    # Accept both current and previous key for zero-downtime rotation.
     if hmac.compare_digest(token, INTERNAL_API_KEY):
         logger.info("Authenticated via internal API key (Open WebUI middleware)")
+        return AuthSession(
+            user_id="internal_service",
+            role="admin",
+            session_token=token,
+            email="internal@snflwr.ai",
+        )
+    if INTERNAL_API_KEY_PREVIOUS and hmac.compare_digest(
+        token, INTERNAL_API_KEY_PREVIOUS
+    ):
+        logger.warning(
+            "Request authenticated with previous API key "
+            "-- rotation in progress or stale config"
+        )
         return AuthSession(
             user_id="internal_service",
             role="admin",

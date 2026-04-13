@@ -40,3 +40,48 @@ class TestOperatorAlert:
                 subject="Test", description="test"
             )
         assert result is True  # Not a failure, just skipped
+
+
+import os
+from datetime import datetime, timezone, timedelta
+
+
+class TestKeyRotationConfig:
+    """INTERNAL_API_KEY rotation config validation."""
+
+    def test_previous_key_defaults_to_none(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INTERNAL_API_KEY_PREVIOUS", None)
+            import importlib
+            import config as _cfg
+            importlib.reload(_cfg)
+            assert _cfg.INTERNAL_API_KEY_PREVIOUS is None
+
+    def test_previous_key_reads_from_env(self):
+        with patch.dict(
+            os.environ, {"INTERNAL_API_KEY_PREVIOUS": "old-key-abc123"}, clear=False
+        ):
+            import importlib
+            import config as _cfg
+            importlib.reload(_cfg)
+            assert _cfg.INTERNAL_API_KEY_PREVIOUS == "old-key-abc123"
+
+    def test_max_age_days_defaults_to_90(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INTERNAL_API_KEY_MAX_AGE_DAYS", None)
+            import importlib
+            import config as _cfg
+            importlib.reload(_cfg)
+            assert _cfg.INTERNAL_API_KEY_MAX_AGE_DAYS == 90
+
+    def test_insecure_default_rejected_in_prod(self):
+        """Production validation must reject snflwr-internal-dev-key."""
+        from config import ProductionConfigValidator
+        with patch.dict(
+            os.environ,
+            {"INTERNAL_API_KEY": "snflwr-internal-dev-key", "SNFLWR_ENV": "production"},
+            clear=False,
+        ):
+            validator = ProductionConfigValidator()
+            errors, _warnings = validator.validate()
+            assert any("insecure" in e.lower() for e in errors)

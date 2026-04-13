@@ -4,7 +4,10 @@ Provides authentication and authorization for API routes
 """
 
 import hmac
+import os
+import sqlite3
 import threading
+import time as _time
 from typing import Optional
 from fastapi import HTTPException, Header, Depends, status
 from functools import wraps
@@ -12,7 +15,7 @@ from functools import wraps
 from core.authentication import auth_manager, AuthSession
 from core.profile_manager import ProfileManager
 from storage.db_adapters import DB_ERRORS
-from config import INTERNAL_API_KEY
+from config import INTERNAL_API_KEY, INTERNAL_API_KEY_PREVIOUS, system_config
 from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
@@ -61,9 +64,23 @@ async def get_current_session(authorization: str = Header(None)) -> AuthSession:
     token = authorization.split(" ")[1]
 
     # Check for internal API key (server-to-server calls from Open WebUI)
-    # Use constant-time comparison to prevent timing side-channel attacks
+    # Use constant-time comparison to prevent timing side-channel attacks.
+    # Accept both current and previous key for zero-downtime rotation.
     if hmac.compare_digest(token, INTERNAL_API_KEY):
         logger.info("Authenticated via internal API key (Open WebUI middleware)")
+        return AuthSession(
+            user_id="internal_service",
+            role="admin",
+            session_token=token,
+            email="internal@snflwr.ai",
+        )
+    if INTERNAL_API_KEY_PREVIOUS and hmac.compare_digest(
+        token, INTERNAL_API_KEY_PREVIOUS
+    ):
+        logger.warning(
+            "Request authenticated with previous API key "
+            "-- rotation in progress or stale config"
+        )
         return AuthSession(
             user_id="internal_service",
             role="admin",
@@ -534,6 +551,60 @@ except ImportError:
     pass
 
 
+class SqliteRateLimiter:
+    """Persistent sliding-window rate limiter backed by SQLite.
+
+    Designed for home/single-instance deployments where Redis is not available.
+    Survives container restarts, unlike the in-memory fallback.
+    """
+
+    def __init__(self, db_path: str) -> None:
+        self._db_path = db_path
+        conn = sqlite3.connect(self._db_path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS rate_limits "
+            "(key TEXT NOT NULL, timestamp REAL NOT NULL)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rate_limits_key " "ON rate_limits (key)"
+        )
+        conn.commit()
+        conn.close()
+
+    def check(
+        self, key: str, limit_type: str, max_requests: int, window_seconds: int
+    ) -> bool:
+        """Return True if the request is allowed, False if rate-limited."""
+        now = _time.time()
+        cutoff = now - window_seconds
+        cache_key = f"{limit_type}:{key}"
+
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.execute(
+                "DELETE FROM rate_limits WHERE key = ? AND timestamp < ?",
+                (cache_key, cutoff),
+            )
+            row = conn.execute(
+                "SELECT COUNT(*) FROM rate_limits WHERE key = ? AND timestamp >= ?",
+                (cache_key, cutoff),
+            ).fetchone()
+            count = row[0] if row else 0
+
+            if count >= max_requests:
+                conn.commit()
+                return False
+
+            conn.execute(
+                "INSERT INTO rate_limits (key, timestamp) VALUES (?, ?)",
+                (cache_key, now),
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
 class RedisRateLimiter:
     """
     Redis-backed rate limiter for distributed/multi-instance deployments.
@@ -550,7 +621,24 @@ class RedisRateLimiter:
         self._redis = None
         self._fallback_requests = {}  # In-memory fallback if Redis unavailable
         self._fallback_lock = threading.Lock()
+        self._redis_healthy = True
+        self._redis_alert_sent = False
+        self._sqlite_limiter = None
         self._initialize_redis()
+
+        # Use SQLite fallback for persistence when Redis is unavailable
+        if not self._redis:
+            try:
+                from config import DATA_DIR
+
+                db_path = os.path.join(DATA_DIR, "snflwr.db")
+                self._sqlite_limiter = SqliteRateLimiter(db_path)
+                logger.warning(
+                    "Rate limiter using SQLite fallback (single-instance only). "
+                    "Enable Redis for distributed rate limiting."
+                )
+            except Exception as exc:
+                logger.error("Failed to init SQLite rate limiter: %s", exc)
 
     def _initialize_redis(self):
         """Initialize Redis connection for rate limiting"""
@@ -600,38 +688,67 @@ class RedisRateLimiter:
     def _check_redis_rate_limit(
         self, key: str, limit_type: str, max_requests: int, window_seconds: int
     ) -> bool:
-        """Redis-based rate limiting with atomic increment"""
+        """Redis-based rate limiting with atomic increment."""
         try:
-            # Create Redis key with type namespace
             redis_key = f"snflwr:ratelimit:{limit_type}:{key}"
-
-            # Use Redis pipeline for atomic increment + expire
             pipe = self._redis.pipeline()
             pipe.incr(redis_key)
             pipe.expire(redis_key, window_seconds)
             results = pipe.execute()
-
             current_count = results[0]
+
+            # Redis recovered — clear unhealthy flag
+            if not self._redis_healthy:
+                self._redis_healthy = True
+                self._redis_alert_sent = False
+                logger.info("Redis connection recovered — rate limiting restored")
 
             if current_count > max_requests:
                 logger.warning(
-                    f"Rate limit exceeded for {key} "
-                    f"(limit: {max_requests}/{window_seconds}s, current: {current_count})"
+                    "Rate limit exceeded: %s (%s) — %d/%d in %ds",
+                    key,
+                    limit_type,
+                    current_count,
+                    max_requests,
+                    window_seconds,
                 )
                 return False
-
             return True
+        except Exception as exc:
+            self._redis_healthy = False
+            logger.error("Redis error during rate limit check: %s", exc)
 
-        except RedisError as e:
-            logger.error(f"Redis error during rate limit check: {e}")
-            # Fail open on Redis errors (allow request) to prevent outages
-            return True
+            if system_config.REDIS_ENABLED:
+                # Production: fail closed — block the request
+                if not self._redis_alert_sent:
+                    self._redis_alert_sent = True
+                    try:
+                        from core.email_service import email_service
+
+                        email_service.send_operator_alert(
+                            subject="Redis rate limiter failure — failing closed",
+                            description=(
+                                f"Redis is unreachable. Rate limiting is blocking all "
+                                f"requests as a safety measure. Error: {exc}"
+                            ),
+                        )
+                    except Exception:
+                        pass  # Alert is best-effort; the block is mandatory
+                return False
+            else:
+                # Home mode: fall through to SQLite/in-memory fallback
+                return True
 
     def _check_fallback_rate_limit(
         self, key: str, limit_type: str, max_requests: int, window_seconds: int
     ) -> bool:
-        # Note: per-process only; use Redis for cross-worker rate limiting in production
-        """In-memory fallback for when Redis is unavailable"""
+        """Fallback rate limiting: SQLite if available, else in-memory."""
+        if self._sqlite_limiter:
+            return self._sqlite_limiter.check(
+                key, limit_type, max_requests, window_seconds
+            )
+
+        # In-memory fallback (per-process only)
         with self._fallback_lock:
             now = datetime.now(timezone.utc)
             cache_key = f"{limit_type}:{key}"

@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, Optional, Tuple
 
@@ -827,6 +828,9 @@ class _SemanticClassifier:
         self._available = False
         self._model: Optional[str] = None
         self._client = None
+        self._state = "disabled"  # "available", "degraded", "disabled"
+        self._state_since = datetime.now(timezone.utc)
+        self._probe_task = None
 
         try:
             from utils.ollama_client import (
@@ -834,13 +838,6 @@ class _SemanticClassifier:
                 OllamaError as _OE,
             )  # noqa: F811
 
-            # Use a dedicated short-timeout client for the classifier.
-            # The global ollama_client has a 300s timeout (same as the middleware's
-            # httpx timeout), so a slow first-inference on a freshly-pulled model
-            # would cause a ReadTimeout race that surfaces as "Safety pipeline
-            # unavailable" instead of a graceful blocked/skip response.
-            # 45s is enough for a warm model; on cold load it will fail-closed
-            # (block the message) and recover on the next request once loaded.
             self._client = _OllamaClient(timeout=45, max_retries=1)
             self._OllamaError = _OE
 
@@ -851,24 +848,9 @@ class _SemanticClassifier:
                 )
                 return
 
-            # Determine which model to use (prefer configured > fallbacks)
-            preferred = getattr(safety_config, "SAFETY_MODEL", "llama-guard3:8b")
-            fallbacks = getattr(
-                safety_config, "SAFETY_MODEL_FALLBACKS", ["llama-guard3:1b"]
-            )
-            success, models, _err = self._client.list_models()
-            if success and models:
-                names = [m.get("name", "") for m in models]
-                if preferred in names:
-                    self._model = preferred
-                else:
-                    for fallback in fallbacks:
-                        if fallback in names:
-                            self._model = fallback
-                            break
-
+            self._model = self._find_model()
             if self._model:
-                self._available = True
+                self._transition_state("available")
                 logger.info("Semantic classifier ready (model=%s)", self._model)
             else:
                 logger.warning(
@@ -881,6 +863,102 @@ class _SemanticClassifier:
             )
         except Exception as exc:  # Intentional: init must not crash
             logger.warning("Semantic classifier init failed: %s", exc)
+
+    def _find_model(self) -> Optional[str]:
+        """Find the best available safety model from preferred + fallbacks."""
+        preferred = getattr(safety_config, "SAFETY_MODEL", "llama-guard3:8b")
+        fallbacks = getattr(
+            safety_config, "SAFETY_MODEL_FALLBACKS", ["llama-guard3:1b"]
+        )
+        success, models, _err = self._client.list_models()
+        if success and models:
+            names = [m.get("name", "") for m in models]
+            if preferred in names:
+                return preferred
+            for fb in fallbacks:
+                if fb in names:
+                    return fb
+        return None
+
+    def _transition_state(self, new_state: str) -> None:
+        """Transition classifier state with logging and alerting."""
+        old_state = getattr(self, "_state", "disabled")
+        if old_state == new_state:
+            return
+
+        self._state = new_state
+        self._state_since = datetime.now(timezone.utc)
+
+        if new_state == "available":
+            self._available = True
+            logger.info("Safety classifier state: %s -> available", old_state)
+            try:
+                from core.email_service import email_service
+
+                email_service.send_operator_alert(
+                    subject="Safety classifier recovered",
+                    description=(
+                        f"Semantic classification re-enabled (was {old_state}). "
+                        f"Model: {self._model}"
+                    ),
+                )
+            except Exception:
+                pass  # Alert is best-effort
+        else:
+            self._available = False
+            logger.warning("Safety classifier state: %s -> %s", old_state, new_state)
+            if old_state == "available":
+                try:
+                    from core.email_service import email_service
+
+                    email_service.send_operator_alert(
+                        subject="Safety classifier degraded",
+                        description=(
+                            "Semantic classifier lost Ollama connection. "
+                            "Deterministic safety stages (1-3, 5) still protecting. "
+                            "Auto-recovery probing every 60s."
+                        ),
+                    )
+                except Exception:
+                    pass
+
+    def _probe_ollama(self) -> bool:
+        """Lightweight health check: is Ollama reachable with a safety model?"""
+        if self._client is None:
+            return False
+        try:
+            ok, _version = self._client.check_connection()
+            if not ok:
+                return False
+            model = self._find_model()
+            if model:
+                self._model = model
+                return True
+            return False
+        except Exception:
+            return False
+
+    async def run_health_probe(self) -> None:
+        """Background task: probe Ollama periodically, auto-recover."""
+        import asyncio
+
+        while True:
+            try:
+                interval = 60 if self._state in ("degraded", "disabled") else 300
+                await asyncio.sleep(interval)
+
+                loop = asyncio.get_event_loop()
+                healthy = await loop.run_in_executor(None, self._probe_ollama)
+                if healthy and self._state != "available":
+                    self._transition_state("available")
+                elif not healthy and self._state == "available":
+                    self._transition_state("degraded")
+                elif not healthy:
+                    logger.debug("Classifier probe: still %s", self._state)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.debug("Classifier probe error: %s", exc)
 
     # --------------------------------------------------------------------- #
 
@@ -904,6 +982,7 @@ class _SemanticClassifier:
 
             if not success or response is None:
                 logger.error("Ollama generation failed; failing closed.")
+                self._transition_state("degraded")
                 return _block(
                     Severity.MAJOR,
                     Category.CLASSIFIER_ERROR,
@@ -917,6 +996,7 @@ class _SemanticClassifier:
             logger.error(
                 "Stage 4 (classifier) error, failing closed: %s", exc, exc_info=True
             )
+            self._transition_state("degraded")
             return _block(
                 Severity.MAJOR,
                 Category.CLASSIFIER_ERROR,

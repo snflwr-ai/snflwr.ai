@@ -16,6 +16,11 @@ from datetime import datetime
 
 import sys
 import os
+
+# OWU middleware requires INTERNAL_API_KEY to be set at import time
+if not os.getenv("INTERNAL_API_KEY"):
+    os.environ["INTERNAL_API_KEY"] = "test-key-for-middleware-integration-tests"
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'frontend', 'open-webui', 'backend'))
 
 from open_webui.middleware.snflwr import (

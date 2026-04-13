@@ -307,7 +307,10 @@ class TestRedisRateLimiter:
         result = limiter.check_rate_limit("user-123", "default")
         assert result is False
 
-    def test_check_rate_limit_redis_exception_falls_back(self):
+    @patch("api.middleware.auth.system_config")
+    def test_check_rate_limit_redis_exception_fails_closed(self, mock_cfg):
+        """Redis errors fail closed when REDIS_ENABLED=True (production)."""
+        mock_cfg.REDIS_ENABLED = True
         try:
             from redis.exceptions import RedisError as _RedisError
         except ImportError:
@@ -317,9 +320,9 @@ class TestRedisRateLimiter:
         mock_pipeline.execute.side_effect = _RedisError("redis down")
         mock_client.pipeline.return_value = mock_pipeline
         limiter = self._make_limiter(redis_enabled=True, mock_client=mock_client)
-        # Fails open (returns True) on Redis errors
+        # Fails closed (returns False) on Redis errors in production
         result = limiter.check_rate_limit("user-123", "default")
-        assert result is True
+        assert result is False
 
     def test_get_remaining_no_redis(self):
         limiter = self._make_limiter()

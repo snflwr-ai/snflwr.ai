@@ -410,7 +410,10 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
     # VIOLENCE
     # =================================================================
     "VIOLENCE": [
-        (r"\bhurt\s+(someone|people|them|him|her|a\s+person)\b", "violence intent (EN)"),
+        (
+            r"\bhurt\s+(someone|people|them|him|her|a\s+person)\b",
+            "violence intent (EN)",
+        ),
         (r"\bkill(er|ing|s)?\b", "violence term (EN)"),
         (r"\bmurder(er|ous|ing|s)?\b", "violence term (EN)"),
         (r"\bschoolshoot\w*\b", "violence term (EN)"),

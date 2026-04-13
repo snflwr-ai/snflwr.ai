@@ -141,18 +141,23 @@ async def check_key_rotation_age() -> None:
     age = datetime.now(timezone.utc) - INTERNAL_API_KEY_CREATED_AT
     age_days = age.days
     if age_days > INTERNAL_API_KEY_MAX_AGE_DAYS:
-        msg = (
-            f"Internal API key is {age_days} days old "
-            f"(max recommended: {INTERNAL_API_KEY_MAX_AGE_DAYS}). "
-            f"Rotate it with: python -c 'import secrets; print(secrets.token_hex(32))'"
+        logger.warning(
+            "Internal API key is %d days old (max recommended: %d). "
+            "Rotate it with: python -c 'import secrets; print(secrets.token_hex(32))'",
+            age_days,
+            INTERNAL_API_KEY_MAX_AGE_DAYS,
         )
-        logger.warning(msg)
         try:
             from core.email_service import email_service
 
             email_service.send_operator_alert(
                 subject="API key rotation overdue",
-                description=msg,
+                description=(
+                    f"Internal API key is {age_days} days old "
+                    f"(max recommended: {INTERNAL_API_KEY_MAX_AGE_DAYS}). "
+                    f"Rotate it with: python -c "
+                    f"'import secrets; print(secrets.token_hex(32))'"
+                ),
             )
         except Exception:
             pass  # Alert is best-effort; the warning is logged

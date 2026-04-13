@@ -882,7 +882,7 @@ class _SemanticClassifier:
 
     def _transition_state(self, new_state: str) -> None:
         """Transition classifier state with logging and alerting."""
-        old_state = self._state
+        old_state = getattr(self, "_state", "disabled")
         if old_state == new_state:
             return
 

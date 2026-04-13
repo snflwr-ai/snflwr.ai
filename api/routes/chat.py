@@ -241,13 +241,19 @@ async def send_chat_message(
             raise HTTPException(status_code=403, detail="Profile is inactive")
 
         # Admin testing mode — ephemeral in-memory session, no history, no DB writes.
-        # Only applies when admin has no child profile (no_profile_ sentinel).
-        is_admin_test = auth_session.role == "admin" and request.profile_id.startswith(
-            "no_profile_"
+        # Only applies when a real admin has no child profile (no_profile_ sentinel).
+        # The internal service relaying from OWU is never in admin-test mode.
+        is_admin_test = (
+            auth_session.role == "admin"
+            and auth_session.user_id != "internal_service"
+            and request.profile_id.startswith("no_profile_")
         )
 
-        # All admins bypass the safety pipeline, monitoring, and response filtering.
-        skip_safety = auth_session.role == "admin"
+        # Real admins bypass the safety pipeline, monitoring, and response filtering.
+        # The internal service account (Open WebUI middleware) relays student messages
+        # and must NOT skip safety — it's acting on behalf of a student.
+        is_internal_service = auth_session.user_id == "internal_service"
+        skip_safety = auth_session.role == "admin" and not is_internal_service
 
         # Get or create session
         # Open WebUI sends each message as an independent request, so reuse

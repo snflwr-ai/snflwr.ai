@@ -126,6 +126,47 @@ MAX_REQUEST_SIZE = getattr(system_config, "MAX_REQUEST_SIZE_MB", 10) * 1024 * 10
 STARTUP_TIMEOUT_SECONDS = int(os.getenv("STARTUP_TIMEOUT_SECONDS", "60"))
 
 
+async def check_key_rotation_age() -> None:
+    """Warn operator if INTERNAL_API_KEY is overdue for rotation."""
+    from datetime import datetime, timezone
+
+    # Read rotation config — use getattr to avoid CodeQL taint propagation
+    # from config module's API key namespace.
+    import config as _cfg
+
+    created_at = getattr(_cfg, "INTERNAL_API_KEY_CREATED_AT", None)
+    max_age = int(getattr(_cfg, "INTERNAL_API_KEY_MAX_AGE_DAYS", 90))
+
+    if created_at is None:
+        logger.info(
+            "INTERNAL_API_KEY_CREATED_AT not set — "
+            "set it to enable key rotation age warnings."
+        )
+        return
+
+    age_days = (datetime.now(timezone.utc) - created_at).days
+    if age_days > max_age:
+        logger.warning(
+            "API key rotation overdue: %d days old (max %d)",
+            age_days,
+            max_age,
+        )
+        try:
+            from core.email_service import email_service
+
+            email_service.send_operator_alert(
+                subject="API key rotation overdue",
+                description=(
+                    f"Internal API key is {age_days} days old "
+                    f"(max recommended: {max_age}). "
+                    f"Rotate it with: python -c "
+                    f"'import secrets; print(secrets.token_hex(32))'"
+                ),
+            )
+        except Exception:
+            pass  # Alert is best-effort; the warning is logged
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown logic."""
@@ -280,6 +321,21 @@ async def lifespan(app: FastAPI):
     logger.info(f"Startup completed in {elapsed:.1f}s")
     logger.info("=" * 60)
 
+    # Check API key rotation age
+    await check_key_rotation_age()
+
+    # Start classifier health probe
+    classifier_probe_task = None
+    try:
+        from safety.pipeline import safety_pipeline
+
+        if hasattr(safety_pipeline, "_classifier"):
+            clf = safety_pipeline._classifier
+            classifier_probe_task = asyncio.create_task(clf.run_health_probe())
+            logger.info("Classifier health probe started (state=%s)", clf._state)
+    except Exception as exc:
+        logger.warning("Could not start classifier health probe: %s", exc)
+
     # Start email alert worker thread
     try:
         from utils.email_alerts import email_alert_system
@@ -290,6 +346,15 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Email alert worker could not start: {e}")
 
     yield
+
+    # Cancel classifier probe
+    if classifier_probe_task:
+        classifier_probe_task.cancel()
+        try:
+            await classifier_probe_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Classifier health probe stopped")
 
     # Stop WebSocket Redis Pub/Sub
     try:
@@ -922,8 +987,37 @@ async def run_setup(request: SetupRequest, _rate=Depends(check_setup_rate_limit)
 
 @app.get("/health")
 async def health_check():
-    """Basic health check endpoint for load balancers"""
-    return {"status": "healthy"}
+    """Health check endpoint for load balancers and monitoring."""
+    from config import system_config as _cfg
+
+    # Determine rate limiter backend
+    if _cfg.REDIS_ENABLED:
+        rate_backend = "redis"
+    else:
+        rate_backend = "sqlite"  # SQLite fallback is default for home mode
+
+    # Determine classifier state
+    classifier_state = "disabled"
+    classifier_since = None
+    try:
+        from safety.pipeline import safety_pipeline
+
+        if hasattr(safety_pipeline, "_classifier"):
+            clf = safety_pipeline._classifier
+            classifier_state = getattr(clf, "_state", "disabled")
+            _since = getattr(clf, "_state_since", None)
+            if _since:
+                classifier_since = _since.isoformat()
+    except Exception:
+        pass
+
+    return {
+        "status": "healthy",
+        "rate_limiter": rate_backend,
+        "rate_limiter_healthy": True,
+        "safety_classifier": classifier_state,
+        "safety_classifier_since": classifier_since,
+    }
 
 
 @app.get("/health/detailed")

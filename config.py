@@ -1,9 +1,10 @@
 import os
 import secrets
 import warnings
+from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # Load .env files if present (production first, then dev fallback).
 # .env.production takes priority — it's what setup_production.py generates.
@@ -451,6 +452,47 @@ class _SystemConfig:
         }
 
 
+class ProductionConfigValidator:
+    """Standalone validator that returns (errors, warnings) without raising."""
+
+    def validate(self) -> Tuple[List[str], List[str]]:
+        """
+        Run production security checks.
+
+        Returns:
+            Tuple of (errors, warnings) — both are lists of strings.
+            Never raises; callers decide how to handle errors.
+        """
+        errors: List[str] = []
+        warnings_list: List[str] = []
+
+        snflwr_env = os.getenv("SNFLWR_ENV", "").lower()
+        is_prod = snflwr_env == "production"
+        is_prod_like = snflwr_env in {"staging", "production"}
+
+        # Internal API Key
+        internal_key = os.getenv("INTERNAL_API_KEY", "snflwr-internal-dev-key")
+        _KNOWN_INSECURE_KEYS = {
+            "snflwr-internal-dev-key",
+            "CHANGE-THIS-generate-with-secrets-token-hex-32",
+        }
+        if internal_key in _KNOWN_INSECURE_KEYS or len(internal_key) < 32:
+            if is_prod or is_prod_like:
+                errors.append(
+                    "INTERNAL_API_KEY is insecure (default, placeholder, or too short). "
+                    "This key grants admin-level API access. "
+                    "Set INTERNAL_API_KEY to a strong random value (>= 32 chars): "
+                    "python -c 'import secrets; print(secrets.token_hex(32))'"
+                )
+            else:
+                warnings_list.append(
+                    "INTERNAL_API_KEY is insecure (default, placeholder, or too short). "
+                    "Set INTERNAL_API_KEY to a strong random value for production."
+                )
+
+        return errors, warnings_list
+
+
 @dataclass
 class _SafetyConfig:
     PROHIBITED_KEYWORDS = {
@@ -636,3 +678,14 @@ else:
         "INTERNAL_API_KEY not set — using auto-generated ephemeral key. "
         "Set INTERNAL_API_KEY in .env for persistent server-to-server auth."
     )
+
+INTERNAL_API_KEY_PREVIOUS: Optional[str] = os.getenv("INTERNAL_API_KEY_PREVIOUS")
+
+INTERNAL_API_KEY_MAX_AGE_DAYS: int = int(
+    os.getenv("INTERNAL_API_KEY_MAX_AGE_DAYS", "90")
+)
+
+_created_at_raw = os.getenv("INTERNAL_API_KEY_CREATED_AT")
+INTERNAL_API_KEY_CREATED_AT: Optional[datetime] = (
+    datetime.fromisoformat(_created_at_raw) if _created_at_raw else None
+)

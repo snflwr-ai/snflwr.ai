@@ -951,9 +951,12 @@ class TestSemanticClassifier:
     def test_generation_failure_blocks(self):
         """When generate() fails, classifier should fail closed."""
         from safety.pipeline import _SemanticClassifier, Category
+        from datetime import datetime, timezone
         classifier = _SemanticClassifier.__new__(_SemanticClassifier)
         classifier._available = True
         classifier._model = "llama-guard3:8b"
+        classifier._state = "available"
+        classifier._state_since = datetime.now(timezone.utc)
 
         mock_client = MagicMock()
         mock_client.generate.return_value = (False, None, {})
@@ -968,9 +971,12 @@ class TestSemanticClassifier:
     def test_exception_fails_closed(self):
         """Any exception during classify should fail closed."""
         from safety.pipeline import _SemanticClassifier, Category
+        from datetime import datetime, timezone
         classifier = _SemanticClassifier.__new__(_SemanticClassifier)
         classifier._available = True
         classifier._model = "llama-guard3:8b"
+        classifier._state = "available"
+        classifier._state_since = datetime.now(timezone.utc)
 
         mock_client = MagicMock()
         mock_client.generate.side_effect = RuntimeError("connection lost")

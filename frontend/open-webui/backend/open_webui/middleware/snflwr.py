@@ -16,7 +16,12 @@ log = logging.getLogger(__name__)
 # Inside Docker, "localhost" is the container — use env var to reach the host
 import os
 SNFLWR_API_URL = os.getenv("SNFLWR_API_URL", "http://localhost:39150")
-SNFLWR_INTERNAL_KEY = os.getenv("INTERNAL_API_KEY", "snflwr-internal-dev-key")
+SNFLWR_INTERNAL_KEY = os.getenv("INTERNAL_API_KEY", "")
+if not SNFLWR_INTERNAL_KEY:
+    raise RuntimeError(
+        "INTERNAL_API_KEY environment variable is required. "
+        "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
+    )
 SNFLWR_ENABLED = True  # Toggle for emergency disable
 
 # The Open WebUI image version this middleware was tested against.

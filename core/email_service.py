@@ -887,6 +887,41 @@ class EmailService:
             logger.error(f"SMTP connection test failed: {error_msg}")
             return False, error_msg
 
+    def send_operator_alert(
+        self,
+        subject: str,
+        description: str,
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Send operational alert to the admin/operator.
+
+        Uses ADMIN_EMAIL from config. Skips silently if not configured
+        or SMTP is not enabled — the caller always logs regardless.
+        """
+        admin_email = getattr(system_config, "ADMIN_EMAIL", "")
+        if not admin_email:
+            logger.info("No ADMIN_EMAIL configured — operator alert skipped")
+            return True, None
+
+        if not self.enabled:
+            logger.warning(
+                "SMTP not configured — operator alert not sent (logged only)"
+            )
+            return True, None
+
+        html_body = (
+            f"<h2>snflwr.ai Operator Alert</h2>"
+            f"<p><strong>{html_escape(subject)}</strong></p>"
+            f"<p>{html_escape(description)}</p>"
+            f"<p><small>This is an automated alert from the snflwr.ai system.</small></p>"
+        )
+
+        return self._send_email(
+            to_email=admin_email,
+            subject=f"[snflwr.ai] {subject}",
+            html_body=html_body,
+        )
+
 
 # Global email service instance
 email_service = EmailService()

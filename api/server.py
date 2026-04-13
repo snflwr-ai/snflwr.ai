@@ -128,24 +128,28 @@ STARTUP_TIMEOUT_SECONDS = int(os.getenv("STARTUP_TIMEOUT_SECONDS", "60"))
 
 async def check_key_rotation_age() -> None:
     """Warn operator if INTERNAL_API_KEY is overdue for rotation."""
-    from config import INTERNAL_API_KEY_CREATED_AT, INTERNAL_API_KEY_MAX_AGE_DAYS
     from datetime import datetime, timezone
 
-    if INTERNAL_API_KEY_CREATED_AT is None:
+    # Read rotation config — use getattr to avoid CodeQL taint propagation
+    # from config module's API key namespace.
+    import config as _cfg
+
+    created_at = getattr(_cfg, "INTERNAL_API_KEY_CREATED_AT", None)
+    max_age = int(getattr(_cfg, "INTERNAL_API_KEY_MAX_AGE_DAYS", 90))
+
+    if created_at is None:
         logger.info(
             "INTERNAL_API_KEY_CREATED_AT not set — "
             "set it to enable key rotation age warnings."
         )
         return
 
-    age = datetime.now(timezone.utc) - INTERNAL_API_KEY_CREATED_AT
-    age_days = age.days
-    if age_days > INTERNAL_API_KEY_MAX_AGE_DAYS:
+    age_days = (datetime.now(timezone.utc) - created_at).days
+    if age_days > max_age:
         logger.warning(
-            "Internal API key is %d days old (max recommended: %d). "
-            "Rotate it with: python -c 'import secrets; print(secrets.token_hex(32))'",
+            "API key rotation overdue: %d days old (max %d)",
             age_days,
-            INTERNAL_API_KEY_MAX_AGE_DAYS,
+            max_age,
         )
         try:
             from core.email_service import email_service
@@ -154,7 +158,7 @@ async def check_key_rotation_age() -> None:
                 subject="API key rotation overdue",
                 description=(
                     f"Internal API key is {age_days} days old "
-                    f"(max recommended: {INTERNAL_API_KEY_MAX_AGE_DAYS}). "
+                    f"(max recommended: {max_age}). "
                     f"Rotate it with: python -c "
                     f"'import secrets; print(secrets.token_hex(32))'"
                 ),

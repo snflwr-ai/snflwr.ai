@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
 from config import system_config
@@ -143,6 +143,44 @@ def _ollama_block_response(model: str, block_message: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Streaming helper
+# ---------------------------------------------------------------------------
+
+
+async def _stream_chat_from_ollama(
+    body: bytes, headers: dict
+) -> StreamingResponse | JSONResponse:
+    """Open a streaming connection to Ollama and proxy chunks back."""
+    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
+    client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
+    try:
+        req = client.build_request(
+            "POST", url, content=body, headers=headers,
+        )
+        resp = await client.send(req, stream=True)
+    except httpx.ConnectError:
+        await client.aclose()
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Ollama backend unreachable"},
+        )
+
+    async def _yield_chunks():
+        try:
+            async for chunk in resp.aiter_bytes():
+                yield chunk
+        finally:
+            await resp.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        _yield_chunks(),
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/x-ndjson"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Chat endpoint with safety pipeline
 # ---------------------------------------------------------------------------
 
@@ -151,8 +189,7 @@ def _ollama_block_response(model: str, block_message: str) -> dict:
 async def proxy_chat(request: Request) -> Response:
     """POST /api/chat — run safety pipeline for students, pass-through for admins.
 
-    Only non-streaming (``stream=False``) is supported here.  Streaming is
-    handled in Task 4.
+    Supports both streaming (``stream=True``) and non-streaming responses.
     """
     try:
         body_bytes = await request.body()
@@ -169,16 +206,16 @@ async def proxy_chat(request: Request) -> Response:
     # Admins bypass the safety pipeline entirely
     if role == "admin":
         logger.debug("Admin user %s — forwarding /api/chat directly", user_id)
+        fwd_headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() not in ("host", "content-length")
+        }
+        if stream:
+            return await _stream_chat_from_ollama(body_bytes, fwd_headers)
         try:
             upstream = await _forward_request(
-                "POST",
-                "/api/chat",
-                content=body_bytes,
-                headers={
-                    k: v
-                    for k, v in request.headers.items()
-                    if k.lower() not in ("host", "content-length")
-                },
+                "POST", "/api/chat", content=body_bytes, headers=fwd_headers,
             )
         except httpx.ConnectError:
             return JSONResponse(
@@ -233,16 +270,18 @@ async def proxy_chat(request: Request) -> Response:
         return JSONResponse(content=_ollama_block_response(model, block_message))
 
     # Safe — forward to Ollama
+    fwd_headers = {
+        k: v
+        for k, v in request.headers.items()
+        if k.lower() not in ("host", "content-length")
+    }
+
+    if stream:
+        return await _stream_chat_from_ollama(body_bytes, fwd_headers)
+
     try:
         upstream = await _forward_request(
-            "POST",
-            "/api/chat",
-            content=body_bytes,
-            headers={
-                k: v
-                for k, v in request.headers.items()
-                if k.lower() not in ("host", "content-length")
-            },
+            "POST", "/api/chat", content=body_bytes, headers=fwd_headers,
         )
     except httpx.ConnectError:
         return JSONResponse(

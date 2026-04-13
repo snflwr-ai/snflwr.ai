@@ -137,3 +137,75 @@ class TestDualKeyAuth:
                     )
             finally:
                 loop.close()
+
+
+class TestKeyRotationAgeCheck:
+    """Background task warns when API key is overdue for rotation."""
+
+    @patch("core.email_service.email_service.send_operator_alert")
+    def test_warns_when_key_overdue(self, mock_alert):
+        mock_alert.return_value = (True, None)
+        import asyncio
+
+        old_date = datetime.now(timezone.utc) - timedelta(days=100)
+        loop = asyncio.new_event_loop()
+        try:
+            with patch(
+                "config.INTERNAL_API_KEY_CREATED_AT", old_date
+            ), patch("config.INTERNAL_API_KEY_MAX_AGE_DAYS", 90):
+                import importlib
+                import api.server as _srv
+                importlib.reload(_srv)
+                loop.run_until_complete(_srv.check_key_rotation_age())
+        finally:
+            loop.close()
+        mock_alert.assert_called_once()
+        call_str = str(mock_alert.call_args)
+        assert "100" in call_str
+
+    @patch("core.email_service.email_service.send_operator_alert")
+    def test_no_warning_when_key_fresh(self, mock_alert):
+        import asyncio
+
+        recent_date = datetime.now(timezone.utc) - timedelta(days=10)
+        loop = asyncio.new_event_loop()
+        try:
+            with patch(
+                "config.INTERNAL_API_KEY_CREATED_AT", recent_date
+            ), patch("config.INTERNAL_API_KEY_MAX_AGE_DAYS", 90):
+                import importlib
+                import api.server as _srv
+                importlib.reload(_srv)
+                loop.run_until_complete(_srv.check_key_rotation_age())
+        finally:
+            loop.close()
+        mock_alert.assert_not_called()
+
+    @patch("core.email_service.email_service.send_operator_alert")
+    def test_no_warning_when_created_at_not_set(self, mock_alert):
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        try:
+            with patch("config.INTERNAL_API_KEY_CREATED_AT", None):
+                import importlib
+                import api.server as _srv
+                importlib.reload(_srv)
+                loop.run_until_complete(_srv.check_key_rotation_age())
+        finally:
+            loop.close()
+        mock_alert.assert_not_called()
+
+
+class TestOWUMiddlewareKeyDefault:
+    """OWU middleware must not use a hardcoded insecure default key."""
+
+    def test_no_hardcoded_default_key(self):
+        with open(
+            "frontend/open-webui/backend/open_webui/middleware/snflwr.py"
+        ) as f:
+            content = f.read()
+
+        assert "snflwr-internal-dev-key" not in content, (
+            "Hardcoded insecure default key still present in OWU middleware"
+        )

@@ -126,6 +126,38 @@ MAX_REQUEST_SIZE = getattr(system_config, "MAX_REQUEST_SIZE_MB", 10) * 1024 * 10
 STARTUP_TIMEOUT_SECONDS = int(os.getenv("STARTUP_TIMEOUT_SECONDS", "60"))
 
 
+async def check_key_rotation_age() -> None:
+    """Warn operator if INTERNAL_API_KEY is overdue for rotation."""
+    from config import INTERNAL_API_KEY_CREATED_AT, INTERNAL_API_KEY_MAX_AGE_DAYS
+    from datetime import datetime, timezone
+
+    if INTERNAL_API_KEY_CREATED_AT is None:
+        logger.info(
+            "INTERNAL_API_KEY_CREATED_AT not set — "
+            "set it to enable key rotation age warnings."
+        )
+        return
+
+    age = datetime.now(timezone.utc) - INTERNAL_API_KEY_CREATED_AT
+    age_days = age.days
+    if age_days > INTERNAL_API_KEY_MAX_AGE_DAYS:
+        msg = (
+            f"Internal API key is {age_days} days old "
+            f"(max recommended: {INTERNAL_API_KEY_MAX_AGE_DAYS}). "
+            f"Rotate it with: python -c 'import secrets; print(secrets.token_hex(32))'"
+        )
+        logger.warning(msg)
+        try:
+            from core.email_service import email_service
+
+            email_service.send_operator_alert(
+                subject="API key rotation overdue",
+                description=msg,
+            )
+        except Exception:
+            pass  # Alert is best-effort; the warning is logged
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown logic."""
@@ -280,6 +312,23 @@ async def lifespan(app: FastAPI):
     logger.info(f"Startup completed in {elapsed:.1f}s")
     logger.info("=" * 60)
 
+    # Check API key rotation age
+    await check_key_rotation_age()
+
+    # Start classifier health probe
+    classifier_probe_task = None
+    try:
+        from safety.pipeline import safety_pipeline
+
+        if hasattr(safety_pipeline, "_classifier"):
+            clf = safety_pipeline._classifier
+            classifier_probe_task = asyncio.create_task(clf.run_health_probe())
+            logger.info(
+                "Classifier health probe started (state=%s)", clf._state
+            )
+    except Exception as exc:
+        logger.warning("Could not start classifier health probe: %s", exc)
+
     # Start email alert worker thread
     try:
         from utils.email_alerts import email_alert_system
@@ -290,6 +339,15 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Email alert worker could not start: {e}")
 
     yield
+
+    # Cancel classifier probe
+    if classifier_probe_task:
+        classifier_probe_task.cancel()
+        try:
+            await classifier_probe_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Classifier health probe stopped")
 
     # Stop WebSocket Redis Pub/Sub
     try:

@@ -154,10 +154,10 @@ class TestGetJWTSecret:
 
     def test_dev_reads_existing_valid_key_from_env_file(self):
         """Development mode reads existing valid JWT from .env file."""
-        test_dummy_value = "b" * 64  # test-only placeholder, not a credential
+        existing_secret = "b" * 64
         with tempfile.TemporaryDirectory() as tmpdir:
             env_path = Path(tmpdir) / ".env"
-            env_path.write_text("JWT_SECRET_KEY=" + test_dummy_value + "\n")
+            env_path.write_text(f"JWT_SECRET_KEY={existing_secret}\n")
 
             with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=False):
                 os.environ.pop("JWT_SECRET_KEY", None)
@@ -169,7 +169,7 @@ class TestGetJWTSecret:
                 finally:
                     config.__file__ = old_file
 
-            assert result == test_dummy_value
+            assert result == existing_secret
 
     def test_dev_skips_insecure_key_in_env_file(self):
         """Development mode skips insecure key found in .env file."""

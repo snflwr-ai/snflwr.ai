@@ -11,7 +11,7 @@ Pillow==12.1.1                # Image processing for UI
 customtkinter==5.2.2          # Modern UI components
 
 # Testing & Quality
-pytest==8.3.5                 # Testing framework
+pytest==9.0.3                 # Testing framework
 pytest-asyncio==0.24.0        # Async test support (required by pytest.ini asyncio_mode=auto)
 pytest-cov==6.0.0             # Coverage reporting
 pytest-mock==3.14.0           # Mocking utilities

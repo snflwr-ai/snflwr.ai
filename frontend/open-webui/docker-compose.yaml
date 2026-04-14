@@ -1,27 +1,21 @@
 services:
   open-webui:
-    # Pin to a tested version — the mounted ollama.py router must match
-    # the Open WebUI codebase.  Update this tag together with
-    # docker/compose/docker-compose.yml when upgrading.
     image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.8.12}
     container_name: open-webui
     network_mode: host
     # ports and extra_hosts are not used with network_mode: host —
     # the container shares the host network stack directly, so
-    # localhost:3000, localhost:11434, localhost:39150 all work as-is.
+    # localhost:3000, localhost:39150 all work as-is.
     volumes:
       - open-webui:/app/backend/data
-      # Mount snflwr.ai safety middleware and the modified router that calls it
-      - ./backend/open_webui/middleware:/app/backend/open_webui/middleware:ro
-      - ./backend/open_webui/routers/ollama.py:/app/backend/open_webui/routers/ollama.py:ro
     environment:
-      - 'OLLAMA_BASE_URL=http://localhost:11434'
-      - 'SNFLWR_API_URL=http://localhost:39150'
+      # OWU talks to snflwr-api's Ollama proxy — NOT directly to Ollama.
+      # Safety pipeline is enforced at the proxy layer.
+      - 'OLLAMA_BASE_URL=http://localhost:39150'
       - 'WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-snflwr-dev-secret}'
-      # Listen on port 3000 (mapped to host port 3000 via ports above)
       - 'PORT=3000'
-      # Model access controlled per-user/group in admin panel
-      - 'INTERNAL_API_KEY=${INTERNAL_API_KEY}'
+      # Forward user identity headers so the proxy can identify students
+      - 'ENABLE_FORWARD_USER_INFO_HEADERS=true'
       - 'BYPASS_MODEL_ACCESS_CONTROL=false'
       - 'WEBUI_AUTH=true'
       - 'DEFAULT_MODELS=snflwr.ai'

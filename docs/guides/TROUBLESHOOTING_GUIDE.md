@@ -674,14 +674,14 @@ docker build --progress=plain -f docker/Dockerfile -t snflwr-api .
 
 **Solutions:**
 ```bash
-# Check API is running
-curl http://localhost:8000/health
+# Check snflwr-api is running (OWU connects to its Ollama proxy)
+curl http://localhost:39150/health
 
 # Check CORS configuration
 # Frontend must be in CORS_ORIGINS
 
-# Update Open WebUI environment
-echo "SNFLWR_API_URL=http://localhost:8000" >> frontend/open-webui/.env
+# Verify OWU's OLLAMA_BASE_URL points at snflwr-api, not Ollama directly
+# In docker-compose: OLLAMA_BASE_URL=http://snflwr-api:39150
 
 # Check nginx reverse proxy (if used)
 nginx -t

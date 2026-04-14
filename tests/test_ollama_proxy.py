@@ -250,6 +250,38 @@ class TestChatSafety:
         assert resp.status_code == 503
 
 
+class TestProxyHealth:
+    """Proxy health endpoint verifies Ollama round-trip."""
+
+    def test_health_returns_healthy(self):
+        from fastapi.testclient import TestClient
+        app = _make_app()
+        client = TestClient(app)
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(200, json={"version": "0.9.0"}),
+        ):
+            resp = client.get("/api/health")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "healthy"
+            assert data["ollama"]["version"] == "0.9.0"
+
+    def test_health_returns_503_when_ollama_down(self):
+        from fastapi.testclient import TestClient
+        app = _make_app()
+        client = TestClient(app)
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("refused"),
+        ):
+            resp = client.get("/api/health")
+            assert resp.status_code == 503
+            assert resp.json()["status"] == "unhealthy"
+
+
 class TestForkedFilesDeleted:
     """The OWU router fork and middleware must not exist."""
 

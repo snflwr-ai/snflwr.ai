@@ -358,3 +358,32 @@ async def proxy_copy(request: Request) -> Response:
 @router.get("/version")
 async def proxy_version(request: Request) -> Response:
     return await _proxy_to_ollama(request, "/api/version")
+
+
+# ---------------------------------------------------------------------------
+# Proxy health check — verifies round-trip to Ollama
+# ---------------------------------------------------------------------------
+
+
+@router.get("/health")
+async def proxy_health() -> JSONResponse:
+    """Verify the proxy can reach the Ollama backend."""
+    try:
+        resp = await _forward_request("GET", "/api/version")
+        ollama_version = resp.json() if resp.status_code == 200 else None
+    except httpx.ConnectError:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "detail": "Ollama backend unreachable",
+                "target": system_config.OLLAMA_PROXY_TARGET,
+            },
+        )
+    return JSONResponse(
+        content={
+            "status": "healthy",
+            "ollama": ollama_version,
+            "target": system_config.OLLAMA_PROXY_TARGET,
+        },
+    )

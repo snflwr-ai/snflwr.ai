@@ -380,6 +380,13 @@ class SessionManager:
             "SELECT COUNT(*) as total_sessions, SUM(COALESCE(questions_asked,0)) as total_questions, SUM(COALESCE(duration_minutes,0)) as total_minutes FROM sessions WHERE profile_id = ?",
             (profile_id,),
         )
+        if not rows:
+            return {
+                "total_sessions": 0,
+                "total_questions": 0,
+                "total_minutes": 0,
+                "average_session_minutes": 0,
+            }
         r = rows[0]
         total_sessions = int(r["total_sessions"] or 0)
         total_questions = int(r["total_questions"] or 0)

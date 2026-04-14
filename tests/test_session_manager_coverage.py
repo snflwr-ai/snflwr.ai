@@ -56,8 +56,12 @@ class TestSessionErrors:
 class TestSessionManager:
     @pytest.fixture
     def mock_db(self):
-        with patch("storage.database.db_manager") as mock:
-            yield mock
+        from core.session_manager import session_manager
+        original_db = session_manager.db
+        mock = MagicMock()
+        session_manager.db = mock
+        yield mock
+        session_manager.db = original_db
 
     def test_create_session_raises_or_returns(self, mock_db):
         from core.session_manager import session_manager, SessionError

@@ -615,26 +615,23 @@ class TestWebSocketRoute:
 
 class TestWebSocketStatsEndpoint:
 
-    def _make_client_with_session(self, session):
-        """Create a TestClient with auth dependency patched to return session."""
+    def _make_client(self):
         from api.routes.websocket import router as _ws_router
-
         app = FastAPI()
         app.include_router(_ws_router, prefix="/ws")
-
-        async def _override():
-            return session
-
-        # Override using the function object imported by the router module
-        import api.middleware.auth as _auth_mod
-        app.dependency_overrides[_auth_mod.get_current_session] = _override
         return TestClient(app, raise_server_exceptions=False)
+
+    def _admin_headers(self):
+        from config import INTERNAL_API_KEY
+        return {"Authorization": f"Bearer {INTERNAL_API_KEY}"}
+
+    def _parent_headers(self):
+        return {"Authorization": "Bearer fake-parent-token"}
 
     def test_ws_stats_admin(self):
         """Admin GET /stats returns the stats dict."""
-        admin_session = make_auth_session(role="admin", user_id="admin-stats")
-        client = self._make_client_with_session(admin_session)
-        response = client.get("/ws/stats")
+        client = self._make_client()
+        response = client.get("/ws/stats", headers=self._admin_headers())
 
         assert response.status_code == 200
         data = response.json()
@@ -645,24 +642,24 @@ class TestWebSocketStatsEndpoint:
 
     def test_ws_stats_non_admin_returns_403(self):
         """Non-admin GET /stats returns HTTP 403."""
+        client = self._make_client()
         parent_session = make_auth_session(role="parent", user_id="parent-stats")
-        client = self._make_client_with_session(parent_session)
-        response = client.get("/ws/stats")
+        with patch("api.middleware.auth.auth_manager") as mock_auth:
+            mock_auth.validate_session.return_value = (True, parent_session)
+            response = client.get("/ws/stats", headers=self._parent_headers())
 
         assert response.status_code == 403
 
     def test_ws_stats_values_reflect_manager(self):
         """Stats endpoint reads live data from websocket_manager."""
-        admin_session = make_auth_session(role="admin", user_id="admin-live")
-        client = self._make_client_with_session(admin_session)
+        client = self._make_client()
 
-        # Patch websocket_manager to have a known state
         mock_mgr = MagicMock()
         mock_mgr.get_active_connections.return_value = 5
         mock_mgr.parent_connections = {"p1": {1, 2}, "p2": {3}}
 
         with patch("api.routes.websocket.websocket_manager", mock_mgr):
-            response = client.get("/ws/stats")
+            response = client.get("/ws/stats", headers=self._admin_headers())
 
         assert response.status_code == 200
         data = response.json()

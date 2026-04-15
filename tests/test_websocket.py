@@ -616,13 +616,18 @@ class TestWebSocketRoute:
 class TestWebSocketStatsEndpoint:
 
     def _make_client_with_session(self, session):
-        """Create a TestClient with the given session injected via dependency_overrides."""
-        # Use a local app instance to avoid cross-test contamination
+        """Create a TestClient with auth dependency patched to return session."""
         from api.routes.websocket import router as _ws_router
-        from api.middleware.auth import get_current_session as _gcs
+
         app = FastAPI()
         app.include_router(_ws_router, prefix="/ws")
-        app.dependency_overrides[_gcs] = lambda: session
+
+        async def _override():
+            return session
+
+        # Override using the function object imported by the router module
+        import api.middleware.auth as _auth_mod
+        app.dependency_overrides[_auth_mod.get_current_session] = _override
         return TestClient(app, raise_server_exceptions=False)
 
     def test_ws_stats_admin(self):

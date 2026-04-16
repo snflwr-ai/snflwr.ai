@@ -18,7 +18,7 @@ fastapi==0.135.1              # API framework (starlette CVE-2025-54121, CVE-202
 uvicorn[standard]==0.34.3     # ASGI server
 pydantic==2.12.5              # Data validation
 email-validator==2.3.0        # Required for Pydantic EmailStr
-python-multipart==0.0.22      # Form data parsing (CVE fix)
+python-multipart==0.0.26      # Form data parsing (CVE fix)
 python-jose[cryptography]==3.4.0  # JWT tokens
 
 # Redis (needed for rate limiter imports even when disabled)

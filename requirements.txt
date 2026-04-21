@@ -3,7 +3,7 @@
 # Updated 2026-04-01
 
 # Core Dependencies
-python-dotenv==1.0.1          # Environment configuration
+python-dotenv==1.2.2          # Environment configuration
 
 # Database
 # sqlite3 - Built-in Python module (no installation needed)

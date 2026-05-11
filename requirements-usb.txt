@@ -11,7 +11,7 @@ argon2-cffi==25.1.0           # Password hashing (Argon2)
 
 # HTTP & API
 requests==2.32.4              # HTTP client (CVE-2024-47081 fix)
-urllib3==2.6.3                # HTTP library (CVE-2025-66471, CVE-2026-21441 fix)
+urllib3==2.7.0                # HTTP library (CVE-2025-66471, CVE-2026-21441 fix)
 
 # Web Framework
 fastapi==0.135.1              # API framework (starlette CVE-2025-54121, CVE-2025-62727 fix)

@@ -48,17 +48,23 @@ class TestOllamaPassThrough:
 def _make_app():
     """Build a TestClient app with auth bypassed via dependency override.
 
-    Use this for tests that exercise proxy *behavior*; auth itself is
-    covered by TestProxyBearerAuth, which uses _make_app_real_auth().
+    Key the override on `proxy_mod.get_current_session` — the reference the
+    router captured at import time — rather than re-importing the symbol
+    from api.middleware.auth. A sibling test (test_auth_middleware.py's
+    Redis-fallback case) calls importlib.reload(api.middleware.auth) to
+    exercise the import-error path; after that reload, the symbol exported
+    from api.middleware.auth is a NEW function object, but ollama_proxy's
+    router still holds the OLD one. FastAPI matches overrides by object
+    identity, so we must key on the SAME reference the router did, which
+    is now only reachable via proxy_mod's own namespace.
     """
     from fastapi import FastAPI
-    from api.routes.ollama_proxy import router
-    from api.middleware.auth import get_current_session
+    import api.routes.ollama_proxy as proxy_mod
     from core.authentication import AuthSession
 
     app = FastAPI()
-    app.include_router(router)
-    app.dependency_overrides[get_current_session] = lambda: AuthSession(
+    app.include_router(proxy_mod.router)
+    app.dependency_overrides[proxy_mod.get_current_session] = lambda: AuthSession(
         user_id="internal_service",
         role="admin",
         session_token="test-token",

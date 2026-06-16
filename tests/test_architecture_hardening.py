@@ -95,11 +95,12 @@ class TestKeyRotationConfig:
         env.setdefault("INTERNAL_API_KEY", "x" * 64)
         env.setdefault("JWT_SECRET_KEY", "x" * 64)
 
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         result = subprocess.run(
             [_sys.executable, "-c",
              "from config import system_config; "
              "print('ENABLED:', system_config.DB_ENCRYPTION_ENABLED)"],
-            cwd="/home/prime/Repos/snflwr.ai",
+            cwd=repo_root,
             env=env, capture_output=True, text=True,
         )
         assert "ENABLED: True" in result.stdout, (
@@ -118,9 +119,10 @@ class TestKeyRotationConfig:
         env["ENVIRONMENT"] = "production"
         env.setdefault("JWT_SECRET_KEY", "x" * 64)
 
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         result = subprocess.run(
             [_sys.executable, "-c", "import config"],
-            cwd="/home/prime/Repos/snflwr.ai",
+            cwd=repo_root,
             env=env, capture_output=True, text=True,
         )
         assert result.returncode != 0

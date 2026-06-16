@@ -681,6 +681,18 @@ _internal_key_from_env = os.getenv("INTERNAL_API_KEY")
 if _internal_key_from_env:
     INTERNAL_API_KEY = _internal_key_from_env
 else:
+    # Hard-fail in any production-like environment. Auto-generating an
+    # ephemeral key means OWU's Bearer breaks on every container restart
+    # silently — and the proxy auth gate (audit C2) depends on this key.
+    _internal_env = os.getenv("ENVIRONMENT", "development").lower()
+    if _internal_env in ("production", "prod", "staging"):
+        raise RuntimeError(
+            "INTERNAL_API_KEY must be set for production deployments.\n"
+            "Generate one with:\n"
+            "    python -c 'import secrets; print(secrets.token_hex(32))'\n"
+            "and set INTERNAL_API_KEY in your .env (or run "
+            "scripts/setup_production.py)."
+        )
     INTERNAL_API_KEY = secrets.token_hex(32)
     warnings.warn(
         "INTERNAL_API_KEY not set — using auto-generated ephemeral key. "

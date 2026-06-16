@@ -83,6 +83,30 @@ class TestKeyRotationConfig:
             errors, _warnings = validator.validate()
             assert any("insecure" in e.lower() for e in errors)
 
+    def test_missing_key_hard_fails_in_production(self):
+        """Audit C7: an unset INTERNAL_API_KEY must NOT silently auto-generate
+        an ephemeral key in production — that rotates on every container
+        restart and breaks OWU ↔ snflwr-api auth without anyone noticing."""
+        import importlib
+        import sys
+
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("INTERNAL_API_KEY",)}
+        env["ENVIRONMENT"] = "production"
+        # Required so the prior production hard-fails don't trigger first.
+        env.setdefault("JWT_SECRET_KEY", "x" * 64)
+
+        with patch.dict(os.environ, env, clear=True):
+            # Force re-import so the module-level guard runs again.
+            sys.modules.pop("config", None)
+            with pytest.raises((RuntimeError, ImportError)) as exc_info:
+                importlib.import_module("config")
+            assert "INTERNAL_API_KEY" in str(exc_info.value)
+
+        # Restore the cached, valid config for the rest of the suite.
+        sys.modules.pop("config", None)
+        import config  # noqa: F401
+
 
 class TestDualKeyAuth:
     """Dual-key authentication in auth middleware."""

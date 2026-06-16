@@ -6,11 +6,11 @@
 python-dotenv==1.2.2          # Environment configuration
 
 # Cryptography & Security
-cryptography==46.0.7          # Encryption utilities (CVE-2026-26007 fix)
+cryptography==48.0.1          # Encryption utilities (CVE fixes through 48.0.1)
 argon2-cffi==25.1.0           # Password hashing (Argon2)
 
 # HTTP & API
-requests==2.32.4              # HTTP client (CVE-2024-47081 fix)
+requests==2.33.0              # HTTP client (CVE-2024-47081, CVE-2026-25645 fix)
 urllib3==2.7.0                # HTTP library (CVE-2025-66471, CVE-2026-21441 fix)
 
 # Web Framework
@@ -18,7 +18,7 @@ fastapi==0.135.1              # API framework (starlette CVE-2025-54121, CVE-202
 uvicorn[standard]==0.34.3     # ASGI server
 pydantic==2.12.5              # Data validation
 email-validator==2.3.0        # Required for Pydantic EmailStr
-python-multipart==0.0.27      # Form data parsing (CVE fix)
+python-multipart==0.0.32      # Form data parsing (CVE fixes through 0.0.32)
 python-jose[cryptography]==3.4.0  # JWT tokens
 
 # Redis (needed for rate limiter imports even when disabled)
@@ -26,7 +26,7 @@ redis==5.2.1                  # Redis client
 
 # AI/ML Integration
 ollama==0.4.7                 # Ollama Python client
-aiohttp==3.14.0               # Async HTTP client (CVE-2025-69223–69230 fix)
+aiohttp==3.14.1               # Async HTTP client (CVE fixes through 3.14.1)
 
 # Logging
 structlog==24.4.0             # Structured logging

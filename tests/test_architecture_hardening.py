@@ -201,6 +201,20 @@ import time
 class TestSqliteRateLimiter:
     """SQLite-backed rate limiter for home mode."""
 
+    def test_rate_limiter_initializes_sqlite_when_redis_unavailable(self):
+        """When Redis is disabled the RateLimiter must fall back to SQLite,
+        not to in-memory only. Earlier code raised ImportError on a missing
+        config.DATA_DIR symbol, silently degrading to in-memory."""
+        from unittest.mock import patch
+        from api.middleware.auth import RedisRateLimiter as RateLimiter
+        with patch("api.middleware.auth.RedisRateLimiter._initialize_redis",
+                   lambda self: None):
+            limiter = RateLimiter()
+        assert limiter._sqlite_limiter is not None, (
+            "SQLite limiter not initialized — rate limiting silently degraded "
+            "to in-memory (resets on every container restart)."
+        )
+
     def test_enforces_limit(self):
         from api.middleware.auth import SqliteRateLimiter
 

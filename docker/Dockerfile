@@ -13,9 +13,16 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends gcc g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt requirements.lock ./
+# Install from the hash-pinned lockfile. --require-hashes refuses to
+# install any package whose downloaded artifact does not match a hash in
+# the file, blocking PyPI typosquats and compromised mirrors. The
+# lockfile is generated with:
+#   pip-compile --allow-unsafe --generate-hashes \
+#       --output-file=requirements.lock requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --prefix=/install -r requirements.txt
+    pip install --no-cache-dir --prefix=/install \
+        --require-hashes -r requirements.lock
 
 # ---------------------------------------------------------------------------
 # Stage 2: Production runtime

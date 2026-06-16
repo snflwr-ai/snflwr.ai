@@ -83,6 +83,51 @@ class TestKeyRotationConfig:
             errors, _warnings = validator.validate()
             assert any("insecure" in e.lower() for e in errors)
 
+    def test_db_encryption_enabled_by_default(self):
+        """Audit C4: pilot installs were shipping plaintext SQLite. Default
+        must be encryption-on so the lazy path is FERPA-safe."""
+        import subprocess
+        import sys as _sys
+
+        env = {k: v for k, v in os.environ.items()
+               if k != "DB_ENCRYPTION_ENABLED"}
+        env["ENVIRONMENT"] = "development"
+        env.setdefault("INTERNAL_API_KEY", "x" * 64)
+        env.setdefault("JWT_SECRET_KEY", "x" * 64)
+
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        result = subprocess.run(
+            [_sys.executable, "-c",
+             "from config import system_config; "
+             "print('ENABLED:', system_config.DB_ENCRYPTION_ENABLED)"],
+            cwd=repo_root,
+            env=env, capture_output=True, text=True,
+        )
+        assert "ENABLED: True" in result.stdout, (
+            f"stdout={result.stdout!r}, stderr={result.stderr!r}"
+        )
+
+    def test_missing_key_hard_fails_in_production(self):
+        """Audit C7: an unset INTERNAL_API_KEY must NOT silently auto-generate
+        an ephemeral key in production — that rotates on every container
+        restart and breaks OWU ↔ snflwr-api auth without anyone noticing."""
+        import subprocess
+        import sys as _sys
+
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("INTERNAL_API_KEY",)}
+        env["ENVIRONMENT"] = "production"
+        env.setdefault("JWT_SECRET_KEY", "x" * 64)
+
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        result = subprocess.run(
+            [_sys.executable, "-c", "import config"],
+            cwd=repo_root,
+            env=env, capture_output=True, text=True,
+        )
+        assert result.returncode != 0
+        assert "INTERNAL_API_KEY" in result.stderr
+
 
 class TestDualKeyAuth:
     """Dual-key authentication in auth middleware."""
@@ -200,6 +245,20 @@ import time
 
 class TestSqliteRateLimiter:
     """SQLite-backed rate limiter for home mode."""
+
+    def test_rate_limiter_initializes_sqlite_when_redis_unavailable(self):
+        """When Redis is disabled the RateLimiter must fall back to SQLite,
+        not to in-memory only. Earlier code raised ImportError on a missing
+        config.DATA_DIR symbol, silently degrading to in-memory."""
+        from unittest.mock import patch
+        from api.middleware.auth import RedisRateLimiter as RateLimiter
+        with patch("api.middleware.auth.RedisRateLimiter._initialize_redis",
+                   lambda self: None):
+            limiter = RateLimiter()
+        assert limiter._sqlite_limiter is not None, (
+            "SQLite limiter not initialized — rate limiting silently degraded "
+            "to in-memory (resets on every container restart)."
+        )
 
     def test_enforces_limit(self):
         from api.middleware.auth import SqliteRateLimiter

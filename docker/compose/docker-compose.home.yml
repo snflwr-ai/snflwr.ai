@@ -102,6 +102,9 @@ services:
       # OWU talks to snflwr-api's Ollama proxy — NOT directly to Ollama.
       # Safety pipeline is enforced at the proxy layer.
       - OLLAMA_BASE_URL=http://snflwr-api:39150
+      # Bearer for the proxy. snflwr-api accepts INTERNAL_API_KEY as a
+      # server-to-server credential; without this, every chat returns 401.
+      - OLLAMA_API_KEY=${INTERNAL_API_KEY}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       # Forward user identity headers so the proxy can identify students
       - ENABLE_FORWARD_USER_INFO_HEADERS=true

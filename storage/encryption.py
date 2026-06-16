@@ -111,6 +111,31 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Master-key passphrase wrapping (audit C3) ------------------------------------
+# When MASTER_KEY_PASSPHRASE is set, the on-disk master key is encrypted under
+# a key derived from that passphrase via PBKDF2-HMAC-SHA256. Without the
+# passphrase, the key is unrecoverable — file-system access alone is no
+# longer sufficient to decrypt child data.
+#
+# Disk format (bytes):
+#     snflwr-wrapped-v1:<base64 16-byte salt>:<urlsafe-b64 fernet token>
+#
+_WRAPPED_KEY_MAGIC = b"snflwr-wrapped-v1:"
+_WRAPPED_KEY_KDF_ITERATIONS = 600_000  # OWASP 2024+ guidance for PBKDF2-SHA256
+
+
+def _derive_kek_from_passphrase(passphrase: str, salt: bytes) -> bytes:
+    """Derive a Fernet-shaped key-encryption-key from operator passphrase."""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=_WRAPPED_KEY_KDF_ITERATIONS,
+        backend=default_backend(),
+    )
+    raw = kdf.derive(passphrase.encode("utf-8"))
+    return base64.urlsafe_b64encode(raw)
+
 
 class EncryptionManager:
     """
@@ -133,6 +158,11 @@ class EncryptionManager:
         if key_dir is None:
             key_dir = system_config.APP_DATA_DIR
         self._key_file = Path(key_dir) / ".encryption_key"
+
+        # Optional passphrase wraps the master key on disk (audit C3).
+        self._passphrase: Optional[str] = os.getenv(
+            "MASTER_KEY_PASSPHRASE"
+        ) or None
 
         # Initialize or load encryption key
         self._initialize_encryption()
@@ -194,9 +224,31 @@ class EncryptionManager:
             # Ensure parent directory exists
             self._key_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Write key with restricted permissions
+            # Determine what bytes hit the disk: wrapped if a passphrase is
+            # configured, raw otherwise. Wrapping closes audit C3 — a copy
+            # of the file alone no longer recovers child data.
+            if self._passphrase:
+                salt = secrets.token_bytes(16)
+                kek = _derive_kek_from_passphrase(self._passphrase, salt)
+                wrapped_token = Fernet(kek).encrypt(self._master_key)
+                payload = (
+                    _WRAPPED_KEY_MAGIC
+                    + base64.b64encode(salt)
+                    + b":"
+                    + wrapped_token
+                )
+            else:
+                payload = self._master_key
+                logger.warning(
+                    "Master key written unwrapped (no MASTER_KEY_PASSPHRASE). "
+                    "Filesystem access to %s recovers all child data. "
+                    "Set MASTER_KEY_PASSPHRASE before production use.",
+                    self._key_file,
+                )
+
+            # Write payload with restricted permissions
             with open(self._key_file, "wb") as f:
-                f.write(self._master_key)
+                f.write(payload)
 
             # Set restrictive permissions (owner read/write only)
             os.chmod(self._key_file, 0o600)
@@ -228,7 +280,7 @@ class EncryptionManager:
 
         try:
             with open(self._key_file, "rb") as f:
-                self._master_key = f.read()
+                payload = f.read()
 
             # Check file permissions (mirror _save_master_key security check)
             actual_mode = os.stat(self._key_file).st_mode & 0o777
@@ -240,6 +292,31 @@ class EncryptionManager:
                     f"Refusing to use potentially compromised key. "
                     f"Fix with: chmod 600 {self._key_file}"
                 )
+
+            if payload.startswith(_WRAPPED_KEY_MAGIC):
+                # Wrapped format: requires MASTER_KEY_PASSPHRASE to unwrap.
+                if not self._passphrase:
+                    raise RuntimeError(
+                        "Master key file is passphrase-wrapped but "
+                        "MASTER_KEY_PASSPHRASE is not set. Provide the "
+                        "passphrase used at write time or restore the "
+                        "key from a backup."
+                    )
+                rest = payload[len(_WRAPPED_KEY_MAGIC):]
+                salt_b64, _, wrapped_token = rest.partition(b":")
+                if not wrapped_token:
+                    raise ValueError("Malformed wrapped master key payload")
+                try:
+                    salt = base64.b64decode(salt_b64)
+                    kek = _derive_kek_from_passphrase(self._passphrase, salt)
+                    self._master_key = Fernet(kek).decrypt(wrapped_token)
+                except InvalidToken as exc:
+                    raise RuntimeError(
+                        "Master key decryption failed — wrong "
+                        "MASTER_KEY_PASSPHRASE."
+                    ) from exc
+            else:
+                self._master_key = payload
 
             # Validate key format
             if len(self._master_key) != 44:  # Base64-encoded 32-byte key

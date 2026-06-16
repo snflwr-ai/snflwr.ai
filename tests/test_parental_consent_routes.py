@@ -361,7 +361,12 @@ class TestRevokeConsent:
         from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
 
         mock_db.execute_query.return_value = [{'parent_id': 'parent123'}]
-        mock_db.execute_write.return_value = None
+        # Wire up the transaction/cursor mocks so the cascade-delete succeeds:
+        # pre-flight finds the row, DELETE affects exactly one row.
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (1,)
+        mock_cursor.rowcount = 1
+        mock_db.transaction.return_value.__enter__.return_value.cursor.return_value = mock_cursor
 
         revocation = ConsentRevocation(
             profile_id="prof1",
@@ -370,6 +375,7 @@ class TestRevokeConsent:
 
         result = await revoke_parental_consent(revocation, parent_session)
         assert result["status"] == "success"
+        assert "permanently deleted" in result["message"]
 
     @pytest.mark.asyncio
     async def test_wrong_parent_cannot_revoke(

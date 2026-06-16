@@ -145,6 +145,17 @@ async def validate_csrf_token(request: Request) -> bool:
         "/api/chat/send",  # Server-to-server from Open WebUI middleware (Bearer token auth, no CSRF cookie)
         "/api/internal/",  # Internal server-to-server endpoints
         "/api/thin-client/",  # Thin client API (non-browser clients, no CSRF cookies)
+        # Ollama-compatible proxy paths — Open WebUI calls these server-to-server
+        # over the trusted Docker network and forwards user identity via
+        # X-OpenWebUI-User-* headers; safety pipeline runs inside the proxy handler.
+        "/api/chat",
+        "/api/generate",
+        "/api/show",
+        "/api/embed",
+        "/api/embeddings",
+        "/api/pull",
+        "/api/copy",
+        "/api/delete",
         "/docs",  # Swagger docs
         "/openapi.json",  # OpenAPI spec
         "/health",  # Health check

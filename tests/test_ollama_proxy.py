@@ -17,12 +17,7 @@ class TestOllamaProxyConfig:
 class TestOllamaPassThrough:
     def test_tags_endpoint_proxied(self):
         from fastapi.testclient import TestClient
-        from api.routes.ollama_proxy import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = TestClient(_make_app())
 
         with patch(
             "api.routes.ollama_proxy._forward_request",
@@ -35,12 +30,7 @@ class TestOllamaPassThrough:
 
     def test_ollama_unreachable_returns_503(self):
         from fastapi.testclient import TestClient
-        from api.routes.ollama_proxy import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = TestClient(_make_app())
 
         with patch(
             "api.routes.ollama_proxy._forward_request",
@@ -56,6 +46,29 @@ class TestOllamaPassThrough:
 # ---------------------------------------------------------------------------
 
 def _make_app():
+    """Build a TestClient app with auth bypassed via dependency override.
+
+    Use this for tests that exercise proxy *behavior*; auth itself is
+    covered by TestProxyBearerAuth, which uses _make_app_real_auth().
+    """
+    from fastapi import FastAPI
+    from api.routes.ollama_proxy import router
+    from api.middleware.auth import get_current_session
+    from core.authentication import AuthSession
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_session] = lambda: AuthSession(
+        user_id="internal_service",
+        role="admin",
+        session_token="test-token",
+        email="internal@snflwr.ai",
+    )
+    return app
+
+
+def _make_app_real_auth():
+    """No dependency override — exercises the real Bearer check."""
     from fastapi import FastAPI
     from api.routes.ollama_proxy import router
     app = FastAPI()
@@ -978,6 +991,86 @@ def _async_iter(items):
         for item in items:
             yield item
     return _gen
+
+
+def _bearer():
+    """Authorization header carrying the configured INTERNAL_API_KEY."""
+    from config import INTERNAL_API_KEY
+    return {"Authorization": f"Bearer {INTERNAL_API_KEY}"}
+
+
+class TestProxyBearerAuth:
+    """The Ollama proxy must require a Bearer token (INTERNAL_API_KEY or session).
+
+    Without this, anyone able to reach :39150 directly can claim
+    X-OpenWebUI-User-Role=admin and bypass the entire safety pipeline.
+    """
+
+    def test_chat_without_bearer_returns_401(self):
+        from fastapi.testclient import TestClient
+        client = TestClient(_make_app_real_auth())
+        resp = client.post(
+            "/api/chat",
+            json=_chat_body(),
+            headers={
+                "X-OpenWebUI-User-Id": "uid-spoof",
+                "X-OpenWebUI-User-Role": "admin",
+            },
+        )
+        assert resp.status_code == 401
+
+    def test_chat_with_invalid_bearer_returns_401(self):
+        from fastapi.testclient import TestClient
+        client = TestClient(_make_app_real_auth())
+        resp = client.post(
+            "/api/chat",
+            json=_chat_body(),
+            headers={
+                "Authorization": "Bearer not-the-real-key",
+                "X-OpenWebUI-User-Id": "uid-spoof",
+                "X-OpenWebUI-User-Role": "admin",
+            },
+        )
+        assert resp.status_code == 401
+
+    def test_tags_without_bearer_returns_401(self):
+        from fastapi.testclient import TestClient
+        client = TestClient(_make_app_real_auth())
+        resp = client.get("/api/tags")
+        assert resp.status_code == 401
+
+    def test_chat_with_valid_bearer_proceeds(self):
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app_real_auth())
+        ollama_resp = httpx.Response(200, json={
+            "model": "test-model",
+            "message": {"role": "assistant", "content": "ok"},
+            "done": True,
+        })
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = _safe_result()
+        mock_pipeline.check_output.return_value = _safe_result()
+
+        with (
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-x")),
+            patch.object(proxy_mod, "_forward_request",
+                         new_callable=AsyncMock, return_value=ollama_resp),
+        ):
+            with patch("safety.pipeline.safety_pipeline", mock_pipeline):
+                resp = client.post(
+                    "/api/chat",
+                    json=_chat_body(),
+                    headers={
+                        **_bearer(),
+                        "X-OpenWebUI-User-Id": "uid-real",
+                        "X-OpenWebUI-User-Role": "user",
+                    },
+                )
+        assert resp.status_code == 200
 
 
 class TestForkedFilesDeleted:

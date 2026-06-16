@@ -10,16 +10,21 @@ import json as _json
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
+from api.middleware.auth import get_current_session
 from config import system_config
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api")
+# Every Ollama-compatible proxy route requires a Bearer token. The expected
+# caller is Open WebUI, which carries INTERNAL_API_KEY via OLLAMA_API_KEY env.
+# Without this gate, anyone able to reach the internal port can forge
+# X-OpenWebUI-User-Role: admin and bypass the safety pipeline (audit C2).
+router = APIRouter(prefix="/api", dependencies=[Depends(get_current_session)])
 
 _OLLAMA_READ_TIMEOUT = 300.0  # seconds — matches OLLAMA_TIMEOUT default
 

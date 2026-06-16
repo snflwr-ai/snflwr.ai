@@ -149,19 +149,62 @@ def _ollama_block_response(model: str, block_message: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+async def _stream_chunks_from_ollama(body: bytes, headers: dict):
+    """Open a streaming connection to Ollama and yield raw NDJSON chunks.
+
+    Separated from the response builder so the chat handler can buffer chunks
+    through ``check_output`` before forwarding them to the client.
+    """
+    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
+    client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
+    req = client.build_request("POST", url, content=body, headers=headers)
+    resp = await client.send(req, stream=True)
+    try:
+        async for chunk in resp.aiter_bytes():
+            yield chunk
+    finally:
+        await resp.aclose()
+        await client.aclose()
+
+
+def _extract_text_from_ndjson_chunks(chunks: list[bytes]) -> str:
+    """Concatenate the ``message.content`` fields from a list of Ollama NDJSON chunks."""
+    parts: list[str] = []
+    buffer = b"".join(chunks)
+    for line in buffer.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = _json.loads(line)
+        except (_json.JSONDecodeError, ValueError):
+            continue
+        msg = obj.get("message") if isinstance(obj, dict) else None
+        if isinstance(msg, dict):
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                parts.append(content)
+    return "".join(parts)
+
+
+def _ollama_block_stream_bytes(model: str, block_message: str) -> bytes:
+    """Build a single-chunk NDJSON stream body that delivers a safe-fallback block."""
+    chunk = _json.dumps(_ollama_block_response(model, block_message)) + "\n"
+    return chunk.encode()
+
+
 async def _stream_chat_from_ollama(
     body: bytes, headers: dict
 ) -> StreamingResponse | JSONResponse:
-    """Open a streaming connection to Ollama and proxy chunks back."""
+    """Stream Ollama chat response back to the client without inspection.
+
+    Used by the admin pass-through path; student traffic uses
+    ``_stream_chunks_from_ollama`` + ``check_output`` instead.
+    """
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     try:
-        req = client.build_request(
-            "POST",
-            url,
-            content=body,
-            headers=headers,
-        )
+        req = client.build_request("POST", url, content=body, headers=headers)
         resp = await client.send(req, stream=True)
     except httpx.ConnectError:
         await client.aclose()
@@ -288,7 +331,55 @@ async def proxy_chat(request: Request) -> Response:
     }
 
     if stream:
-        return await _stream_chat_from_ollama(body_bytes, fwd_headers)
+        try:
+            collected: list[bytes] = []
+            async for chunk in _stream_chunks_from_ollama(body_bytes, fwd_headers):
+                collected.append(chunk)
+        except httpx.ConnectError:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Ollama backend unreachable"},
+            )
+
+        # Output safety pipeline runs on the full assembled assistant message.
+        # Fail-closed: any unsafe content replaces the stream with a single
+        # safe-fallback NDJSON chunk so harmful text never reaches the child.
+        assistant_text = _extract_text_from_ndjson_chunks(collected)
+        try:
+            from safety.pipeline import safety_pipeline
+            out_result = safety_pipeline.check_output(
+                text=assistant_text, age=age, profile_id=profile_id
+            )
+        except Exception as exc:
+            logger.error(
+                "check_output raised on streaming path: %s", exc, exc_info=True
+            )
+            block_msg = "I'm unable to process that request right now."
+            return Response(
+                content=_ollama_block_stream_bytes(model, block_msg),
+                media_type="application/x-ndjson",
+            )
+
+        if not out_result.is_safe:
+            block_msg = (
+                out_result.modified_content
+                or safety_pipeline.get_safe_response(out_result)
+                or "I'm not able to share that. Let's try something else!"
+            )
+            logger.info(
+                "Output safety blocked streamed response for profile %s (category=%s)",
+                profile_id,
+                out_result.category,
+            )
+            return Response(
+                content=_ollama_block_stream_bytes(model, block_msg),
+                media_type="application/x-ndjson",
+            )
+
+        return Response(
+            content=b"".join(collected),
+            media_type="application/x-ndjson",
+        )
 
     try:
         upstream = await _forward_request(
@@ -302,6 +393,42 @@ async def proxy_chat(request: Request) -> Response:
             status_code=503,
             content={"detail": "Ollama backend unreachable"},
         )
+
+    # Output safety pipeline on the non-streaming response.
+    try:
+        upstream_json = upstream.json()
+    except (ValueError, _json.JSONDecodeError):
+        upstream_json = None
+
+    if isinstance(upstream_json, dict):
+        msg = upstream_json.get("message")
+        assistant_text = (
+            msg.get("content", "") if isinstance(msg, dict) else ""
+        )
+        try:
+            from safety.pipeline import safety_pipeline
+            out_result = safety_pipeline.check_output(
+                text=assistant_text, age=age, profile_id=profile_id
+            )
+        except Exception as exc:
+            logger.error(
+                "check_output raised on non-streaming path: %s", exc, exc_info=True
+            )
+            block_msg = "I'm unable to process that request right now."
+            return JSONResponse(content=_ollama_block_response(model, block_msg))
+
+        if not out_result.is_safe:
+            block_msg = (
+                out_result.modified_content
+                or safety_pipeline.get_safe_response(out_result)
+                or "I'm not able to share that. Let's try something else!"
+            )
+            logger.info(
+                "Output safety blocked response for profile %s (category=%s)",
+                profile_id,
+                out_result.category,
+            )
+            return JSONResponse(content=_ollama_block_response(model, block_msg))
 
     return Response(
         content=upstream.content,

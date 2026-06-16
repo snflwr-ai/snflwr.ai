@@ -640,23 +640,20 @@ class TestStudentStreaming:
 
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
+        mock_pipeline.check_output.return_value = safe
 
-        async def _fake_stream(body, headers):
-            from fastapi.responses import StreamingResponse
-
-            async def gen():
-                yield b'{"done":false}\n'
-                yield b'{"done":true}\n'
-
-            return StreamingResponse(gen(), media_type="application/x-ndjson")
+        chunks = [
+            b'{"message":{"role":"assistant","content":"hello"},"done":false}\n',
+            b'{"message":{"role":"assistant","content":""},"done":true}\n',
+        ]
 
         with (
             patch.object(proxy_mod, "_get_user_from_headers",
                          return_value=("uid-stream", "user")),
             patch.object(proxy_mod, "_get_profile_for_user",
                          new=AsyncMock(return_value="profile-stream")),
-            patch.object(proxy_mod, "_stream_chat_from_ollama",
-                         side_effect=_fake_stream),
+            patch.object(proxy_mod, "_stream_chunks_from_ollama",
+                         new=_async_iter(chunks)),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             resp = client.post(
@@ -670,6 +667,8 @@ class TestStudentStreaming:
 
         assert resp.status_code == 200
         assert b"done" in resp.content
+        assert b"hello" in resp.content
+        mock_pipeline.check_output.assert_called_once()
 
 
 class TestStreamChatFromOllama:
@@ -812,6 +811,173 @@ class TestPassThroughEndpoints:
         ):
             resp = client.get("/api/version")
             assert resp.status_code == 200
+
+
+class TestOutputFiltering:
+    """The proxy must run check_output on Ollama responses, not just check_input.
+
+    Critical: an attacker who jailbreaks the input filter must not get unsafe
+    model output through to the student.
+    """
+
+    def test_unsafe_nonstreaming_response_replaced_with_safe_fallback(self):
+        """Ollama returns unsafe content; check_output blocks; client sees fallback."""
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        unsafe_text = "Here's how to make a weapon: ..."
+        ollama_resp = httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "message": {"role": "assistant", "content": unsafe_text},
+                "done": True,
+            },
+        )
+
+        safe_input = _safe_result()
+        unsafe_output = _block_result("Let's talk about something else!")
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = safe_input
+        mock_pipeline.check_output.return_value = unsafe_output
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-1", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-1")),
+            patch.object(proxy_mod, "_forward_request",
+                         new_callable=AsyncMock, return_value=ollama_resp),
+        ):
+            with patch("safety.pipeline.safety_pipeline", mock_pipeline):
+                resp = client.post(
+                    "/api/chat",
+                    json=_chat_body(),
+                    headers={
+                        "X-OpenWebUI-User-Id": "uid-1",
+                        "X-OpenWebUI-User-Role": "user",
+                    },
+                )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert unsafe_text not in data["message"]["content"], (
+            "Unsafe content leaked through — check_output not wired."
+        )
+        assert "Let's talk about something else!" in data["message"]["content"]
+        mock_pipeline.check_output.assert_called_once()
+
+    def test_safe_nonstreaming_response_passes_through(self):
+        """When check_output passes, Ollama content reaches the client unchanged."""
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        safe_text = "The Pythagorean theorem states that a² + b² = c²."
+        ollama_resp = httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "message": {"role": "assistant", "content": safe_text},
+                "done": True,
+            },
+        )
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = _safe_result()
+        mock_pipeline.check_output.return_value = _safe_result()
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-2", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-2")),
+            patch.object(proxy_mod, "_forward_request",
+                         new_callable=AsyncMock, return_value=ollama_resp),
+        ):
+            with patch("safety.pipeline.safety_pipeline", mock_pipeline):
+                resp = client.post(
+                    "/api/chat",
+                    json=_chat_body(),
+                    headers={
+                        "X-OpenWebUI-User-Id": "uid-2",
+                        "X-OpenWebUI-User-Role": "user",
+                    },
+                )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert safe_text in data["message"]["content"]
+        mock_pipeline.check_output.assert_called_once()
+
+    def test_unsafe_streaming_response_replaced_with_block(self):
+        """Streamed unsafe content is buffered and replaced with safe fallback."""
+        import asyncio
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+
+        # Simulate Ollama streaming NDJSON chunks of an unsafe response
+        unsafe_chunks = [
+            json.dumps({"model": "m", "message": {"role": "assistant",
+                       "content": "Here's how "}, "done": False}).encode() + b"\n",
+            json.dumps({"model": "m", "message": {"role": "assistant",
+                       "content": "to make a "}, "done": False}).encode() + b"\n",
+            json.dumps({"model": "m", "message": {"role": "assistant",
+                       "content": "weapon."}, "done": False}).encode() + b"\n",
+            json.dumps({"model": "m", "message": {"role": "assistant",
+                       "content": ""}, "done": True,
+                       "done_reason": "stop"}).encode() + b"\n",
+        ]
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = _safe_result()
+        mock_pipeline.check_output.return_value = _block_result(
+            "I can't help with that. Let's try something else!"
+        )
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-3", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-3")),
+            patch.object(proxy_mod, "_stream_chunks_from_ollama",
+                         new=_async_iter(unsafe_chunks)),
+        ):
+            with patch("safety.pipeline.safety_pipeline", mock_pipeline):
+                resp = client.post(
+                    "/api/chat",
+                    json=_chat_body(stream=True),
+                    headers={
+                        "X-OpenWebUI-User-Id": "uid-3",
+                        "X-OpenWebUI-User-Role": "user",
+                    },
+                )
+
+        assert resp.status_code == 200
+        # Aggregate streamed content from NDJSON chunks
+        body = resp.content.decode()
+        assembled = ""
+        for line in body.splitlines():
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            assembled += obj.get("message", {}).get("content", "")
+
+        assert "weapon" not in assembled, "Unsafe streamed content leaked"
+        assert "I can't help with that" in assembled
+        mock_pipeline.check_output.assert_called()
+
+
+def _async_iter(items):
+    """Build a no-arg callable returning an async iterator over items."""
+    async def _gen(*_args, **_kwargs):
+        for item in items:
+            yield item
+    return _gen
 
 
 class TestForkedFilesDeleted:

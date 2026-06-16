@@ -3,7 +3,7 @@
 # Install with: pip install --only-binary :all: -r requirements.txt
 
 # Core Dependencies
-python-dotenv==1.0.1          # Environment configuration
+python-dotenv==1.2.2          # Environment configuration
 
 # Cryptography & Security
 cryptography==46.0.7          # Encryption utilities (CVE-2026-26007 fix)

@@ -19,6 +19,7 @@ from typing import Optional, Tuple
 from dataclasses import dataclass
 import hashlib
 import hmac
+import json
 import secrets
 
 from utils.logger import get_logger, sanitize_log_value
@@ -370,77 +371,83 @@ class AgeVerificationManager:
         self, profile_id: str, parent_id: str, reason: Optional[str] = None
     ) -> bool:
         """
-        Revoke parental consent for a profile
+        Revoke parental consent and cascade-delete the child's data.
 
-        This will:
-        1. Mark consent as inactive in consent log
-        2. Update profile to require new consent
-        3. Deactivate profile until new consent is obtained
+        Per 16 CFR § 312.6(a)(4), revocation requires deletion of the child's
+        personal information. This performs an atomic transaction:
 
-        Args:
-            profile_id: Child profile ID
-            parent_id: Parent user ID
-            reason: Optional reason for revocation
+        1. Writes a 'parental_consent_revoked' row to audit_log (audit_log has
+           no FK to child_profiles, so it survives the cascade).
+        2. DELETEs the child_profiles row. SQLite's FK CASCADE then removes
+           every row in profile_subjects, conversations, messages (via
+           conversations), safety_incidents, safety_false_positives,
+           learning_analytics, and parental_consent_log. sessions.profile_id
+           is set to NULL (the session-duration record is preserved).
 
-        Returns:
-            True if revocation successful
+        Returns True only when a profile row was actually deleted. Returns
+        False when the profile doesn't exist or when any step raises (the
+        whole transaction rolls back — no partial deletion is possible).
         """
-        import uuid
+        revocation_date = datetime.now(timezone.utc).isoformat()
 
         try:
-            # Log revocation
-            consent_id = uuid.uuid4().hex
-            revocation_date = datetime.now(timezone.utc).isoformat()
+            details = json.dumps({
+                "profile_id": profile_id,
+                "parent_id": parent_id,
+                "reason": reason or "Parental consent revoked",
+                "revoked_at": revocation_date,
+            })
 
-            # Step 1: Deactivate all prior active consent records for this profile
-            self.db.execute_write(
-                """
-                UPDATE parental_consent_log
-                SET is_active = 0
-                WHERE profile_id = ? AND parent_id = ? AND is_active = 1
-                """,
-                (profile_id, parent_id),
-            )
+            with self.db.transaction() as conn:
+                cursor = conn.cursor()
 
-            # Step 2: Insert revocation record (is_active=0 since consent is revoked)
-            self.db.execute_write(
-                """
-                INSERT INTO parental_consent_log
-                (consent_id, profile_id, parent_id, consent_type, consent_method,
-                 consent_date, notes, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    consent_id,
-                    profile_id,
-                    parent_id,
-                    "revoked",
-                    "manual_revocation",
-                    revocation_date,
-                    reason or "Parental consent revoked",
-                    0,
-                ),
-            )
+                # Pre-flight: nothing to revoke if the profile is gone.
+                cursor.execute(
+                    "SELECT 1 FROM child_profiles WHERE profile_id = ?",
+                    (profile_id,),
+                )
+                if cursor.fetchone() is None:
+                    return False
 
-            # Update profile
-            self.db.execute_write(
-                """
-                UPDATE child_profiles
-                SET parental_consent_given = 0,
-                    coppa_verified = 0,
-                    is_active = 0
-                WHERE profile_id = ?
-                """,
-                (profile_id,),
-            )
+                cursor.execute(
+                    """
+                    INSERT INTO audit_log
+                    (timestamp, event_type, user_id, user_type, action,
+                     details, success)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        revocation_date,
+                        "parental_consent_revoked",
+                        parent_id,
+                        "parent",
+                        "cascade_delete",
+                        details,
+                        1,
+                    ),
+                )
+
+                cursor.execute(
+                    "DELETE FROM child_profiles WHERE profile_id = ?",
+                    (profile_id,),
+                )
+                if cursor.rowcount != 1:
+                    # Lost the row between pre-flight and DELETE (concurrent
+                    # request). Raising rolls the audit-log insert back.
+                    raise RuntimeError("profile vanished mid-transaction")
 
             logger.warning(
-                f"Parental consent revoked for profile {sanitize_log_value(profile_id)!r}: {sanitize_log_value(reason)!r}"
+                "Parental consent revoked + data deleted for profile %r: %r",
+                sanitize_log_value(profile_id),
+                sanitize_log_value(reason),
             )
             return True
 
-        except DB_ERRORS as e:
-            logger.error(f"Failed to revoke parental consent: {e}")
+        except Exception as e:
+            logger.error(
+                "Failed to revoke parental consent for profile %r: %s",
+                sanitize_log_value(profile_id), e,
+            )
             return False
 
     def get_consent_status(self, profile_id: str) -> dict:

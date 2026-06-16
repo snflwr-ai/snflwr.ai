@@ -347,7 +347,9 @@ async def revoke_parental_consent(
     """
     Revoke previously given parental consent
 
-    This will deactivate the child profile until new consent is obtained
+    Per 16 CFR § 312.6(a)(4), this permanently deletes the child profile and
+    all associated data (conversations, messages, safety incidents, learning
+    analytics, prior consent records). The deletion is atomic and audited.
 
     [LOCKED] SECURED: Parents can only revoke consent for their own children
     """
@@ -380,6 +382,17 @@ async def revoke_parental_consent(
         )
 
         if not success:
+            # Distinguish 'nothing to revoke' from server error: the profile
+            # row either never existed or was already deleted.
+            still_exists = auth_manager.db.execute_query(
+                "SELECT 1 FROM child_profiles WHERE profile_id = ?",
+                (revocation.profile_id,),
+            )
+            if not still_exists:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Profile not found or already revoked",
+                )
             raise HTTPException(status_code=500, detail="Failed to revoke consent")
 
         # Audit log
@@ -391,7 +404,10 @@ async def revoke_parental_consent(
 
         return {
             "status": "success",
-            "message": "Parental consent has been revoked. Profile has been deactivated.",
+            "message": (
+                "Parental consent revoked. The child profile and all "
+                "associated data have been permanently deleted."
+            ),
             "profile_id": revocation.profile_id,
         }
 

@@ -629,9 +629,9 @@ class RedisRateLimiter:
         # Use SQLite fallback for persistence when Redis is unavailable
         if not self._redis:
             try:
-                from config import DATA_DIR
+                from config import system_config
 
-                db_path = os.path.join(DATA_DIR, "snflwr.db")
+                db_path = os.path.join(str(system_config.APP_DATA_DIR), "snflwr.db")
                 self._sqlite_limiter = SqliteRateLimiter(db_path)
                 logger.warning(
                     "Rate limiter using SQLite fallback (single-instance only). "

@@ -63,10 +63,16 @@ class _SystemConfig:
     DATABASE_TYPE: str = DB_TYPE
 
     # Database Encryption (SQLCipher for SQLite)
+    # Default-on: pilots running without explicit opt-out would otherwise
+    # store child PII in plaintext (audit C4 / FERPA). To opt out for
+    # legitimate dev workflows without SQLCipher installed, set
+    # DB_ENCRYPTION_ENABLED=false explicitly.
     DB_ENCRYPTION_ENABLED: bool = (
-        os.getenv("DB_ENCRYPTION_ENABLED", "false").lower() == "true"
+        os.getenv("DB_ENCRYPTION_ENABLED", "true").lower() == "true"
     )
-    DB_ENCRYPTION_KEY: Optional[str] = os.getenv("DB_ENCRYPTION_KEY", None)
+    DB_ENCRYPTION_KEY: Optional[str] = field(
+        default_factory=lambda: _SystemConfig._get_db_encryption_key()
+    )
     DB_KDF_ITERATIONS: int = int(os.getenv("DB_KDF_ITERATIONS") or "256000")
 
     # PostgreSQL Configuration (production deployments)
@@ -263,6 +269,61 @@ class _SystemConfig:
                 RuntimeWarning,
             )
         return generated_secret
+
+    @staticmethod
+    def _get_db_encryption_key() -> Optional[str]:
+        """Return DB_ENCRYPTION_KEY from env, or auto-generate+persist in dev.
+
+        Mirrors the JWT_SECRET_KEY pattern: in any production-like env, an
+        unset key is a hard fail at validate_production_security() time. In
+        development we auto-generate and persist to .env so the database
+        survives container restarts without surprise data loss.
+        """
+        env_key = os.getenv("DB_ENCRYPTION_KEY")
+        if env_key:
+            return env_key
+
+        environment = os.getenv("ENVIRONMENT", "development").lower()
+        if environment in ("production", "prod", "staging"):
+            # Don't auto-generate in prod — the validator will surface a
+            # clear error and the operator should set this explicitly with
+            # offline backup of the key.
+            return None
+
+        env_path = Path(__file__).parent / ".env"
+
+        # Re-read .env directly (it may not have been loaded into os.environ
+        # yet if the dotenv shim ran before this key was added).
+        try:
+            if env_path.exists():
+                for line in env_path.read_text().splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("DB_ENCRYPTION_KEY=") and \
+                            not stripped.startswith("#"):
+                        existing = stripped.split("=", 1)[1].strip()
+                        if existing and len(existing) >= 32:
+                            return existing
+        except OSError:
+            pass
+
+        generated = secrets.token_urlsafe(32)
+        try:
+            fd = os.open(str(env_path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            with os.fdopen(fd, "a") as f:
+                f.write("\n# Auto-generated DB encryption key (dev only)\n")
+                f.write(f"DB_ENCRYPTION_KEY={generated}\n")
+            warnings.warn(
+                "DB_ENCRYPTION_KEY not set — generated and saved to .env. "
+                "BACK THIS UP: losing it means losing all encrypted data.",
+                RuntimeWarning,
+            )
+        except OSError:
+            warnings.warn(
+                "DB_ENCRYPTION_KEY not set — using ephemeral key for this "
+                "process. Encrypted data will be unreadable after restart.",
+                RuntimeWarning,
+            )
+        return generated
 
     def is_production(self) -> bool:
         """Check if running in production environment"""
@@ -681,6 +742,18 @@ _internal_key_from_env = os.getenv("INTERNAL_API_KEY")
 if _internal_key_from_env:
     INTERNAL_API_KEY = _internal_key_from_env
 else:
+    # Hard-fail in any production-like environment. Auto-generating an
+    # ephemeral key means OWU's Bearer breaks on every container restart
+    # silently — and the proxy auth gate (audit C2) depends on this key.
+    _internal_env = os.getenv("ENVIRONMENT", "development").lower()
+    if _internal_env in ("production", "prod", "staging"):
+        raise RuntimeError(
+            "INTERNAL_API_KEY must be set for production deployments.\n"
+            "Generate one with:\n"
+            "    python -c 'import secrets; print(secrets.token_hex(32))'\n"
+            "and set INTERNAL_API_KEY in your .env (or run "
+            "scripts/setup_production.py)."
+        )
     INTERNAL_API_KEY = secrets.token_hex(32)
     warnings.warn(
         "INTERNAL_API_KEY not set — using auto-generated ephemeral key. "

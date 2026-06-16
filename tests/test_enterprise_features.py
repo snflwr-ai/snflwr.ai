@@ -260,6 +260,7 @@ class TestRateLimiterFallback:
 
         limiter = RedisRateLimiter()
         limiter._redis = None
+        limiter._sqlite_limiter = None  # force in-memory fallback path
         limiter.limits['test3'] = (10, 60)
 
         # Use 3 requests
@@ -278,6 +279,7 @@ class TestRateLimiterFallback:
 
         limiter = RedisRateLimiter()
         limiter._redis = None
+        limiter._sqlite_limiter = None  # force in-memory fallback path
         limiter.limits['test4'] = (2, 60)
 
         # Hit limit

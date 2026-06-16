@@ -267,14 +267,40 @@ class TestAgeVerificationManager:
         assert result is False
 
     def test_revoke_parental_consent(self, manager, mock_db):
+        """C5: revoke must DELETE child_profiles inside a transaction and
+        write a 'parental_consent_revoked' row to audit_log."""
+        mock_cursor = MagicMock()
+        # Pre-flight finds the row; DELETE affects exactly one row.
+        mock_cursor.fetchone.return_value = (1,)
+        mock_cursor.rowcount = 1
+        mock_db.transaction.return_value.__enter__.return_value.cursor.return_value = mock_cursor
+
         result = manager.revoke_parental_consent("prof1", "par1", reason="Testing")
+
         assert result is True
-        # Three writes: deactivate prior consent + insert revocation log + update profile
-        assert mock_db.execute_write.call_count == 3
+        executed_sql = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        assert any("SELECT 1 FROM child_profiles" in s for s in executed_sql)
+        assert any("INSERT INTO audit_log" in s for s in executed_sql)
+        assert any("DELETE FROM child_profiles" in s for s in executed_sql)
+        # No direct execute_write calls — everything goes through the transaction.
+        mock_db.execute_write.assert_not_called()
+
+    def test_revoke_missing_profile_returns_false(self, manager, mock_db):
+        """No row in child_profiles → return False, no audit row."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_db.transaction.return_value.__enter__.return_value.cursor.return_value = mock_cursor
+
+        result = manager.revoke_parental_consent("missing", "par1")
+
+        assert result is False
+        executed_sql = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        assert not any("INSERT INTO audit_log" in s for s in executed_sql)
+        assert not any("DELETE FROM child_profiles" in s for s in executed_sql)
 
     def test_revoke_consent_db_error(self, manager, mock_db):
         import sqlite3
-        mock_db.execute_write.side_effect = sqlite3.Error("db fail")
+        mock_db.transaction.side_effect = sqlite3.Error("db fail")
         result = manager.revoke_parental_consent("prof1", "par1")
         assert result is False
 

@@ -69,6 +69,48 @@ class TestKeyGeneration:
         assert key1 == key2
 
 
+class TestMasterKeyPassphraseWrapping:
+    """Audit C3: master key on disk must be unreadable without a passphrase.
+
+    Today the raw Fernet key is written plaintext at chmod 600 — anyone
+    with FS access (root, backup tape, mis-mounted volume) decrypts
+    everything. Wrapping the key under an operator passphrase removes
+    the "filesystem access = decrypt everything" attack class.
+    """
+
+    def test_passphrase_wrapped_key_is_not_raw_on_disk(self, temp_dir, monkeypatch):
+        """When MASTER_KEY_PASSPHRASE is set, the on-disk key file must
+        differ from the raw master key bytes."""
+        monkeypatch.setenv("MASTER_KEY_PASSPHRASE", "correct-horse-battery-staple")
+        mgr = EncryptionManager(temp_dir)
+        raw_master = mgr._get_master_key()  # base64 of the real master key
+
+        on_disk = (temp_dir / ".encryption_key").read_bytes()
+        assert raw_master.encode() != on_disk, (
+            "Master key written verbatim despite MASTER_KEY_PASSPHRASE — "
+            "wrapping not applied."
+        )
+        assert on_disk.startswith(b"snflwr-wrapped-v1:"), (
+            "Wrapped key should carry a versioned magic prefix so future "
+            "rotations can distinguish formats."
+        )
+
+    def test_wrapped_key_round_trips_with_correct_passphrase(self, temp_dir, monkeypatch):
+        monkeypatch.setenv("MASTER_KEY_PASSPHRASE", "correct-horse-battery-staple")
+        key1 = EncryptionManager(temp_dir)._get_master_key()
+        key2 = EncryptionManager(temp_dir)._get_master_key()
+        assert key1 == key2 and key1 != ""
+
+    def test_wrong_passphrase_refuses_to_load(self, temp_dir, monkeypatch):
+        monkeypatch.setenv("MASTER_KEY_PASSPHRASE", "first-passphrase")
+        EncryptionManager(temp_dir)  # writes wrapped key
+
+        monkeypatch.setenv("MASTER_KEY_PASSPHRASE", "second-passphrase")
+        with pytest.raises(RuntimeError) as exc:
+            EncryptionManager(temp_dir)
+        assert "passphrase" in str(exc.value).lower()
+
+
 class TestBasicEncryption:
     """Test basic encryption and decryption operations"""
 

@@ -1,8 +1,10 @@
 # Data Processing Agreement (DPA)
 ## For Educational Institutions Using snflwr.ai
 
-**Effective Date:** January 1, 2026
-**Last Updated:** December 25, 2025
+> ⚠️ **DRAFT — NOT IN EFFECT.** This DPA contains operator placeholders (governing-law state, subprocessor list) and overstates the operator's current organizational structure (no employees yet). It must not be signed in its current form. The operator's business entity is not yet registered. See `legal/LAWYER_REVIEW_CHECKLIST.md` for the full pre-publication blocker list.
+
+**Effective Date:** *Not in effect — pending entity registration*
+**Last Updated:** June 16, 2026
 
 This Data Processing Agreement ("DPA") is entered into between:
 - **"School"** (educational institution) and
@@ -76,10 +78,12 @@ snflwr.ai:
 
 | Category | Examples | Retention |
 |----------|----------|-----------|
-| Student Profile | Name, age, grade | Until account deletion |
-| Educational Content | Chat messages, questions | 180 days |
+| Student Profile | First name, age, grade | Until account deletion or cascade-delete on consent revocation (see §7.1) |
+| Educational Content | Chat messages, questions | 180 days rolling, measured from message creation |
 | Safety Data | Incidents, alerts | 90 days (resolved) |
-| Usage Analytics | Session duration, message count | 730 days (aggregated) |
+| Usage Analytics | Session duration, message count | 730 days (aggregated, non-identifiable) |
+
+The 180-day rolling window for Educational Content runs continuously during enrollment — individual messages roll off after 180 days regardless of whether the student is still enrolled. School may extend or shorten this window via a written amendment to this DPA; the school's setting controls if it conflicts with Privacy Policy §5.1.
 
 ### 3.3 Sub-Processors
 
@@ -102,19 +106,18 @@ snflwr.ai:
 ### 4.1 Security Measures
 
 **Technical Safeguards:**
-- Encryption at rest (Fernet symmetric encryption)
+- Encryption at rest: Fernet for PII columns; SQLCipher with operator-passphrase-wrapped master key on the SQLite tier
 - Encryption in transit (TLS 1.3)
 - Password hashing (Argon2)
-- Access controls (RBAC, JWT authentication)
-- Regular security audits
-- Automated backups (encrypted)
+- Access controls (RBAC, JWT authentication, 24-hour token expiration)
+- Dependency hash-pinning in production Docker builds
+- Automated backups (encrypted); tested restore path in CI (`tests/test_dr_restore_end_to_end.py`)
 
 **Organizational Safeguards:**
-- Security training for all staff
-- Background checks for employees with data access
-- Incident response procedures
-- Regular security assessments
-- Data minimization practices
+- The operator is currently a solo founder with no employees. Staff-related controls (security training, background checks, role separation) will be implemented before the first employee with student-data access is hired, and this DPA will be amended to reflect them. Schools that require operational-staff controls as a precondition should defer signing until that amendment is in place.
+- Documented incident response procedures (`docs/deployment/INCIDENT_RESPONSE_RUNBOOK.md`)
+- Documented disaster recovery procedures with tested restore (`docs/guides/DR_RUNBOOK.md`)
+- Data minimization practices (first name only, no IP linkage to children, no location data)
 
 ### 4.2 Access Control
 
@@ -228,14 +231,17 @@ School may:
 ### 8.2 Third-Party Audits
 
 **Annual Security Audit:**
-- Independent security assessment
-- Report provided to School
-- Remediation plan for any findings
+- Independent security assessment commitment is **deferred until first paid customer**. Operator commits to commissioning the first audit within 90 days of the first signed Enterprise-tier customer agreement.
 
 **Compliance Certifications:**
-- SOC 2 Type II (if available)
-- ISO 27001 (if available)
-- COPPA/FERPA compliance attestation
+- **SOC 2 Type II — not currently held.** Operator does not commit to a fixed delivery date in this DPA. Schools that require an active SOC 2 report as a precondition should defer signing.
+- **ISO 27001 — not currently held**, same caveat as SOC 2.
+- **COPPA/FERPA compliance attestation** — operator self-attests; see `docs/compliance/FERPA_COPPA_COMPLIANCE_AUDIT.md` for the self-audit detail.
+
+**Compensating controls in lieu of certification:**
+- Enhanced school audit rights per §8.1 (no notice cap; school may bring its own assessor at any time during the term).
+- Quarterly disaster-recovery drill results delivered to school on request.
+- Source code is public (AGPL-3.0); school's own security team may audit it directly.
 
 ---
 
@@ -321,8 +327,8 @@ snflwr.ai indemnifies School from:
 
 ## 13. Governing Law and Jurisdiction
 
-**Governing Law:** Laws of [State], United States
-**Jurisdiction:** Courts of [County, State]
+**Governing Law:** Laws of *[operator's state of residence — pending entity registration]*, United States
+**Jurisdiction:** Courts of *[operator's county and state of residence — pending entity registration]*
 **FERPA Compliance:** U.S. federal law applies
 
 ---
@@ -358,10 +364,10 @@ Date: ________________________________
 
 ---
 
-**DPA Version:** 1.0
-**Last Updated:** December 25, 2025
-**Next Review:** June 25, 2026
+**DPA Version:** 1.1 — draft
+**Last Updated:** June 16, 2026
+**Next Review:** September 16, 2026
 
 ---
 
-**© 2025 snflwr.ai. All rights reserved.**
+**© 2026 snflwr.ai. All rights reserved.**

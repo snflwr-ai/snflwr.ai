@@ -1,7 +1,9 @@
 # Privacy Policy
 
-**Effective Date:** January 1, 2026
-**Last Updated:** December 25, 2025
+> ⚠️ **DRAFT — NOT IN EFFECT.** This policy contains operator placeholders (mailing address, COPPA officer phone) that COPPA §312.4(d)(1) requires to be populated before the policy can be relied upon. The policy is **not** effective and **must not** be presented to parents in its current form. The operator's business entity is not yet registered. See `legal/LAWYER_REVIEW_CHECKLIST.md` for the full pre-publication blockers.
+
+**Effective Date:** *Not in effect — pending entity registration*
+**Last Updated:** June 16, 2026
 
 ## Introduction
 
@@ -108,8 +110,8 @@ This service is designed for children under 13 and requires verifiable parental 
 
 **Withdrawal of Consent:**
 - Contact privacy@snflwr.ai
-- Data deleted within 30 days
-- Parent retains right to export data first
+- Parent retains right to export data before revocation
+- **Upon revocation, the child profile and all associated data are deleted atomically and irreversibly.** There is no grace period. Implementation: see §5.2 below. The export window is *before* revocation, not after.
 
 ### 3.2 FERPA Compliance (for Schools)
 
@@ -130,13 +132,13 @@ This service is designed for children under 13 and requires verifiable parental 
 - Email addresses: Fernet symmetric encryption at rest
 - Passwords: Argon2 memory-hard hashing
 - Data in transit: TLS 1.3 encryption (HTTPS)
-- Database: Encrypted backups
+- Database: SQLCipher (SQLite tier) with operator-passphrase-wrapped key, encrypted backups
 
 **Access Controls:**
 - Role-based access control (RBAC)
 - JWT authentication (24-hour expiration)
-- Multi-factor authentication available
-- Regular security audits
+- Strong password requirements
+- Multi-factor authentication is **on the post-launch roadmap and not currently available**
 
 **Infrastructure:**
 - Local-first architecture (no cloud dependencies)
@@ -218,12 +220,15 @@ The 180-day period for conversation data is a **rolling window** measured from m
 - Delete entire parent account
 - Request permanent data deletion
 
-**Deletion Process:**
+**Deletion Process (parent-initiated profile or account deletion):**
 1. Login → Settings → Delete Profile/Account
 2. Confirm deletion (enter password)
-3. 30-day grace period (data retained for recovery)
+3. 30-day grace period (data retained for parent-initiated recovery)
 4. Permanent deletion after 30 days
 5. Confirmation email sent
+
+**Deletion Process (parental-consent revocation):**
+- Revocation of parental consent (a distinct action from profile deletion) cascades immediately and irreversibly. There is no 30-day grace period for revocation. See §5.2 for the regulatory basis (16 CFR § 312.6(a)(4)).
 
 ### 6.4 Right to Refuse Further Collection
 
@@ -309,7 +314,7 @@ We commit to:
 - ✅ Maintain comprehensive security program
 - ✅ Delete student data upon request
 
-Signed pledge: https://studentprivacypledge.org
+Operator commits to signing the Student Privacy Pledge at https://studentprivacypledge.org before this policy enters effect; the operator's name will appear on the signatories list once registration is complete.
 
 ---
 
@@ -392,8 +397,8 @@ For changes affecting children under 13:
 **EU/UK Users (GDPR):**
 - All GDPR rights apply (access, rectification, erasure, portability)
 - Lawful basis: Parental consent
-- Data Protection Officer: dpo@snflwr.ai
-- Supervisory authority: Contact for complaints
+- A Data Protection Officer has **not** been appointed because GDPR Art. 37 does not currently require one for our processing profile. If we begin serving EU/UK schools at a scale that triggers Art. 37, we will appoint and disclose a DPO before processing begins.
+- Right to lodge a complaint with a supervisory authority: yes (per GDPR Art. 77). The operator will assist data subjects in identifying the lead supervisory authority for their member state on request.
 
 **Other Jurisdictions:**
 - Comply with local data protection laws
@@ -409,19 +414,16 @@ For changes affecting children under 13:
 **Email:** privacy@snflwr.ai
 **Response Time:** Within 5 business days
 
-**Mail:**
-snflwr.ai Privacy Team
-[Company Address]
-[City, State, ZIP]
+**Mail:** *Operator mailing address required by COPPA §312.4(d)(1) — pending entity registration. This policy is not effective until populated.*
 
 ### 14.2 COPPA Compliance Officer
 
 **Email:** coppa@snflwr.ai
-**Phone:** [Phone Number]
+**Phone:** *Required by COPPA §312.4(d)(1) — pending entity registration. This policy is not effective until populated.*
 
 ### 14.3 Data Protection Officer (GDPR)
 
-**Email:** dpo@snflwr.ai
+No DPO is appointed; see §13. If a DPO is appointed in the future, contact information will be added here before processing under their role begins.
 
 ---
 
@@ -444,9 +446,9 @@ This Privacy Policy complies with:
 - California Consumer Privacy Act (CCPA)
 - Student Privacy Pledge
 
-**Last Reviewed:** December 25, 2025
-**Next Review:** March 25, 2026 (quarterly)
+**Last Reviewed:** June 16, 2026
+**Next Review:** September 16, 2026 (quarterly)
 
 ---
 
-**© 2025 snflwr.ai. All rights reserved.**
+**© 2026 snflwr.ai. All rights reserved.**

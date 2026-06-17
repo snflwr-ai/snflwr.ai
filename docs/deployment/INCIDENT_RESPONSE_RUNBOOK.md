@@ -12,13 +12,62 @@
 
 ## Table of Contents
 
-1. [Incident Classification](#incident-classification)
-2. [Response Team](#response-team)
-3. [Communication Channels](#communication-channels)
-4. [Incident Response Procedures](#incident-response-procedures)
-5. [Common Incidents](#common-incidents)
-6. [Security Incidents](#security-incidents)
-7. [Post-Incident Review](#post-incident-review)
+1. [Solo Responder Triage Mode](#solo-responder-triage-mode)
+2. [Incident Classification](#incident-classification)
+3. [Response Team](#response-team)
+4. [Communication Channels](#communication-channels)
+5. [Incident Response Procedures](#incident-response-procedures)
+6. [Common Incidents](#common-incidents)
+7. [Security Incidents](#security-incidents)
+8. [K-12 Stakeholder Communication](#k-12-stakeholder-communication)
+9. [Post-Incident Review](#post-incident-review)
+
+---
+
+## Solo Responder Triage Mode
+
+> Read this first if you are the only person on call. The rest of this document was structured for a team of four; you are not a team of four.
+
+The single most expensive mistake during a solo-responder incident is *silent investigation* — going deep into logs for 90 minutes while parents and school IT staff sit in the dark. Communicate early and partially. People tolerate "investigating" far better than they tolerate silence.
+
+### First 30 minutes
+
+- [ ] Acknowledge the alert — do not dismiss without looking.
+- [ ] Answer one question: **is student data actively leaking right now?**
+  - **Yes** → jump straight to [Data Breach Suspected](#-critical-data-breach-suspected). Post yellow status before doing anything else.
+  - **No** → continue diagnosis below.
+- [ ] Post a status update within 10 minutes even if incomplete: *"Investigating [symptom]. Next update in 15 minutes."* Silence is worse than partial truth.
+
+### At 45 minutes, if still diagnosing
+
+- [ ] **Stop drilling.** Open the status page and post a yellow update with a rough timeline.
+- [ ] Start parallel forensics in the background (`docker compose logs --since=2h > /tmp/forensics-<date>.log &`).
+- [ ] Sleep 20 minutes if you have been awake more than 12 hours. Set an alarm.
+- [ ] Return to investigation with clarity. The first hour of fatigue costs more than the 20-minute pause.
+
+### Breach-confirmed fork
+
+- Do **not** wait for full forensics before notifying parents or schools. See [Parent Breach Notification by State](#parent-breach-notification-by-state) for the legal floor — it is much shorter than most people assume.
+- Parallelize: comms first, then forensics. The state AG does not care that you were still grepping logs.
+
+### What can stay broken vs. what cannot
+
+| Symptom | Can wait | Why |
+|---|---|---|
+| Slow API responses (P2) | Yes, post yellow, sleep | Tutoring resumes when you wake up |
+| Email delivery (P3) | Yes, until morning | Parents will retry; you owe them an apology, not a 3am push |
+| Non-critical feature (P3) | Yes, document, move on | Don't compound by rushing a fix |
+| Safety monitoring disabled (P1) | **No** | A child sees unsafe content in the time you let this ride |
+| Data exposure suspected (P0) | **No** | Every minute is a worse breach-notification fact pattern |
+| INTERNAL_API_KEY in logs/git | **No** | See [Internal API Key Compromise](#-internal-api-key-compromise) — has a no-downtime hot-swap path |
+
+### One-line escalation script
+
+If a school district IT lead reaches you while you are still firefighting, read this verbatim and put it in writing within the hour:
+
+> "We're investigating an incident that may affect your district. I'll have a status update with confirmed scope and a forensic export timeline to you by [hour + 2]. I'm the single point of contact: [your phone, your email]. Please reply with the name of your district's incident lead so I can keep them on every update."
+
+This buys you two hours and binds the district to one contact instead of three. Use it.
 
 ---
 
@@ -533,6 +582,225 @@ systemctl restart snflwr-api
 # Force logout all sessions
 psql -U snflwr -d snflwr_db -c "UPDATE auth_sessions SET is_active=0;"
 ```
+
+### 🔴 CRITICAL: INTERNAL_API_KEY Compromise
+
+`INTERNAL_API_KEY` brokers the OWU → snflwr-api hop. Rotating it naively breaks that hop and downs the entire user-facing service. The hot-swap below is the only safe path.
+
+> **Do not run `sed -i ".../.env"` on the API key in production without reading this.** OWU will start returning 401 on every chat request the moment the API restarts with a new key, until OWU is also updated.
+
+**Immediate (0–5 min):**
+
+1. **Do not** rotate the key yet.
+2. Determine scope of leak:
+   - Was the key in `.env` checked into git? → search history with `git log -p -S 'INTERNAL_API_KEY'`
+   - In a public Docker image layer? → `docker history --no-trunc <image>`
+   - In a log file streamed to a third party? → check Sentry / Grafana / external log shippers
+3. If scope is "key visible to attacker right now," post yellow status and continue. Otherwise treat as P1 and proceed methodically.
+
+**Hot-swap (5–15 min):**
+
+```bash
+# 1. Generate the new key
+NEW_KEY=$(openssl rand -hex 32)
+echo "$NEW_KEY" > /tmp/new_internal_api_key.txt
+chmod 600 /tmp/new_internal_api_key.txt
+
+# 2. Update OWU's outbound auth header FIRST. snflwr-api still accepts
+#    the OLD key — every existing chat request keeps working.
+docker exec snflwr-owu sh -c "sed -i 's|^OLLAMA_API_KEY=.*|OLLAMA_API_KEY=$NEW_KEY|' /app/backend/.env"
+docker compose -f docker/compose/docker-compose.home.yml restart snflwr-owu
+
+# 3. Verify OWU is now sending the NEW key — chat should fail with 401
+#    against snflwr-api because the API still expects the OLD key.
+curl -fsS -H "Authorization: Bearer $NEW_KEY" http://snflwr-api:39150/health  # should succeed
+curl -fsS http://snflwr-owu:38000/api/health                                  # should succeed
+# Now drive a chat through the UI. It WILL fail with "401 from Ollama" —
+# that's the expected intermediate state. Do not panic, do not skip step 4.
+
+# 4. Update snflwr-api to the NEW key. Brief downtime here is acceptable
+#    because OWU is already sending the new key, so this restart RESTORES
+#    service rather than breaking it.
+sed -i "s|^INTERNAL_API_KEY=.*|INTERNAL_API_KEY=$NEW_KEY|" /opt/snflwr/.env.production
+docker compose -f docker/compose/docker-compose.home.yml restart snflwr-api
+
+# 5. Validate end-to-end: a chat request from the UI should now return 200.
+curl -fsS http://snflwr-owu:38000/api/health && \
+  echo "OWU healthy" || echo "OWU broken — investigate"
+```
+
+**Post-rotation (15–60 min):**
+
+- [ ] Confirm no client (other than OWU) was using the old key. Grep for usages: `grep -rn "Bearer $OLD_KEY" .` and external integrations.
+- [ ] Shred the old key from password manager, git history (`git filter-repo` if it was committed), CI secrets.
+- [ ] Log the rotation in `audit_log`: `INSERT INTO audit_log (timestamp, event_type, action, details) VALUES (NOW(), 'internal_api_key_rotated', 'hot_swap', '{"reason":"...","prior_key_hash":"...","scope":"..."}');`
+- [ ] Update the `INTERNAL_API_KEY exposed` row in the [Solo Responder triage table](#what-can-stay-broken-vs-what-cannot) — if your detection path failed to catch this leak, add an alert.
+
+### 🟠 HIGH: Emergency Child Profile Suspension
+
+When a parent account is compromised mid-incident, the safe action is to suspend the child's access *without* deleting data (you still need it for forensics). This is distinct from COPPA-revoke cascade-delete — that one is irreversible and removes evidence.
+
+```sql
+-- 1. Mark every profile under the compromised parent as inactive.
+--    is_active=0 is the existing soft-disable flag — child cannot log in,
+--    OWU stops resolving them, but conversations stay in the DB for audit.
+UPDATE child_profiles
+   SET is_active = 0
+ WHERE parent_id = '<COMPROMISED_PARENT_ID>';
+
+-- 2. Mark every active session for that parent and their children as invalid.
+UPDATE auth_tokens
+   SET is_valid = 0
+ WHERE user_id = '<COMPROMISED_PARENT_ID>'
+    OR user_id IN (
+        SELECT profile_id FROM child_profiles
+         WHERE parent_id = '<COMPROMISED_PARENT_ID>'
+    );
+
+-- 3. Record the suspension in audit_log for the forensics timeline.
+INSERT INTO audit_log
+  (timestamp, event_type, user_id, user_type, action, details, success)
+VALUES
+  (datetime('now'), 'emergency_suspension', '<COMPROMISED_PARENT_ID>',
+   'parent', 'profile_suspended',
+   '{"reason":"suspected account compromise","incident_id":"<INCIDENT_ID>"}',
+   1);
+```
+
+**Re-enable process** (only after the parent is verified):
+
+1. Parent must reset password via the email-verification flow (not in-app).
+2. Operator pulls `audit_log` for the suspension window to see what was accessed.
+3. Parent signs an attestation confirming they understand the scope of the compromise.
+4. Set `is_active = 1` on the child profile rows. Do **not** restore the old auth tokens — the parent re-authenticates from scratch.
+
+### 🟠 HIGH: Parent Breach Notification by State
+
+K-12 student data triggers state-specific notification timelines that are tighter than the GDPR 72-hour floor. The rule of thumb: notify parents *before* regulators, document delivery, do not wait for full forensics.
+
+| State | Deadline | To notify | Key statute / reference |
+|---|---|---|---|
+| **California** | Without unreasonable delay (typically read as 60 days) | Parents + CA Attorney General | Cal. Civ. Code § 1798.82; AG portal: `oag.ca.gov/privacy/databreach` |
+| **Florida** | 30 days | Parents + Florida AG | Fla. Stat. § 501.171 |
+| **Texas** | 60 days | Parents + Texas AG | Tex. Bus. & Com. Code § 521.053 |
+| **New York** | Most expedient time possible | Parents + NY AG + Dept. of Education (if SED-regulated) | NY Gen. Bus. Law § 899-aa; NY Ed Law § 2-d |
+| **Illinois** | Most expedient time possible | Parents (+ AG if > 500 affected) | 815 ILCS 530/10 |
+
+> The table above is operator guidance, not legal advice. Confirm the current statutory text with your privacy counsel before sending anything; state laws change. The relevant references are also flagged in `legal/LAWYER_REVIEW_CHECKLIST.md`.
+
+**Practical sequence:**
+
+1. **First 4 hours**: identify scope. Which `profile_id`s were affected, which parent emails, which states.
+2. **Hours 4–24**: draft a parent notification (template below) and send via authenticated email *plus* certified mail to the registered guardian address. The certified-mail receipt is your delivery proof if FERPA standing is challenged.
+3. **Hours 24–48**: notify each applicable state AG / DOE in parallel. Most states have an online breach-report portal.
+4. **Within 5 business days**: notify school districts whose data was affected — even if the deadline above hasn't expired, districts will hear about it from parents and you want to be the source.
+
+**Parent notification template** (drop into your email tool):
+
+```
+Subject: [snflwr.ai] Notice of Security Incident Affecting [Child First Name]
+
+On [DATE], we discovered [SCOPE — e.g., "that an unauthorized party
+accessed the account associated with your email"]. We immediately
+[ACTION — e.g., "suspended the affected account and rotated all
+credentials"].
+
+Your child's [SPECIFIC DATA TYPE — e.g., "first name and chat
+transcripts from [DATE RANGE]"] may have been accessed. No financial
+data is stored in our system. [If applicable: No biometric data,
+no real-time location data, and no full name was exposed.]
+
+We have notified [STATE AG / DEPT OF ED] as required by law.
+
+Steps we are taking:
+- [Action 1]
+- [Action 2]
+
+Steps you can take:
+- Change the password on your snflwr.ai account at [URL].
+- Monitor your child's school accounts for unusual activity.
+- Contact us at [PHONE / EMAIL] with any questions.
+
+This notice satisfies our obligations under [STATE STATUTE] and
+34 CFR § 99.12 (FERPA).
+
+[Operator name + role + contact]
+[snflwr.ai mailing address required for certified mail receipt]
+```
+
+Keep the language plain. Lawyers can pretty it up later; speed beats polish.
+
+---
+
+## K-12 Stakeholder Communication
+
+### School District IT Escalation
+
+When a Home Server or Enterprise tier deployment sits on a school network, a breach affecting that school is also their breach. They will hear about it from parents within hours; be the source.
+
+**Within 15 minutes of detection:**
+
+- [ ] Pull the affected district list from `child_profiles` joined to the school metadata table (or your CRM).
+- [ ] Email each district's IT lead and superintendent simultaneously (do **not** route through helpdesk — go above it).
+- [ ] Prepare a forensic export of `audit_log`, `safety_incidents`, and login attempts for the affected window.
+
+**Email template:**
+
+```
+To: [district_it_lead@district.k12.STATE.us], [superintendent@district.k12.STATE.us]
+CC: [your privacy lawyer]
+Subject: [URGENT] snflwr.ai security incident affecting [district name]
+
+We've identified a security incident that may affect [N] students in
+your district. Access was discovered on [TIMESTAMP].
+
+Immediate steps we've taken:
+- Suspended affected accounts (full list available on request)
+- Preserved all audit logs and chat transcripts
+- Rotated INTERNAL_API_KEY and parent session tokens
+
+What we need from you:
+- Confirmation of affected student count in your SIS
+- Any parallel anomalies you've observed (failed login alerts,
+  unusual after-hours traffic)
+- Your incident lead's name and direct line
+
+Next steps from us:
+- Full forensic export to your district IT lead within [24 hours],
+  delivered via [SFTP / signed S3 URL — pick one and commit].
+- Parent notifications go out from us per [STATE] law within [N] days.
+- You may want to brief your school board's legal counsel.
+
+Single point of contact this incident: [your name, phone, email]
+
+[Your name]
+[Your title]
+snflwr.ai
+```
+
+**Forensic export SLA:**
+
+| Hours after detection | Deliverable |
+|---|---|
+| 2 | Export queued and acknowledged in writing |
+| 6 | Signed download link sent to district IT + your legal counsel |
+| 24 | Full timeline reconstruction (request → response, with PII redacted as needed) |
+
+The export should include, per district:
+
+- `audit_log` rows for the affected window
+- Failed login attempts (`auth_tokens` where `is_valid = 0`)
+- Chat transcripts and `safety_incidents` for affected `profile_id`s
+- A CSV of affected parent emails + child first names (no full names if redactable) for the district's own notification path
+
+### When to put a lawyer between you and the conversation
+
+- The district threatens litigation.
+- The district demands compliance documents you do not have (SOC 2 report, signed BAA with subprocessors).
+- The conversation involves more than one state's AG.
+- A reporter has called the district before you finish notifying parents.
+
+In each case, route further communications through `legal/DATA_PROCESSING_AGREEMENT.md`'s signed-DPA holder at the district and your privacy counsel. Stop replying directly. This is not unfriendly — it is the standard playbook and the district's lawyers will respect it.
 
 ---
 

@@ -164,11 +164,13 @@ This service is designed for children under 13 and requires verifiable parental 
 
 | Data Type | Retention Period | Justification |
 |-----------|------------------|---------------|
-| Child conversation data | 180 days | Educational records, parent access |
+| Child conversation data | 180 days after creation | Educational records, parent access |
 | Safety incidents | 90 days (resolved) | COPPA compliance, safety monitoring |
 | Audit logs | 365 days | Security and compliance review |
 | Parent account data | Until account deletion | Account management |
 | Aggregated analytics | 730 days | Non-identifiable, service improvement |
+
+The 180-day period for conversation data is a **rolling window** measured from message creation, not from account closure. While a child is actively enrolled, individual messages roll off after 180 days. For Enterprise-tier deployments, schools may extend or shorten this window via the executed Data Processing Agreement (`legal/DATA_PROCESSING_AGREEMENT.md` §3.2); the school's setting controls if it conflicts with this policy.
 
 ### 5.2 Automatic Deletion
 
@@ -179,9 +181,8 @@ This service is designed for children under 13 and requires verifiable parental 
 - Parents notified before deletion (if email enabled)
 
 **Manual Deletion:**
-- Parents can delete data anytime
-- 30-day grace period for recovery
-- Permanent deletion after grace period
+- Parents can delete individual data items anytime, with a 30-day grace period for recovery.
+- **Parental consent revocation** triggers immediate cascade-delete of the child profile and all associated data (conversations, safety incidents, learning analytics, prior consent records). This deletion is **atomic and irreversible** — there is no grace period and no recovery path. Only an entry in the operator's `audit_log` survives the deletion, and that entry contains only the parent ID, profile ID, revocation timestamp, and reason. See `core/age_verification.py:revoke_parental_consent` for the implementation and `tests/test_coppa_consent_revoke_cascade.py` for the compliance verification. This implements 16 CFR § 312.6(a)(4).
 
 ---
 

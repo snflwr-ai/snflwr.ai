@@ -231,6 +231,8 @@ REDIS_ENABLED=false
 CELERY_ENABLED=false
 SENTRY_ENABLED=false
 PROMETHEUS_ENABLED=false
+# Off-host backup requires network + rclone; not applicable to an offline USB.
+OFFHOST_BACKUP_ENABLED=false
 
 # Application Settings
 ENVIRONMENT=production

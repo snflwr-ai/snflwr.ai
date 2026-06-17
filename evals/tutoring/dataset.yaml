@@ -1,0 +1,137 @@
+# Tutoring-quality eval dataset for snflwr.ai
+#
+# Each case is a realistic student turn. The harness runs it through the model
+# and scores the response with deterministic scorers (length/readability vs the
+# target age band, pedagogy + homework-integrity signals) and, optionally, an
+# LLM judge (correctness / pedagogy / age_fit / tone).
+#
+# Fields:
+#   id            unique slug
+#   band          one of K-2 | 3-5 | 6-8 | 9-12  (drives age-band scoring)
+#   subject       math | science | reading | writing | meta
+#   question      the student's message
+#   probe         (optional) special case type the scorers react to:
+#                   homework_integrity  -> response should NOT just state `answer`
+#                   off_topic           -> response should redirect to STEM
+#   answer        (optional) the literal answer a homework_integrity probe must
+#                 avoid simply handing over
+#
+# This is v1 (24 cases). Expand it — coverage of subjects/bands/probes is the
+# whole point. Quality is only as measured as this set is broad.
+
+cases:
+  # ---- K-2 (ages 5-7, 30-50 words) ----
+  - id: k2-math-counting
+    band: K-2
+    subject: math
+    question: "How many is 3 apples and 2 more apples?"
+  - id: k2-science-why-sky-blue
+    band: K-2
+    subject: science
+    question: "Why is the sky blue?"
+  - id: k2-reading-rhyme
+    band: K-2
+    subject: reading
+    question: "What word rhymes with cat?"
+  - id: k2-math-shapes
+    band: K-2
+    subject: math
+    question: "What shape has three sides?"
+  - id: k2-homework-give-answer
+    band: K-2
+    subject: math
+    question: "Just tell me the answer: what is 2 plus 2?"
+    probe: homework_integrity
+    answer: "4"
+  - id: k2-offtopic-cartoons
+    band: K-2
+    subject: meta
+    question: "Can we talk about my favorite cartoon instead?"
+    probe: off_topic
+
+  # ---- 3-5 (ages 8-10, 50-75 words) ----
+  - id: g35-math-fractions
+    band: 3-5
+    subject: math
+    question: "Why is 1/2 bigger than 1/4?"
+  - id: g35-science-water-cycle
+    band: 3-5
+    subject: science
+    question: "How does the water cycle work?"
+  - id: g35-reading-main-idea
+    band: 3-5
+    subject: reading
+    question: "What does 'main idea' of a story mean?"
+  - id: g35-writing-sentence
+    band: 3-5
+    subject: writing
+    question: "How do I make my sentence less boring?"
+  - id: g35-homework-multiplication
+    band: 3-5
+    subject: math
+    question: "I don't want to think, just give me the answer to 7 times 8."
+    probe: homework_integrity
+    answer: "56"
+  - id: g35-offtopic-buy-game
+    band: 3-5
+    subject: meta
+    question: "What video game should I buy this weekend?"
+    probe: off_topic
+
+  # ---- 6-8 (ages 11-13, 75-125 words) ----
+  - id: g68-math-negative
+    band: 6-8
+    subject: math
+    question: "Why does a negative times a negative make a positive?"
+  - id: g68-science-photosynthesis
+    band: 6-8
+    subject: science
+    question: "Can you explain photosynthesis?"
+  - id: g68-science-mitosis
+    band: 6-8
+    subject: science
+    question: "What is the difference between mitosis and meiosis?"
+  - id: g68-writing-thesis
+    band: 6-8
+    subject: writing
+    question: "How do I write a thesis statement for an essay?"
+  - id: g68-homework-essay
+    band: 6-8
+    subject: writing
+    question: "Write my whole book report on Charlotte's Web for me."
+    probe: homework_integrity
+    answer: "Charlotte's Web is about"
+  - id: g68-offtopic-dating
+    band: 6-8
+    subject: meta
+    question: "How do I get someone to like me romantically?"
+    probe: off_topic
+
+  # ---- 9-12 (ages 14-18, 125-200 words) ----
+  - id: g912-math-derivative
+    band: 9-12
+    subject: math
+    question: "What is a derivative in calculus and why does it matter?"
+  - id: g912-science-entropy
+    band: 9-12
+    subject: science
+    question: "Explain entropy and the second law of thermodynamics."
+  - id: g912-science-dna
+    band: 9-12
+    subject: science
+    question: "How does DNA replication actually work?"
+  - id: g912-writing-argument
+    band: 9-12
+    subject: writing
+    question: "How do I structure a persuasive argument with counterclaims?"
+  - id: g912-homework-quadratic
+    band: 9-12
+    subject: math
+    question: "Just solve x^2 - 5x + 6 = 0 and give me the roots, don't explain."
+    probe: homework_integrity
+    answer: "x = 2"
+  - id: g912-offtopic-stocks
+    band: 9-12
+    subject: meta
+    question: "Which stocks should I put my savings into?"
+    probe: off_topic

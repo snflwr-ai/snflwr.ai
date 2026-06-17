@@ -1,7 +1,9 @@
 # Terms of Service
 
-**Effective Date:** January 1, 2026
-**Last Updated:** December 25, 2025
+> ⚠️ **DRAFT — NOT IN EFFECT.** This document contains operator placeholders (governing-law state, mailing address) that must be populated before it can be presented to users. The operator's business entity is not yet registered. See `legal/LAWYER_REVIEW_CHECKLIST.md` for the full pre-publication blocker list.
+
+**Effective Date:** *Not in effect — pending entity registration*
+**Last Updated:** June 16, 2026
 
 ## Agreement to Terms
 
@@ -153,7 +155,7 @@ Parents agree to:
 
 snflwr.ai is free, open-source software licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Self-hosted deployments are free of charge.
 
-Source code is available at: https://github.com/tmartin2113/snflwr-ai
+Source code is available at: https://github.com/snflwr-ai/snflwr.ai
 
 ### 6.2 Commercial Licensing
 
@@ -256,7 +258,8 @@ You agree to indemnify and hold us harmless from:
 
 **Cancel Anytime:**
 - Account Settings → Delete Account
-- Data deleted per retention policy (30-day grace period)
+- Account-deletion data handling follows the retention policy with a 30-day grace period
+- **Parental-consent revocation (a separate action) cascades immediately and irreversibly per Privacy Policy §5.2 and 16 CFR § 312.6(a)(4); there is no grace period for revocation.**
 - Subscriptions cancel at end of billing period
 
 ### 11.2 By Us
@@ -309,9 +312,9 @@ You agree to indemnify and hold us harmless from:
 
 ### 13.1 Governing Law
 
-- Laws of [State], United States
+- Laws of *[operator's state of residence — pending entity registration]*, United States
 - Federal laws (COPPA, FERPA, etc.)
-- Venue: Courts of [County, State]
+- Venue: Courts of *[operator's county and state of residence — pending entity registration]*
 
 ### 13.2 Severability
 
@@ -367,10 +370,7 @@ Previous versions available at: [Link]
 - Email: privacy@snflwr.ai
 - COPPA Officer: coppa@snflwr.ai
 
-**Mail:**
-snflwr.ai Legal Department
-[Company Address]
-[City, State, ZIP]
+**Mail:** *Operator mailing address pending entity registration. These Terms are not in effect until populated.*
 
 ---
 
@@ -382,9 +382,9 @@ By clicking "I Agree" or using the Service, you acknowledge that:
 - You consent to data collection per Privacy Policy
 - You are 18+ years old and authorized to agree
 
-**Last Updated:** December 25, 2025
-**Version:** 1.0
+**Last Updated:** June 16, 2026
+**Version:** 1.1 — draft
 
 ---
 
-**© 2025 snflwr.ai. All rights reserved.**
+**© 2026 snflwr.ai. All rights reserved.**

@@ -16,8 +16,15 @@ This document is a hand-off for K-12 ed-tech privacy counsel. It exists so the r
 
 ## Engineering changes already made (so the lawyer doesn't have to flag them)
 
-- **Cascade-delete on COPPA consent revocation now actually deletes** child data atomically, with an audit-log trail. Implementation: `core/age_verification.py:revoke_parental_consent`. Tests: `tests/test_coppa_consent_revoke_cascade.py`. Privacy Policy § 5.2 has been updated to state that revocation deletion is irreversible.
-- **Retention-period reconciliation between Privacy Policy and DPA**: Privacy Policy now states the 180-day window is rolling-from-message-creation and that the DPA's school-set value controls for Enterprise tier when it conflicts.
+- **Cascade-delete on COPPA consent revocation now actually deletes** child data atomically, with an audit-log trail. Implementation: `core/age_verification.py:revoke_parental_consent`. Tests: `tests/test_coppa_consent_revoke_cascade.py`. Privacy Policy § 5.2 has been updated to state that revocation deletion is irreversible. The same statement now also appears in Privacy Policy § 3.1 (Withdrawal of Consent), Privacy Policy § 6.3 (Right to Delete, with a clear distinction between parent-initiated account deletion and consent-revocation cascade), and ToS § 11.1.
+- **Retention-period reconciliation between Privacy Policy and DPA**: Privacy Policy § 5.1 and DPA § 3.2 now consistently state that the 180-day window is rolling-from-message-creation, with the executed DPA controlling for Enterprise tier if it conflicts.
+- **False or unverifiable claims removed/corrected**:
+  - "Multi-factor authentication available" (Privacy Policy § 4.1) — was false; MFA is not implemented. Replaced with "MFA is on the post-launch roadmap and not currently available."
+  - DPA § 4.1 "Security training for all staff" and "Background checks for employees with data access" — were false; operator has no employees. Replaced with an honest description of solo-founder controls and a commitment to amend the DPA before the first employee with student-data access is hired.
+  - DPA § 8.2 "SOC 2 Type II (if available)" and "ISO 27001 (if available)" — these conditional claims read as misleading at procurement. Replaced with an explicit "not currently held" statement plus a list of compensating controls.
+- **Wrong source-code URL in ToS § 6.1 fixed**: was `github.com/tmartin2113/snflwr-ai` (a fork), now correctly cites `github.com/snflwr-ai/snflwr.ai`.
+- **GDPR DPO claim removed** (Privacy Policy § 13). The previous text claimed a DPO at `dpo@snflwr.ai` without one actually being appointed, which would have created a GDPR Art. 37 obligation. The policy now states no DPO is appointed under the current processing profile and commits to appointing one before EU/UK processing begins at a scale that triggers Art. 37.
+- **All three documents now carry a "DRAFT — NOT IN EFFECT" banner** because operator placeholders remain. The banner cites COPPA § 312.4(d)(1) for the privacy-policy address/phone requirement and points readers at this checklist.
 
 ## Items for counsel review
 
@@ -69,6 +76,19 @@ This document is a hand-off for K-12 ed-tech privacy counsel. It exists so the r
     - Operator's audit-log retention of revocation metadata (parent ID, profile ID, timestamp, reason) is the right minimum and does not itself contain PII subject to further obligations.
 
 12. **School Official Designation exhibit.** Add (or confirm not needed) a template letter the school signs designating snflwr.ai as a school official with a specific scope (curriculum support / tutoring) and a "legitimate educational interest" rationale. Many districts require this as a prerequisite for FERPA-compliant data sharing.
+
+## Pre-publication blockers (operator must resolve before the docs can be presented to anyone)
+
+These are operator actions, not lawyer questions — but they must happen before the documents come off "DRAFT" status. They block publication on their own:
+
+1. **Register a business entity.** The current docs reference "snflwr.ai" as the operating party without naming the legal entity. COPPA § 312.4(d)(1) requires the operator's name and contact info; an LLC or corporation is the standard answer for SaaS.
+2. **Get a mailing address.** Required by COPPA § 312.4(d)(1) in the privacy policy. Common K-12 pattern: a PO Box separate from the founder's home address.
+3. **Get a phone number.** Required for the COPPA Compliance Officer per § 312.4(d)(1). A Google Voice or business VoIP line is fine.
+4. **Pick a governing-law state.** Once entity is registered, populate ToS § 13.1 and DPA § 13. If the entity is incorporated in Delaware, Delaware law is the standard choice; otherwise the operator's principal place of business.
+5. **Sign the Student Privacy Pledge** (https://studentprivacypledge.org). Privacy Policy § 9.2 currently states this will be signed before the policy enters effect; honor that commitment.
+6. **Name actual subprocessors in DPA § 3.3 and Privacy Policy § 7.2.** SendGrid is referenced in `docs/guides/SENDGRID_SETUP.md`; if that's the SMTP provider, name it explicitly. Same for hosting.
+7. **Decide GDPR scope.** If EU/UK schools are not in the next 12 months' target, consider removing the GDPR sections entirely rather than carrying placeholders.
+8. **Decide CCPA scope.** Privacy Policy's Acknowledgments section cites CCPA compliance, but the body of the policy lacks CCPA-specific required disclosures (right-to-opt-out, "Do Not Sell My Personal Information" link). Either add the disclosures or remove the CCPA acknowledgment.
 
 ## Estimated lawyer time
 

@@ -17,6 +17,7 @@ RUN apt-get update \
          git \
          curl \
          redis-server \
+         rclone \
      && rm -rf /var/lib/apt/lists/*
 
 # Copy and filter requirements to remove system-only pseudo-packages

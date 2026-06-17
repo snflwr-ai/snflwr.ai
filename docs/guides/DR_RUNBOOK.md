@@ -70,20 +70,51 @@ WantedBy=timers.target
 
 ### Off-host destination
 
-Local backups protect against `rm -rf` and SQLite corruption. They do **not** protect against host failure. After the local backup lands, push it off-host. Two patterns:
+Local backups protect against `rm -rf` and SQLite corruption. They do **not** protect against host failure. A backup nobody has copied off-box is a backup that didn't happen.
+
+**This is now built into the backup script** via rclone. When enabled, every successful local backup (and its `.json` metadata) is pushed to the configured remote, and the backup run **fails closed** — a non-zero exit — if the off-host copy cannot be made, so your scheduler/monitoring alarms instead of silently keeping a local-only copy.
+
+rclone ships inside the Docker image; on bare metal `install.py` offers to install it (or `curl https://rclone.org/install.sh | sudo bash`).
 
 ```bash
-# rclone to an S3-compatible bucket (Backblaze B2 is cheap and not AWS)
-rclone copy $BACKUP_PATH/ remote:snflwr-backups-prod/ --include "*.gz" --max-age 1h
+# 1. Configure a remote once (interactive). Backblaze B2 is cheap and not AWS.
+rclone config            # creates ~/.config/rclone/rclone.conf
+
+# 2. Enable off-host in .env:
+#    OFFHOST_BACKUP_ENABLED=true
+#    RCLONE_REMOTE=b2:snflwr-backups-prod
+#    OFFHOST_RETENTION_DAYS=30        # optional; defaults to BACKUP_RETENTION_DAYS
+#    RCLONE_CONFIG=/etc/snflwr/rclone.conf   # optional; non-default config path
+
+# 3. The scheduled `backup_database.py backup` run now copies off-host
+#    automatically and prunes remote backups older than the retention window.
 ```
 
+`RCLONE_REMOTE` must be of the form `remote:path` (validated before rclone is invoked). Remote retention is enforced with `rclone delete <remote> --min-age <N>d` after each successful upload; a prune failure is logged but does not fail the backup (mirroring local cleanup).
+
+If you prefer rsync to a host on a separate network segment instead, disable the built-in path (`OFFHOST_BACKUP_ENABLED=false`) and wire your own post-backup step:
+
 ```bash
-# rsync to a backup host on a separate network segment
 rsync -avz --include='*.gz' --include='*.json' --exclude='*' \
     $BACKUP_PATH/ snflwr-backup@backup.host:/backups/snflwr/
 ```
 
-Pick one and commit to it. A backup nobody has copied off-box is a backup that didn't happen.
+### Heartbeat (don't trust a backup nobody is watching)
+
+A scheduled backup that silently stops running looks identical to one that's succeeding — until you need a restore and there's nothing there. Set `BACKUP_HEARTBEAT_URL` to a [healthchecks.io](https://healthchecks.io)-style check. Each successful run (after the off-host copy) pings the URL; each failure pings `<URL>/fail`. Configure the check's period to your backup schedule + grace, and it alarms if a ping is ever missed — catching a dead cron timer, a full disk, or a broken off-host destination.
+
+## Restore — host lost? Pull from off-host first
+
+If the machine itself is gone, the local `$BACKUP_PATH` is gone with it. Pull the backup back down from the remote before restoring:
+
+```bash
+# List what's off-host (newest first), then pull the one you want.
+rclone lsf "$RCLONE_REMOTE" --include "*.gz" | sort | tail -5
+python scripts/backup_database.py pull --file snflwr_sqlite_<TIMESTAMP>.db.gz
+# -> lands in $BACKUP_PATH; now restore from it as below.
+```
+
+`tests/test_offhost_backup.py::TestPullOffhost::test_pull_then_restore_recovers_data` exercises this exact pull→restore path end-to-end, so it's a proven recovery route, not just documentation.
 
 ## Restore — SQLite
 

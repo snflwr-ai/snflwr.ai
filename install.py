@@ -1372,7 +1372,7 @@ def ensure_ollama_running():
     return False
 
 
-def pull_default_model(model='qwen3.5:9b'):
+def pull_default_model(model='gemma4:e4b'):
     """Pull the default AI model via Ollama"""
     print_info(f"Checking for model '{model}'...")
 
@@ -1469,19 +1469,22 @@ def build_snflwr_wrapper(base_model: str) -> bool:
 
 
 def choose_model(total_ram_gb: Optional[float] = None) -> str:
-    """Choose a qwen3.5 base model size based on system RAM.
+    """Choose a base model to build the snflwr.ai wrapper on, based on RAM.
 
-    Returns the qwen3.5 base tag to pull (e.g. 'qwen3.5:9b'). The user-facing
-    chat model is always 'snflwr.ai', built as a wrapper around this base.
+    Returns a base tag to pull. The default backbone is gemma4:e4b (won the
+    2026-06-17 tutoring-quality backbone bake-off; see
+    evals/tutoring/backbone_bakeoff.py); boxes too small for it fall back to
+    the small qwen3.5 tiers. The user-facing chat model is always 'snflwr.ai',
+    built as a wrapper around this base.
     """
-    # Model options: tag, param count, approximate download size, minimum RAM
+    # Model options: tag, param count, approximate download size, minimum RAM.
+    # Ascending min_ram — the loop keeps the largest the box can run, so
+    # gemma4:e4b is the pick on any box with >= 16 GB.
     models = [
-        ('qwen3.5:0.8b', '0.8B', '~0.5 GB download', 2),
-        ('qwen3.5:2b',   '2B',   '~1.3 GB download', 4),
-        ('qwen3.5:4b',   '4B',   '~2.5 GB download', 6),
-        ('qwen3.5:9b',   '9B',   '~5.5 GB download', 8),
-        ('qwen3.5:27b',  '27B',  '~16 GB download',  24),
-        ('qwen3.5:35b',  '35B',  '~22 GB download',  32),
+        ('qwen3.5:0.8b', '0.8B',      '~0.5 GB download', 2),
+        ('qwen3.5:2b',   '2B',        '~1.3 GB download', 6),
+        ('qwen3.5:4b',   '4B',        '~2.5 GB download', 8),
+        ('gemma4:e4b',   'E4B (MoE)', '~10 GB download',  16),
     ]
 
     # Pick recommended model based on detected RAM
@@ -1491,7 +1494,7 @@ def choose_model(total_ram_gb: Optional[float] = None) -> str:
             if total_ram_gb >= min_ram:
                 recommended = tag
     else:
-        recommended = 'qwen3.5:9b'  # assumes 8 GB+ when RAM detection fails
+        recommended = 'gemma4:e4b'  # assumes a real (>=16 GB) box when RAM detection fails
 
     # Allow env var override. Accept either BASE_MODEL or a legacy
     # OLLAMA_DEFAULT_MODEL pointing at a qwen3.5 tag (we ignore the new
@@ -1505,7 +1508,7 @@ def choose_model(total_ram_gb: Optional[float] = None) -> str:
         print_info(f"Using base model from OLLAMA_DEFAULT_MODEL: {env_model}")
         return env_model
 
-    print_info("Choose a base model size (all use the qwen3.5 family;\n"
+    print_info("Choose a base model (gemma4:e4b is the recommended backbone;\n"
                "snflwr.ai is built as a wrapper on top of your choice):\n")
 
     for i, (tag, params, size, min_ram) in enumerate(models, 1):

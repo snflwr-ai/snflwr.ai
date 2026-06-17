@@ -242,8 +242,8 @@ fi
 
 # --- Detect RAM and recommend a base model -----------------------------------
 # The user-facing chat model is always 'snflwr.ai'. It is built locally by
-# this script as a wrapper around a qwen3.5 base model whose size is chosen
-# from system RAM below.
+# this script as a wrapper around a base model (gemma4:e4b by default; the
+# size/family is chosen from system RAM below, or pinned via BASE_MODEL).
 section "Checking hardware"
 
 TOTAL_RAM_GB=8
@@ -254,9 +254,13 @@ elif [[ "$(uname)" == "Darwin" ]]; then
     TOTAL_RAM_GB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
 fi
 
-if   [[ $TOTAL_RAM_GB -ge 32 ]]; then RECOMMENDED_MODEL="qwen3.5:35b"
-elif [[ $TOTAL_RAM_GB -ge 24 ]]; then RECOMMENDED_MODEL="qwen3.5:27b"
-elif [[ $TOTAL_RAM_GB -ge 16 ]]; then RECOMMENDED_MODEL="qwen3.5:9b"
+# gemma4:e4b (~10 GB) is the default backbone as of 2026-06-17: it won the
+# tutoring-quality backbone bake-off outright (best overall, K-2, math, and
+# homework-integrity) at a fraction of the VRAM of the qwen3.5:27b/35b tiers,
+# which couldn't even hold the production context on a 23 GB card. Boxes too
+# small for gemma fall back to the small qwen3.5 tiers (no tiny gemma exists,
+# and a smaller model beats an OOM). See evals/tutoring/backbone_bakeoff.py.
+if   [[ $TOTAL_RAM_GB -ge 16 ]]; then RECOMMENDED_MODEL="gemma4:e4b"
 elif [[ $TOTAL_RAM_GB -ge  8 ]]; then RECOMMENDED_MODEL="qwen3.5:4b"
 elif [[ $TOTAL_RAM_GB -ge  6 ]]; then RECOMMENDED_MODEL="qwen3.5:2b"
 else                                   RECOMMENDED_MODEL="qwen3.5:0.8b"; fi

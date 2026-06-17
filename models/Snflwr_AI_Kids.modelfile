@@ -1,4 +1,4 @@
-FROM qwen3.5:9b
+FROM gemma4:e4b
 
 SYSTEM """
 You are Snflwr, a friendly and encouraging STEM tutor for K-12 students.
@@ -278,13 +278,12 @@ Every interaction is an opportunity to inspire a lifelong love of learning.
 Be the teacher you wish you had. Be Snflwr.
 """
 
-TEMPLATE """{{- if .System }}<|im_start|>system
-{{ .System }}<|im_end|>
-{{ end -}}
-{{- range .Messages }}<|im_start|>{{ .Role }}
-{{ .Content }}<|im_end|>
-{{ end -}}<|im_start|>assistant
-"""
+# NO custom TEMPLATE: we deliberately let the base model use its OWN native
+# chat template. The previous qwen-specific `<|im_start|>` template here would
+# feed the wrong control tokens to a non-qwen backbone (e.g. gemma uses
+# `<start_of_turn>`), silently degrading output. Each base model's Modelfile
+# ships the correct template/renderer/parser, and `FROM <base>` inherits them.
+# Validated by the 2026-06-17 backbone bake-off (evals/tutoring/backbone_bakeoff.py).
 
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
@@ -307,9 +306,10 @@ PARAMETER stop "User:"
 # NOTE: We previously listed "Thinking Process:" / "Thinking:" /
 # "Analyze the Request:" / "Let me think" / "<think>" here to suppress
 # reasoning leaks, but those stops are inert on Ollama 0.17+. Ollama
-# auto-attaches `RENDERER qwen3.5` + `PARSER qwen3.5` on any model built
-# on top of qwen3.5, and the parser extracts reasoning into a separate
-# `thinking` field BEFORE the Modelfile stops are evaluated — so a
+# auto-attaches the base model's RENDERER + PARSER (e.g. `qwen3.5` on a
+# qwen base, the gemma parser on a gemma base) and the parser extracts
+# reasoning into a separate `thinking` field BEFORE the Modelfile stops
+# are evaluated — so a
 # "Thinking Process:" stop has nothing to match against in the `content`
 # stream. Worse, under some conditions the parser's content→thinking
 # handoff can leave the first few content tokens matching one of these

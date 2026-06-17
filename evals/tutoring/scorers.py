@@ -19,7 +19,13 @@ AGE_BANDS = {
     "K-2":  {"ages": (5, 7),   "words": (30, 50),   "grade": (0, 2)},
     "3-5":  {"ages": (8, 10),  "words": (50, 75),   "grade": (3, 5)},
     "6-8":  {"ages": (11, 13), "words": (75, 125),  "grade": (6, 8)},
-    "9-12": {"ages": (14, 18), "words": (125, 200), "grade": (9, 12)},
+    # Ceiling is 14, not 12: this band's ages run to 18 (12th grade) and the
+    # tutor spec targets "college-prep level", where FK 13-14 reading is
+    # developmentally appropriate. Capping at grade 12 penalized the model for
+    # using irreducible technical vocabulary (e.g. "deoxyribonucleic acid",
+    # FK ~15) that a high-schooler studying the topic genuinely needs. FK 15+
+    # on a whole answer is still flagged as real word-salad.
+    "9-12": {"ages": (14, 18), "words": (125, 200), "grade": (9, 14)},
 }
 
 _WORD_RE = re.compile(r"[A-Za-z0-9']+")

@@ -409,7 +409,10 @@ MAX_WAIT=120
 ELAPSED=0
 
 printf "  Waiting for API"
-while ! docker exec snflwr-api curl -sf http://localhost:39150/health &>/dev/null; do
+# Use the container's own healthcheck status — the snflwr-api image has no
+# curl, so polling with `docker exec ... curl` here always failed and aborted
+# the rest of deploy (model build + Open WebUI proxy wiring never ran).
+while [[ "$(docker inspect snflwr-api --format '{{.State.Health.Status}}' 2>/dev/null)" != "healthy" ]]; do
     sleep 3
     ELAPSED=$(( ELAPSED + 3 ))
     printf "."
@@ -488,6 +491,47 @@ else
     error "Failed to build '${WRAPPED_MODEL}' from '${BASE_MODEL}'."
     error "Try 'docker exec snflwr-ollama ollama create ${WRAPPED_MODEL} -f /tmp/snflwr.ai.modelfile' to see the error"
     exit 1
+fi
+
+# --- Connect Open WebUI to the snflwr-api proxy ------------------------------
+# Open WebUI v0.8.x ignores the OLLAMA_API_KEY env for Ollama connections (its
+# OLLAMA_API_CONFIGS PersistentConfig is hardcoded to {} — see the note in
+# docker/compose/docker-compose.home.yml). The proxy bearer key therefore has
+# to be written into webui.db, or the model dropdown is empty and chats 401.
+# We pipe INTERNAL_API_KEY straight from snflwr-api into the seeder's stdin so
+# the secret is never placed on a command line or in an env var.
+section "Connecting Open WebUI to proxy"
+
+SEEDER_SRC="${SCRIPT_DIR}/scripts/owui_connect.py"
+if [[ ! -f "$SEEDER_SRC" ]]; then
+    warn "Seeder not found at $SEEDER_SRC — skipping proxy wiring."
+    warn "Model list may be empty until Open WebUI's Ollama connection has the key."
+elif ! docker cp "$SEEDER_SRC" snflwr-frontend:/tmp/owui_connect.py 2>/dev/null; then
+    warn "Could not copy seeder into Open WebUI — skipping proxy wiring."
+else
+    SEED_RC=0
+    docker exec snflwr-api printenv INTERNAL_API_KEY 2>/dev/null \
+        | docker exec -i snflwr-frontend python /tmp/owui_connect.py || SEED_RC=$?
+
+    if [[ $SEED_RC -eq 0 ]]; then
+        info "Restarting Open WebUI to apply proxy credential..."
+        docker restart snflwr-frontend >/dev/null 2>&1 || true
+        printf "  Waiting for Open WebUI"
+        ELAPSED=0
+        while ! curl -sf "http://localhost:${WEBUI_PORT}" &>/dev/null; do
+            sleep 3; ELAPSED=$(( ELAPSED + 3 )); printf "."
+            if [[ $ELAPSED -ge $MAX_WAIT ]]; then
+                echo ""; warn "Open WebUI slow to restart — check ./deploy.sh --logs"; break
+            fi
+        done
+        echo ""
+        info "Open WebUI connected to proxy."
+    elif [[ $SEED_RC -eq 2 ]]; then
+        info "Open WebUI already connected to proxy."
+    else
+        warn "Could not seed proxy credential into Open WebUI (rc=${SEED_RC})."
+        warn "The model dropdown may be empty; see ./deploy.sh --logs."
+    fi
 fi
 
 # --- Open browser ------------------------------------------------------------

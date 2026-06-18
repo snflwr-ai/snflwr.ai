@@ -66,3 +66,6 @@ config/audit/
 # Generated credentials file — never commit
 CREDENTIALS.md
 CREDENTIALS*.md
+
+# Local Claude Code permission allowlist (not for the public repo)
+.claude/settings.json

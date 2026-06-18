@@ -353,6 +353,10 @@ INTERNAL_API_KEY=$(_gen_secret)
 INTERNAL_API_KEY_CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 WEBUI_SECRET_KEY=$(_gen_secret)
 PARENT_DASHBOARD_PASSWORD=$(_gen_secret)
+# Database encryption key (AES-256 at rest via SQLCipher).
+# ⚠️ BACK THIS UP. If you lose it, all encrypted data is unrecoverable.
+DB_ENCRYPTION_ENABLED=true
+DB_ENCRYPTION_KEY=$(_gen_secret)
 
 # Allow new user signups
 # Must be 'true' for the very first run so you can create the admin account

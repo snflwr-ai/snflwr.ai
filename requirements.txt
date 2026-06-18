@@ -54,9 +54,9 @@ setuptools==78.1.1            # Package utilities (security patches for CVE-2024
 wheel==0.46.3                 # Wheel package format (includes fix for CVE-2026-24049)
 jaraco-context==6.1.1         # Transitive dep — pin for CVE-2026-23949
 
-# Database Encryption (Optional - requires system SQLCipher libraries)
-# Install separately if needed: pip install pysqlcipher3==1.2.0
-# System requirements:
-#   Ubuntu/Debian: sudo apt-get install libsqlcipher-dev
-#   macOS: brew install sqlcipher
-#   Then: pip install pysqlcipher3==1.2.0
+# Database encryption at rest (AES-256 via SQLCipher) — REQUIRED for K-12 data.
+# sqlcipher3-binary ships prebuilt manylinux wheels with SQLCipher statically
+# linked, so no system libsqlcipher / compiler is needed. The encrypted adapter
+# (storage/encrypted_db_adapter.py) imports pysqlcipher3 first, then sqlcipher3.
+sqlcipher3-binary==0.5.4
+# Alternative (compiled): pysqlcipher3==1.2.0 + apt install libsqlcipher-dev

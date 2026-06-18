@@ -160,9 +160,7 @@ class EncryptionManager:
         self._key_file = Path(key_dir) / ".encryption_key"
 
         # Optional passphrase wraps the master key on disk (audit C3).
-        self._passphrase: Optional[str] = os.getenv(
-            "MASTER_KEY_PASSPHRASE"
-        ) or None
+        self._passphrase: Optional[str] = os.getenv("MASTER_KEY_PASSPHRASE") or None
 
         # Initialize or load encryption key
         self._initialize_encryption()
@@ -232,10 +230,7 @@ class EncryptionManager:
                 kek = _derive_kek_from_passphrase(self._passphrase, salt)
                 wrapped_token = Fernet(kek).encrypt(self._master_key)
                 payload = (
-                    _WRAPPED_KEY_MAGIC
-                    + base64.b64encode(salt)
-                    + b":"
-                    + wrapped_token
+                    _WRAPPED_KEY_MAGIC + base64.b64encode(salt) + b":" + wrapped_token
                 )
             else:
                 payload = self._master_key
@@ -302,7 +297,7 @@ class EncryptionManager:
                         "passphrase used at write time or restore the "
                         "key from a backup."
                     )
-                rest = payload[len(_WRAPPED_KEY_MAGIC):]
+                rest = payload[len(_WRAPPED_KEY_MAGIC) :]
                 salt_b64, _, wrapped_token = rest.partition(b":")
                 if not wrapped_token:
                     raise ValueError("Malformed wrapped master key payload")
@@ -312,8 +307,7 @@ class EncryptionManager:
                     self._master_key = Fernet(kek).decrypt(wrapped_token)
                 except InvalidToken as exc:
                     raise RuntimeError(
-                        "Master key decryption failed — wrong "
-                        "MASTER_KEY_PASSPHRASE."
+                        "Master key decryption failed — wrong " "MASTER_KEY_PASSPHRASE."
                     ) from exc
             else:
                 self._master_key = payload

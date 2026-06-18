@@ -391,12 +391,14 @@ class AgeVerificationManager:
         revocation_date = datetime.now(timezone.utc).isoformat()
 
         try:
-            details = json.dumps({
-                "profile_id": profile_id,
-                "parent_id": parent_id,
-                "reason": reason or "Parental consent revoked",
-                "revoked_at": revocation_date,
-            })
+            details = json.dumps(
+                {
+                    "profile_id": profile_id,
+                    "parent_id": parent_id,
+                    "reason": reason or "Parental consent revoked",
+                    "revoked_at": revocation_date,
+                }
+            )
 
             with self.db.transaction() as conn:
                 cursor = conn.cursor()
@@ -446,7 +448,8 @@ class AgeVerificationManager:
         except Exception as e:
             logger.error(
                 "Failed to revoke parental consent for profile %r: %s",
-                sanitize_log_value(profile_id), e,
+                sanitize_log_value(profile_id),
+                e,
             )
             return False
 

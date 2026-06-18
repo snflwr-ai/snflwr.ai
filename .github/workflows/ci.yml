@@ -177,6 +177,11 @@ jobs:
         import os
         os.environ['ENVIRONMENT'] = 'production'
         os.environ['JWT_SECRET_KEY'] = 'test-secret-key-for-ci-validation'
+        # INTERNAL_API_KEY is hard-required at config import time in prod-like
+        # envs (config.py). Provide it so the import succeeds and we actually
+        # reach validate_production_security() — which should still reject the
+        # config for the *other* missing prod requirements (DB encryption, Redis).
+        os.environ['INTERNAL_API_KEY'] = 'test-internal-key-for-ci-validation'
         from config import system_config
         try:
             system_config.validate_production_security()

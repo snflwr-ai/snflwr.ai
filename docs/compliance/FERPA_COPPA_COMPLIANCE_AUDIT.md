@@ -1,6 +1,15 @@
 ---
 ---
 
+> ## ⚠️ Compliance status correction (2026-06-18)
+> This audit reflects COPPA/FERPA-**supporting engineering**, not legal
+> compliance. snflwr.ai is **NOT** legally compliant or certified: the documents
+> in `legal/` are DRAFT and no business entity is registered (so COPPA
+> § 312.4(d)(1) operator disclosures cannot be published). Read any "complies" /
+> "fully compliant" language below as *features implemented*, not *legally
+> certified*. See [`../CURRENT_STATUS.md`](../CURRENT_STATUS.md) and
+> [`../../legal/LAWYER_REVIEW_CHECKLIST.md`](../../legal/LAWYER_REVIEW_CHECKLIST.md).
+
 # FERPA & COPPA Compliance Audit Report
 ## snflwr.ai K-12 Safe Learning Platform
 

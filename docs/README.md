@@ -45,9 +45,9 @@ Setup and configuration guides.
 
 ### [Reports](./reports/)
 Assessment reports and production readiness documentation.
-- [Production Readiness Report](./reports/PRODUCTION_READINESS_REPORT.md)
-- [Security Hardening Report](./reports/SECURITY_HARDENING_REPORT.md)
+- **[Current Status (canonical)](./CURRENT_STATUS.md)** — start here
 - [Testing Results](./reports/TESTING_RESULTS.md)
+- _Older readiness/security reports are archived under [`reports/archived/`](./reports/archived/) (they overstate readiness)._
 
 ### [Safety](./safety/)
 Content safety and filtering documentation.

@@ -307,6 +307,11 @@ To switch the underlying base, re-run `./deploy.sh --model gemma4:e4b`
 
 ## Security & Compliance
 
+> **Compliance status:** the items below are COPPA/FERPA-**supporting
+> engineering**, not legal certification. The legal documents in [`legal/`](legal/)
+> are **DRAFT** and no business entity is registered yet, so snflwr.ai is not yet
+> legally launchable as a paid service. See **[docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md)**.
+
 | Layer | Implementation |
 |-------|---------------|
 | **Encryption at rest** | AES-256 via SQLCipher |

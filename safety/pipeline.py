@@ -922,6 +922,37 @@ class _SemanticClassifier:
                 except Exception:
                     pass
 
+    def alert_if_unavailable(self) -> None:
+        """Operator-alert if the classifier is not available. Best-effort.
+
+        Covers the SILENT case the runtime transitions miss: a classifier that
+        *starts* disabled (safety model never pulled, Ollama unreachable at
+        init, import error) never transitions from "available", so the
+        degraded-path alert in ``_transition_state`` never fires. Call once at
+        startup so a degraded safety posture is loud, not silent.
+        """
+        if self._state == "available":
+            return
+        logger.warning(
+            "Safety classifier is %s at startup — only deterministic stages protect.",
+            self._state,
+        )
+        try:
+            from core.email_service import email_service
+
+            email_service.send_operator_alert(
+                subject="Safety classifier DISABLED",
+                description=(
+                    f"The semantic safety classifier is '{self._state}' at startup. "
+                    "Likely cause: the safety model (llama-guard) is not pulled, or "
+                    "Ollama was unreachable at init. Deterministic safety stages "
+                    "(1-3, 5) still protect, but the ML layer is OFF. Run "
+                    "./deploy.sh to pull the safety model, or check Ollama."
+                ),
+            )
+        except Exception:
+            pass  # alert is best-effort; never raise at startup
+
     def _probe_ollama(self) -> bool:
         """Lightweight health check: is Ollama reachable with a safety model?"""
         if self._client is None:

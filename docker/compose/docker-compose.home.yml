@@ -17,7 +17,11 @@ services:
 
   # Ollama - AI inference engine (models pulled on first start)
   ollama:
-    image: ollama/ollama:latest
+    # Pinned (was :latest, which could change under you and break model loading
+    # or the /api/tags format the proxy depends on). The guarded upgrader
+    # (./deploy.sh --upgrade ollama) bumps OLLAMA_IMAGE_TAG, smoke-tests it, and
+    # rolls back on failure.
+    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-0.30.9}
     container_name: snflwr-ollama
     volumes:
       - ollama-data:/root/.ollama

@@ -16,9 +16,12 @@
 #   ./deploy.sh --port <port>    # override web UI port (default: 3000)
 #   ./deploy.sh --stop           # stop all services
 #   ./deploy.sh --update         # pull latest images and restart
-#   ./deploy.sh --upgrade-owui [tag]  # guarded Open WebUI upgrade w/ auto-rollback
-#                                # (no tag = latest stable; smoke-tests then keeps
-#                                #  or rolls back if the new version breaks)
+#   ./deploy.sh --upgrade <owui|ollama|model> [target]
+#                                # guarded upgrade of one component with auto-
+#                                # rollback: pulls the target, smoke-tests it,
+#                                # then keeps it or rolls back if it breaks.
+#                                # owui/ollama: no target = latest stable.
+#                                # model: target is REQUIRED (a base model tag).
 #   ./deploy.sh --logs           # tail service logs
 #   ./deploy.sh --status         # show service health
 #
@@ -125,8 +128,9 @@ GPU_MODE=""        # auto | force | none
 OPEN_BROWSER=auto  # auto | yes | no
 OLLAMA_MODEL_ARG=""
 WEBUI_PORT_ARG=""
-ACTION="start"     # start | stop | update | logs | status | upgrade-owui
-OWU_UPGRADE_ARG=""  # optional target tag for --upgrade-owui
+ACTION="start"        # start | stop | update | logs | status | upgrade
+UPGRADE_COMPONENT=""  # owui | ollama | model  (for --upgrade)
+UPGRADE_ARGS=()       # remaining args forwarded to the guarded upgrader
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -137,10 +141,18 @@ while [[ $# -gt 0 ]]; do
         --port)       shift; WEBUI_PORT_ARG="$1" ;;
         --stop)       ACTION=stop ;;
         --update)     ACTION=update ;;
+        --upgrade)
+            # --upgrade <component> [target] [--dry-run]   (owui | ollama | model)
+            ACTION=upgrade; shift
+            if [[ "${1:-}" != "" && "${1:-}" != --* ]]; then UPGRADE_COMPONENT="$1"; shift; fi
+            UPGRADE_ARGS=("$@")   # forward target + any flags (e.g. --dry-run)
+            break
+            ;;
         --upgrade-owui)
-            ACTION=upgrade-owui
-            # Optional next arg is a target tag (e.g. v0.9.6); skip if it's a flag.
-            if [[ $# -gt 1 && "$2" != --* ]]; then shift; OWU_UPGRADE_ARG="$1"; fi
+            # Back-compat alias for: --upgrade owui [target]
+            ACTION=upgrade; UPGRADE_COMPONENT=owui; shift
+            UPGRADE_ARGS=("$@")
+            break
             ;;
         --logs)       ACTION=logs ;;
         --status)     ACTION=status ;;
@@ -193,9 +205,13 @@ if [[ "$ACTION" == "status" ]]; then
     exit 0
 fi
 
-# --- Guarded Open WebUI upgrade ----------------------------------------------
-if [[ "$ACTION" == "upgrade-owui" ]]; then
-    exec "${SCRIPT_DIR}/scripts/owui_upgrade.sh" ${OWU_UPGRADE_ARG:+"$OWU_UPGRADE_ARG"}
+# --- Guarded component upgrade -----------------------------------------------
+if [[ "$ACTION" == "upgrade" ]]; then
+    if [[ -z "$UPGRADE_COMPONENT" ]]; then
+        error "Usage: ./deploy.sh --upgrade <owui|ollama|model> [target] [--dry-run]"; exit 1
+    fi
+    exec "${SCRIPT_DIR}/scripts/guarded_upgrade.sh" "$UPGRADE_COMPONENT" \
+        ${UPGRADE_ARGS[@]+"${UPGRADE_ARGS[@]}"}
 fi
 
 # =============================================================================
@@ -325,10 +341,11 @@ BASE_MODEL=${RESOLVED_MODEL}
 # Web UI port (open http://localhost:${RESOLVED_PORT} when ready)
 WEBUI_PORT=${RESOLVED_PORT}
 
-# Open WebUI image tag. Pinned for reproducibility + safety review. The
-# guarded upgrader (./deploy.sh --upgrade-owui) bumps this, smoke-tests the
-# new version, and rolls it back automatically if the smoke test fails.
+# Image tags for externally-maintained components. Pinned for reproducibility
+# and safety review. The guarded upgrader (./deploy.sh --upgrade <component>)
+# bumps these, smoke-tests the new version, and rolls back on failure.
 OWU_IMAGE_TAG=v0.8.12
+OLLAMA_IMAGE_TAG=0.30.9
 
 # Security keys (auto-generated — do not share these)
 JWT_SECRET_KEY=$(_gen_secret)

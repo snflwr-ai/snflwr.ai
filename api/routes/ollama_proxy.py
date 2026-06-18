@@ -352,6 +352,7 @@ async def proxy_chat(request: Request) -> Response:
         assistant_text = _extract_text_from_ndjson_chunks(collected)
         try:
             from safety.pipeline import safety_pipeline
+
             out_result = safety_pipeline.check_output(
                 text=assistant_text, age=age, profile_id=profile_id
             )
@@ -407,11 +408,10 @@ async def proxy_chat(request: Request) -> Response:
 
     if isinstance(upstream_json, dict):
         msg = upstream_json.get("message")
-        assistant_text = (
-            msg.get("content", "") if isinstance(msg, dict) else ""
-        )
+        assistant_text = msg.get("content", "") if isinstance(msg, dict) else ""
         try:
             from safety.pipeline import safety_pipeline
+
             out_result = safety_pipeline.check_output(
                 text=assistant_text, age=age, profile_id=profile_id
             )

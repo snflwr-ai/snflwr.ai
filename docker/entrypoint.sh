@@ -22,9 +22,14 @@ for d in /app/data /app/logs; do
     # Directory may not exist yet if a volume wasn't mounted there — skip.
     [ -d "$d" ] || continue
 
-    current_uid="$(stat -c '%u' "$d")"
-    if [ "$current_uid" != "$TARGET_UID" ]; then
-        echo "entrypoint: fixing ownership on $d (was uid=$current_uid)"
+    # Re-chown if the directory OR anything inside it isn't owned by the target
+    # uid. Checking only the top dir misses stale root-owned files left inside
+    # an already-correct dir by an earlier root run (e.g. safety_incidents.log),
+    # which silently breaks safety-incident logging. `find ... -print -quit`
+    # stops at the first offender, so normal boots stay fast.
+    if [ "$(stat -c '%u' "$d")" != "$TARGET_UID" ] || \
+       [ -n "$(find "$d" ! -uid "$TARGET_UID" -print -quit 2>/dev/null)" ]; then
+        echo "entrypoint: fixing ownership on $d"
         chown -R "$TARGET_UID:$TARGET_GID" "$d"
     fi
 done

@@ -1079,6 +1079,127 @@ class TestProxyBearerAuth:
         assert resp.status_code == 200
 
 
+class TestCrisisEscalation:
+    """A blocked student message must escalate to a human, not just render a
+    safe response. Students reach the model via this proxy (not chat.py), so the
+    incident_logger.log_incident call (DB incident + parent alert for
+    major/critical) has to fire here.
+    """
+
+    def test_input_block_records_incident(self):
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        # A self-harm-style block (MAJOR severity → parent alert path).
+        block = _block_result("Please talk to a trusted adult. You can reach 988.")
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = block
+
+        mock_incident = MagicMock()
+        mock_incident.log_incident.return_value = (True, 1)
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-sh", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-sh")),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch("safety.incident_logger.incident_logger", mock_incident),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(text="i want to die"),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-sh",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        assert resp.status_code == 200
+        # The child still gets the safe response...
+        assert "988" in resp.json()["message"]["content"]
+        # ...AND a human-escalation incident was recorded.
+        mock_incident.log_incident.assert_called_once()
+        kwargs = mock_incident.log_incident.call_args.kwargs
+        assert kwargs["profile_id"] == "profile-sh"
+        assert kwargs["incident_type"]  # category.value present
+        assert kwargs["severity"] in ("minor", "major", "critical")
+
+    def test_escalation_failure_does_not_break_child_response(self):
+        """If incident logging raises, the child STILL gets the safe response."""
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        block = _block_result("Let's talk to a trusted adult.")
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = block
+
+        mock_incident = MagicMock()
+        mock_incident.log_incident.side_effect = RuntimeError("db down")
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-x", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-x")),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch("safety.incident_logger.incident_logger", mock_incident),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(text="something blocked"),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-x",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        assert resp.status_code == 200
+        assert "trusted adult" in resp.json()["message"]["content"]
+        mock_incident.log_incident.assert_called_once()  # attempted, but failure swallowed
+
+    def test_safe_message_records_no_incident(self):
+        """A safe student message must NOT create an incident."""
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        ollama_resp = httpx.Response(200, json={
+            "model": "test-model",
+            "message": {"role": "assistant", "content": "2 + 2 = 4."},
+            "done": True,
+        })
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = _safe_result()
+        mock_pipeline.check_output.return_value = _safe_result()
+
+        mock_incident = MagicMock()
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-ok", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-ok")),
+            patch.object(proxy_mod, "_forward_request",
+                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch("safety.incident_logger.incident_logger", mock_incident),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(text="what is 2+2?"),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-ok",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_incident.log_incident.assert_not_called()
+
+
 class TestTagsModelVisibility:
     """Students must only see the public tutor model in /api/tags.
 

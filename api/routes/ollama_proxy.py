@@ -181,6 +181,41 @@ def _ollama_block_response(model: str, block_message: str) -> dict:
     }
 
 
+def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
+    """Best-effort human-in-the-loop escalation for a blocked student message.
+
+    Records a DB incident and — for major/critical severities such as a
+    self-harm disclosure — queues a parent alert via the incident logger.
+    Without this, a child's crisis message shows the 988 safe-response but
+    never notifies a trusted adult, and no incident is recorded for review.
+
+    Students reach the model through this proxy (not api/routes/chat.py), so the
+    escalation has to live here too. Fail-safe by design: any error is swallowed
+    so the child's safe response is always delivered.
+    """
+    try:
+        from safety.incident_logger import incident_logger
+
+        incident_logger.log_incident(
+            profile_id=profile_id or "unknown",
+            session_id=None,
+            incident_type=result.category.value,
+            severity=result.severity.value,
+            content_snippet=(content_snippet or "")[:200],
+            metadata={
+                "source": "ollama_proxy",
+                "stage": getattr(result, "stage", None),
+                "triggered_keywords": list(
+                    getattr(result, "triggered_keywords", ()) or ()
+                ),
+            },
+        )
+    except Exception as exc:  # never let escalation break the child's response
+        logger.error(
+            "Failed to record safety incident (non-fatal): %s", exc, exc_info=True
+        )
+
+
 # ---------------------------------------------------------------------------
 # Streaming helper
 # ---------------------------------------------------------------------------
@@ -358,6 +393,7 @@ async def proxy_chat(request: Request) -> Response:
             profile_id,
             result.category,
         )
+        _record_safety_incident(profile_id, result, text)
         return JSONResponse(content=_ollama_block_response(model, block_message))
 
     # Safe — forward to Ollama
@@ -408,6 +444,7 @@ async def proxy_chat(request: Request) -> Response:
                 profile_id,
                 out_result.category,
             )
+            _record_safety_incident(profile_id, out_result, assistant_text)
             return Response(
                 content=_ollama_block_stream_bytes(model, block_msg),
                 media_type="application/x-ndjson",
@@ -465,6 +502,7 @@ async def proxy_chat(request: Request) -> Response:
                 profile_id,
                 out_result.category,
             )
+            _record_safety_incident(profile_id, out_result, assistant_text)
             return JSONResponse(content=_ollama_block_response(model, block_msg))
 
     return Response(

@@ -498,6 +498,24 @@ else
     info "Base model '$BASE_MODEL' ready."
 fi
 
+# Pull the SAFETY model (the semantic safety classifier — llama-guard). Without
+# it, the pipeline's ML classifier self-disables and only the deterministic
+# pattern stages protect. Non-fatal: a pull failure leaves deterministic safety
+# in place; we just warn. Override with SAFETY_MODEL in the environment.
+SAFETY_MODEL="${SAFETY_MODEL:-llama-guard3:8b}"
+if docker exec snflwr-ollama ollama list 2>/dev/null \
+        | awk 'NR>1 {print $1}' | grep -Fxq "$SAFETY_MODEL"; then
+    info "Safety model '$SAFETY_MODEL' already downloaded."
+else
+    info "Downloading safety model '$SAFETY_MODEL' (enables the semantic safety layer)..."
+    if docker exec snflwr-ollama ollama pull "$SAFETY_MODEL"; then
+        info "Safety model '$SAFETY_MODEL' ready — semantic classifier enabled."
+    else
+        warn "Safety model pull failed — semantic classifier will stay disabled."
+        warn "Deterministic safety stages still protect; re-run to retry the pull."
+    fi
+fi
+
 # Build (or rebuild) the snflwr.ai wrapper. This is what kids see in the
 # chat dropdown — it bundles the K-12 STEM tutor system prompt, sampling
 # parameters (incl. repeat_penalty to prevent reasoning loops), and safety

@@ -92,7 +92,10 @@ services:
 
   # Open WebUI - Chat interface
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.8.12
+    # Pinned by default. The guarded upgrader (scripts/owui_upgrade.sh) bumps
+    # OWU_IMAGE_TAG, smoke-tests the new version, and rolls this back to the
+    # previous tag if the smoke test fails. v0.8.12 is the safety-reviewed pin.
+    image: ghcr.io/open-webui/open-webui:${OWU_IMAGE_TAG:-v0.8.12}
     container_name: snflwr-frontend
     ports:
       - "${WEBUI_PORT:-3000}:8080"

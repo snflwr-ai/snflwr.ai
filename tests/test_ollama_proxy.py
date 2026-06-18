@@ -1079,6 +1079,104 @@ class TestProxyBearerAuth:
         assert resp.status_code == 200
 
 
+class TestTagsModelVisibility:
+    """Students must only see the public tutor model in /api/tags.
+
+    The Ollama backend also holds the raw backbone plus rollback/backup
+    variants; those must never appear in a child's model dropdown. Admins
+    still see everything so they can manage models.
+    """
+
+    _ALL_MODELS = {
+        "models": [
+            {"name": "snflwr.ai:latest"},
+            {"name": "snflwr.ai:qwen-rollback"},
+            {"name": "snflwr-bk-gemma4-e4b:latest"},
+            {"name": "gemma4:e4b"},
+        ]
+    }
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        return TestClient(_make_app())
+
+    def test_student_sees_only_public_model(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(200, json=self._ALL_MODELS),
+        ):
+            resp = self._client().get(
+                "/api/tags", headers={"X-OpenWebUI-User-Role": "user"}
+            )
+        assert resp.status_code == 200
+        names = {m["name"] for m in resp.json()["models"]}
+        assert names == {"snflwr.ai:latest"}
+
+    def test_missing_role_header_fails_closed_to_student(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(200, json=self._ALL_MODELS),
+        ):
+            resp = self._client().get("/api/tags")
+        assert resp.status_code == 200
+        names = {m["name"] for m in resp.json()["models"]}
+        assert names == {"snflwr.ai:latest"}
+        assert "gemma4:e4b" not in names
+
+    def test_admin_sees_all_models(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(200, json=self._ALL_MODELS),
+        ):
+            resp = self._client().get(
+                "/api/tags", headers={"X-OpenWebUI-User-Role": "admin"}
+            )
+        assert resp.status_code == 200
+        names = {m["name"] for m in resp.json()["models"]}
+        assert names == {
+            "snflwr.ai:latest",
+            "snflwr.ai:qwen-rollback",
+            "snflwr-bk-gemma4-e4b:latest",
+            "gemma4:e4b",
+        }
+
+    def test_non_200_passed_through_unfiltered(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("refused"),
+        ):
+            resp = self._client().get(
+                "/api/tags", headers={"X-OpenWebUI-User-Role": "user"}
+            )
+        assert resp.status_code == 503
+
+    def test_filter_helper_keeps_base_and_latest(self):
+        from api.routes.ollama_proxy import _filter_tags_for_students
+        import json as _j
+
+        payload = _j.dumps({
+            "models": [
+                {"name": "snflwr.ai"},
+                {"name": "snflwr.ai:latest"},
+                {"name": "snflwr.ai:qwen-rollback"},
+                {"name": "gemma4:e4b"},
+            ]
+        }).encode()
+        out = _j.loads(_filter_tags_for_students(payload))
+        names = {m["name"] for m in out["models"]}
+        assert names == {"snflwr.ai", "snflwr.ai:latest"}
+
+    def test_filter_helper_tolerates_malformed_payload(self):
+        from api.routes.ollama_proxy import _filter_tags_for_students
+
+        # Not JSON → returned unchanged rather than crashing.
+        assert _filter_tags_for_students(b"not json{{") == b"not json{{"
+
+
 class TestForkedFilesDeleted:
     """The OWU router fork and middleware must not exist."""
 

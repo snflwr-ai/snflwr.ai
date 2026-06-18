@@ -104,11 +104,24 @@ services:
       - OLLAMA_BASE_URL=http://snflwr-api:39150
       # Bearer for the proxy. snflwr-api accepts INTERNAL_API_KEY as a
       # server-to-server credential; without this, every chat returns 401.
+      # NOTE (2026-06-18): Open WebUI v0.8.12 does NOT read this env for Ollama
+      # connections — its OLLAMA_API_CONFIGS PersistentConfig is hardcoded to a
+      # {} default (config.py:1039) and only loads the key from webui.db. The
+      # key is therefore seeded into the DB (ollama.api_configs."0".key) by
+      # deploy.sh via scripts/owui_connect.py after the container boots. This
+      # env is kept for documentation / forward-compat only; it has no effect
+      # on the Ollama connection in this version.
       - OLLAMA_API_KEY=${INTERNAL_API_KEY}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       # Forward user identity headers so the proxy can identify students
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
+      # Self-signup stays off (students/parents don't self-register), but the
+      # FIRST account still needs to be createable to bootstrap the admin. In
+      # OWU v0.8.x that initial admin is gated behind ENABLE_INITIAL_ADMIN_SIGNUP
+      # (env.py:460, default False) — without it the signup form 403s on a fresh
+      # volume and there is no way in. Enable just the first-admin path.
+      - ENABLE_INITIAL_ADMIN_SIGNUP=true
       - DEFAULT_USER_ROLE=user
       - DEFAULT_MODELS=${OLLAMA_MODEL:-snflwr.ai}
       # Lock down student accounts - chat only

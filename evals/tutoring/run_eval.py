@@ -99,9 +99,40 @@ def score_case(case: dict, response: str, judge_scores: dict | None = None) -> d
     return row
 
 
-def generate_via_ollama(question: str, ages: str, base_url: str, model: str, timeout: int = 120) -> str:
+# Maps each age band to the age-range hint the production proxy injects, so a
+# model's age_fit is exercised the same way it is in production.
+BAND_AGES = {"K-2": "5-7", "3-5": "8-10", "6-8": "11-13", "9-12": "14-18"}
+
+
+def run_cases(cases: list, response_for, judge_gen=None) -> list:
+    """Score every case using `response_for(case) -> str|None`.
+
+    Shared by the single-model runner and the multi-model bake-off so both
+    take the exact same generate -> judge -> score path. A `None` response
+    (e.g. no recorded answer) skips the case.
+    """
+    rows = []
+    for case in cases:
+        response = response_for(case)
+        if response is None:
+            print(f"  (skip {case['id']}: no response)", file=sys.stderr)
+            continue
+        judge_scores = judge_mod.judge_case(case, response, judge_gen) if judge_gen else None
+        rows.append(score_case(case, response, judge_scores))
+    return rows
+
+
+def generate_via_ollama(question: str, ages: str, base_url: str, model: str,
+                        timeout: int = 120, retries: int = 2) -> str:
     """Query an Ollama chat model. The age hint mirrors what the production
-    proxy injects so age_fit is testable."""
+    proxy injects so age_fit is testable.
+
+    Retries transient 5xx errors: on a VRAM-constrained box Ollama can briefly
+    500 while (un)loading a model, and the load that freed memory often makes
+    the retry succeed.
+    """
+    import time
+    import urllib.error
     import urllib.request
 
     user = f"[Student age range: {ages}]\n{question}"
@@ -111,16 +142,25 @@ def generate_via_ollama(question: str, ages: str, base_url: str, model: str, tim
         "stream": False,
         "think": False,
     }).encode()
-    req = urllib.request.urlopen(
-        urllib.request.Request(
-            f"{base_url.rstrip('/')}/api/chat",
-            data=payload, headers={"Content-Type": "application/json"},
-        ),
-        timeout=timeout,
-    )
-    with req as resp:
-        data = json.loads(resp.read())
-    return data.get("message", {}).get("content", "")
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.urlopen(
+                urllib.request.Request(
+                    f"{base_url.rstrip('/')}/api/chat",
+                    data=payload, headers={"Content-Type": "application/json"},
+                ),
+                timeout=timeout,
+            )
+            with req as resp:
+                data = json.loads(resp.read())
+            return data.get("message", {}).get("content", "")
+        except urllib.error.HTTPError as e:  # noqa: PERF203
+            last_err = e
+            if e.code < 500 or attempt == retries:
+                raise
+            time.sleep(2 * (attempt + 1))
+    raise last_err  # pragma: no cover
 
 
 def build_markdown_report(rows: list, summary: dict) -> str:
@@ -201,19 +241,15 @@ def main():
         def judge_gen(prompt):  # noqa: E306
             return generate_via_ollama(prompt, "adult evaluator", args.base_url, args.judge)
 
-    rows = []
-    for case in cases:
-        if recorded:
-            response = recorded.get(case["id"])
-            if response is None:
-                print(f"  (skip {case['id']}: no recorded response)", file=sys.stderr)
-                continue
-        else:
-            ages = {"K-2": "5-7", "3-5": "8-10", "6-8": "11-13", "9-12": "14-18"}[case["band"]]
-            response = generate_via_ollama(case["question"], ages, args.base_url, args.model)
+    if recorded:
+        def response_for(case):
+            return recorded.get(case["id"])
+    else:
+        def response_for(case):
+            return generate_via_ollama(
+                case["question"], BAND_AGES[case["band"]], args.base_url, args.model)
 
-        judge_scores = judge_mod.judge_case(case, response, judge_gen) if judge_gen else None
-        rows.append(score_case(case, response, judge_scores))
+    rows = run_cases(cases, response_for, judge_gen)
 
     summary = summarise(rows)
     Path(args.json_out).write_text(json.dumps({"summary": summary, "rows": rows}, indent=2))

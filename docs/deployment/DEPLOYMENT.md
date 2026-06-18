@@ -141,7 +141,7 @@ docker-compose -f docker/compose/docker-compose.yml up -d ollama
 sleep 10
 
 # Pull required models
-docker exec snflwr-ollama ollama pull qwen3.5:9b
+docker exec snflwr-ollama ollama pull gemma4:e4b
 docker exec snflwr-ollama ollama pull llama-guard3:1b
 
 # Build Snflwr model from modelfile

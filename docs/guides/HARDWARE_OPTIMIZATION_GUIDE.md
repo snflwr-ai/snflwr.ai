@@ -38,7 +38,7 @@ We build **three Docker images** with different model sizes, and customers choos
 ```bash
 # Build for different hardware targets (both args required)
 docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=qwen3.5:0.8b --build-arg SAFETY_MODEL=llama-guard3:1b -t snflwr-ollama:minimal .
-docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=qwen3.5:9b --build-arg SAFETY_MODEL=llama-guard3:1b -t snflwr-ollama:standard .
+docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=gemma4:e4b --build-arg SAFETY_MODEL=llama-guard3:1b -t snflwr-ollama:standard .
 docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=qwen3.5:35b --build-arg SAFETY_MODEL=llama-guard3:8b -t snflwr-ollama:premium .
 
 # Push to registry
@@ -130,7 +130,7 @@ User Question
     ↓
 Safety Check (llama-guard3:1b) ← Fast, always same
     ↓
-Snflwr Tutor (qwen3.5:9b) ← Bigger model
+Snflwr Tutor (gemma4:e4b) ← Default backbone
     ↓
 Response (Excellent quality, fast)
 ```
@@ -176,7 +176,7 @@ SAFETY_MODEL = "llama-guard3:1b"
 TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:0.8b
 
 # Standard tier
-TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:9b
+TUTOR_MODEL = "snflwr.ai"  # Based on gemma4:e4b
 
 # Premium tier
 TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:35b
@@ -184,7 +184,7 @@ TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:35b
 
 ### Admin/Parent Access
 
-Admins and parents use the base chat model (e.g., `qwen3.5:9b`) directly -- no custom modelfile needed. This simplifies deployment since no separate educator model is required.
+Admins and parents use the base chat model (e.g., `gemma4:e4b`) directly -- no custom modelfile needed. This simplifies deployment since no separate educator model is required.
 
 ---
 

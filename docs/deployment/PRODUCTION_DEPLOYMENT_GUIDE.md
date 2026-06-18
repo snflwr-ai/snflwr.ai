@@ -270,7 +270,7 @@ Wait ~2 minutes for all services to start.
 
 2. **If models missing**, create them:
    ```bash
-   ollama pull qwen3.5:9b
+   ollama pull gemma4:e4b
    ollama pull llama-guard3:1b
 
    ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
@@ -284,7 +284,7 @@ Wait ~2 minutes for all services to start.
    **Admin-Only Models** (toggle ON "Admin Group access only"):
    - llama-guard3:1b
    - llama3-gradient:8b
-   - Base chat model (e.g., `qwen3.5:9b`) -- admins/parents use this directly
+   - Base chat model (e.g., `gemma4:e4b`) -- admins/parents use this directly
 
    **Student Models** (toggle OFF "Admin Group access only"):
    - snflwr.ai (custom tutor persona)
@@ -464,7 +464,7 @@ docker exec open-webui sh -c "sqlite3 /app/backend/data/webui.db"
 
 3. **Update models** (if needed):
    ```bash
-   ollama pull qwen3.5:9b
+   ollama pull gemma4:e4b
    ollama pull llama3-gradient:8b
    # Then recreate snflwr models
    ```

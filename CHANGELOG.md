@@ -5,6 +5,38 @@ All notable changes to snflwr.ai will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-06-18
+
+### Added
+- **Tutor backbone switched to `gemma4:e4b`** (won the June 2026 tutoring
+  bake-off); qwen3.5 tiers remain as the low-RAM fallback.
+- **Guarded upgrade framework** — `./deploy.sh --upgrade <owui|ollama|model>`
+  pulls, snapshots, smoke-tests, and auto-rolls-back per component. New scripts:
+  `guarded_upgrade.sh`, `gh_latest_release.py`, `model_canary.py`,
+  `owui_connect.py`. See `docs/guides/UPGRADE_FRAMEWORK.md`.
+- **Semantic safety classifier enabled** — `deploy.sh` now pulls `SAFETY_MODEL`
+  (default `llama-guard3:8b`) so the ML safety layer is on by default; an
+  operator alert fires if it is disabled at startup.
+- **Crisis escalation wired into the proxy path** students use — self-harm/major
+  blocks now record a DB incident + parent alert (previously only on the
+  unused `chat.py` route). Fail-safe.
+- Open WebUI pinned via `OWU_IMAGE_TAG` (v0.9.6), Ollama via `OLLAMA_IMAGE_TAG`
+  (0.30.10); `ENABLE_INITIAL_ADMIN_SIGNUP` for first-admin creation.
+- `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`, `docs/compliance/REQUIRED_DISCLOSURES.md`.
+
+### Fixed
+- **Database now actually encrypted at rest** — the image lacked a SQLCipher
+  driver, so encryption silently fell back to plaintext. Ship `sqlcipher3-binary`;
+  fix the schema-init and VACUUM paths that bypassed the encrypted adapter;
+  persist `DB_ENCRYPTION_KEY` in `.env.home`.
+- Open WebUI ↔ proxy authentication (model list was empty); student model
+  visibility (students no longer see backbone/backup model variants);
+  `deploy.sh` API wait-loop abort; safety-incident log file permissions.
+
+### Security
+- Note: the `[1.0.0]` "AES-256 encryption for data at rest" entry was
+  aspirational — at-rest encryption is actually enforced as of this release.
+
 ## [1.0.0] - 2026-01-09
 
 ### Added

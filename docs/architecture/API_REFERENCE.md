@@ -336,7 +336,7 @@ Send a message through the 5-stage safety pipeline.
 {
   "message": "What is photosynthesis?",
   "profile_id": "profile_xyz789",
-  "model": "qwen3.5:9b",
+  "model": "gemma4:e4b",
   "session_id": "session_123" // optional, will create new if not provided
 }
 ```
@@ -348,10 +348,10 @@ Send a message through the 5-stage safety pipeline.
   "blocked": false,
   "safety_metadata": {
     "filter_layers_passed": ["keyword", "llm_classifier", "response_validation"],
-    "model_used": "qwen3.5:9b",
+    "model_used": "gemma4:e4b",
     "profile_tier": "standard"
   },
-  "model": "qwen3.5:9b",
+  "model": "gemma4:e4b",
   "timestamp": "2025-12-25T10:30:00Z",
   "session_id": "session_123"
 }
@@ -368,7 +368,7 @@ Send a message through the 5-stage safety pipeline.
     "triggered_keywords": ["inappropriate_term"],
     "filter_layer": "keyword"
   },
-  "model": "qwen3.5:9b",
+  "model": "gemma4:e4b",
   "timestamp": "2025-12-25T10:30:00Z",
   "session_id": "session_123"
 }

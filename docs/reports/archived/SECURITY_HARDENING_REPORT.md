@@ -1,3 +1,15 @@
+> # ⚠️ ARCHIVED — HISTORICAL SNAPSHOT, DO NOT RELY ON THIS
+>
+> This document is from late 2025 / early 2026 and **overstates readiness**. It
+> predates the findings that the legal documents are DRAFT, no business entity
+> is registered, and the database was not actually encrypted at rest until June
+> 2026. Scores like "98/100 / approved for production" reflect engineering only
+> and ignore the legal/business launch blockers.
+>
+> **For the current, honest status see [`docs/CURRENT_STATUS.md`](../../CURRENT_STATUS.md).**
+
+---
+
 ---
 ---
 

@@ -1,3 +1,13 @@
+> # ⚠️ ARCHIVED — DEPRECATED APPROACH
+>
+> This describes the old **forked / bind-mounted middleware** integration of
+> Open WebUI. It was replaced by the **proxy architecture** — Open WebUI is now
+> unmodified and points at `snflwr-api` (the Ollama proxy), where safety is
+> enforced. See [`../architecture/OPENWEBUI_INTEGRATION.md`](../architecture/OPENWEBUI_INTEGRATION.md)
+> and [`../architecture/REQUEST_FLOW_AND_SAFETY.md`](../architecture/REQUEST_FLOW_AND_SAFETY.md).
+
+---
+
 ---
 ---
 

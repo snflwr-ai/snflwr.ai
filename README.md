@@ -339,7 +339,7 @@ pytest tests/ -v -m "not integration"
 
 ## Monitoring
 
-Enterprise deployments include Grafana dashboards, Prometheus alerting, and Sentry error tracking with COPPA-compliant PII filtering. See [MONITORING_AND_ALERTS.md](docs/deployment/MONITORING_AND_ALERTS.md).
+Enterprise deployments include Grafana dashboards, Prometheus alerting, and Sentry error tracking with COPPA-compliant PII filtering. See [MONITORING_GUIDE.md](docs/deployment/MONITORING_GUIDE.md).
 
 <br>
 

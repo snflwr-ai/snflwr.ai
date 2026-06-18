@@ -22,7 +22,6 @@ COPPA, FERPA, and security compliance documentation.
 
 ### [Deployment](./deployment/)
 Production deployment guides and operational documentation.
-- [Deployment Guide](./deployment/DEPLOYMENT.md)
 - [Production Deployment Guide](./deployment/PRODUCTION_DEPLOYMENT_GUIDE.md)
 - [HTTPS Deployment Guide](./deployment/HTTPS_DEPLOYMENT_GUIDE.md)
 - [PostgreSQL Deployment](./deployment/POSTGRESQL_DEPLOYMENT.md)

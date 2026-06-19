@@ -84,6 +84,38 @@ def _get_user_from_headers(request: Request) -> tuple:
     return user_id, role
 
 
+def _student_visible_models() -> set:
+    """Model names a non-admin (student) may see in the chat dropdown.
+
+    Only the canonical tutor model and its ``:latest`` tag — never the
+    backbone, rollback, or backup variants that share the same Ollama
+    backend but must never be selectable by a child.
+    """
+    default = (system_config.OLLAMA_DEFAULT_MODEL or "snflwr.ai").strip()
+    base = default.split(":", 1)[0]
+    return {base, f"{base}:latest"}
+
+
+def _filter_tags_for_students(payload: bytes) -> bytes:
+    """Drop non-public models from an Ollama ``/api/tags`` response body.
+
+    Returns the payload unchanged if it can't be parsed or has no model
+    list, so a malformed upstream response never crashes the dropdown.
+    """
+    try:
+        data = _json.loads(payload)
+    except (ValueError, _json.JSONDecodeError):
+        return payload
+    models = data.get("models")
+    if not isinstance(models, list):
+        return payload
+    allowed = _student_visible_models()
+    data["models"] = [
+        m for m in models if isinstance(m, dict) and m.get("name") in allowed
+    ]
+    return _json.dumps(data).encode()
+
+
 async def _get_profile_for_user(user_id: Optional[str]) -> str:
     """Look up the first child profile linked to *user_id*.
 
@@ -147,6 +179,41 @@ def _ollama_block_response(model: str, block_message: str) -> dict:
         "total_duration": 0,
         "eval_count": 0,
     }
+
+
+def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
+    """Best-effort human-in-the-loop escalation for a blocked student message.
+
+    Records a DB incident and — for major/critical severities such as a
+    self-harm disclosure — queues a parent alert via the incident logger.
+    Without this, a child's crisis message shows the 988 safe-response but
+    never notifies a trusted adult, and no incident is recorded for review.
+
+    Students reach the model through this proxy (not api/routes/chat.py), so the
+    escalation has to live here too. Fail-safe by design: any error is swallowed
+    so the child's safe response is always delivered.
+    """
+    try:
+        from safety.incident_logger import incident_logger
+
+        incident_logger.log_incident(
+            profile_id=profile_id or "unknown",
+            session_id=None,
+            incident_type=result.category.value,
+            severity=result.severity.value,
+            content_snippet=(content_snippet or "")[:200],
+            metadata={
+                "source": "ollama_proxy",
+                "stage": getattr(result, "stage", None),
+                "triggered_keywords": list(
+                    getattr(result, "triggered_keywords", ()) or ()
+                ),
+            },
+        )
+    except Exception as exc:  # never let escalation break the child's response
+        logger.error(
+            "Failed to record safety incident (non-fatal): %s", exc, exc_info=True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +393,7 @@ async def proxy_chat(request: Request) -> Response:
             profile_id,
             result.category,
         )
+        _record_safety_incident(profile_id, result, text)
         return JSONResponse(content=_ollama_block_response(model, block_message))
 
     # Safe — forward to Ollama
@@ -377,6 +445,7 @@ async def proxy_chat(request: Request) -> Response:
                 profile_id,
                 out_result.category,
             )
+            _record_safety_incident(profile_id, out_result, assistant_text)
             return Response(
                 content=_ollama_block_stream_bytes(model, block_msg),
                 media_type="application/x-ndjson",
@@ -433,6 +502,7 @@ async def proxy_chat(request: Request) -> Response:
                 profile_id,
                 out_result.category,
             )
+            _record_safety_incident(profile_id, out_result, assistant_text)
             return JSONResponse(content=_ollama_block_response(model, block_msg))
 
     return Response(
@@ -449,7 +519,22 @@ async def proxy_chat(request: Request) -> Response:
 
 @router.get("/tags")
 async def proxy_tags(request: Request) -> Response:
-    return await _proxy_to_ollama(request, "/api/tags")
+    """GET /api/tags — admins see every model; students only the tutor model.
+
+    Filtering the backbone/rollback/backup variants out for students happens
+    here at the proxy, so the guarantee holds regardless of Open WebUI's own
+    model-access config and survives a fresh open-webui-data volume. Fails
+    closed: a request without an admin role header is treated as a student.
+    """
+    response = await _proxy_to_ollama(request, "/api/tags")
+    _, role = _get_user_from_headers(request)
+    if role == "admin" or response.status_code != 200:
+        return response
+    return Response(
+        content=_filter_tags_for_students(response.body),
+        status_code=response.status_code,
+        media_type=response.media_type or "application/json",
+    )
 
 
 @router.post("/show")

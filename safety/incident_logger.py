@@ -203,6 +203,26 @@ class IncidentLogger:
 
         except DB_ERRORS as e:
             logger.error(f"Failed to log incident: {e}")
+            # Fail-safe: a crisis incident must never be silently dropped. The DB
+            # insert can fail for a profile-less session whose synthetic
+            # profile_id can't satisfy the FK we keep for COPPA cascade-delete.
+            # For major/critical severities, escalate to a human via an operator
+            # alert (the incident is still captured in the safety log file).
+            if severity in ("major", "critical"):
+                try:
+                    from core.email_service import email_service
+
+                    email_service.send_operator_alert(
+                        subject=f"Crisis incident could not be recorded ({incident_type})",
+                        description=(
+                            f"A {severity} safety incident (type={incident_type}) "
+                            f"for profile {sanitize_log_value(profile_id)!r} failed "
+                            f"to persist to the database ({e}). It is captured in "
+                            "the safety incident log file. Review immediately."
+                        ),
+                    )
+                except Exception:
+                    pass  # operator alert is best-effort; never raise from logger
             return False, None
 
     def get_incident(self, incident_id: int) -> Optional[SafetyIncident]:

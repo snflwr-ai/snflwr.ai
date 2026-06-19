@@ -4,12 +4,12 @@
 
 snflwr.ai uses two model families:
 
-- **Chat model** — `snflwr.ai`, the user-facing chat model. Built locally as a wrapper around a Qwen 3.5 base. Kids never see the raw qwen3.5 tag in the dropdown.
+- **Chat model** — `snflwr.ai`, the user-facing chat model. Built locally as a wrapper around a base model (`gemma4:e4b` by default on 16 GB+ systems; Qwen 3.5 tiers as fallback). Kids never see the raw base-model tag in the dropdown.
 - **Safety model** (Llama Guard 3) — content safety classification in the 5-stage safety pipeline
 
 ## Models
 
-### Chat: `snflwr.ai` (built locally, wraps a Qwen 3.5 base)
+### Chat: `snflwr.ai` (built locally, wraps a base model)
 
 The user-facing chat model is always `snflwr.ai`. It is built at install /
 deploy time by all of:
@@ -19,7 +19,7 @@ deploy time by all of:
 - `install.py` — interactive installer
 - `docker/Dockerfile.ollama` — enterprise tier (baked into the image)
 
-Each picks a Qwen 3.5 base sized to available RAM, then runs:
+Each picks a base model sized to available RAM (`gemma4:e4b` on 16 GB+ systems, otherwise a Qwen 3.5 tier), then runs:
 
 ```
 ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
@@ -30,14 +30,15 @@ ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
 sampling parameters (incl. `repeat_penalty` to prevent reasoning loops),
 and safety stop sequences.
 
-### Base: Qwen 3.5 (selected by hardware detection)
+### Base model (selected by hardware detection)
 
 | Base model | Size | RAM | Use Case |
 |-------|------|-----|----------|
-| `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ | Low-resource devices |
-| `qwen3.5:2b` | ~1.3 GB | 4 GB+ | Older laptops |
-| `qwen3.5:4b` | ~2.5 GB | 6 GB+ | Everyday use |
-| `qwen3.5:9b` | ~5.5 GB | 8 GB+ | Mid-range systems (default) |
+| `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ | Low-resource devices (fallback) |
+| `qwen3.5:2b` | ~1.3 GB | 4 GB+ | Older laptops (fallback) |
+| `qwen3.5:4b` | ~2.5 GB | 6 GB+ | Everyday use (fallback) |
+| `qwen3.5:9b` | ~5.5 GB | 8 GB+ | Mid-range systems (fallback) |
+| `gemma4:e4b` | ~10 GB | 16 GB+ | **Default** — recommended backbone |
 | `qwen3.5:27b` | ~16 GB | 24 GB+ | Higher quality |
 | `qwen3.5:35b` | ~22 GB | 32 GB+ | Server-grade |
 
@@ -70,7 +71,7 @@ models/
 ```bash
 # Both build args are required — choose based on hardware:
 docker build -f docker/Dockerfile.ollama \
-  --build-arg CHAT_MODEL=qwen3.5:9b \
+  --build-arg CHAT_MODEL=gemma4:e4b \
   --build-arg SAFETY_MODEL=llama-guard3:1b \
   -t snflwr-ollama .
 

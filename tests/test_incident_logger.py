@@ -1203,3 +1203,50 @@ class TestCleanup:
         mock_db.execute_write.side_effect = sqlite3.Error("cannot delete")
         # Should not raise
         logger.cleanup_old_incidents(retention_days=30)
+
+
+class TestCrisisIncidentNotDropped:
+    """A major/critical incident that fails to persist (e.g. a profile-less
+    session hitting the COPPA FK on profile_id) must escalate via an operator
+    alert — never be silently dropped."""
+
+    def test_db_failure_on_critical_alerts_operator(self, logger, mock_db):
+        mock_db.execute_write.side_effect = sqlite3.Error(
+            "FOREIGN KEY constraint failed"
+        )
+        with patch("core.email_service.email_service") as email:
+            ok, iid = logger.log_incident(
+                profile_id="safety_required_x",
+                incident_type="self_harm",
+                severity="critical",
+                content_snippet="i want to die",
+                send_alert=True,
+            )
+        assert ok is False and iid is None
+        email.send_operator_alert.assert_called_once()
+
+    def test_db_failure_on_minor_does_not_alert(self, logger, mock_db):
+        mock_db.execute_write.side_effect = sqlite3.Error("FK")
+        with patch("core.email_service.email_service") as email:
+            ok, _ = logger.log_incident(
+                profile_id="x",
+                incident_type="pii",
+                severity="minor",
+                content_snippet="...",
+                send_alert=True,
+            )
+        assert ok is False
+        email.send_operator_alert.assert_not_called()
+
+    def test_operator_alert_failure_does_not_raise(self, logger, mock_db):
+        mock_db.execute_write.side_effect = sqlite3.Error("FK")
+        with patch("core.email_service.email_service") as email:
+            email.send_operator_alert.side_effect = RuntimeError("smtp down")
+            ok, _ = logger.log_incident(  # must not raise despite alert failure
+                profile_id="p",
+                incident_type="self_harm",
+                severity="critical",
+                content_snippet="...",
+                send_alert=True,
+            )
+        assert ok is False

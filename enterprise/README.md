@@ -197,7 +197,7 @@ python scripts/backup_database.py restore --file backups/latest.sql
 | Full production checklist | [PRODUCTION_DEPLOYMENT_CHECKLIST.md](../docs/deployment/PRODUCTION_DEPLOYMENT_CHECKLIST.md) |
 | PostgreSQL setup | [POSTGRESQL_DEPLOYMENT.md](../docs/deployment/POSTGRESQL_DEPLOYMENT.md) |
 | HTTPS/SSL | [HTTPS_DEPLOYMENT_GUIDE.md](../docs/deployment/HTTPS_DEPLOYMENT_GUIDE.md) |
-| Monitoring & alerts | [MONITORING_AND_ALERTS.md](../docs/deployment/MONITORING_AND_ALERTS.md) |
+| Monitoring & alerts | [MONITORING_GUIDE.md](../docs/deployment/MONITORING_GUIDE.md) |
 | Performance tuning | [PERFORMANCE_OPTIMIZATION.md](../docs/deployment/PERFORMANCE_OPTIMIZATION.md) |
 | Incident response | [INCIDENT_RESPONSE_RUNBOOK.md](../docs/deployment/INCIDENT_RESPONSE_RUNBOOK.md) |
 | Credentials management | [PRODUCTION_CREDENTIALS_CHECKLIST.md](../docs/deployment/PRODUCTION_CREDENTIALS_CHECKLIST.md) |

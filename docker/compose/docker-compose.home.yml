@@ -17,7 +17,11 @@ services:
 
   # Ollama - AI inference engine (models pulled on first start)
   ollama:
-    image: ollama/ollama:latest
+    # Pinned (was :latest, which could change under you and break model loading
+    # or the /api/tags format the proxy depends on). The guarded upgrader
+    # (./deploy.sh --upgrade ollama) bumps OLLAMA_IMAGE_TAG, smoke-tests it, and
+    # rolls back on failure.
+    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-0.30.9}
     container_name: snflwr-ollama
     volumes:
       - ollama-data:/root/.ollama
@@ -61,6 +65,11 @@ services:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - PARENT_DASHBOARD_PASSWORD=${PARENT_DASHBOARD_PASSWORD}
       - ENCRYPT_CONVERSATIONS=true
+      # Database encryption at rest (AES-256 via SQLCipher). The image ships
+      # sqlcipher3-binary; the key must persist (it's in .env.home) or
+      # encrypted data becomes unrecoverable across restarts.
+      - DB_ENCRYPTION_ENABLED=${DB_ENCRYPTION_ENABLED:-true}
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
       # API config
       - API_PORT=39150
       - API_HOST=0.0.0.0
@@ -92,7 +101,10 @@ services:
 
   # Open WebUI - Chat interface
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.8.12
+    # Pinned by default. The guarded upgrader (scripts/owui_upgrade.sh) bumps
+    # OWU_IMAGE_TAG, smoke-tests the new version, and rolls this back to the
+    # previous tag if the smoke test fails. v0.8.12 is the safety-reviewed pin.
+    image: ghcr.io/open-webui/open-webui:${OWU_IMAGE_TAG:-v0.8.12}
     container_name: snflwr-frontend
     ports:
       - "${WEBUI_PORT:-3000}:8080"
@@ -104,11 +116,24 @@ services:
       - OLLAMA_BASE_URL=http://snflwr-api:39150
       # Bearer for the proxy. snflwr-api accepts INTERNAL_API_KEY as a
       # server-to-server credential; without this, every chat returns 401.
+      # NOTE (2026-06-18): Open WebUI v0.8.12 does NOT read this env for Ollama
+      # connections — its OLLAMA_API_CONFIGS PersistentConfig is hardcoded to a
+      # {} default (config.py:1039) and only loads the key from webui.db. The
+      # key is therefore seeded into the DB (ollama.api_configs."0".key) by
+      # deploy.sh via scripts/owui_connect.py after the container boots. This
+      # env is kept for documentation / forward-compat only; it has no effect
+      # on the Ollama connection in this version.
       - OLLAMA_API_KEY=${INTERNAL_API_KEY}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       # Forward user identity headers so the proxy can identify students
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
+      # Self-signup stays off (students/parents don't self-register), but the
+      # FIRST account still needs to be createable to bootstrap the admin. In
+      # OWU v0.8.x that initial admin is gated behind ENABLE_INITIAL_ADMIN_SIGNUP
+      # (env.py:460, default False) — without it the signup form 403s on a fresh
+      # volume and there is no way in. Enable just the first-admin path.
+      - ENABLE_INITIAL_ADMIN_SIGNUP=true
       - DEFAULT_USER_ROLE=user
       - DEFAULT_MODELS=${OLLAMA_MODEL:-snflwr.ai}
       # Lock down student accounts - chat only

@@ -181,7 +181,11 @@ class DatabaseManager:
         # to avoid creating a long-lived adapter connection that can hold file
         # handles on Windows. For other DBs, use the adapter transaction path.
         if self.db_type == "sqlite":
-            conn = sqlite3.connect(str(self.db_path))
+            # Use the configured adapter so an ENCRYPTED (SQLCipher) database is
+            # opened with its key applied. A plain sqlite3.connect() fails with
+            # "file is not a database" on an encrypted file. Released via
+            # self.adapter.close() below so no stale handle is kept.
+            conn = self.adapter.connect()
             cursor = conn.cursor()
 
             # Accounts table (renamed from parents — holds parents, admins, educators)
@@ -533,7 +537,10 @@ class DatabaseManager:
             except DB_ERRORS as e:
                 logger.debug(f"Failed to close cursor (non-critical): {e}")
             try:
-                conn.close()
+                # Close via the adapter so it clears its connection handle
+                # (a bare conn.close() would leave the adapter holding a stale,
+                # closed connection that later calls would reuse).
+                self.adapter.close()
             except DB_ERRORS as e:
                 logger.debug(f"Failed to close connection (non-critical): {e}")
 
@@ -1097,9 +1104,27 @@ class DatabaseManager:
             # wrapped in the adapter's default DEFERRED transaction.
             try:
                 if self.db_type == "sqlite":
-                    import sqlite3 as _sqlite3
+                    # Separate autocommit connection for VACUUM. If the DB is
+                    # encrypted, open it via SQLCipher with the key applied — a
+                    # plain sqlite3 connection can't read an encrypted file.
+                    from storage.encrypted_db_adapter import SQLCIPHER_AVAILABLE
 
-                    conn_vac = _sqlite3.connect(str(self.db_path), isolation_level=None)
+                    enc_key = getattr(self.adapter, "encryption_key", None)
+                    if SQLCIPHER_AVAILABLE and enc_key:
+                        from storage.encrypted_db_adapter import sqlcipher
+
+                        conn_vac = sqlcipher.connect(
+                            str(self.db_path), isolation_level=None
+                        )
+                        conn_vac.execute(
+                            "PRAGMA key = '%s'" % enc_key.replace("'", "''")
+                        )
+                    else:
+                        import sqlite3 as _sqlite3
+
+                        conn_vac = _sqlite3.connect(
+                            str(self.db_path), isolation_level=None
+                        )
                     conn_vac.execute("VACUUM")
                     conn_vac.close()
                 else:

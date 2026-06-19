@@ -301,7 +301,7 @@ docker exec snflwr-db pg_dump -U snflwr snflwr_db > backup.sql
 docker run --rm -v snflwr_open-webui-data:/data -v $(pwd):/backup \
   alpine tar czf /backup/webui-backup.tar.gz -C /data .
 
-# Restore process is documented in DEPLOYMENT.md
+# Restore process is documented in PRODUCTION_DEPLOYMENT_GUIDE.md
 ```
 
 ## Security Considerations

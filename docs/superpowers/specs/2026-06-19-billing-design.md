@@ -126,7 +126,7 @@ admins are never gated; only TUTORING is gated — settings/dashboard/billing st
 | Event (MoR webhook) | License server | App behavior |
 |---|---|---|
 | Subscribe / renew | `active`, new period_end | refresh issues token → unlocked |
-| Trial start | `trialing`, 14-day token | unlocked, trial banner |
+| Trial start | `trialing`, 30-day token | unlocked, trial banner |
 | Payment failed (dunning) | `past_due` | works during MoR retry window + grace; "update payment" banner |
 | Canceled | `canceled`, keep period_end | works until period_end **+ grace**, then gate |
 | Refund / chargeback | `revoked` | next refresh issues no token → gate after exp+grace |
@@ -208,8 +208,32 @@ optional plan→Budget/Standard/Premium model-tier mapping.
 - **License server (unit/integration):** webhook handling (created/renewed/canceled/past_due/refunded), token + trial issuance, auth flow, signature correctness.
 - **End-to-end:** activate → gate-when-expired → renew → unlocked; a student `/api/chat` is blocked when unlicensed (mirrors the existing safety-gate tests).
 
-## 14. Open questions (resolve in Phase 0)
+## 14. Pricing (recommended)
+
+> Decided: **30-day free trial** (per product owner). Pricing below is a
+> market-research recommendation — see caveat at the end.
+
+**Recommendation: $9.99/mo or $89/yr** (annual ≈ $7.42/mo, ~26% off).
+
+**Market anchors (consumer K-12 AI tutoring / EdTech):**
+- **Khanmigo (closest comp):** ~$4/mo or ~$44/yr, up to 10 child accounts, free for teachers. Deliberately near impulse-buy; its earlier ~$10/mo drew "too steep" complaints. (Source: khanmigo.ai/pricing — primary.)
+- **MagicSchool Plus:** $12.99/mo or $99.96/yr (~$8.33/mo) — but teacher-leaning.
+- **Math apps:** Photomath/Mathway ~$9.99/mo; Wolfram Alpha ~$7.25/mo; Socratic free.
+- **Category benchmarks:** Education-app **median ~$9.99–12.99/mo** and **~$38–45/yr** (RevenueCat 2026 / Adapty); Education has the **highest annual median of any app category**, and 59–66% of plans are annual — annual is where the revenue/retention is.
+
+**Why not match Khanmigo's $4:** that is a nonprofit-subsidized floor we can't and shouldn't chase. snflwr.ai's audience **self-selects on privacy, not price** (privacy-first, offline, self-hosted, "your data never leaves your device"), and the self-host setup friction already filters out price-shoppers. Price the **differentiation**, land at the category median, and push annual.
+
+**Trade-offs**
+- **Higher ($12.99/mo, $99/yr):** more revenue per user + signals premium/privacy value; risks slowing an already-narrow (technical/privacy) audience. Viable if positioned as a premium privacy product.
+- **Lower ($6.99/mo, $59/yr):** wider funnel; but erodes the premium signal and margins (and MoR takes ~5%).
+
+**On the 30-day trial:** generous and on-brand (privacy/trust + self-host setup needs evaluation runway), **but** longer trials cancel more (industry: ~51% cancel on 30-day vs ~26% on 3-day; 7–14-day trials can convert ~20% better). Mitigations: **card-on-file (opt-out) trial** (converts far higher — ~2.5× vs no-card) with a clear **pre-charge reminder** email a few days before day 30. EdTech trial-to-paid runs ~25% (Adapty/First Page Sage) — materially above the ~8% cross-SaaS median.
+
+⚠️ **Caveat:** the deep-research run's adversarial verification was rate-limited, so these figures are source-derived but **not harness-verified**. Sanity-check the live competitor prices (Khanmigo, MagicSchool) before locking the number.
+
+## 14b. Open questions (resolve in Phase 0)
 - **MoR choice:** Paddle vs Lemon Squeezy (fees, offline-license fit, EU/US coverage, API ergonomics).
-- **Pricing:** monthly vs annual amounts; trial length (default 14 days).
-- **Device/seat policy:** how many activations per family subscription.
+- **Final price point** within the recommended range (default **$9.99/mo, $89/yr**).
+- **Device/seat policy:** how many activations per family subscription (Khanmigo allows up to 10 child profiles — consider matching generosity).
+- **Trial card capture:** card-on-file (higher conversion) vs no-card (lower friction).
 - **License-server hosting:** Fly / Render / Cloud Run + managed Postgres.

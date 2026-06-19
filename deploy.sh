@@ -16,6 +16,12 @@
 #   ./deploy.sh --port <port>    # override web UI port (default: 3000)
 #   ./deploy.sh --stop           # stop all services
 #   ./deploy.sh --update         # pull latest images and restart
+#   ./deploy.sh --upgrade <owui|ollama|model> [target]
+#                                # guarded upgrade of one component with auto-
+#                                # rollback: pulls the target, smoke-tests it,
+#                                # then keeps it or rolls back if it breaks.
+#                                # owui/ollama: no target = latest stable.
+#                                # model: target is REQUIRED (a base model tag).
 #   ./deploy.sh --logs           # tail service logs
 #   ./deploy.sh --status         # show service health
 #
@@ -122,7 +128,9 @@ GPU_MODE=""        # auto | force | none
 OPEN_BROWSER=auto  # auto | yes | no
 OLLAMA_MODEL_ARG=""
 WEBUI_PORT_ARG=""
-ACTION="start"     # start | stop | update | logs | status
+ACTION="start"        # start | stop | update | logs | status | upgrade
+UPGRADE_COMPONENT=""  # owui | ollama | model  (for --upgrade)
+UPGRADE_ARGS=()       # remaining args forwarded to the guarded upgrader
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -133,6 +141,19 @@ while [[ $# -gt 0 ]]; do
         --port)       shift; WEBUI_PORT_ARG="$1" ;;
         --stop)       ACTION=stop ;;
         --update)     ACTION=update ;;
+        --upgrade)
+            # --upgrade <component> [target] [--dry-run]   (owui | ollama | model)
+            ACTION=upgrade; shift
+            if [[ "${1:-}" != "" && "${1:-}" != --* ]]; then UPGRADE_COMPONENT="$1"; shift; fi
+            UPGRADE_ARGS=("$@")   # forward target + any flags (e.g. --dry-run)
+            break
+            ;;
+        --upgrade-owui)
+            # Back-compat alias for: --upgrade owui [target]
+            ACTION=upgrade; UPGRADE_COMPONENT=owui; shift
+            UPGRADE_ARGS=("$@")
+            break
+            ;;
         --logs)       ACTION=logs ;;
         --status)     ACTION=status ;;
         -h|--help)
@@ -182,6 +203,15 @@ fi
 if [[ "$ACTION" == "status" ]]; then
     docker compose -f "$COMPOSE_BASE" ${ENV_FILE:+--env-file "$ENV_FILE"} ps
     exit 0
+fi
+
+# --- Guarded component upgrade -----------------------------------------------
+if [[ "$ACTION" == "upgrade" ]]; then
+    if [[ -z "$UPGRADE_COMPONENT" ]]; then
+        error "Usage: ./deploy.sh --upgrade <owui|ollama|model> [target] [--dry-run]"; exit 1
+    fi
+    exec "${SCRIPT_DIR}/scripts/guarded_upgrade.sh" "$UPGRADE_COMPONENT" \
+        ${UPGRADE_ARGS[@]+"${UPGRADE_ARGS[@]}"}
 fi
 
 # =============================================================================
@@ -242,8 +272,8 @@ fi
 
 # --- Detect RAM and recommend a base model -----------------------------------
 # The user-facing chat model is always 'snflwr.ai'. It is built locally by
-# this script as a wrapper around a qwen3.5 base model whose size is chosen
-# from system RAM below.
+# this script as a wrapper around a base model (gemma4:e4b by default; the
+# size/family is chosen from system RAM below, or pinned via BASE_MODEL).
 section "Checking hardware"
 
 TOTAL_RAM_GB=8
@@ -254,9 +284,13 @@ elif [[ "$(uname)" == "Darwin" ]]; then
     TOTAL_RAM_GB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
 fi
 
-if   [[ $TOTAL_RAM_GB -ge 32 ]]; then RECOMMENDED_MODEL="qwen3.5:35b"
-elif [[ $TOTAL_RAM_GB -ge 24 ]]; then RECOMMENDED_MODEL="qwen3.5:27b"
-elif [[ $TOTAL_RAM_GB -ge 16 ]]; then RECOMMENDED_MODEL="qwen3.5:9b"
+# gemma4:e4b (~10 GB) is the default backbone as of 2026-06-17: it won the
+# tutoring-quality backbone bake-off outright (best overall, K-2, math, and
+# homework-integrity) at a fraction of the VRAM of the qwen3.5:27b/35b tiers,
+# which couldn't even hold the production context on a 23 GB card. Boxes too
+# small for gemma fall back to the small qwen3.5 tiers (no tiny gemma exists,
+# and a smaller model beats an OOM). See evals/tutoring/backbone_bakeoff.py.
+if   [[ $TOTAL_RAM_GB -ge 16 ]]; then RECOMMENDED_MODEL="gemma4:e4b"
 elif [[ $TOTAL_RAM_GB -ge  8 ]]; then RECOMMENDED_MODEL="qwen3.5:4b"
 elif [[ $TOTAL_RAM_GB -ge  6 ]]; then RECOMMENDED_MODEL="qwen3.5:2b"
 else                                   RECOMMENDED_MODEL="qwen3.5:0.8b"; fi
@@ -307,12 +341,22 @@ BASE_MODEL=${RESOLVED_MODEL}
 # Web UI port (open http://localhost:${RESOLVED_PORT} when ready)
 WEBUI_PORT=${RESOLVED_PORT}
 
+# Image tags for externally-maintained components. Pinned for reproducibility
+# and safety review. The guarded upgrader (./deploy.sh --upgrade <component>)
+# bumps these, smoke-tests the new version, and rolls back on failure.
+OWU_IMAGE_TAG=v0.8.12
+OLLAMA_IMAGE_TAG=0.30.9
+
 # Security keys (auto-generated — do not share these)
 JWT_SECRET_KEY=$(_gen_secret)
 INTERNAL_API_KEY=$(_gen_secret)
 INTERNAL_API_KEY_CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 WEBUI_SECRET_KEY=$(_gen_secret)
 PARENT_DASHBOARD_PASSWORD=$(_gen_secret)
+# Database encryption key (AES-256 at rest via SQLCipher).
+# ⚠️ BACK THIS UP. If you lose it, all encrypted data is unrecoverable.
+DB_ENCRYPTION_ENABLED=true
+DB_ENCRYPTION_KEY=$(_gen_secret)
 
 # Allow new user signups
 # Must be 'true' for the very first run so you can create the admin account
@@ -405,7 +449,10 @@ MAX_WAIT=120
 ELAPSED=0
 
 printf "  Waiting for API"
-while ! docker exec snflwr-api curl -sf http://localhost:39150/health &>/dev/null; do
+# Use the container's own healthcheck status — the snflwr-api image has no
+# curl, so polling with `docker exec ... curl` here always failed and aborted
+# the rest of deploy (model build + Open WebUI proxy wiring never ran).
+while [[ "$(docker inspect snflwr-api --format '{{.State.Health.Status}}' 2>/dev/null)" != "healthy" ]]; do
     sleep 3
     ELAPSED=$(( ELAPSED + 3 ))
     printf "."
@@ -455,6 +502,24 @@ else
     info "Base model '$BASE_MODEL' ready."
 fi
 
+# Pull the SAFETY model (the semantic safety classifier — llama-guard). Without
+# it, the pipeline's ML classifier self-disables and only the deterministic
+# pattern stages protect. Non-fatal: a pull failure leaves deterministic safety
+# in place; we just warn. Override with SAFETY_MODEL in the environment.
+SAFETY_MODEL="${SAFETY_MODEL:-llama-guard3:8b}"
+if docker exec snflwr-ollama ollama list 2>/dev/null \
+        | awk 'NR>1 {print $1}' | grep -Fxq "$SAFETY_MODEL"; then
+    info "Safety model '$SAFETY_MODEL' already downloaded."
+else
+    info "Downloading safety model '$SAFETY_MODEL' (enables the semantic safety layer)..."
+    if docker exec snflwr-ollama ollama pull "$SAFETY_MODEL"; then
+        info "Safety model '$SAFETY_MODEL' ready — semantic classifier enabled."
+    else
+        warn "Safety model pull failed — semantic classifier will stay disabled."
+        warn "Deterministic safety stages still protect; re-run to retry the pull."
+    fi
+fi
+
 # Build (or rebuild) the snflwr.ai wrapper. This is what kids see in the
 # chat dropdown — it bundles the K-12 STEM tutor system prompt, sampling
 # parameters (incl. repeat_penalty to prevent reasoning loops), and safety
@@ -484,6 +549,47 @@ else
     error "Failed to build '${WRAPPED_MODEL}' from '${BASE_MODEL}'."
     error "Try 'docker exec snflwr-ollama ollama create ${WRAPPED_MODEL} -f /tmp/snflwr.ai.modelfile' to see the error"
     exit 1
+fi
+
+# --- Connect Open WebUI to the snflwr-api proxy ------------------------------
+# Open WebUI v0.8.x ignores the OLLAMA_API_KEY env for Ollama connections (its
+# OLLAMA_API_CONFIGS PersistentConfig is hardcoded to {} — see the note in
+# docker/compose/docker-compose.home.yml). The proxy bearer key therefore has
+# to be written into webui.db, or the model dropdown is empty and chats 401.
+# We pipe INTERNAL_API_KEY straight from snflwr-api into the seeder's stdin so
+# the secret is never placed on a command line or in an env var.
+section "Connecting Open WebUI to proxy"
+
+SEEDER_SRC="${SCRIPT_DIR}/scripts/owui_connect.py"
+if [[ ! -f "$SEEDER_SRC" ]]; then
+    warn "Seeder not found at $SEEDER_SRC — skipping proxy wiring."
+    warn "Model list may be empty until Open WebUI's Ollama connection has the key."
+elif ! docker cp "$SEEDER_SRC" snflwr-frontend:/tmp/owui_connect.py 2>/dev/null; then
+    warn "Could not copy seeder into Open WebUI — skipping proxy wiring."
+else
+    SEED_RC=0
+    docker exec snflwr-api printenv INTERNAL_API_KEY 2>/dev/null \
+        | docker exec -i snflwr-frontend python /tmp/owui_connect.py || SEED_RC=$?
+
+    if [[ $SEED_RC -eq 0 ]]; then
+        info "Restarting Open WebUI to apply proxy credential..."
+        docker restart snflwr-frontend >/dev/null 2>&1 || true
+        printf "  Waiting for Open WebUI"
+        ELAPSED=0
+        while ! curl -sf "http://localhost:${WEBUI_PORT}" &>/dev/null; do
+            sleep 3; ELAPSED=$(( ELAPSED + 3 )); printf "."
+            if [[ $ELAPSED -ge $MAX_WAIT ]]; then
+                echo ""; warn "Open WebUI slow to restart — check ./deploy.sh --logs"; break
+            fi
+        done
+        echo ""
+        info "Open WebUI connected to proxy."
+    elif [[ $SEED_RC -eq 2 ]]; then
+        info "Open WebUI already connected to proxy."
+    else
+        warn "Could not seed proxy credential into Open WebUI (rc=${SEED_RC})."
+        warn "The model dropdown may be empty; see ./deploy.sh --logs."
+    fi
 fi
 
 # --- Open browser ------------------------------------------------------------

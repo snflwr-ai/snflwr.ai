@@ -40,13 +40,14 @@ This creates:
 ### 3. Pull a Chat Model
 
 ```bash
-# Choose a qwen3.5 model based on your hardware (RAM):
-#   4 GB  → qwen3.5:2b
-#   6 GB  → qwen3.5:4b
-#   8 GB  → qwen3.5:9b   (recommended for most systems)
+# Choose a base model based on your hardware (RAM):
+#   4 GB  → qwen3.5:2b       (fallback)
+#   6 GB  → qwen3.5:4b       (fallback)
+#   8 GB  → qwen3.5:9b       (fallback)
+#  16 GB+ → gemma4:e4b       (recommended for most systems)
 #  24 GB  → qwen3.5:27b
 #  32 GB+ → qwen3.5:35b
-ollama pull qwen3.5:9b
+ollama pull gemma4:e4b
 ```
 
 ### 4. Build Snflwr Student Tutor Model
@@ -58,7 +59,7 @@ ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
 
 This creates the `snflwr.ai` student tutor model.
 
-Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly -- no custom modelfile needed.
+Admins/parents use the base chat model (e.g., `gemma4:e4b`) directly -- no custom modelfile needed.
 
 ### 5. Start Snflwr API Server
 

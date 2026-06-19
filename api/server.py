@@ -331,6 +331,9 @@ async def lifespan(app: FastAPI):
 
         if hasattr(safety_pipeline, "_classifier"):
             clf = safety_pipeline._classifier
+            # Loud, not silent: if the ML safety layer didn't come up (e.g. the
+            # safety model isn't pulled), alert the operator now.
+            clf.alert_if_unavailable()
             classifier_probe_task = asyncio.create_task(clf.run_health_probe())
             logger.info("Classifier health probe started (state=%s)", clf._state)
     except Exception as exc:

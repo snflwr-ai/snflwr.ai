@@ -27,7 +27,7 @@ The environment variables for user permissions might not work in all Open WebUI 
    - **Available Models**: Check only:
      - ☑ snflwr.ai (for students/children)
    - **Model Visibility**: Set to "Custom" or "Restricted"
-   - Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly — no custom modelfile needed
+   - Admins/parents use the base chat model (e.g., `gemma4:e4b`) directly — no custom modelfile needed
 
 #### Option B: User Settings (per-user basis)
 1. Go to **Settings → Admin Panel → Users**

@@ -2332,3 +2332,38 @@ class TestPossibleFalsePositiveFlag:
         assert result is not None
         assert result.is_safe is False
         assert result.possible_false_positive is True
+
+
+class TestClassifierDisabledAlert:
+    """A classifier that *starts* disabled must alert the operator — the silent
+    startup case that the runtime degraded-path alert (only fires from
+    'available') would otherwise miss."""
+
+    def _make(self, state):
+        from safety.pipeline import _SemanticClassifier
+        from datetime import datetime, timezone
+        clf = _SemanticClassifier.__new__(_SemanticClassifier)
+        clf._available = state == "available"
+        clf._model = "llama-guard3:8b" if state == "available" else None
+        clf._client = None
+        clf._state = state
+        clf._state_since = datetime.now(timezone.utc)
+        return clf
+
+    def test_alerts_when_disabled(self):
+        clf = self._make("disabled")
+        with patch("core.email_service.email_service") as email:
+            clf.alert_if_unavailable()
+        email.send_operator_alert.assert_called_once()
+
+    def test_silent_when_available(self):
+        clf = self._make("available")
+        with patch("core.email_service.email_service") as email:
+            clf.alert_if_unavailable()
+        email.send_operator_alert.assert_not_called()
+
+    def test_alert_failure_does_not_raise(self):
+        clf = self._make("disabled")
+        with patch("core.email_service.email_service") as email:
+            email.send_operator_alert.side_effect = RuntimeError("smtp down")
+            clf.alert_if_unavailable()  # must not raise

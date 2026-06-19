@@ -28,7 +28,7 @@ Look for one of these sections:
 3. Uncheck all models except:
    - ☑ snflwr.ai (for students/children)
 4. Save changes
-5. Admins/parents use the base chat model (e.g., `qwen3.5:9b`) directly — no custom modelfile needed
+5. Admins/parents use the base chat model (e.g., `gemma4:e4b`) directly — no custom modelfile needed
 
 #### Option B: "Permissions" Section
 1. Find **Settings → Admin Settings → Permissions**
@@ -92,7 +92,7 @@ docker-compose -f docker-compose.ollama-k12.yaml up -d
 #### Step 3: Pull Only Safe Models to K-12 Ollama
 ```bash
 # Create snflwr-ai on K-12 Ollama
-docker exec ollama-k12 ollama pull qwen3.5:9b
+docker exec ollama-k12 ollama pull gemma4:e4b
 docker cp models/Snflwr_AI_Kids.modelfile ollama-k12:/tmp/
 docker exec ollama-k12 ollama create snflwr.ai -f /tmp/Snflwr_AI_Kids.modelfile
 ```

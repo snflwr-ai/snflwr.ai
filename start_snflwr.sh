@@ -562,7 +562,7 @@ fi
 echo ""
 
 # Determine the expected image tag
-WEBUI_TAG="${WEBUI_DOCKER_TAG:-v0.8.3}"
+WEBUI_TAG="${WEBUI_DOCKER_TAG:-v0.9.6}"
 WEBUI_IMAGE="ghcr.io/open-webui/open-webui:${WEBUI_TAG}"
 
 # Only pull if the image isn't cached locally

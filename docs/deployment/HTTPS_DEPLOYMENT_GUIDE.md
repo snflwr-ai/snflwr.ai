@@ -430,7 +430,7 @@ For issues or questions:
 1. Check the [Troubleshooting](#troubleshooting) section
 2. Review nginx error logs: `nginx/logs/snflwr_error.log`
 3. Test configuration: `docker-compose exec nginx nginx -t`
-4. See SECURITY_HARDENING_REPORT.md for security details
+4. See [`../reports/archived/SECURITY_HARDENING_REPORT.md`](../reports/archived/SECURITY_HARDENING_REPORT.md) for security details (archived/historical)
 
 ---
 

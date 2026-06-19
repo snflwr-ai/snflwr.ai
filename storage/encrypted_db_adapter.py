@@ -8,11 +8,20 @@ import sqlite3
 from pathlib import Path
 
 try:
+    # Preferred: pysqlcipher3 (needs system libsqlcipher + compilation).
     from pysqlcipher3 import dbapi2 as sqlcipher
 
     SQLCIPHER_AVAILABLE = True
 except ImportError:
-    SQLCIPHER_AVAILABLE = False
+    try:
+        # Fallback: sqlcipher3-binary — prebuilt manylinux wheels with
+        # SQLCipher statically linked (no apt / no compile). This is what the
+        # Docker image ships, so encryption at rest works out of the box.
+        from sqlcipher3 import dbapi2 as sqlcipher
+
+        SQLCIPHER_AVAILABLE = True
+    except ImportError:
+        SQLCIPHER_AVAILABLE = False
 
 from storage.db_adapters import SQLiteAdapter
 from utils.logger import get_logger

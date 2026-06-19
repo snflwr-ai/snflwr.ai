@@ -1079,6 +1079,225 @@ class TestProxyBearerAuth:
         assert resp.status_code == 200
 
 
+class TestCrisisEscalation:
+    """A blocked student message must escalate to a human, not just render a
+    safe response. Students reach the model via this proxy (not chat.py), so the
+    incident_logger.log_incident call (DB incident + parent alert for
+    major/critical) has to fire here.
+    """
+
+    def test_input_block_records_incident(self):
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        # A self-harm-style block (MAJOR severity → parent alert path).
+        block = _block_result("Please talk to a trusted adult. You can reach 988.")
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = block
+
+        mock_incident = MagicMock()
+        mock_incident.log_incident.return_value = (True, 1)
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-sh", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-sh")),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch("safety.incident_logger.incident_logger", mock_incident),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(text="i want to die"),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-sh",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        assert resp.status_code == 200
+        # The child still gets the safe response...
+        assert "988" in resp.json()["message"]["content"]
+        # ...AND a human-escalation incident was recorded.
+        mock_incident.log_incident.assert_called_once()
+        kwargs = mock_incident.log_incident.call_args.kwargs
+        assert kwargs["profile_id"] == "profile-sh"
+        assert kwargs["incident_type"]  # category.value present
+        assert kwargs["severity"] in ("minor", "major", "critical")
+
+    def test_escalation_failure_does_not_break_child_response(self):
+        """If incident logging raises, the child STILL gets the safe response."""
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        block = _block_result("Let's talk to a trusted adult.")
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = block
+
+        mock_incident = MagicMock()
+        mock_incident.log_incident.side_effect = RuntimeError("db down")
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-x", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-x")),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch("safety.incident_logger.incident_logger", mock_incident),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(text="something blocked"),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-x",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        assert resp.status_code == 200
+        assert "trusted adult" in resp.json()["message"]["content"]
+        mock_incident.log_incident.assert_called_once()  # attempted, but failure swallowed
+
+    def test_safe_message_records_no_incident(self):
+        """A safe student message must NOT create an incident."""
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())
+        ollama_resp = httpx.Response(200, json={
+            "model": "test-model",
+            "message": {"role": "assistant", "content": "2 + 2 = 4."},
+            "done": True,
+        })
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = _safe_result()
+        mock_pipeline.check_output.return_value = _safe_result()
+
+        mock_incident = MagicMock()
+
+        with (
+            patch.object(proxy_mod, "_get_user_from_headers",
+                         return_value=("uid-ok", "user")),
+            patch.object(proxy_mod, "_get_profile_for_user",
+                         new=AsyncMock(return_value="profile-ok")),
+            patch.object(proxy_mod, "_forward_request",
+                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch("safety.incident_logger.incident_logger", mock_incident),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(text="what is 2+2?"),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-ok",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_incident.log_incident.assert_not_called()
+
+
+class TestTagsModelVisibility:
+    """Students must only see the public tutor model in /api/tags.
+
+    The Ollama backend also holds the raw backbone plus rollback/backup
+    variants; those must never appear in a child's model dropdown. Admins
+    still see everything so they can manage models.
+    """
+
+    _ALL_MODELS = {
+        "models": [
+            {"name": "snflwr.ai:latest"},
+            {"name": "snflwr.ai:qwen-rollback"},
+            {"name": "snflwr-bk-gemma4-e4b:latest"},
+            {"name": "gemma4:e4b"},
+        ]
+    }
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        return TestClient(_make_app())
+
+    def test_student_sees_only_public_model(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(200, json=self._ALL_MODELS),
+        ):
+            resp = self._client().get(
+                "/api/tags", headers={"X-OpenWebUI-User-Role": "user"}
+            )
+        assert resp.status_code == 200
+        names = {m["name"] for m in resp.json()["models"]}
+        assert names == {"snflwr.ai:latest"}
+
+    def test_missing_role_header_fails_closed_to_student(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(200, json=self._ALL_MODELS),
+        ):
+            resp = self._client().get("/api/tags")
+        assert resp.status_code == 200
+        names = {m["name"] for m in resp.json()["models"]}
+        assert names == {"snflwr.ai:latest"}
+        assert "gemma4:e4b" not in names
+
+    def test_admin_sees_all_models(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            return_value=httpx.Response(200, json=self._ALL_MODELS),
+        ):
+            resp = self._client().get(
+                "/api/tags", headers={"X-OpenWebUI-User-Role": "admin"}
+            )
+        assert resp.status_code == 200
+        names = {m["name"] for m in resp.json()["models"]}
+        assert names == {
+            "snflwr.ai:latest",
+            "snflwr.ai:qwen-rollback",
+            "snflwr-bk-gemma4-e4b:latest",
+            "gemma4:e4b",
+        }
+
+    def test_non_200_passed_through_unfiltered(self):
+        with patch(
+            "api.routes.ollama_proxy._forward_request",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("refused"),
+        ):
+            resp = self._client().get(
+                "/api/tags", headers={"X-OpenWebUI-User-Role": "user"}
+            )
+        assert resp.status_code == 503
+
+    def test_filter_helper_keeps_base_and_latest(self):
+        from api.routes.ollama_proxy import _filter_tags_for_students
+        import json as _j
+
+        payload = _j.dumps({
+            "models": [
+                {"name": "snflwr.ai"},
+                {"name": "snflwr.ai:latest"},
+                {"name": "snflwr.ai:qwen-rollback"},
+                {"name": "gemma4:e4b"},
+            ]
+        }).encode()
+        out = _j.loads(_filter_tags_for_students(payload))
+        names = {m["name"] for m in out["models"]}
+        assert names == {"snflwr.ai", "snflwr.ai:latest"}
+
+    def test_filter_helper_tolerates_malformed_payload(self):
+        from api.routes.ollama_proxy import _filter_tags_for_students
+
+        # Not JSON → returned unchanged rather than crashing.
+        assert _filter_tags_for_students(b"not json{{") == b"not json{{"
+
+
 class TestForkedFilesDeleted:
     """The OWU router fork and middleware must not exist."""
 

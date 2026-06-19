@@ -191,7 +191,7 @@ function testChatMessage(baseUrl, sessionToken, profileId, message) {
   const payload = JSON.stringify({
     profile_id: profileId,
     message: message,
-    model: 'qwen3.5:9b',
+    model: 'snflwr.ai',
     conversation_id: `conv-${profileId}-${Date.now()}`
   });
 

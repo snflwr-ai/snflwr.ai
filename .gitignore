@@ -48,6 +48,13 @@ config/audit/
 # Test coverage reports
 .coverage
 
+# Generated tutoring-eval outputs (evals/tutoring/*.py write these to the repo
+# root). The scorers/harness are tracked; the run artifacts are not.
+/tutoring_eval_report.*
+/tutoring_bakeoff_report.*
+/backbone_bakeoff_report.*
+/tuning_check_report.*
+
 # SSL certificates and private keys
 *.key
 *.pem
@@ -59,3 +66,6 @@ config/audit/
 # Generated credentials file — never commit
 CREDENTIALS.md
 CREDENTIALS*.md
+
+# Local Claude Code permission allowlist (not for the public repo)
+.claude/settings.json

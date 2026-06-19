@@ -126,7 +126,7 @@ admins are never gated; only TUTORING is gated — settings/dashboard/billing st
 | Event (MoR webhook) | License server | App behavior |
 |---|---|---|
 | Subscribe / renew | `active`, new period_end | refresh issues token → unlocked |
-| Trial start | `trialing`, 30-day token | unlocked, trial banner |
+| Trial start | `trialing`, 10-day token | unlocked, trial banner |
 | Payment failed (dunning) | `past_due` | works during MoR retry window + grace; "update payment" banner |
 | Canceled | `canceled`, keep period_end | works until period_end **+ grace**, then gate |
 | Refund / chargeback | `revoked` | next refresh issues no token → gate after exp+grace |
@@ -210,7 +210,7 @@ optional plan→Budget/Standard/Premium model-tier mapping.
 
 ## 14. Pricing (recommended)
 
-> Decided: **30-day free trial** (per product owner). Pricing below is a
+> Decided: **10-day free trial** (per product owner). Pricing below is a
 > market-research recommendation — see caveat at the end.
 
 **Recommendation: $9.99/mo or $89/yr** (annual ≈ $7.42/mo, ~26% off).
@@ -227,7 +227,7 @@ optional plan→Budget/Standard/Premium model-tier mapping.
 - **Higher ($12.99/mo, $99/yr):** more revenue per user + signals premium/privacy value; risks slowing an already-narrow (technical/privacy) audience. Viable if positioned as a premium privacy product.
 - **Lower ($6.99/mo, $59/yr):** wider funnel; but erodes the premium signal and margins (and MoR takes ~5%).
 
-**On the 30-day trial:** generous and on-brand (privacy/trust + self-host setup needs evaluation runway), **but** longer trials cancel more (industry: ~51% cancel on 30-day vs ~26% on 3-day; 7–14-day trials can convert ~20% better). Mitigations: **card-on-file (opt-out) trial** (converts far higher — ~2.5× vs no-card) with a clear **pre-charge reminder** email a few days before day 30. EdTech trial-to-paid runs ~25% (Adapty/First Page Sage) — materially above the ~8% cross-SaaS median.
+**On the 10-day trial:** lands in the **better-converting 7–14-day band** (industry data: shorter trials convert ~20% better than 30-day trials, which cancel ~51%), while still giving families enough runway to set up the self-hosted app and evaluate. Pair with a **card-on-file (opt-out) trial** (~2.5× higher conversion vs no-card) and a **pre-charge reminder** email a couple of days before trial end. EdTech trial-to-paid runs ~25% (Adapty/First Page Sage) — well above the ~8% cross-SaaS median.
 
 ⚠️ **Caveat:** the deep-research run's adversarial verification was rate-limited, so these figures are source-derived but **not harness-verified**. Sanity-check the live competitor prices (Khanmigo, MagicSchool) before locking the number.
 

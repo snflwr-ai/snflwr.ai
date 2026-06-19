@@ -1,0 +1,7 @@
+signing_key.pem
+license_public_key.pem
+*.db
+*.session
+*.token
+__pycache__/
+.pytest_cache/

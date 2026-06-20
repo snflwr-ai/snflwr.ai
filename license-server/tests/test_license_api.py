@@ -20,6 +20,37 @@ def test_issue_token_lifetimes():
     assert t["exp"] - t["iat"] == 10 * 86400
 
 
+def test_token_exp_capped_at_period_end():
+    """A paid token must not out-live current_period_end (cancel over-grant fix)."""
+    _, pub = auth._keys()
+    now = 1000
+    period_end = now + 5 * 86400  # paid through 5 days from now, < 30-day life
+    tok = license_api.issue_license_token(
+        "acct_1", "family", "active", now, trial=False, current_period_end=period_end)
+    p = tokens.verify_token(tok, pub)
+    assert p["exp"] == period_end  # clamped, not now + 30d
+
+
+def test_token_exp_not_extended_for_healthy_sub():
+    """When period_end is past now+life, the clamp is a no-op (full 30 days)."""
+    _, pub = auth._keys()
+    now = 1000
+    far = now + 365 * 86400
+    tok = license_api.issue_license_token(
+        "acct_1", "family", "active", now, trial=False, current_period_end=far)
+    p = tokens.verify_token(tok, pub)
+    assert p["exp"] == now + 30 * 86400
+
+
+def test_trial_token_ignores_period_end():
+    _, pub = auth._keys()
+    now = 1000
+    tok = license_api.issue_license_token(
+        "acct_1", "family", "trialing", now, trial=True, current_period_end=now + 1)
+    p = tokens.verify_token(tok, pub)
+    assert p["exp"] == now + 10 * 86400
+
+
 def test_refresh_402_without_subscription():
     c = TestClient(create_app())
     tok = _session_for("nobody@x.com")

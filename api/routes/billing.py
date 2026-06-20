@@ -65,3 +65,8 @@ def billing_status():
 @router.get("/checkout-url")
 def checkout_url():
     return {"url": system_config.LS_CHECKOUT_URL}
+
+
+@router.get("/portal-url")
+def portal_url():
+    return {"url": system_config.LS_CUSTOMER_PORTAL_URL}

@@ -93,3 +93,23 @@ def test_requires_admin_when_not_overridden():
     client = TestClient(app, raise_server_exceptions=False)
     r = client.get("/api/billing/checkout-url")
     assert r.status_code in (401, 403)
+
+
+def test_portal_url_returns_configured_url():
+    from config import system_config
+
+    client = TestClient(_make_app())
+    with patch.object(system_config, "LS_CUSTOMER_PORTAL_URL", "https://portal.example/x"):
+        r = client.get("/api/billing/portal-url")
+    assert r.status_code == 200
+    assert r.json()["url"] == "https://portal.example/x"
+
+
+def test_portal_url_requires_admin():
+    import api.routes.billing as billing_mod
+
+    app = FastAPI()
+    app.include_router(billing_mod.router, prefix="/api/billing")
+    client = TestClient(app, raise_server_exceptions=False)
+    r = client.get("/api/billing/portal-url")
+    assert r.status_code in (401, 403)

@@ -430,7 +430,52 @@
         wireBillingSignin(state);
     }
 
-    function wireBillingSignin() { /* sign-in wired in Task 4 */ }
+    function wireBillingSignin() {
+        var startBtn = document.getElementById('billing-signin-start');
+        var emailEl = document.getElementById('billing-signin-email');
+        var codeRow = document.getElementById('billing-code-row');
+        var verifyBtn = document.getElementById('billing-signin-verify');
+        var codeEl = document.getElementById('billing-signin-code');
+        var errEl = document.getElementById('billing-signin-error');
+        if (!startBtn) return;
+
+        function showErr(msg) { errEl.textContent = msg; errEl.style.display = ''; }
+        function clearErr() { errEl.textContent = ''; errEl.style.display = 'none'; }
+
+        startBtn.addEventListener('click', function () {
+            var email = (emailEl.value || '').trim();
+            if (!email) { showErr('Enter your billing email.'); return; }
+            clearErr();
+            startBtn.disabled = true;
+            api('POST', '/api/billing/signin/start', { email: email })
+                .then(function (r) {
+                    if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Could not send code'); });
+                    codeRow.style.display = '';
+                    toast('Code sent — check your email.', 'success');
+                })
+                .catch(function (ex) { showErr(ex.message); })
+                .then(function () { startBtn.disabled = false; });
+        });
+
+        verifyBtn.addEventListener('click', function () {
+            var email = (emailEl.value || '').trim();
+            var code = (codeEl.value || '').trim();
+            if (!code) { showErr('Enter the code from your email.'); return; }
+            clearErr();
+            verifyBtn.disabled = true;
+            api('POST', '/api/billing/signin/verify', { email: email, code: code })
+                .then(function (r) {
+                    if (r.status === 400) throw new Error('Invalid or expired code.');
+                    if (!r.ok) throw new Error('Sign-in failed. Try again.');
+                    return r.json();
+                })
+                .then(function (d) {
+                    toast(d.licensed ? 'Signed in — subscription active.' : 'Signed in.', 'success');
+                    loadBilling();  // re-render status
+                })
+                .catch(function (ex) { showErr(ex.message); verifyBtn.disabled = false; });
+        });
+    }
 
     /* ── Overview ─────────────────────────────────────────────── */
     function loadOverview() {

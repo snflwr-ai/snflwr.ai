@@ -123,3 +123,35 @@ def test_not_configured_state(page, app_url):
     _open_billing(page)
     assert "isn" in page.inner_text("#billing-view").lower()  # "isn't set up"
     assert not page.is_visible("#billing-subscribe")
+
+
+_RECORD_OPEN = "window.__opened=[]; window.open=function(u){window.__opened.push(u);return null;};"
+
+
+def test_subscribe_opens_checkout(page, app_url):
+    page.add_init_script(_RECORD_OPEN)
+    page.route("**/api/billing/status", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=_status("unlicensed")))
+    page.route("**/api/billing/checkout-url", lambda r: r.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps({"url": "https://buy.example/checkout"})))
+    _login(page, app_url)
+    _open_billing(page)
+    page.click("#billing-subscribe")
+    page.wait_for_function("window.__opened && window.__opened.length > 0")
+    assert "buy.example" in page.evaluate("window.__opened[0]")
+
+
+def test_manage_opens_portal(page, app_url):
+    page.add_init_script(_RECORD_OPEN)
+    page.route("**/api/billing/status", lambda r: r.fulfill(
+        status=200, content_type="application/json",
+        body=_status("active", plan="family", exp=9999999999)))
+    page.route("**/api/billing/portal-url", lambda r: r.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps({"url": "https://portal.example/me"})))
+    _login(page, app_url)
+    _open_billing(page)
+    page.click("#billing-manage")
+    page.wait_for_function("window.__opened && window.__opened.length > 0")
+    assert "portal.example" in page.evaluate("window.__opened[0]")

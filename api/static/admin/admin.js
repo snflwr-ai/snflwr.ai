@@ -138,7 +138,8 @@
                 students: loadStudents,
                 safety: loadSafety,
                 activity: loadActivity,
-                audit: loadAudit
+                audit: loadAudit,
+                billing: loadBilling
             };
             (views[state.view] || loadOverview)();
         });
@@ -278,6 +279,10 @@
             navItem('activity', '\u{1F4C8}', 'Activity Log'),
             navItem('audit', '\u{1F512}', 'System Log'),
             '    </div>',
+            '    <div class="nav-section">',
+            '      <div class="nav-section-label">Account</div>',
+            navItem('billing', '\u{1F4B3}', 'Billing'),
+            '    </div>',
             '  </nav>',
             '  <div class="sidebar-footer">',
             '    <div class="sidebar-user">',
@@ -317,6 +322,91 @@
         if (el) el.innerHTML = html;  // eslint-disable-line -- all dynamic values are escaped via esc()/escA()
     }
     function setMain(html) { setSafeHtml(mainEl(), html); }
+
+    /* ── Billing ──────────────────────────────────────────────── */
+    function billingStateCopy(s) {
+        switch (s) {
+            case 'active': return { cls: 'msg-success', title: 'Subscription active' };
+            case 'trialing': return { cls: 'msg-success', title: 'Free trial active' };
+            case 'grace': return { cls: 'msg-warning', title: 'Payment issue — access continues for now' };
+            case 'expired': return { cls: 'msg-error', title: 'Subscription expired' };
+            default: return { cls: 'msg', title: 'No active subscription' };
+        }
+    }
+
+    function billingActionsHtml(s) {
+        var subscribe = '<button class="btn btn-primary" id="billing-subscribe">Subscribe / Start free trial</button>';
+        var manage = '<button class="btn btn-outline" id="billing-manage">Manage subscription</button>';
+        var signin =
+            '<div class="billing-signin">' +
+            '  <div class="billing-signin-label">Already subscribed? Sign in to link this device:</div>' +
+            '  <div class="billing-signin-row">' +
+            '    <input type="email" id="billing-signin-email" placeholder="billing email" autocomplete="email">' +
+            '    <button class="btn btn-outline" id="billing-signin-start">Send code</button>' +
+            '  </div>' +
+            '  <div class="billing-code-row" id="billing-code-row" style="display:none">' +
+            '    <input type="text" id="billing-signin-code" placeholder="6-digit code" inputmode="numeric">' +
+            '    <button class="btn btn-primary" id="billing-signin-verify">Verify</button>' +
+            '  </div>' +
+            '  <div class="msg msg-error" id="billing-signin-error" style="display:none"></div>' +
+            '</div>';
+        if (s === 'active' || s === 'trialing') return manage;
+        if (s === 'grace') return manage + ' ' + subscribe;
+        return subscribe + signin;  // expired / unlicensed / none
+    }
+
+    function renderBilling(d) {
+        var copy = billingStateCopy(d.state);
+        var meta = '';
+        if (d.plan) meta += '<div class="billing-meta">Plan: ' + esc(d.plan) + '</div>';
+        if (d.exp) {
+            var when = new Date(d.exp * 1000).toLocaleDateString();
+            meta += '<div class="billing-meta">Renews/expires: ' + esc(when) + '</div>';
+        }
+        setMain([
+            '<div id="billing-view">',
+            '  <div class="page-header"><h2>Billing</h2>',
+            '    <p class="page-desc">Manage your snflwr.ai subscription.</p></div>',
+            '  <div class="card billing-card ' + copy.cls + '">',
+            '    <div id="billing-status" class="billing-status-title">' + esc(copy.title) + '</div>',
+            meta,
+            '  </div>',
+            '  <div class="billing-actions">' + billingActionsHtml(d.state) + '</div>',
+            '</div>'
+        ].join('\n'));
+        wireBilling(d.state);
+    }
+
+    function renderBillingNotConfigured() {
+        setMain([
+            '<div id="billing-view">',
+            '  <div class="page-header"><h2>Billing</h2></div>',
+            '  <div class="card billing-card msg">',
+            '    <div id="billing-status" class="billing-status-title">Billing isn’t set up on this server yet.</div>',
+            '    <div class="billing-meta">A subscription becomes available once the operator configures the license server.</div>',
+            '  </div>',
+            '</div>'
+        ].join('\n'));
+    }
+
+    function loadBilling() {
+        api('GET', '/api/billing/status')
+            .then(function (r) {
+                if (r.status === 503) { renderBillingNotConfigured(); return null; }
+                return r.json();
+            })
+            .then(function (d) {
+                if (!d) return;
+                if (d.configured === false) { renderBillingNotConfigured(); return; }
+                renderBilling(d);
+            })
+            .catch(function () {
+                setMain('<div id="billing-view"><div class="msg msg-error">Couldn’t load billing status. ' +
+                    '<button class="btn btn-outline" onclick="location.reload()">Retry</button></div></div>');
+            });
+    }
+
+    function wireBilling() { /* buttons wired in Tasks 3-4 */ }
 
     /* ── Overview ─────────────────────────────────────────────── */
     function loadOverview() {

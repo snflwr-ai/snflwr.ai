@@ -95,6 +95,25 @@ def test_requires_admin_when_not_overridden():
     assert r.status_code in (401, 403)
 
 
+def test_status_reports_configured_flag():
+    from config import system_config
+    from core import licensing
+
+    client = TestClient(_make_app())
+    with (
+        patch("core.licensing.current_state",
+              return_value=licensing.LicenseState("unlicensed", False, None, None, "no token")),
+        patch.object(system_config, "LICENSE_SERVER_URL", ""),
+    ):
+        assert client.get("/api/billing/status").json()["configured"] is False
+    with (
+        patch("core.licensing.current_state",
+              return_value=licensing.LicenseState("unlicensed", False, None, None, "no token")),
+        patch.object(system_config, "LICENSE_SERVER_URL", "https://ls.test"),
+    ):
+        assert client.get("/api/billing/status").json()["configured"] is True
+
+
 def test_portal_url_returns_configured_url():
     from config import system_config
 

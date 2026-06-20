@@ -35,11 +35,14 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 
 # Apply Debian security patches and install gosu (used by the entrypoint to
-# drop privileges from root → snflwr after fixing volume ownership).
+# drop privileges from root → snflwr after fixing volume ownership) and rclone
+# (used by scripts/backup_database.py to push backups off-host when
+# OFFHOST_BACKUP_ENABLED=true).
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends gosu \
+    && apt-get install -y --no-install-recommends gosu rclone \
     && rm -rf /var/lib/apt/lists/* \
-    && gosu nobody true  # smoke-test gosu binary
+    && gosu nobody true \
+    && rclone version  # smoke-test gosu + rclone binaries
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash snflwr

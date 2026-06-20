@@ -155,3 +155,40 @@ def test_manage_opens_portal(page, app_url):
     page.click("#billing-manage")
     page.wait_for_function("window.__opened && window.__opened.length > 0")
     assert "portal.example" in page.evaluate("window.__opened[0]")
+
+
+def test_signin_happy_path(page, app_url):
+    states = iter([_status("unlicensed"), _status("active", plan="family", exp=9999999999)])
+    page.route("**/api/billing/status", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=next(states)))
+    page.route("**/api/billing/signin/start", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"ok": True})))
+    page.route("**/api/billing/signin/verify", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"ok": True, "licensed": True})))
+    _login(page, app_url)
+    _open_billing(page)
+    page.fill("#billing-signin-email", "p@x.com")
+    page.click("#billing-signin-start")
+    page.wait_for_selector("#billing-code-row:visible")
+    page.fill("#billing-signin-code", "123456")
+    page.click("#billing-signin-verify")
+    page.wait_for_function("document.querySelector('#billing-status') && "
+                           "/active/i.test(document.querySelector('#billing-status').innerText)")
+
+
+def test_signin_bad_code_shows_error(page, app_url):
+    page.route("**/api/billing/status", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=_status("unlicensed")))
+    page.route("**/api/billing/signin/start", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"ok": True})))
+    page.route("**/api/billing/signin/verify", lambda r: r.fulfill(
+        status=400, content_type="application/json", body=json.dumps({"detail": "invalid or expired code"})))
+    _login(page, app_url)
+    _open_billing(page)
+    page.fill("#billing-signin-email", "p@x.com")
+    page.click("#billing-signin-start")
+    page.wait_for_selector("#billing-code-row:visible")
+    page.fill("#billing-signin-code", "000000")
+    page.click("#billing-signin-verify")
+    page.wait_for_selector("#billing-signin-error:visible")
+    assert "invalid" in page.inner_text("#billing-signin-error").lower()

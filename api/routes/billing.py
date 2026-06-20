@@ -50,7 +50,10 @@ def signin_verify(req: VerifyReq):
         r = c.post(_ls_base() + "/auth/verify",
                    json={"email": str(req.email), "code": req.code}, timeout=10.0)
     if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="invalid or expired code")
+        # 400, not 401: the admin IS authenticated (passed require_admin); the
+        # one-time code is just wrong. 401 here would trip the admin SPA's
+        # api() helper into treating it as session-expiry and logging out.
+        raise HTTPException(status_code=400, detail="invalid or expired code")
     licensing.store_session(r.json()["session"])
     licensed = licensing.refresh_once()
     return {"ok": True, "licensed": bool(licensed)}

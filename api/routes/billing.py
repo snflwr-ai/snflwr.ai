@@ -59,7 +59,15 @@ def signin_verify(req: VerifyReq):
 @router.get("/status")
 def billing_status():
     st = licensing.current_state(int(time.time()))
-    return {"state": st.state, "allowed": st.allowed, "plan": st.plan, "exp": st.exp}
+    return {
+        "state": st.state,
+        "allowed": st.allowed,
+        "plan": st.plan,
+        "exp": st.exp,
+        # Whether billing is wired on this server. The UI uses this to show a
+        # read-only "not set up yet" state instead of dead Subscribe buttons.
+        "configured": bool(system_config.LICENSE_SERVER_URL),
+    }
 
 
 @router.get("/checkout-url")

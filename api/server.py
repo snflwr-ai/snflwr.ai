@@ -348,7 +348,31 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Email alert worker could not start: {e}")
 
+    # License refresh background task (only when a license server is configured)
+    try:
+        if system_config.LICENSE_SERVER_URL and system_config.LICENSE_ENFORCED:
+            from tasks.license_refresh import run_refresh_loop
+
+            app.state.license_stop = asyncio.Event()
+            app.state.license_task = asyncio.create_task(
+                run_refresh_loop(app.state.license_stop))
+            logger.info("License refresh task started")
+    except Exception as exc:
+        logger.warning("License refresh task could not start: %s", exc)
+
     yield
+
+    # Stop license refresh task
+    _lic_stop = getattr(app.state, "license_stop", None)
+    if _lic_stop is not None:
+        _lic_stop.set()
+        _lic_task = getattr(app.state, "license_task", None)
+        if _lic_task is not None:
+            try:
+                await asyncio.wait_for(_lic_task, timeout=5)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass
+        logger.info("License refresh task stopped")
 
     # Cancel classifier probe
     if classifier_probe_task:
@@ -690,6 +714,7 @@ from api.routes import (
     dashboard,
     admin_dashboard,
     thin_client,
+    billing,
 )
 
 # Register routes
@@ -707,6 +732,7 @@ app.include_router(
 app.include_router(dashboard.router, tags=["dashboard"])
 app.include_router(admin_dashboard.router, tags=["admin-dashboard"])
 app.include_router(thin_client.router, prefix="/api/thin-client", tags=["thin-client"])
+app.include_router(billing.router, prefix="/api/billing", tags=["billing"])
 
 # Ollama-compatible proxy — OWU sends requests here instead of directly to Ollama
 from api.routes.ollama_proxy import router as ollama_proxy_router

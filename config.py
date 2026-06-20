@@ -120,6 +120,18 @@ class _SystemConfig:
     VERSION: str = os.getenv("SNFLWR_VERSION", "1.0.0")
     PLATFORM: str = "linux"
 
+    # --- Licensing / billing ---
+    LICENSE_SERVER_URL: str = os.getenv("LICENSE_SERVER_URL", "")
+    LICENSE_PUBLIC_KEY_PATH: str = os.getenv(
+        "LICENSE_PUBLIC_KEY_PATH", "./config/license_public_key.pem")
+    LICENSE_REFRESH_INTERVAL_SECONDS: int = int(
+        os.getenv("LICENSE_REFRESH_INTERVAL_SECONDS", str(14 * 86400)))
+    # Off by default: enforcement is flipped on only when billing goes live
+    # (entity + legal + license server). Shipping this code must NOT instantly
+    # gate existing deployments. See billing spec §11 (phased rollout).
+    LICENSE_ENFORCED: bool = os.getenv("LICENSE_ENFORCED", "false").lower() == "true"
+    LS_CHECKOUT_URL: str = os.getenv("LS_CHECKOUT_URL", "")
+
     # Deployment mode: 'auto' (try USB then local), 'usb', 'local', 'thin_client'
     DEPLOY_MODE: str = os.getenv("SNFLWR_DEPLOY_MODE", "auto")
     # Management server URL for thin client deployments

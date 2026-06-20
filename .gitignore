@@ -60,6 +60,9 @@ config/audit/
 *.pem
 *.crt
 *.cert
+# ...except the bundled license PUBLIC key (not a secret; must ship with the app
+# for offline token verification). The signing PRIVATE key never lives here.
+!config/license_public_key.pem
 *.p12
 *.pfx
 

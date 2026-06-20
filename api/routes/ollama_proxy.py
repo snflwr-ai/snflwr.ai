@@ -354,6 +354,20 @@ async def proxy_chat(request: Request) -> Response:
             media_type=upstream.headers.get("content-type", "application/json"),
         )
 
+    # License gate — students must hold a valid subscription/trial token.
+    # Fail-safe: any licensing problem => gated, never a crash. Admins already
+    # returned above and are never gated.
+    from config import system_config
+    if system_config.LICENSE_ENFORCED:
+        import time as _time
+        from core import licensing
+        lic = licensing.current_state(int(_time.time()))
+        if not lic.allowed:
+            logger.info("License gate blocked student %s (state=%s)", user_id, lic.state)
+            msg = ("A snflwr.ai subscription is needed to use the tutor. "
+                   "Open Settings → Billing to subscribe or sign in.")
+            return JSONResponse(content=_ollama_block_response(model, msg))
+
     # Student path — run safety pipeline
     profile_id = await _get_profile_for_user(user_id)
 

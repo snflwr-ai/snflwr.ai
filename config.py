@@ -131,6 +131,7 @@ class _SystemConfig:
     # gate existing deployments. See billing spec §11 (phased rollout).
     LICENSE_ENFORCED: bool = os.getenv("LICENSE_ENFORCED", "false").lower() == "true"
     LS_CHECKOUT_URL: str = os.getenv("LS_CHECKOUT_URL", "")
+    LS_CUSTOMER_PORTAL_URL: str = os.getenv("LS_CUSTOMER_PORTAL_URL", "")
 
     # Deployment mode: 'auto' (try USB then local), 'usb', 'local', 'thin_client'
     DEPLOY_MODE: str = os.getenv("SNFLWR_DEPLOY_MODE", "auto")

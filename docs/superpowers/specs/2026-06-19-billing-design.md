@@ -1,7 +1,7 @@
 ---
 title: Billing — Self-Hosted Subscription Licensing (Design Spec)
 date: 2026-06-19
-status: approved (design) — pending implementation plan
+status: implemented (Phases 1-2) — plan at docs/superpowers/plans/2026-06-19-billing-implementation.md; Phases 3-4 pending
 ---
 
 # Billing: Self-Hosted Subscription Licensing

@@ -281,6 +281,11 @@ class TestRedisRateLimiter:
         with patch("api.middleware.auth.RedisRateLimiter._initialize_redis"):
             rl = RedisRateLimiter()
             rl._redis = None  # Ensure fallback mode
+            # Force the pure in-memory path: __init__ also wires a *persistent*
+            # SQLite limiter when Redis is absent, and it takes precedence in
+            # _check_fallback_rate_limit. Without this, the fixed "user1" key
+            # reads accumulated rows from the shared data/snflwr.db and fails.
+            rl._sqlite_limiter = None
 
             # Should allow requests up to limit
             for _ in range(100):

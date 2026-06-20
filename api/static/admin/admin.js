@@ -406,7 +406,31 @@
             });
     }
 
-    function wireBilling() { /* buttons wired in Tasks 3-4 */ }
+    function openUrlFromEndpoint(path, btn) {
+        if (btn) btn.disabled = true;
+        api('GET', path)
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.url) { window.open(d.url, '_blank'); }
+                else { toast('Not configured yet — ask the operator.', 'error'); }
+            })
+            .catch(function () { toast('Couldn’t reach billing. Try again.', 'error'); })
+            .then(function () { if (btn) btn.disabled = false; });
+    }
+
+    function wireBilling(state) {
+        var sub = document.getElementById('billing-subscribe');
+        if (sub) sub.addEventListener('click', function () {
+            openUrlFromEndpoint('/api/billing/checkout-url', sub);
+        });
+        var man = document.getElementById('billing-manage');
+        if (man) man.addEventListener('click', function () {
+            openUrlFromEndpoint('/api/billing/portal-url', man);
+        });
+        wireBillingSignin(state);
+    }
+
+    function wireBillingSignin() { /* sign-in wired in Task 4 */ }
 
     /* ── Overview ─────────────────────────────────────────────── */
     function loadOverview() {

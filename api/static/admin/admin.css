@@ -1053,3 +1053,13 @@ tbody tr:last-child td { border-bottom: none; }
         grid-template-columns: 1fr;
     }
 }
+
+/* Billing tab */
+.billing-card { padding: 20px; margin-bottom: 16px; }
+.billing-status-title { font-size: 1.1rem; font-weight: 600; }
+.billing-meta { color: var(--text-muted, #667); font-size: 0.9rem; margin-top: 6px; }
+.billing-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.billing-signin { margin-top: 12px; width: 100%; }
+.billing-signin-label { font-size: 0.9rem; margin-bottom: 6px; }
+.billing-signin-row, .billing-code-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.billing-signin-row input, .billing-code-row input { flex: 1; max-width: 280px; }

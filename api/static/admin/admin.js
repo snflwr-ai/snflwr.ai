@@ -138,7 +138,8 @@
                 students: loadStudents,
                 safety: loadSafety,
                 activity: loadActivity,
-                audit: loadAudit
+                audit: loadAudit,
+                billing: loadBilling
             };
             (views[state.view] || loadOverview)();
         });
@@ -278,6 +279,10 @@
             navItem('activity', '\u{1F4C8}', 'Activity Log'),
             navItem('audit', '\u{1F512}', 'System Log'),
             '    </div>',
+            '    <div class="nav-section">',
+            '      <div class="nav-section-label">Account</div>',
+            navItem('billing', '\u{1F4B3}', 'Billing'),
+            '    </div>',
             '  </nav>',
             '  <div class="sidebar-footer">',
             '    <div class="sidebar-user">',
@@ -317,6 +322,160 @@
         if (el) el.innerHTML = html;  // eslint-disable-line -- all dynamic values are escaped via esc()/escA()
     }
     function setMain(html) { setSafeHtml(mainEl(), html); }
+
+    /* ── Billing ──────────────────────────────────────────────── */
+    function billingStateCopy(s) {
+        switch (s) {
+            case 'active': return { cls: 'msg-success', title: 'Subscription active' };
+            case 'trialing': return { cls: 'msg-success', title: 'Free trial active' };
+            case 'grace': return { cls: 'msg-warning', title: 'Payment issue — access continues for now' };
+            case 'expired': return { cls: 'msg-error', title: 'Subscription expired' };
+            default: return { cls: 'msg', title: 'No active subscription' };
+        }
+    }
+
+    function billingActionsHtml(s) {
+        var subscribe = '<button class="btn btn-primary" id="billing-subscribe">Subscribe / Start free trial</button>';
+        var manage = '<button class="btn btn-outline" id="billing-manage">Manage subscription</button>';
+        var signin =
+            '<div class="billing-signin">' +
+            '  <div class="billing-signin-label">Already subscribed? Sign in to link this device:</div>' +
+            '  <div class="billing-signin-row">' +
+            '    <input type="email" id="billing-signin-email" placeholder="billing email" autocomplete="email">' +
+            '    <button class="btn btn-outline" id="billing-signin-start">Send code</button>' +
+            '  </div>' +
+            '  <div class="billing-code-row" id="billing-code-row" style="display:none">' +
+            '    <input type="text" id="billing-signin-code" placeholder="6-digit code" inputmode="numeric">' +
+            '    <button class="btn btn-primary" id="billing-signin-verify">Verify</button>' +
+            '  </div>' +
+            '  <div class="msg msg-error" id="billing-signin-error" style="display:none"></div>' +
+            '</div>';
+        if (s === 'active' || s === 'trialing') return manage;
+        if (s === 'grace') return manage + ' ' + subscribe;
+        return subscribe + signin;  // expired / unlicensed / none
+    }
+
+    function renderBilling(d) {
+        var copy = billingStateCopy(d.state);
+        var meta = '';
+        if (d.plan) meta += '<div class="billing-meta">Plan: ' + esc(d.plan) + '</div>';
+        if (d.exp) {
+            var when = new Date(d.exp * 1000).toLocaleDateString();
+            meta += '<div class="billing-meta">Renews/expires: ' + esc(when) + '</div>';
+        }
+        setMain([
+            '<div id="billing-view">',
+            '  <div class="page-header"><h2>Billing</h2>',
+            '    <p class="page-desc">Manage your snflwr.ai subscription.</p></div>',
+            '  <div class="card billing-card ' + copy.cls + '">',
+            '    <div id="billing-status" class="billing-status-title">' + esc(copy.title) + '</div>',
+            meta,
+            '  </div>',
+            '  <div class="billing-actions">' + billingActionsHtml(d.state) + '</div>',
+            '</div>'
+        ].join('\n'));
+        wireBilling(d.state);
+    }
+
+    function renderBillingNotConfigured() {
+        setMain([
+            '<div id="billing-view">',
+            '  <div class="page-header"><h2>Billing</h2></div>',
+            '  <div class="card billing-card msg">',
+            '    <div id="billing-status" class="billing-status-title">Billing isn’t set up on this server yet.</div>',
+            '    <div class="billing-meta">A subscription becomes available once the operator configures the license server.</div>',
+            '  </div>',
+            '</div>'
+        ].join('\n'));
+    }
+
+    function loadBilling() {
+        api('GET', '/api/billing/status')
+            .then(function (r) {
+                if (r.status === 503) { renderBillingNotConfigured(); return null; }
+                return r.json();
+            })
+            .then(function (d) {
+                if (!d) return;
+                if (d.configured === false) { renderBillingNotConfigured(); return; }
+                renderBilling(d);
+            })
+            .catch(function () {
+                setMain('<div id="billing-view"><div class="msg msg-error">Couldn’t load billing status. ' +
+                    '<button class="btn btn-outline" onclick="location.reload()">Retry</button></div></div>');
+            });
+    }
+
+    function openUrlFromEndpoint(path, btn) {
+        if (btn) btn.disabled = true;
+        api('GET', path)
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.url) { window.open(d.url, '_blank'); }
+                else { toast('Not configured yet — ask the operator.', 'error'); }
+            })
+            .catch(function () { toast('Couldn’t reach billing. Try again.', 'error'); })
+            .then(function () { if (btn) btn.disabled = false; });
+    }
+
+    function wireBilling(state) {
+        var sub = document.getElementById('billing-subscribe');
+        if (sub) sub.addEventListener('click', function () {
+            openUrlFromEndpoint('/api/billing/checkout-url', sub);
+        });
+        var man = document.getElementById('billing-manage');
+        if (man) man.addEventListener('click', function () {
+            openUrlFromEndpoint('/api/billing/portal-url', man);
+        });
+        wireBillingSignin(state);
+    }
+
+    function wireBillingSignin() {
+        var startBtn = document.getElementById('billing-signin-start');
+        var emailEl = document.getElementById('billing-signin-email');
+        var codeRow = document.getElementById('billing-code-row');
+        var verifyBtn = document.getElementById('billing-signin-verify');
+        var codeEl = document.getElementById('billing-signin-code');
+        var errEl = document.getElementById('billing-signin-error');
+        if (!startBtn) return;
+
+        function showErr(msg) { errEl.textContent = msg; errEl.style.display = ''; }
+        function clearErr() { errEl.textContent = ''; errEl.style.display = 'none'; }
+
+        startBtn.addEventListener('click', function () {
+            var email = (emailEl.value || '').trim();
+            if (!email) { showErr('Enter your billing email.'); return; }
+            clearErr();
+            startBtn.disabled = true;
+            api('POST', '/api/billing/signin/start', { email: email })
+                .then(function (r) {
+                    if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Could not send code'); });
+                    codeRow.style.display = '';
+                    toast('Code sent — check your email.', 'success');
+                })
+                .catch(function (ex) { showErr(ex.message); })
+                .then(function () { startBtn.disabled = false; });
+        });
+
+        verifyBtn.addEventListener('click', function () {
+            var email = (emailEl.value || '').trim();
+            var code = (codeEl.value || '').trim();
+            if (!code) { showErr('Enter the code from your email.'); return; }
+            clearErr();
+            verifyBtn.disabled = true;
+            api('POST', '/api/billing/signin/verify', { email: email, code: code })
+                .then(function (r) {
+                    if (r.status === 400) throw new Error('Invalid or expired code.');
+                    if (!r.ok) throw new Error('Sign-in failed. Try again.');
+                    return r.json();
+                })
+                .then(function (d) {
+                    toast(d.licensed ? 'Signed in — subscription active.' : 'Signed in.', 'success');
+                    loadBilling();  // re-render status
+                })
+                .catch(function (ex) { showErr(ex.message); verifyBtn.disabled = false; });
+        });
+    }
 
     /* ── Overview ─────────────────────────────────────────────── */
     function loadOverview() {

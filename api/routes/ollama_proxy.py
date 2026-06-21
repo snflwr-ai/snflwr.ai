@@ -398,6 +398,36 @@ async def proxy_chat(
     except Exception as exc:
         logger.debug("Could not resolve age for profile %s: %s", profile_id, exc)
 
+    # COPPA gate — an under-13 profile may only tutor once per-child parental
+    # consent has been verified (coppa_verified=1). Consent is set per-profile
+    # by /api/parental-consent/verify; it is never granted at profile creation
+    # (finding C1). Only block on a positively-resolved unverified under-13
+    # profile; unknown/synthetic profiles fall through to the safety pipeline.
+    try:
+        from core.authentication import auth_manager as _am
+
+        rows = _am.db.execute_query(
+            "SELECT age, coppa_verified FROM child_profiles WHERE profile_id = ?",
+            (profile_id,),
+        )
+        if rows:
+            r0 = rows[0]
+            _age = r0["age"] if isinstance(r0, dict) else r0[0]
+            _verified = r0["coppa_verified"] if isinstance(r0, dict) else r0[1]
+            if _age is not None and _age < 13 and not _verified:
+                logger.info(
+                    "COPPA gate blocked under-13 profile %s (consent not verified)",
+                    profile_id,
+                )
+                msg = (
+                    "A parent needs to confirm permission before this account can "
+                    "chat. Please ask a parent to complete the consent step in "
+                    "Settings."
+                )
+                return JSONResponse(content=_ollama_block_response(model, msg))
+    except Exception as exc:  # never break chat on a COPPA-lookup error
+        logger.debug("COPPA gate lookup failed for %s (allowing): %s", profile_id, exc)
+
     text = _extract_last_user_message(messages)
 
     try:

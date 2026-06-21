@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
 from api.middleware.auth import get_current_session
+from core.authentication import AuthSession
 from config import system_config
 from utils.logger import get_logger
 
@@ -306,7 +307,10 @@ async def _stream_chat_from_ollama(
 
 
 @router.post("/chat")
-async def proxy_chat(request: Request) -> Response:
+async def proxy_chat(
+    request: Request,
+    session: AuthSession = Depends(get_current_session),
+) -> Response:
     """POST /api/chat — run safety pipeline for students, pass-through for admins.
 
     Supports both streaming (``stream=True``) and non-streaming responses.
@@ -321,7 +325,17 @@ async def proxy_chat(request: Request) -> Response:
     messages: list = body.get("messages", [])
     stream: bool = body.get("stream", False)
 
-    user_id, role = _get_user_from_headers(request)
+    # Resolve identity. The X-OpenWebUI-User-* headers are only trustworthy when
+    # the caller authenticated with the internal API key (i.e. Open WebUI, which
+    # stamps the role from its own authenticated user). Any other caller holds a
+    # real user session, so we MUST use the authenticated session role — never a
+    # client-supplied header — to decide the safety-pipeline bypass (else a
+    # non-admin session-holder could send X-OpenWebUI-User-Role: admin and skip
+    # child-safety entirely).
+    if session.user_id == "internal_service":
+        user_id, role = _get_user_from_headers(request)
+    else:
+        user_id, role = session.user_id, session.role
 
     # Admins bypass the safety pipeline entirely
     if role == "admin":

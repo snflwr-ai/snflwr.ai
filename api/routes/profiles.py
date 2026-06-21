@@ -229,49 +229,22 @@ def create_profile(
                 status_code=400, detail="Either 'age' or 'birthdate' must be provided"
             )
 
-        # COPPA COMPLIANCE CHECK
-        # Server-side verification: check parental consent from the database,
-        # NEVER trust the client-supplied parental_consent_verified field.
-        has_consent = False
-        if calculated_age < 13:
-            consent_rows = auth_manager.db.execute_query(
-                """
-                SELECT is_active FROM parental_consent_log
-                WHERE parent_id = ? AND is_active = 1
-                AND consent_type != 'revoked'
-                ORDER BY consent_date DESC LIMIT 1
-                """,
-                (session.user_id,),
-            )
-            if consent_rows:
-                row = consent_rows[0]
-                has_consent = bool(
-                    row["is_active"] if isinstance(row, dict) else row[0]
-                )
+        # COPPA COMPLIANCE
+        # Consent is PER-CHILD and is established only AFTER the profile exists,
+        # via POST /api/parental-consent/verify (which sets coppa_verified for
+        # that specific profile_id). We therefore NEVER auto-grant consent at
+        # creation: a parent-level lookup let one child's consent silently
+        # verify siblings (security finding C1). Under-13 profiles are created
+        # PENDING (coppa_verified=0) and are gated from tutoring until per-child
+        # consent is verified; the downstream gate enforces this.
+        has_consent = False  # never granted at creation
+        is_under_13 = calculated_age < 13
 
         age_verification_result = age_manager.verify_age_from_birthdate(
             birthdate=request.birthdate
             or f"{datetime.now(timezone.utc).year - calculated_age}-01-01",
             has_parental_consent=has_consent,
         )
-
-        if not age_verification_result.is_compliant:
-            # Under-13 without parental consent
-            logger.warning(
-                f"COPPA compliance failure: Child is {age_verification_result.age}, "
-                f"requires parental consent"
-            )
-
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "parental_consent_required",
-                    "message": age_verification_result.error_message,
-                    "age": age_verification_result.age,
-                    "requires_consent": age_verification_result.requires_parental_consent,
-                    "action_required": "complete_parental_consent_workflow",
-                },
-            )
 
         # CREATE PROFILE (COPPA-compliant)
         profile_manager = ProfileManager(auth_manager.db)
@@ -324,6 +297,13 @@ def create_profile(
                 "is_under_13": age_verification_result.is_under_13,
                 "coppa_compliant": age_verification_result.is_compliant,
                 "has_parental_consent": age_verification_result.has_parental_consent,
+                # Under-13 profiles are created pending per-child consent. The
+                # client must complete /api/parental-consent/request + /verify
+                # for THIS profile_id before the child can use the tutor.
+                "requires_consent": is_under_13,
+                "action_required": (
+                    "complete_parental_consent_workflow" if is_under_13 else None
+                ),
             },
         }
 

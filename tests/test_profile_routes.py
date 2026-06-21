@@ -79,39 +79,15 @@ def _make_profile(**overrides):
 
 class TestCreateProfileCoppaAgeGate:
 
-    def test_under_13_without_consent_blocked(self, parent_session, mock_deps, mock_db):
-        """COPPA: Under-13 child without parental consent must be rejected."""
+    def test_under_13_created_pending_consent(self, parent_session, mock_deps, mock_db):
+        """COPPA (C1): under-13 is created PENDING (not auto-verified) and flagged
+        as requiring per-child consent — never 403, never auto-compliant."""
         from api.routes.profiles import create_profile, CreateProfileRequest
 
         today = date.today()
         birthdate = today.replace(year=today.year - 10).isoformat()
 
-        # No consent in DB
         mock_db.execute_query.return_value = []
-
-        request = CreateProfileRequest(
-            parent_id="a" * 32,
-            name="Tommy",
-            birthdate=birthdate,
-            grade_level="5th",
-        )
-
-        with pytest.raises(HTTPException) as exc:
-            create_profile(request, parent_session, rate_limit_info={})
-        assert exc.value.status_code == 403
-        assert "parental_consent_required" in str(exc.value.detail)
-
-    def test_under_13_with_consent_allowed(self, parent_session, mock_deps, mock_db):
-        """COPPA: Under-13 child WITH parental consent must be allowed."""
-        from api.routes.profiles import create_profile, CreateProfileRequest
-
-        today = date.today()
-        birthdate = today.replace(year=today.year - 10).isoformat()
-
-        # Consent exists in DB
-        mock_db.execute_query.side_effect = [
-            [{'is_active': 1}],  # consent check
-        ]
         mock_db.execute_write.return_value = None
 
         profile = _make_profile()
@@ -119,15 +95,48 @@ class TestCreateProfileCoppaAgeGate:
             PM.return_value.create_profile.return_value = profile
 
             request = CreateProfileRequest(
-                parent_id="a" * 32,
-                name="Tommy",
-                birthdate=birthdate,
-                grade_level="5th",
-            )
+                parent_id="a" * 32, name="Tommy", birthdate=birthdate, grade_level="5th")
 
             result = create_profile(request, parent_session, rate_limit_info={})
-            assert result["age_verification"]["coppa_compliant"] is True
-            assert result["age_verification"]["has_parental_consent"] is True
+            assert result["age_verification"]["is_under_13"] is True
+            assert result["age_verification"]["coppa_compliant"] is False
+            assert result["age_verification"]["has_parental_consent"] is False
+            assert result["age_verification"]["requires_consent"] is True
+
+    def test_sibling_consent_does_not_verify_new_child(self, parent_session, mock_deps, mock_db):
+        """COPPA (C1 regression): a pre-existing parent/sibling consent row must
+        NOT auto-verify a newly created under-13 child."""
+        from api.routes.profiles import create_profile, CreateProfileRequest
+
+        today = date.today()
+        birthdate = today.replace(year=today.year - 8).isoformat()
+
+        # Simulate an active consent row already present for the parent (sibling).
+        mock_db.execute_query.return_value = [{"is_active": 1}]
+        mock_db.execute_write.return_value = None
+
+        profile = _make_profile(profile_id="prof2", name="Sibling", age=8)
+        with patch("api.routes.profiles.ProfileManager") as PM:
+            PM.return_value.create_profile.return_value = profile
+
+            request = CreateProfileRequest(
+                parent_id="a" * 32, name="Sibling", birthdate=birthdate, grade_level="3rd")
+
+            result = create_profile(request, parent_session, rate_limit_info={})
+            # The new child is NOT verified off the existing consent row.
+            assert result["age_verification"]["coppa_compliant"] is False
+            assert result["age_verification"]["has_parental_consent"] is False
+            assert result["age_verification"]["requires_consent"] is True
+            # The coppa_verified column for this child is written as 0 (pending).
+            update_calls = [
+                c for c in mock_db.execute_write.call_args_list
+                if c.args and "UPDATE child_profiles" in c.args[0]
+                and "coppa_verified" in c.args[0]
+            ]
+            assert update_calls, "expected an age-verification UPDATE"
+            # params order: (birthdate, consent_given, consent_date, method,
+            #                coppa_verified, age_verified_at, profile_id)
+            assert update_calls[0].args[1][4] == 0
 
     def test_age_13_plus_no_consent_required(self, parent_session, mock_deps, mock_db):
         """COPPA: 13+ child does not need parental consent."""
@@ -948,16 +957,17 @@ class TestCreateProfileAdditionalPaths:
                 check_profile_rate_limit(request_mock)
         assert exc.value.status_code == 429
 
-    def test_consent_check_uses_row_tuple_format(self, parent_session, mock_deps, mock_db):
-        """Consent row returned as tuple (not dict) is handled correctly."""
+    def test_creation_ignores_existing_consent_rows(self, parent_session, mock_deps, mock_db):
+        """C1: any pre-existing consent row is ignored at creation — under-13 is
+        always created pending per-child consent (no auto-verify)."""
         from api.routes.profiles import create_profile, CreateProfileRequest
         from datetime import date
 
         today = date.today()
         birthdate = today.replace(year=today.year - 10).isoformat()
 
-        # Return consent as tuple (index 0 = is_active)
-        mock_db.execute_query.return_value = [(1,)]  # tuple format
+        # Even with an active consent row present, creation stays pending.
+        mock_db.execute_query.return_value = [(1,)]
         mock_db.execute_write.return_value = None
 
         profile = _make_profile()
@@ -972,7 +982,8 @@ class TestCreateProfileAdditionalPaths:
             )
             result = create_profile(request, parent_session, rate_limit_info={})
 
-        assert result["age_verification"]["has_parental_consent"] is True
+        assert result["age_verification"]["has_parental_consent"] is False
+        assert result["age_verification"]["requires_consent"] is True
 
 
 # --------------------------------------------------------------------------

@@ -93,6 +93,21 @@ jobs:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: snflwr
+          POSTGRES_PASSWORD: snflwr_test
+          POSTGRES_DB: snflwr_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -117,11 +132,22 @@ jobs:
         redis-server --daemonize yes
         redis-cli ping | grep -q PONG && echo "Redis ready"
 
+    - name: Install PostgreSQL client (pg_dump/pg_restore for DR test)
+      run: sudo apt-get install -y -qq postgresql-client
+
     - name: Run unit tests with coverage
       env:
         REDIS_ENABLED: 'true'
         REDIS_HOST: 'localhost'
         REDIS_PORT: '6379'
+        # Postgres-tier DR test (tests/test_dr_restore_postgres.py) — runs
+        # against the postgres service container above. Absent these, the test
+        # skips (local dev).
+        POSTGRES_HOST: 'localhost'
+        POSTGRES_PORT: '5432'
+        POSTGRES_USER: 'snflwr'
+        POSTGRES_PASSWORD: 'snflwr_test'
+        POSTGRES_DATABASE: 'snflwr_test'
       run: |
         # pytest.ini defines the coverage ratchet (--cov-fail-under).
         # Add XML report for Codecov upload without overriding the floor.

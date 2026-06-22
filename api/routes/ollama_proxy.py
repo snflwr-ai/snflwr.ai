@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
 from api.middleware.auth import get_current_session
+from core.authentication import AuthSession
 from config import system_config
 from utils.logger import get_logger
 
@@ -306,7 +307,10 @@ async def _stream_chat_from_ollama(
 
 
 @router.post("/chat")
-async def proxy_chat(request: Request) -> Response:
+async def proxy_chat(
+    request: Request,
+    session: AuthSession = Depends(get_current_session),
+) -> Response:
     """POST /api/chat — run safety pipeline for students, pass-through for admins.
 
     Supports both streaming (``stream=True``) and non-streaming responses.
@@ -321,7 +325,17 @@ async def proxy_chat(request: Request) -> Response:
     messages: list = body.get("messages", [])
     stream: bool = body.get("stream", False)
 
-    user_id, role = _get_user_from_headers(request)
+    # Resolve identity. The X-OpenWebUI-User-* headers are only trustworthy when
+    # the caller authenticated with the internal API key (i.e. Open WebUI, which
+    # stamps the role from its own authenticated user). Any other caller holds a
+    # real user session, so we MUST use the authenticated session role — never a
+    # client-supplied header — to decide the safety-pipeline bypass (else a
+    # non-admin session-holder could send X-OpenWebUI-User-Role: admin and skip
+    # child-safety entirely).
+    if session.user_id == "internal_service":
+        user_id, role = _get_user_from_headers(request)
+    else:
+        user_id, role = session.user_id, session.role
 
     # Admins bypass the safety pipeline entirely
     if role == "admin":
@@ -383,6 +397,36 @@ async def proxy_chat(request: Request) -> Response:
             age = profile.age or None
     except Exception as exc:
         logger.debug("Could not resolve age for profile %s: %s", profile_id, exc)
+
+    # COPPA gate — an under-13 profile may only tutor once per-child parental
+    # consent has been verified (coppa_verified=1). Consent is set per-profile
+    # by /api/parental-consent/verify; it is never granted at profile creation
+    # (finding C1). Only block on a positively-resolved unverified under-13
+    # profile; unknown/synthetic profiles fall through to the safety pipeline.
+    try:
+        from core.authentication import auth_manager as _am
+
+        rows = _am.db.execute_query(
+            "SELECT age, coppa_verified FROM child_profiles WHERE profile_id = ?",
+            (profile_id,),
+        )
+        if rows:
+            r0 = rows[0]
+            _age = r0["age"] if isinstance(r0, dict) else r0[0]
+            _verified = r0["coppa_verified"] if isinstance(r0, dict) else r0[1]
+            if _age is not None and _age < 13 and not _verified:
+                logger.info(
+                    "COPPA gate blocked under-13 profile %s (consent not verified)",
+                    profile_id,
+                )
+                msg = (
+                    "A parent needs to confirm permission before this account can "
+                    "chat. Please ask a parent to complete the consent step in "
+                    "Settings."
+                )
+                return JSONResponse(content=_ollama_block_response(model, msg))
+    except Exception as exc:  # never break chat on a COPPA-lookup error
+        logger.debug("COPPA gate lookup failed for %s (allowing): %s", profile_id, exc)
 
     text = _extract_last_user_message(messages)
 

@@ -146,6 +146,14 @@ class _SystemConfig:
     ENABLE_SAFETY_MONITORING: bool = os.getenv(
         "ENABLE_SAFETY_MONITORING", "True"
     ).lower() in ("1", "true", "yes")
+    # When the ML safety classifier is unavailable, fail closed (block tutoring)
+    # for ALL ages, not just under-13 (which always fails closed). Recommended
+    # for production once the safety model is reliably provisioned. Default off
+    # so a deployment without the model still serves teens via deterministic
+    # filtering. See security finding F2.
+    SAFETY_CLASSIFIER_REQUIRED: bool = os.getenv(
+        "SAFETY_CLASSIFIER_REQUIRED", "false"
+    ).lower() in ("1", "true", "yes")
 
     # Email Configuration (SMTP for parent alerts)
     SMTP_ENABLED: bool = os.getenv("SMTP_ENABLED", "false").lower() == "true"

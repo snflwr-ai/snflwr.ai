@@ -240,6 +240,28 @@ class TestVerifyParentalConsent:
         assert result["profile_id"] == "prof1"
 
     @pytest.mark.asyncio
+    async def test_verify_rejects_13_plus_profile(self, mock_auth_manager, mock_db):
+        """C2: /verify must reject a 13+ profile (no out-of-band consent for teens)."""
+        from api.routes.parental_consent import verify_parental_consent, ConsentVerification
+
+        token = "valid-token-abc"
+        future = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        mock_db.execute_query.side_effect = [
+            [{'user_id': 'parent123', 'expires_at': future, 'is_valid': 1}],  # token
+            [{'parent_id': 'parent123', 'age': 15}],  # profile is 15 -> reject
+        ]
+        verification = ConsentVerification(
+            token=token, electronic_signature="Jane Doe", accept_terms=True)
+        request = MagicMock()
+        request.client.host = "127.0.0.1"
+        request.headers = {"user-agent": "t"}
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_parental_consent(verification, "prof1", request)
+        assert exc.value.status_code == 400
+        assert "under 13" in str(exc.value.detail).lower()
+
+    @pytest.mark.asyncio
     async def test_invalid_token_rejected(self, mock_auth_manager, mock_db):
         from api.routes.parental_consent import verify_parental_consent, ConsentVerification
 

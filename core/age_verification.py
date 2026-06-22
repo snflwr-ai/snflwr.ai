@@ -179,12 +179,19 @@ def generate_consent_verification_token(
     # Generate secure random token
     token = secrets.token_urlsafe(32)
 
-    # Hash token for database storage (no salt needed - token is already
-    # cryptographically random; matches verification in parental_consent.py
-    # and the pattern used in core/authentication.py for email tokens)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    # Bind the hash to this specific profile (security finding C2). Folding
+    # profile_id into the hash means the token (a) is only usable for the child
+    # it was issued for, and (b) cannot collide with account email-verification
+    # tokens, which hash the bare token — so an account-verification token can
+    # never be replayed against the consent /verify endpoint.
+    token_hash = consent_token_hash(token, profile_id)
 
     return token, token_hash
+
+
+def consent_token_hash(token: str, profile_id: str) -> str:
+    """Profile-bound hash for parental-consent tokens (see finding C2)."""
+    return hashlib.sha256(f"{token}:{profile_id}".encode()).hexdigest()
 
 
 def verify_consent_token(
@@ -202,10 +209,9 @@ def verify_consent_token(
     Returns:
         True if token is valid
     """
-    # Hash the token the same way generate_consent_verification_token does:
-    # plain SHA-256 of the token (the token itself is cryptographically random,
-    # so no salt is needed). Use constant-time comparison to prevent timing attacks.
-    computed_hash = hashlib.sha256(token.encode()).hexdigest()
+    # Profile-bound hash (see consent_token_hash / finding C2). Constant-time
+    # comparison to prevent timing attacks.
+    computed_hash = consent_token_hash(token, profile_id)
 
     return hmac.compare_digest(computed_hash, token_hash)
 

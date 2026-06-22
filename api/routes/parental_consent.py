@@ -210,9 +210,13 @@ async def verify_parental_consent(
     try:
         age_manager = AgeVerificationManager(auth_manager.db)
 
-        # Verify token exists and is valid
-        # Hash token for secure database lookup
-        token_hash = hashlib.sha256(verification.token.encode()).hexdigest()
+        # Verify token exists and is valid. The hash is bound to this profile_id
+        # (finding C2): only a consent token issued for THIS child matches, and
+        # account email-verification tokens (hashed without a profile_id) can
+        # never satisfy this lookup.
+        from core.age_verification import consent_token_hash
+
+        token_hash = consent_token_hash(verification.token, profile_id)
 
         token_rows = auth_manager.db.execute_query(
             """
@@ -260,15 +264,27 @@ async def verify_parental_consent(
 
         # Verify the profile belongs to the parent associated with this token
         profile_rows = auth_manager.db.execute_query(
-            "SELECT parent_id FROM child_profiles WHERE profile_id = ?", (profile_id,)
+            "SELECT parent_id, age FROM child_profiles WHERE profile_id = ?",
+            (profile_id,),
         )
         if not profile_rows:
             raise HTTPException(status_code=404, detail="Profile not found")
-        profile_parent = (
-            profile_rows[0]["parent_id"]
-            if isinstance(profile_rows[0], dict)
-            else profile_rows[0][0]
-        )
+        _prow = profile_rows[0]
+        if isinstance(_prow, dict):
+            profile_parent = _prow["parent_id"]
+            profile_age = _prow.get("age")
+        else:
+            profile_parent = _prow[0]
+            profile_age = _prow[1] if len(_prow) > 1 else None
+
+        # Re-check the under-13 gate at verify time (finding C2): /request checks
+        # it, but /verify must not be reachable out-of-band for a 13+ profile.
+        if profile_age is not None and profile_age >= 13:
+            raise HTTPException(
+                status_code=400,
+                detail="Parental consent is only applicable to children under 13",
+            )
+
         if profile_parent != user_id:
             logger.warning(
                 "Consent verification: token user_id %r does not own profile %r (owner: %r)",
@@ -292,7 +308,7 @@ async def verify_parental_consent(
             ip_address=client_ip,
             user_agent=user_agent,
             electronic_signature=verification.electronic_signature,
-            verification_token=hashlib.sha256(verification.token.encode()).hexdigest(),
+            verification_token=token_hash,
         )
 
         # Update profile consent status

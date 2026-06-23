@@ -3,6 +3,7 @@
 // No dedicated settings API endpoint in legacy dashboard.js — uses session data.
 
 import { getEmail, getParentId } from '../core/session.js';
+import { apiRequest } from '../core/api.js';
 import { el } from '../core/dom.js';
 import { card } from '../components/card.js';
 
@@ -35,19 +36,40 @@ export async function render(container, params) {
 
   container.appendChild(card({ title: 'Account', body: accountBody }));
 
-  // Billing card
+  // Billing card. The customer-portal URL is configured server-side
+  // (LS_CUSTOMER_PORTAL_URL) and fetched on demand from /api/billing/portal-url
+  // rather than hardcoded, so it stays correct across environments/providers.
   const billingBody = el('div', { class: 'settings-section' });
   billingBody.appendChild(
     el('p', { text: 'Manage your subscription, payment methods, and billing history.' })
   );
-  const billingLink = el('a', {
-    href: 'https://app.lemonsqueezy.com/billing',
-    target: '_blank',
-    rel: 'noopener noreferrer',
+  const billingMsg = el('p', { class: 'settings-hint', 'aria-live': 'polite', text: '' });
+  const billingBtn = el('button', {
     class: 'btn btn-outline',
+    type: 'button',
     text: 'Manage Billing →',
   });
-  billingBody.appendChild(billingLink);
+  billingBtn.addEventListener('click', () => {
+    billingBtn.disabled = true;
+    billingMsg.textContent = '';
+    apiRequest('GET', '/api/billing/portal-url')
+      .then((data) => {
+        const url = data && data.url;
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        } else {
+          billingMsg.textContent = 'Billing portal is not configured yet.';
+        }
+      })
+      .catch(() => {
+        billingMsg.textContent = 'Could not open the billing portal. Please try again later.';
+      })
+      .finally(() => {
+        billingBtn.disabled = false;
+      });
+  });
+  billingBody.appendChild(billingBtn);
+  billingBody.appendChild(billingMsg);
 
   container.appendChild(card({ title: 'Billing', body: billingBody }));
 

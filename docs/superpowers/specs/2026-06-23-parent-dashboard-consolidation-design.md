@@ -44,6 +44,18 @@ god-file-split effort.
    default browser (`webbrowser.open`). Update/trim `tests/test_ui_smoke.py`.
 2. **Keep vanilla JS, no build.** Improve the existing SPA in place; do not adopt
    a framework. Load ES modules via `<script type="module">`.
+3. **Buildless (ship native ES modules).** No bundler/minifier. For a
+   localhost/LAN dashboard the multi-request cost is negligible and buildless
+   keeps the offline/USB story trivial and contributor friction near zero. The
+   trigger to add a dev-only bundler (esbuild) later is *measured* asset/perf
+   pressure — not now.
+4. **Charts = accessible hand-rolled SVG.** No charting library (avoids ~200KB +
+   supply-chain + CSP friction). Render simple `<svg>` bars/sparklines, each
+   paired with an accessible fallback: `aria-label`s plus an offscreen data table
+   so screen readers and no-JS both convey the data.
+5. **Zero-dependency JS test layer.** Add unit tests via Node's built-in
+   `node:test` (no `npm install`, no `package.json` deps) for the safety-critical
+   and pure logic; wire one small CI step (`node --test`). See Testing.
 
 ## Architecture
 
@@ -109,11 +121,23 @@ Same endpoints and auth/CSRF as today:
 - `tests/test_ui_smoke.py`: remove the Tkinter `ParentDashboard` tests; if
   launcher behavior is tested, assert it calls `webbrowser.open` with the
   dashboard URL (patched).
-- Add lightweight checks where practical for the SPA modules (pure helpers like
-  `escHtml`, router parsing) — Node-free, e.g. via a tiny DOM smoke or by keeping
-  logic in pure functions that can be reasoned about.
+- **Zero-dependency JS unit layer (`node:test`).** Keep view logic in pure,
+  DOM-free functions and unit-test them with Node's built-in test runner — no
+  `npm install`, no `package.json` runtime/dev deps. Priority coverage, in order:
+  1. **Safety-banner state derivation** — the dangerous bug class: must NEVER
+     yield "all clear" when any unresolved incident/alert exists. Cover empty,
+     all-resolved, has-unresolved, and crisis/escalation inputs.
+  2. `escHtml` / `escAttr` escaping (XSS-safety helpers).
+  3. Router path/param parsing.
+  4. Data shaping/formatting (e.g. activity aggregation, date/time formatting).
+  Files: `*.test.js` colocated under `api/static/dashboard/` (or a
+  `tests/` subdir there). Pure logic imported from the same ES modules the SPA
+  ships — no duplicate logic.
+- **CI step.** Add a small job (or step) running `node --test` over the
+  dashboard test files. Node is available on CI runners; this adds no Python-side
+  dependency and does not touch the shipped artifact.
 - Manual: responsive check at phone + desktop widths; keyboard-only nav;
-  safety-banner all-clear vs attention states.
+  safety-banner all-clear vs attention states; SVG charts' accessible fallback.
 
 ## Risks & mitigations
 
@@ -129,6 +153,8 @@ Same endpoints and auth/CSRF as today:
 
 ## Out-of-scope follow-ups (noted, not done here)
 
-- Charting library vs hand-rolled SVG for activity trends — start with simple
-  hand-rolled/CSS bars to avoid a dependency; revisit if richer charts are needed.
+- Dev-only bundler (esbuild) — add only if measured asset/perf pressure warrants;
+  buildless until then (decision 3).
+- Interactive/zoomable charting library — only if richer charts are needed beyond
+  the accessible hand-rolled SVG (decision 4).
 - Remote-access UX (showing the LAN URL/QR to reach the dashboard from a phone).

@@ -36,7 +36,6 @@ from config import system_config
 from core.age_verification import AgeVerificationManager
 from utils.logger import get_logger, sanitize_log_value
 
-
 logger = get_logger(__name__)
 
 # Initialize rate limiter for admin auth endpoints

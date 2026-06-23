@@ -35,7 +35,8 @@
 
 **Created (SPA modules under `api/static/dashboard/`):**
 - `core/dom.js` — `escHtml`, `escAttr`, small safe-DOM helpers.
-- `core/api.js` — `apiRequest`, `getCsrfToken`, error normalization.
+- `core/session.js` — Bearer-token/session state backed by `sessionStorage` (`sf_token`/`sf_parent_id`/`sf_email`): `getToken`, `getParentId`, `getEmail`, `setSession`, `clearSession`, `isAuthenticated`.
+- `core/api.js` — `apiRequest`, `getCsrfToken`, `setUnauthorizedHandler`, error normalization. **Preserves the original auth flow:** sends `Authorization: Bearer <token>` from `core/session.js`; CSRF header on POST/PATCH/DELETE/PUT; on 401 clears session + invokes the unauthorized handler.
 - `core/router.js` — `parseRoute`, navigation/mount.
 - `core/safety.js` — **pure** `deriveSafetyState(alerts, incidents)` (safety-critical).
 - `core/format.js` — **pure** activity aggregation + date/time formatting.
@@ -430,35 +431,77 @@ git commit -m "feat(dashboard): pure router + activity-format helpers with tests
 
 ---
 
-## Task 5: `core/api.js` — request client (browser, CSRF, errors)
+## Task 5: `core/session.js` + `core/api.js` — auth state & request client
 
 **Files:**
-- Create: `api/static/dashboard/core/api.js`
+- Create: `api/static/dashboard/core/session.js`, `api/static/dashboard/core/api.js`
+
+**CRITICAL — preserve the original auth flow.** The legacy `dashboard.js` authenticates with a **Bearer token** stored in `sessionStorage` (`sf_token`), set at login from the login response's `token`, and sent on every request as `Authorization: Bearer <token>`. CSRF is sent on POST/PATCH/DELETE/PUT from the `csrf_token` cookie. On 401 it logs the user out. This MUST be preserved — cookie-only auth is NOT equivalent and would break authenticated requests.
 
 **Interfaces:**
-- Consumes: nothing from prior tasks.
-- Produces: `getCsrfToken(): string`; `apiRequest(method, path, body?): Promise<any>` — sends JSON, includes `X-CSRF-Token` from the cookie on state-changing methods, `credentials: 'same-origin'`, throws `{ status, detail }` on non-2xx. Mirrors the current `dashboard.js` `apiRequest` exactly (same headers, same error shape).
+- Produces (`core/session.js`): `getToken(): string|null`, `getParentId(): string|null`, `getEmail(): string`, `setSession({token, parentId, email})`, `clearSession()`, `isAuthenticated(): boolean` — all backed by `sessionStorage` keys `sf_token`/`sf_parent_id`/`sf_email`.
+- Produces (`core/api.js`): `getCsrfToken(): string`; `setUnauthorizedHandler(fn)`; `apiRequest(method, path, body?): Promise<any>` — sends `Authorization: Bearer <getToken()>` + JSON; `X-CSRF-Token` on POST/PATCH/DELETE/PUT; on 401 calls `clearSession()` + the registered handler and rejects; otherwise throws `{status, detail}` on non-2xx and returns parsed JSON (or `null` for 204).
+- Consumed by: Task 8 login (`setSession`), Task 8 `app.js` (`setUnauthorizedHandler`, `isAuthenticated`, `getParentId`).
 
-- [ ] **Step 1: Port `apiRequest`/`getCsrfToken` from `dashboard.js`**
+> Note: the original `apiRequest` returned the raw `Response`; the new views (Task 8) are written against parsed-JSON returns, so api.js parses here. The **wire behavior** (headers, auth, CSRF methods, 401 handling) is what must match — and does.
 
-Extract the existing `getCsrfToken` (cookie regex) and `apiRequest` (lines ~42-65 of `dashboard.js`) verbatim into ES-module exports. Do not change behavior.
+- [ ] **Step 1: Create `core/session.js`**
+
+```javascript
+// api/static/dashboard/core/session.js
+const KEYS = { token: 'sf_token', parentId: 'sf_parent_id', email: 'sf_email' };
+
+export function getToken() { return sessionStorage.getItem(KEYS.token); }
+export function getParentId() { return sessionStorage.getItem(KEYS.parentId); }
+export function getEmail() { return sessionStorage.getItem(KEYS.email) || ''; }
+
+export function setSession({ token, parentId, email }) {
+  sessionStorage.setItem(KEYS.token, token);
+  sessionStorage.setItem(KEYS.parentId, parentId);
+  sessionStorage.setItem(KEYS.email, email);
+}
+
+export function clearSession() {
+  sessionStorage.removeItem(KEYS.token);
+  sessionStorage.removeItem(KEYS.parentId);
+  sessionStorage.removeItem(KEYS.email);
+}
+
+export function isAuthenticated() { return !!getToken(); }
+```
+
+- [ ] **Step 2: Create `core/api.js`**
 
 ```javascript
 // api/static/dashboard/core/api.js
+import { getToken, clearSession } from './session.js';
+
+let _onUnauthorized = null;
+export function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
+
 export function getCsrfToken() {
   const m = document.cookie.match(/csrf_token=([^;]+)/);
   return m ? m[1] : '';
 }
 
+const CSRF_METHODS = ['POST', 'PATCH', 'DELETE', 'PUT'];
+
 export function apiRequest(method, path, body) {
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'same-origin',
+  const headers = {
+    'Authorization': 'Bearer ' + (getToken() || ''),
+    'Content-Type': 'application/json',
   };
+  if (CSRF_METHODS.indexOf(method.toUpperCase()) !== -1) {
+    headers['X-CSRF-Token'] = getCsrfToken();
+  }
+  const opts = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
-  if (method !== 'GET') opts.headers['X-CSRF-Token'] = getCsrfToken();
   return fetch(path, opts).then((resp) => {
+    if (resp.status === 401) {
+      clearSession();
+      if (_onUnauthorized) _onUnauthorized();
+      return Promise.reject(new Error('Session expired'));
+    }
     if (!resp.ok) {
       return resp.json().then(
         (d) => { throw { status: resp.status, detail: d && d.detail }; },
@@ -470,18 +513,16 @@ export function apiRequest(method, path, body) {
 }
 ```
 
-> Verify against `dashboard.js` lines 42-65 that header names, credentials mode, and the GET/non-GET CSRF split match exactly. Adjust to match the original if it differs.
+- [ ] **Step 3: Sanity-check syntax**
 
-- [ ] **Step 2: Sanity-check syntax**
-
-Run: `node --check api/static/dashboard/core/api.js`
+Run: `node --check api/static/dashboard/core/session.js && node --check api/static/dashboard/core/api.js`
 Expected: no output (valid).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add api/static/dashboard/core/api.js
-git commit -m "feat(dashboard): api client module (CSRF + error normalization)"
+git add api/static/dashboard/core/session.js api/static/dashboard/core/api.js
+git commit -m "feat(dashboard): session state + api client preserving Bearer-token auth flow"
 ```
 
 ---
@@ -543,10 +584,10 @@ git commit -m "feat(dashboard): accessible UI components incl. SVG chart with ta
 - Consumes: `core/api.js` (`apiRequest`), `core/router.js` (`parseRoute`), `core/safety.js` (`deriveSafetyState`), `core/format.js`, all `components/*`.
 - Produces: each view exports `render(container, params): Promise<void>` that fetches its data and mounts DOM. `app.js` exports nothing; it boots on `DOMContentLoaded`, owns auth state, listens to `hashchange`, and mounts the view from `parseRoute`.
 
-- [ ] **Step 1: Port login flow** — `views/login.js` mirrors current `renderLogin`/`handleLogin` (same `/api/auth/login` call, same fields). On success, navigate to `#/overview`.
+- [ ] **Step 1: Port login flow** — `views/login.js` mirrors current `renderLogin`/`handleLogin` (same `POST /api/auth/login`, same fields). On success, call `setSession({ token: data.token, parentId: data.session.parent_id, email })` from `core/session.js`, then navigate to `#/overview`. (Login itself does NOT use `apiRequest` — it has no token yet; call `fetch('/api/auth/login', ...)` directly like the original.)
 - [ ] **Step 2: Overview view** — fetch profiles (`GET /api/profiles/parent/{id}`), per-child alerts/incidents and activity; compute `deriveSafetyState`; render banner + per-child activity summary cards + pending-action cards (COPPA consent, billing/setup).
 - [ ] **Step 3: Safety / Activity / Children / Settings views** — port the corresponding logic from `dashboard.js`, using the new components. Activity uses `svgChart` with `aggregateActivity`/`formatDuration`. Children = profile CRUD (same endpoints). Settings = account + billing link + logout.
-- [ ] **Step 4: `app.js`** — boot, auth guard (redirect to login when unauthenticated/401), `hashchange` → `parseRoute` → `views[view].render`. Render the nav shell once; swap `<main>` content per view.
+- [ ] **Step 4: `app.js`** — boot; call `setUnauthorizedHandler(logout)` where `logout` clears session (`clearSession`) and shows login; auth guard uses `isAuthenticated()` (redirect to login when false); `hashchange` → `parseRoute` → `views[view].render`. Render the nav shell once; swap `<main>` content per view. Use `getParentId()` from `core/session.js` where views need the parent id. A logout action calls `POST /api/auth/logout` (best-effort), `clearSession()`, then shows login — mirroring the original.
 - [ ] **Step 5: Syntax-check** all: `for f in api/static/dashboard/views/*.js api/static/dashboard/app.js; do node --check "$f"; done` → no output.
 - [ ] **Step 6: Commit**
 

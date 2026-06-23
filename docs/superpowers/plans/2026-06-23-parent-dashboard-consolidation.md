@@ -647,14 +647,14 @@ git commit -m "feat(dashboard): load ES module entry; remove legacy dashboard.js
 
 ```yaml
     - name: Dashboard JS unit tests
-      run: node --test api/static/dashboard/tests/
+      run: node --test api/static/dashboard/tests/*.test.js
 ```
 
 (Node is preinstalled on `ubuntu-latest` runners; no `npm install` needed.)
 
 - [ ] **Step 2: Verify locally** the exact command CI runs:
 
-Run: `node --test api/static/dashboard/tests/`
+Run: `node --test api/static/dashboard/tests/*.test.js`
 Expected: all tests pass (dom, safety, router, format).
 
 - [ ] **Step 3: Commit**
@@ -668,7 +668,7 @@ git commit -m "ci: run dashboard JS unit tests with node --test"
 
 ## Task 11: Full verification
 
-- [ ] **Step 1: JS tests** — `node --test api/static/dashboard/tests/` → all pass.
+- [ ] **Step 1: JS tests** — `node --test api/static/dashboard/tests/*.test.js` → all pass.
 - [ ] **Step 2: Python suite** — `python3 -m pytest tests/ -p no:cacheprovider --no-cov -m "not integration" -q` → 0 failures (confirms Tkinter removal + launcher change introduced no regressions).
 - [ ] **Step 3: Black** — `python3 -m black --check ui/ api/ core/ safety/ storage/ utils/` → clean.
 - [ ] **Step 4: Manual responsive/a11y pass** — phone width + desktop width; keyboard-only nav (Tab/Enter); safety banner shows attention/crisis correctly with seeded data; SVG chart's offscreen table present.

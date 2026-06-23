@@ -1262,3 +1262,42 @@ tr:hover td {
   border-color: var(--color-primary);
   font-weight: var(--font-semibold);
 }
+
+/* --- Settings view --- */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-label {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.settings-value {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+.settings-hint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-top: var(--space-2);
+}

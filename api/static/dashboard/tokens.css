@@ -1,0 +1,136 @@
+/* ================================================================
+   snflwr.ai — Design Tokens
+   All CSS custom properties consumed by dashboard.css and future
+   component stylesheets.  No external resources.
+   ================================================================ */
+
+:root {
+
+  /* --- Neutral Palette ---------------------------------------- */
+  --bg-page:      #F7F8FA;   /* warm off-white, not clinical */
+  --bg-card:      #FFFFFF;
+  --bg-sidebar:   #1B2537;   /* deep slate-navy, calm authority */
+  --bg-sidebar-hover: rgba(255,255,255,0.07);
+  --bg-sidebar-active: rgba(255,255,255,0.12);
+
+  --text-primary:   #111827;  /* near-black, 18:1 on bg-card */
+  --text-secondary: #4B5563;  /* slate-600, 7:1 on bg-card   */
+  --text-light:     #9CA3AF;  /* slate-400                    */
+  --text-on-dark:   #E9EDF4;  /* on sidebar/dark bg           */
+  --text-placeholder: #9CA3AF;
+
+  --border:       #E4E7EC;
+  --border-strong:#C4CAD6;
+
+  /* --- Brand -------------------------------------------------- */
+  --color-brand:       #F59E0B;   /* snflwr amber                */
+  --color-brand-light: #FEF3C7;   /* amber-100                   */
+  --color-brand-dark:  #B45309;   /* amber-700 for text on light */
+
+  /* --- Primary Interactive ------------------------------------ */
+  --color-primary:       #2563EB;  /* blue-600                  */
+  --color-primary-hover: #1D4ED8;  /* blue-700                  */
+  --color-primary-light: #EFF6FF;  /* blue-50                   */
+  --color-primary-focus: rgba(37,99,235,0.20); /* ring shadow    */
+
+  /* --- Semantic Safety Colors --------------------------------- */
+
+  /* Safe: all-clear / positive — WCAG AA on white (4.5:1+) */
+  --color-safe:        #15803D;   /* green-700, 5.7:1 on white  */
+  --color-safe-bg:     #F0FDF4;   /* green-50 tint              */
+  --color-safe-border: #86EFAC;   /* green-300                  */
+  --color-safe-text:   #14532D;   /* green-900 for body copy    */
+
+  /* Attention: needs-review / caution — amber dark enough AA */
+  --color-attention:        #92400E;   /* amber-800, 7.5:1 on white */
+  --color-attention-bg:     #FFFBEB;   /* amber-50                  */
+  --color-attention-border: #FCD34D;   /* amber-300                 */
+  --color-attention-text:   #78350F;   /* amber-900                 */
+
+  /* Crisis: urgent / alert — WCAG AA on white */
+  --color-crisis:        #B91C1C;   /* red-700, 5.8:1 on white   */
+  --color-crisis-bg:     #FFF1F2;   /* rose-50                   */
+  --color-crisis-border: #FCA5A5;   /* red-300                   */
+  --color-crisis-text:   #7F1D1D;   /* red-900                   */
+
+  /* --- Spacing Scale (4 px base) ------------------------------ */
+  --space-1:  0.25rem;   /*  4px */
+  --space-2:  0.5rem;    /*  8px */
+  --space-3:  0.75rem;   /* 12px */
+  --space-4:  1rem;      /* 16px */
+  --space-5:  1.25rem;   /* 20px */
+  --space-6:  1.5rem;    /* 24px */
+  --space-7:  1.75rem;   /* 28px */
+  --space-8:  2rem;      /* 32px */
+  --space-9:  2.25rem;   /* 36px */
+  --space-10: 2.5rem;    /* 40px */
+
+  /* --- Type Scale --------------------------------------------- */
+  --text-xs:   0.6875rem;  /* 11px */
+  --text-sm:   0.8125rem;  /* 13px */
+  --text-base: 0.9375rem;  /* 15px */
+  --text-md:   1rem;       /* 16px */
+  --text-lg:   1.125rem;   /* 18px */
+  --text-xl:   1.25rem;    /* 20px */
+  --text-2xl:  1.5rem;     /* 24px */
+
+  --line-height-tight:  1.3;
+  --line-height-base:   1.55;
+  --line-height-loose:  1.75;
+
+  /* --- Font Weights ------------------------------------------- */
+  --font-normal:   400;
+  --font-medium:   500;
+  --font-semibold: 600;
+  --font-bold:     700;
+
+  /* --- Border Radius ------------------------------------------ */
+  --radius-sm:   4px;
+  --radius:      8px;
+  --radius-lg:  12px;
+  --radius-full: 9999px;
+
+  /* --- Shadows ------------------------------------------------ */
+  --shadow-sm: 0 1px 2px rgba(17,24,39,0.06);
+  --shadow:    0 1px 3px rgba(17,24,39,0.08), 0 1px 2px rgba(17,24,39,0.05);
+  --shadow-lg: 0 4px 6px rgba(17,24,39,0.06), 0 10px 24px rgba(17,24,39,0.08);
+
+  /* --- Z-Index ------------------------------------------------ */
+  --z-nav:    20;
+  --z-modal: 100;
+  --z-toast: 200;
+
+  /* --- Nav height (bottom bar on mobile) ---------------------- */
+  --nav-bottom-height: 60px;
+  --sidebar-width: 240px;
+}
+
+/* ================================================================
+   Utility: visually hidden (accessible label for icons/SVGs)
+   ================================================================ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ================================================================
+   Focus-visible: visible keyboard ring, hidden on pointer
+   ================================================================ */
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Remove default focus for mouse/touch users */
+:focus:not(:focus-visible) {
+  outline: none;
+}

@@ -30,8 +30,7 @@ PROFILE_MIGRATION_COLUMNS = [
 
 def create_sqlite_tables(cursor):
     """Create all SQLite tables (idempotent; uses IF NOT EXISTS)."""
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS accounts (
                     parent_id TEXT PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
@@ -52,12 +51,10 @@ def create_sqlite_tables(cursor):
                     deletion_requested_at TEXT,
                     owui_token TEXT
                 )
-            """
-    )
+            """)
 
     # Child profiles table
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS child_profiles (
                     profile_id TEXT PRIMARY KEY,
                     parent_id TEXT NOT NULL,
@@ -84,12 +81,10 @@ def create_sqlite_tables(cursor):
                     CONSTRAINT valid_age CHECK (age BETWEEN 5 AND 18),
                     CONSTRAINT valid_learning_level CHECK (learning_level IN ('beginner', 'adaptive', 'advanced'))
                 )
-            """
-    )
+            """)
 
     # Profile subject preferences
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS profile_subjects (
                     id INTEGER PRIMARY KEY,
                     profile_id TEXT NOT NULL,
@@ -98,12 +93,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
                     UNIQUE(profile_id, subject)
                 )
-            """
-    )
+            """)
 
     # Sessions table
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT PRIMARY KEY,
                     profile_id TEXT,
@@ -119,12 +112,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE SET NULL,
                     CONSTRAINT valid_session_type CHECK (session_type IN ('student', 'parent', 'educator'))
                 )
-            """
-    )
+            """)
 
     # Conversations table
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS conversations (
                     conversation_id TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL,
@@ -138,12 +129,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
                     FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
                 )
-            """
-    )
+            """)
 
     # Messages table
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     message_id TEXT PRIMARY KEY,
                     conversation_id TEXT NOT NULL,
@@ -157,12 +146,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE,
                     CONSTRAINT valid_role CHECK (role IN ('user', 'assistant', 'system'))
                 )
-            """
-    )
+            """)
 
     # Safety incidents table
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS safety_incidents (
                     incident_id INTEGER PRIMARY KEY,
                     profile_id TEXT NOT NULL,
@@ -181,12 +168,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE SET NULL,
                     CONSTRAINT valid_severity CHECK (severity IN ('minor', 'major', 'critical'))
                 )
-            """
-    )
+            """)
 
     # False positive reports table
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS safety_false_positives (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     profile_id TEXT NOT NULL,
@@ -199,26 +184,20 @@ def create_sqlite_tables(cursor):
                     reviewed_by TEXT,
                     FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
                 )
-            """
-    )
+            """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_false_positives_profile
                 ON safety_false_positives(profile_id)
-            """
-    )
+            """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_false_positives_unreviewed
                 ON safety_false_positives(reviewed_at) WHERE reviewed_at IS NULL
-            """
-    )
+            """)
 
     # Parent alerts table
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS parent_alerts (
                     alert_id INTEGER PRIMARY KEY,
                     parent_id TEXT NOT NULL,
@@ -233,12 +212,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (related_incident_id) REFERENCES safety_incidents(incident_id) ON DELETE SET NULL,
                     CONSTRAINT valid_alert_severity CHECK (severity IN ('minor', 'major', 'critical'))
                 )
-            """
-    )
+            """)
 
     # Parent authentication tokens (sessions, email verification, password reset)
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS auth_tokens (
                     token_id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -254,27 +231,21 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE CASCADE,
                     CONSTRAINT valid_token_type CHECK (token_type IN ('session', 'email_verification', 'password_reset'))
                 )
-            """
-    )
+            """)
 
     # Create index for token lookups
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_auth_tokens_hash
                 ON auth_tokens(token_hash)
-            """
-    )
+            """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_auth_tokens_session
                 ON auth_tokens(session_token)
-            """
-    )
+            """)
 
     # System audit log
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS audit_log (
                     log_id INTEGER PRIMARY KEY,
                     timestamp TEXT NOT NULL,
@@ -286,12 +257,10 @@ def create_sqlite_tables(cursor):
                     ip_address TEXT,
                     success BOOLEAN DEFAULT TRUE
                 )
-            """
-    )
+            """)
 
     # Learning analytics
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS learning_analytics (
                     analytics_id INTEGER PRIMARY KEY,
                     profile_id TEXT NOT NULL,
@@ -305,12 +274,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
                     UNIQUE(profile_id, date, subject_area)
                 )
-            """
-    )
+            """)
 
     # Parental consent log (COPPA audit trail)
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS parental_consent_log (
                     consent_id TEXT PRIMARY KEY,
                     profile_id TEXT NOT NULL,
@@ -328,12 +295,10 @@ def create_sqlite_tables(cursor):
                     FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
                     FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE CASCADE
                 )
-            """
-    )
+            """)
 
     # System configuration (for admin settings — used by database/init_db.py)
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS system_settings (
                     setting_key TEXT PRIMARY KEY,
                     setting_value TEXT NOT NULL,
@@ -342,12 +307,10 @@ def create_sqlite_tables(cursor):
                     updated_at TEXT NOT NULL,
                     updated_by TEXT
                 )
-            """
-    )
+            """)
 
     # Error tracking (production monitoring — used by utils/error_tracking.py)
-    cursor.execute(
-        """
+    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS error_tracking (
                     error_id INTEGER PRIMARY KEY,
                     error_hash TEXT NOT NULL,
@@ -368,14 +331,12 @@ def create_sqlite_tables(cursor):
                     session_id TEXT,
                     context TEXT
                 )
-            """
-    )
+            """)
 
 
 def create_postgres_tables(cursor):
     """Create all PostgreSQL tables (idempotent; uses IF NOT EXISTS)."""
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS accounts (
                         parent_id TEXT PRIMARY KEY,
                         username TEXT UNIQUE NOT NULL,
@@ -396,12 +357,10 @@ def create_postgres_tables(cursor):
                         deletion_requested_at TEXT,
                         owui_token TEXT
                     )
-                """
-    )
+                """)
 
     # Child profiles table
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS child_profiles (
                         profile_id TEXT PRIMARY KEY,
                         parent_id TEXT NOT NULL,
@@ -428,12 +387,10 @@ def create_postgres_tables(cursor):
                         CONSTRAINT valid_age CHECK (age BETWEEN 5 AND 18),
                         CONSTRAINT valid_learning_level CHECK (learning_level IN ('beginner', 'adaptive', 'advanced'))
                     )
-                """
-    )
+                """)
 
     # Profile subject preferences
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS profile_subjects (
                         id SERIAL PRIMARY KEY,
                         profile_id TEXT NOT NULL,
@@ -442,12 +399,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
                         UNIQUE(profile_id, subject)
                     )
-                """
-    )
+                """)
 
     # Sessions table
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS sessions (
                         session_id TEXT PRIMARY KEY,
                         profile_id TEXT,
@@ -463,12 +418,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE SET NULL,
                         CONSTRAINT valid_session_type CHECK (session_type IN ('student', 'parent', 'educator'))
                     )
-                """
-    )
+                """)
 
     # Conversations table
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS conversations (
                         conversation_id TEXT PRIMARY KEY,
                         session_id TEXT NOT NULL,
@@ -482,12 +435,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
                         FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
                     )
-                """
-    )
+                """)
 
     # Messages table
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS messages (
                         message_id TEXT PRIMARY KEY,
                         conversation_id TEXT NOT NULL,
@@ -501,12 +452,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE,
                         CONSTRAINT valid_role CHECK (role IN ('user', 'assistant', 'system'))
                     )
-                """
-    )
+                """)
 
     # Safety incidents table
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS safety_incidents (
                         incident_id SERIAL PRIMARY KEY,
                         profile_id TEXT NOT NULL,
@@ -525,12 +474,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE SET NULL,
                         CONSTRAINT valid_severity CHECK (severity IN ('minor', 'major', 'critical'))
                     )
-                """
-    )
+                """)
 
     # Parent alerts table
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS parent_alerts (
                         alert_id SERIAL PRIMARY KEY,
                         parent_id TEXT NOT NULL,
@@ -545,12 +492,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (related_incident_id) REFERENCES safety_incidents(incident_id) ON DELETE SET NULL,
                         CONSTRAINT valid_alert_severity CHECK (severity IN ('minor', 'major', 'critical'))
                     )
-                """
-    )
+                """)
 
     # Parent authentication tokens (sessions, email verification, password reset)
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS auth_tokens (
                         token_id TEXT PRIMARY KEY,
                         user_id TEXT NOT NULL,
@@ -566,27 +511,21 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE CASCADE,
                         CONSTRAINT valid_token_type CHECK (token_type IN ('session', 'email_verification', 'password_reset'))
                     )
-                """
-    )
+                """)
 
     # Create index for token lookups
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_auth_tokens_hash
                     ON auth_tokens(token_hash)
-                """
-    )
+                """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_auth_tokens_session
                     ON auth_tokens(session_token)
-                """
-    )
+                """)
 
     # System audit log
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS audit_log (
                         log_id SERIAL PRIMARY KEY,
                         timestamp TEXT NOT NULL,
@@ -598,12 +537,10 @@ def create_postgres_tables(cursor):
                         ip_address TEXT,
                         success BOOLEAN DEFAULT TRUE
                     )
-                """
-    )
+                """)
 
     # Learning analytics
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS learning_analytics (
                         analytics_id SERIAL PRIMARY KEY,
                         profile_id TEXT NOT NULL,
@@ -617,12 +554,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
                         UNIQUE(profile_id, date, subject_area)
                     )
-                """
-    )
+                """)
 
     # Parental consent log (COPPA audit trail)
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS parental_consent_log (
                         consent_id TEXT PRIMARY KEY,
                         profile_id TEXT NOT NULL,
@@ -640,12 +575,10 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
                         FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE CASCADE
                     )
-                """
-    )
+                """)
 
     # System configuration (for admin settings — used by database/init_db.py)
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS system_settings (
                         setting_key TEXT PRIMARY KEY,
                         setting_value TEXT NOT NULL,
@@ -654,12 +587,10 @@ def create_postgres_tables(cursor):
                         updated_at TEXT NOT NULL,
                         updated_by TEXT
                     )
-                """
-    )
+                """)
 
     # Error tracking (production monitoring — used by utils/error_tracking.py)
-    cursor.execute(
-        """
+    cursor.execute("""
                     CREATE TABLE IF NOT EXISTS error_tracking (
                         error_id SERIAL PRIMARY KEY,
                         error_hash TEXT NOT NULL,
@@ -680,5 +611,4 @@ def create_postgres_tables(cursor):
                         session_id TEXT,
                         context TEXT
                     )
-                """
-    )
+                """)

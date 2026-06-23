@@ -5,6 +5,7 @@ local license-state reporting. Admin-only: in a self-hosted family deploy the
 parent/admin manages the subscription. Holds no card data (Lemon Squeezy hosts
 checkout) and no student data.
 """
+
 import time
 import logging
 
@@ -38,7 +39,9 @@ def _ls_base() -> str:
 @router.post("/signin/start")
 def signin_start(req: StartReq):
     with httpx.Client(timeout=10.0) as c:
-        r = c.post(_ls_base() + "/auth/start", json={"email": str(req.email)}, timeout=10.0)
+        r = c.post(
+            _ls_base() + "/auth/start", json={"email": str(req.email)}, timeout=10.0
+        )
     if r.status_code != 200:
         raise HTTPException(status_code=502, detail="could not send code")
     return {"ok": True}
@@ -47,8 +50,11 @@ def signin_start(req: StartReq):
 @router.post("/signin/verify")
 def signin_verify(req: VerifyReq):
     with httpx.Client(timeout=10.0) as c:
-        r = c.post(_ls_base() + "/auth/verify",
-                   json={"email": str(req.email), "code": req.code}, timeout=10.0)
+        r = c.post(
+            _ls_base() + "/auth/verify",
+            json={"email": str(req.email), "code": req.code},
+            timeout=10.0,
+        )
     if r.status_code != 200:
         # 400, not 401: the admin IS authenticated (passed require_admin); the
         # one-time code is just wrong. 401 here would trip the admin SPA's

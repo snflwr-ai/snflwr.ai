@@ -7,6 +7,7 @@ contract shared with license-server/app/tokens.py.
 NEVER raises out of evaluate()/current_state(): any problem -> unlicensed
 (fail-safe gate, never a crash).
 """
+
 import base64
 import json
 import logging
@@ -34,6 +35,7 @@ def _b64u_decode(s: str) -> bytes:
 
 def verify_token(token: str, public_key) -> dict:
     from cryptography.exceptions import InvalidSignature
+
     try:
         body_b64, sig_b64 = token.split(".")
         body = _b64u_decode(body_b64)
@@ -57,7 +59,7 @@ def verify_token(token: str, public_key) -> dict:
 
 @dataclass(frozen=True)
 class LicenseState:
-    state: str          # active | trialing | grace | expired | unlicensed
+    state: str  # active | trialing | grace | expired | unlicensed
     allowed: bool
     plan: "str | None"
     exp: "int | None"
@@ -65,7 +67,9 @@ class LicenseState:
 
 
 def _unlicensed(reason: str) -> LicenseState:
-    return LicenseState(state="unlicensed", allowed=False, plan=None, exp=None, reason=reason)
+    return LicenseState(
+        state="unlicensed", allowed=False, plan=None, exp=None, reason=reason
+    )
 
 
 def evaluate(token, public_key, now: int) -> LicenseState:
@@ -82,10 +86,16 @@ def evaluate(token, public_key, now: int) -> LicenseState:
     status = payload.get("status", "")
     if now <= exp:
         state = "trialing" if status == "trialing" else "active"
-        return LicenseState(state=state, allowed=True, plan=plan, exp=exp, reason="valid")
+        return LicenseState(
+            state=state, allowed=True, plan=plan, exp=exp, reason="valid"
+        )
     if now <= exp + grace_secs:
-        return LicenseState(state="grace", allowed=True, plan=plan, exp=exp, reason="in grace")
-    return LicenseState(state="expired", allowed=False, plan=plan, exp=exp, reason="grace exhausted")
+        return LicenseState(
+            state="grace", allowed=True, plan=plan, exp=exp, reason="in grace"
+        )
+    return LicenseState(
+        state="expired", allowed=False, plan=plan, exp=exp, reason="grace exhausted"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +105,13 @@ def evaluate(token, public_key, now: int) -> LicenseState:
 
 def _token_path():
     from config import system_config
+
     return os.path.join(str(system_config.APP_DATA_DIR), "license.token")
 
 
 def _session_path():
     from config import system_config
+
     return os.path.join(str(system_config.APP_DATA_DIR), "license.session")
 
 
@@ -151,6 +163,7 @@ def load_public_key():
     if _public_key_cache is None:
         from cryptography.hazmat.primitives.serialization import load_pem_public_key
         from config import system_config
+
         with open(system_config.LICENSE_PUBLIC_KEY_PATH, "rb") as f:
             _public_key_cache = load_pem_public_key(f.read())
     return _public_key_cache
@@ -178,6 +191,7 @@ def refresh_once(client=None, now=None) -> bool:
     existing token. Never raises.
     """
     from config import system_config
+
     base = system_config.LICENSE_SERVER_URL
     session = load_session()
     if not base or not session:
@@ -188,7 +202,9 @@ def refresh_once(client=None, now=None) -> bool:
         try:
             resp = client.post(
                 base.rstrip("/") + "/license/refresh",
-                headers={"Authorization": f"Bearer {session}"}, timeout=10.0)
+                headers={"Authorization": f"Bearer {session}"},
+                timeout=10.0,
+            )
         finally:
             if owns:
                 client.close()

@@ -237,10 +237,14 @@ class TestCOPPAConsentGate:
             detail_str = str(resp.json().get("detail", "")).lower()
             assert "consent" in detail_str or "coppa" in detail_str or "parental" in detail_str
         elif resp.status_code in (200, 201):
-            # Created in pending-consent state — also acceptable
+            # Created in pending-consent state — also acceptable. Under-13
+            # profiles surface their COPPA status under "age_verification";
+            # they must be flagged non-compliant / lacking consent until the
+            # per-child parental-consent workflow completes.
             data = resp.json()
-            assert data.get("parental_consent_given") is False or \
-                   data.get("coppa_verified") is False
+            av = data.get("age_verification", {})
+            assert av.get("coppa_compliant") is False or \
+                   av.get("has_parental_consent") is False
         else:
             # Anything that isn't a 5xx is acceptable for this gate
             assert resp.status_code < 500, f"Server error: {resp.text}"

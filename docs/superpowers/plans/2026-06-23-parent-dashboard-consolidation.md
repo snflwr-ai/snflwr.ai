@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Buildless:** ship native ES modules; no bundler/minifier; no `package.json` runtime or dev dependencies. (Verbatim spec decision 3.)
+- **Buildless:** ship native ES modules; no bundler/minifier; no npm dependencies and no `npm install` step. A single zero-dependency `api/static/dashboard/package.json` containing exactly `{"type": "module"}` is permitted and required — Node treats `.js` as CommonJS otherwise, so `node --test` needs this marker to load the ES modules (`.mjs` was rejected to avoid Starlette static MIME issues in the browser). This is a module-system marker, not a dependency manifest or build config. (Refines spec decision 3.)
 - **No new JS libraries:** no framework, no charting library. (Spec decisions 2, 4.)
 - **CSP-strict:** keep `script-src 'self'`; no inline `<script>`; modules served same-origin from `/dashboard/static/`. (Spec: Code structure.)
 - **XSS-safe DOM:** never assign untrusted data to `innerHTML`; build DOM via `document.createElement` / `textContent`, or escape via `escHtml`/`escAttr`. (Spec: Code structure.)

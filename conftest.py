@@ -2,6 +2,21 @@ import sys
 import os
 import pytest
 
+# ---------------------------------------------------------------------------
+# Test database: run on plain SQLite, not SQLCipher.
+# ---------------------------------------------------------------------------
+# Production defaults DB_ENCRYPTION_ENABLED=true, and sqlcipher3-binary ships in
+# requirements.txt, so without this the entire unit suite would run against the
+# encrypted adapter. The unit tests target plain-sqlite3 semantics (exception
+# types, PRAGMA results, backup/restore of a readable file) and many already try
+# to opt out via monkeypatch.setenv — but system_config reads this value once at
+# import time, so a per-test setenv lands too late. Set it here, before config is
+# imported, so the opt-out actually takes effect. setdefault means an explicit
+# DB_ENCRYPTION_ENABLED in the environment still wins. The encrypted adapter is
+# covered directly by tests/test_encrypted_db_adapter.py, and the real encrypted
+# init path is covered by the Database Schema Validation CI job (init_db.py).
+os.environ.setdefault("DB_ENCRYPTION_ENABLED", "false")
+
 # Ensure the Open WebUI backend is importable during tests
 ROOT = os.path.dirname(__file__)
 OPEN_WEBUI_BACKEND = os.path.join(ROOT, 'frontend', 'open-webui', 'backend')

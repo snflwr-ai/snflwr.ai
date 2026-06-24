@@ -26,10 +26,31 @@ test('unresolved incident counts too', () => {
   assert.equal(s.attentionCount, 1);
 });
 
-test('crisis forces crisis level even if resolved', () => {
-  const s = deriveSafetyState([], [{ resolved: true, severity: 'crisis' }]);
+test("real 'critical' severity (unresolved) => crisis", () => {
+  // Backend severities are critical|major|minor — NOT 'crisis'. The top
+  // severity must drive the red banner.
+  const s = deriveSafetyState([], [{ severity: 'critical', resolved: false }]);
   assert.equal(s.level, 'crisis');
   assert.equal(s.hasCrisis, true);
+});
+
+test('escalation incident_type (unresolved) => crisis', () => {
+  // Real incidents flag escalation via incident_type, e.g. "escalating_requests".
+  const s = deriveSafetyState([], [{ incident_type: 'escalating_requests', severity: 'major', resolved: false }]);
+  assert.equal(s.hasCrisis, true);
+  assert.equal(s.level, 'crisis');
+});
+
+test('RESOLVED critical does NOT pin a permanent red banner', () => {
+  const s = deriveSafetyState([], [{ severity: 'critical', resolved: true }]);
+  assert.equal(s.hasCrisis, false);
+  assert.equal(s.level, 'clear');
+});
+
+test('unresolved major => attention (not crisis)', () => {
+  const s = deriveSafetyState([], [{ severity: 'major', resolved: false }]);
+  assert.equal(s.level, 'attention');
+  assert.equal(s.hasCrisis, false);
 });
 
 test('crisis detected via category/type substring (case-insensitive)', () => {

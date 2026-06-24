@@ -99,7 +99,7 @@ function exportProfile(profileId, name) {
 
 function showCreateProfileModal(parentId, onSuccess) {
   const overlay = el('div', { class: 'modal-overlay' });
-  const modal = el('div', { class: 'modal' });
+  const modal = el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' });
 
   const header = el('div', { class: 'modal-header' });
   const h3 = el('h3', { text: 'Add Child Profile' });
@@ -145,10 +145,13 @@ function showCreateProfileModal(parentId, onSuccess) {
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  function close() { overlay.remove(); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+  document.getElementById('new-name').focus();
 
   // Show/require the COPPA consent box only for under-13 children.
   const ageInput = document.getElementById('new-age');
@@ -198,7 +201,7 @@ function showCreateProfileModal(parentId, onSuccess) {
 
 function showEditProfileModal(profile, onSuccess) {
   const overlay = el('div', { class: 'modal-overlay' });
-  const modal = el('div', { class: 'modal' });
+  const modal = el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' });
 
   const header = el('div', { class: 'modal-header' });
   const h3 = el('h3', { text: 'Edit Profile: ' + profile.name });
@@ -238,10 +241,13 @@ function showEditProfileModal(profile, onSuccess) {
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  function close() { overlay.remove(); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+  document.getElementById('edit-name').focus();
 
   saveBtn.addEventListener('click', () => {
     errBox.textContent = '';
@@ -341,7 +347,7 @@ async function loadProfiles(container) {
     ]);
 
     const lastActiveEl = el('div', {
-      style: 'font-size:0.75rem;color:#64748B;margin-bottom:0.75rem;',
+      class: 'profile-last-active',
       text: 'Last active: ' + lastActive,
     });
 

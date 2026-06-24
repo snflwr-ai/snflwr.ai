@@ -516,3 +516,120 @@ class TestPullOffhost:
         finally:
             conn.close()
         assert "child_profiles" in tables
+
+
+# --------------------------------------------------------------------------
+# backup_open_webui — Open WebUI data volume backup (docker cp)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def owui_env(tmp_path, monkeypatch):
+    """Isolated env with a temp backup dir; OWUI backup is on by default."""
+    from config import system_config
+
+    monkeypatch.setattr(system_config, "DB_PATH", tmp_path / "snflwr.db")
+    monkeypatch.setenv("BACKUP_PATH", str(tmp_path / "backups"))
+    monkeypatch.setenv("DB_ENCRYPTION_ENABLED", "false")
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("OFFHOST_BACKUP_ENABLED", "false")
+    yield {"backup_dir": tmp_path / "backups"}
+
+
+def _docker_cp_runner(returncode=0, stderr=""):
+    """subprocess.run stand-in that simulates `docker cp <c>:<dir> <dest>` by
+    materializing <dest>/data (the basename of /app/backend/data)."""
+    calls = []
+
+    def runner(cmd, *args, **kwargs):
+        calls.append(cmd)
+        if returncode == 0 and len(cmd) >= 4 and cmd[0] == "docker" and cmd[1] == "cp":
+            data_dir = Path(cmd[3]) / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            (data_dir / "webui.db").write_bytes(b"fake sqlite")
+        return subprocess.CompletedProcess(cmd, returncode, stdout="", stderr=stderr)
+
+    runner.calls = calls
+    return runner
+
+
+class TestBackupOpenWebUI:
+    def test_archives_owui_data_via_docker_cp(self, owui_env, monkeypatch):
+        import tarfile
+        import scripts.backup_database as bd
+
+        monkeypatch.setattr(bd.shutil, "which", lambda _: "/usr/bin/docker")
+        runner = _docker_cp_runner(returncode=0)
+        monkeypatch.setattr(bd.subprocess, "run", runner)
+
+        bak = bd.DatabaseBackup()
+        ok, archive = bak.backup_open_webui()
+
+        assert ok is True
+        archive_path = Path(archive)
+        assert archive_path.exists()
+        assert archive_path.name.startswith("snflwr_owui_")
+        assert archive_path.name.endswith(".tar.gz")
+        # docker cp was invoked against the configured container/path
+        assert any(c[0] == "docker" and c[1] == "cp" for c in runner.calls)
+        # archive actually contains the OWUI data (webui.db)
+        with tarfile.open(archive_path, "r:gz") as tar:
+            names = tar.getnames()
+        assert any(n.endswith("webui.db") for n in names)
+        # temp working dir is cleaned up
+        assert not list(owui_env["backup_dir"].glob(".owui_tmp_*"))
+
+    def test_fails_when_docker_missing(self, owui_env, monkeypatch):
+        import scripts.backup_database as bd
+
+        monkeypatch.setattr(bd.shutil, "which", lambda _: None)
+        bak = bd.DatabaseBackup()
+        ok, reason = bak.backup_open_webui()
+        assert ok is False
+        assert "docker" in reason.lower()
+
+    def test_fails_on_docker_cp_nonzero(self, owui_env, monkeypatch):
+        import scripts.backup_database as bd
+
+        monkeypatch.setattr(bd.shutil, "which", lambda _: "/usr/bin/docker")
+        runner = _docker_cp_runner(returncode=1, stderr="No such container: snflwr-frontend")
+        monkeypatch.setattr(bd.subprocess, "run", runner)
+
+        bak = bd.DatabaseBackup()
+        ok, reason = bak.backup_open_webui()
+        assert ok is False
+        assert "No such container" in reason
+
+    def test_owui_artifact_pushed_offhost(self, tmp_path, monkeypatch):
+        """A full run pushes the OWUI archive off-host alongside the DB backup."""
+        from config import system_config
+        import scripts.backup_database as bd
+
+        monkeypatch.setattr(system_config, "DB_PATH", tmp_path / "snflwr.db")
+        monkeypatch.setenv("BACKUP_PATH", str(tmp_path / "backups"))
+        monkeypatch.setenv("DB_ENCRYPTION_ENABLED", "false")
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.setenv("OFFHOST_BACKUP_ENABLED", "true")
+        monkeypatch.setenv("RCLONE_REMOTE", "b2:snflwr-backups-prod")
+        monkeypatch.setenv("OWUI_BACKUP_ENABLED", "true")
+        _seed_db(tmp_path / "snflwr.db")
+
+        uploaded = []
+
+        def runner(cmd, *args, **kwargs):
+            # Simulate docker cp materializing the data dir; record rclone copies.
+            if cmd[0] == "docker" and cmd[1] == "cp":
+                (Path(cmd[3]) / "data").mkdir(parents=True, exist_ok=True)
+                (Path(cmd[3]) / "data" / "webui.db").write_bytes(b"fake")
+            elif cmd[0] == "rclone" and cmd[1] == "copy":
+                uploaded.append(cmd[2])
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(bd.shutil, "which", lambda _: "/usr/bin/" + "x")
+        monkeypatch.setattr(bd.subprocess, "run", runner)
+
+        bak = bd.DatabaseBackup()
+        ok = bak.run_backup()
+
+        assert ok is True
+        assert any("snflwr_owui_" in u for u in uploaded), uploaded

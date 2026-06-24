@@ -1307,3 +1307,44 @@ tr:hover td {
   font-size: var(--text-sm);
   margin-top: var(--space-2);
 }
+
+/* --- Toast notifications --- */
+.toast {
+  position: fixed;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translate(-50%, 1rem);
+  z-index: 1000;
+  max-width: min(90vw, 420px);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast-show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast-error {
+  background: var(--color-crisis-bg);
+  color: var(--color-crisis-text);
+  border: 1px solid var(--color-crisis-border);
+}
+
+.toast-success {
+  background: var(--color-safe-bg);
+  color: var(--color-safe-text);
+  border: 1px solid var(--color-safe-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: opacity 0.2s ease;
+    transform: translate(-50%, 0);
+  }
+}

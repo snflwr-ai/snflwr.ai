@@ -4,7 +4,6 @@
 import { apiRequest } from '../core/api.js';
 import { getParentId } from '../core/session.js';
 import { deriveSafetyState } from '../core/safety.js';
-import { aggregateActivity, formatDuration } from '../core/format.js';
 import { el } from '../core/dom.js';
 import { renderBanner } from '../components/banner.js';
 import { statCard, card } from '../components/card.js';
@@ -33,7 +32,7 @@ export async function render(container) {
 
   // Show skeletons while loading
   const skeletonRow = el('div', { class: 'stat-row' });
-  for (let i = 0; i < 4; i++) skeletonRow.appendChild(skeleton('card'));
+  for (let i = 0; i < 3; i++) skeletonRow.appendChild(skeleton('card'));
   container.appendChild(skeletonRow);
 
   const parentId = getParentId();
@@ -80,19 +79,16 @@ export async function render(container) {
   const bannerEl = renderBanner(safetyState);
   container.appendChild(bannerEl);
 
-  // Summary stat cards
+  // Summary stat cards — each links to its detail tab.
   let totalSessions = 0;
-  let totalQuestions = 0;
   profiles.forEach((p) => {
     totalSessions += p.total_sessions || 0;
-    totalQuestions += p.total_questions || 0;
   });
 
   const statRow = el('div', { class: 'stat-row' });
-  statRow.appendChild(statCard({ label: 'Children', value: profiles.length }));
-  statRow.appendChild(statCard({ label: 'Total Sessions', value: totalSessions }));
-  statRow.appendChild(statCard({ label: 'Total Questions', value: totalQuestions }));
-  statRow.appendChild(statCard({ label: 'Pending Alerts', value: allAlerts.length }));
+  statRow.appendChild(statCard({ label: 'Children', value: profiles.length, href: '#/children' }));
+  statRow.appendChild(statCard({ label: 'Total Sessions', value: totalSessions, href: '#/activity' }));
+  statRow.appendChild(statCard({ label: 'Pending Alerts', value: allAlerts.length, href: '#/safety' }));
   container.appendChild(statRow);
 
   // Pending action cards (COPPA consent, billing/setup)
@@ -155,11 +151,15 @@ export async function render(container) {
 
       const lastActiveEl = el('div', { class: 'profile-last-active', text: 'Last active: ' + lastActive });
 
-      const profileCard = el('div', { class: 'profile-card' + (p.is_active ? '' : ' inactive') }, [
-        profileTop,
-        statsEl,
-        lastActiveEl,
-      ]);
+      // The whole card links to the Children tab (manage this child).
+      const profileCard = el(
+        'a',
+        {
+          class: 'profile-card profile-card-link' + (p.is_active ? '' : ' inactive'),
+          href: '#/children',
+        },
+        [profileTop, statsEl, lastActiveEl]
+      );
 
       cardGrid.appendChild(profileCard);
     });

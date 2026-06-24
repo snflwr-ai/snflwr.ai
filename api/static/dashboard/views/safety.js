@@ -102,8 +102,10 @@ function renderIncidents(container, profileId, profileName) {
   container.appendChild(loadingEl);
 
   backBtn.addEventListener('click', () => {
-    // Re-render the full safety view
-    render(container.parentElement || document.getElementById('main-content'));
+    // Navigate back to the alerts view via the router (drops the profileId
+    // param). app.js's hashchange handler re-renders into the correct <main>
+    // element — calling render() here directly clobbered the layout shell.
+    location.hash = '#/safety';
   });
 
   apiRequest('GET', '/api/safety/incidents/' + encodeURIComponent(profileId) + '?days=30')

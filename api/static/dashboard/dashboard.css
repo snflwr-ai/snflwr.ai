@@ -1358,3 +1358,66 @@ tr:hover td {
     transform: translate(-50%, 0);
   }
 }
+
+/* --- Severity badges (safety view: badge-severity-{critical|major|minor}) --- */
+.badge-severity-critical {
+  background: var(--color-crisis-bg);
+  color: var(--color-crisis);
+  border: 1px solid var(--color-crisis-border);
+}
+
+.badge-severity-major {
+  background: var(--color-attention-bg);
+  color: var(--color-attention);
+  border: 1px solid var(--color-attention-border);
+}
+
+.badge-severity-minor {
+  background: var(--bg-page);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* --- Safety view: alert list + per-profile incident links --- */
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.profile-incident-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* --- Section heading + container (overview "Action Required", etc.) --- */
+.page-section {
+  margin-bottom: var(--space-6);
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+/* --- Stat-card hint line --- */
+.stat-hint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: var(--space-1);
+}
+
+/* --- Nav wrapper: transparent so the sidebar + bottom bar behave as direct
+   children of .layout (see components/nav.js — it bundles both into one node). --- */
+.nav-wrapper {
+  display: contents;
+}
+
+/* --- Modal header close (×) button pushed to the right edge --- */
+.modal-close {
+  margin-left: auto;
+}

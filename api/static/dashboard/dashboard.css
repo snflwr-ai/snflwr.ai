@@ -558,6 +558,12 @@ a:hover {
   flex-wrap: wrap;
 }
 
+.profile-last-active {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
 .profile-card.inactive {
   opacity: 0.65;
 }

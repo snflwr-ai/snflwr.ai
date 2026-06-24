@@ -163,12 +163,12 @@ jobs:
         file: ./coverage.xml
         flags: unittests
         name: codecov-snflwr-ai
+        fail_ci_if_error: false
 
     - name: Dashboard JS unit tests
       if: matrix.python-version == '3.12'
       # Node is preinstalled on ubuntu-latest runners; no npm install needed.
       run: node --test api/static/dashboard/tests/*.test.js
-        fail_ci_if_error: false
 
   # Job 4: Configuration Validation
   config-validation:

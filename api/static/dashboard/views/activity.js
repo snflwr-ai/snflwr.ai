@@ -7,7 +7,7 @@
 
 import { apiRequest } from '../core/api.js';
 import { getParentId } from '../core/session.js';
-import { aggregateActivity, formatDuration } from '../core/format.js';
+import { formatDuration } from '../core/format.js';
 import { el } from '../core/dom.js';
 import { statCard } from '../components/card.js';
 import { skeleton } from '../components/skeleton.js';
@@ -59,10 +59,6 @@ async function loadActivityData(mainEl, profileId, days) {
   statRow.appendChild(statCard({ label: 'Time', value: formatDuration(totalMinutes) }));
   mainEl.appendChild(statRow);
 
-  // Session-based aggregation for chart
-  const agg = aggregateActivity(sessions);
-
-  // Build chart using per-session data grouped by day (last {days} days)
   // Build a simple per-session chart: each session is a bar showing its duration.
   // Use the last up to 14 sessions for readability.
   const chartSessions = sessions.slice(-14);

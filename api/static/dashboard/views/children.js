@@ -12,6 +12,7 @@ import { getParentId } from '../core/session.js';
 import { el } from '../core/dom.js';
 import { skeleton } from '../components/skeleton.js';
 import { showToast } from '../components/toast.js';
+import { confirmDialog } from '../components/confirm.js';
 
 const GRADES = [
   { v: '', l: 'Select grade...' },
@@ -353,11 +354,19 @@ async function loadProfiles(container) {
     if (p.is_active) {
       const deactivateBtn = el('button', { class: 'btn btn-sm btn-danger', type: 'button', text: 'Deactivate' });
       deactivateBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to deactivate this profile?')) {
+        confirmDialog({
+          title: 'Deactivate profile?',
+          message:
+            'Deactivate ' + p.name + "'s profile? They won't be able to use the " +
+            'tutor until you reactivate it.',
+          confirmText: 'Deactivate',
+          danger: true,
+        }).then((ok) => {
+          if (!ok) return;
           apiRequest('DELETE', '/api/profiles/' + encodeURIComponent(p.profile_id))
             .then(() => loadProfiles(container))
             .catch((err) => showToast(err.detail || 'Deactivation failed'));
-        }
+        });
       });
       actions.appendChild(deactivateBtn);
     }

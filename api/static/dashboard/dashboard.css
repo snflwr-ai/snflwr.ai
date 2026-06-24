@@ -989,6 +989,10 @@ a:hover {
     max-width: 480px;
     max-height: 90vh;
   }
+
+  .modal.modal-sm {
+    max-width: 400px;
+  }
 }
 
 .modal-header {

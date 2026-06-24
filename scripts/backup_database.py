@@ -52,6 +52,22 @@ class DatabaseBackup:
             int(offhost_retention) if offhost_retention else self.backup_retention_days
         )
 
+        # Open WebUI data backup. snflwr's own DB backup does NOT cover Open
+        # WebUI's data volume (open-webui-data:/app/backend/data), which holds
+        # webui.db (all parent/child accounts, chat history, the seeded proxy
+        # auth key), vector_db/ and uploads/. Losing that volume loses all chat
+        # history even when the snflwr DB backup "succeeded". We pull it out of
+        # the running container with `docker cp` (same approach as
+        # scripts/guarded_upgrade.sh) and fold it into the same off-host +
+        # retention flow.
+        # Opt-in (like OFFHOST_BACKUP_ENABLED): enable in OWUI deployments via
+        # the env/compose. When on, it is fail-closed — an OWUI backup failure
+        # marks the run unsuccessful so monitoring alarms rather than silently
+        # leaving chat history/accounts unprotected.
+        self.owui_backup_enabled = os.getenv('OWUI_BACKUP_ENABLED', 'false').lower() == 'true'
+        self.owui_container = os.getenv('OWUI_CONTAINER', 'snflwr-frontend').strip()
+        self.owui_data_path = os.getenv('OWUI_DATA_PATH', '/app/backend/data').strip()
+
         # Heartbeat / dead-man's-switch. A scheduled backup that silently stops
         # running is a backup that didn't happen. When set, a successful run
         # pings this URL and a failed run pings <URL>/fail, so an external
@@ -70,6 +86,9 @@ class DatabaseBackup:
         if self.offhost_enabled:
             logger.info(f"  Off-host remote: {self.rclone_remote or '(unset!)'}")
             logger.info(f"  Off-host retention: {self.offhost_retention_days} days")
+        logger.info(f"  Open WebUI backup: {self.owui_backup_enabled}")
+        if self.owui_backup_enabled:
+            logger.info(f"  Open WebUI container: {self.owui_container}:{self.owui_data_path}")
 
     def backup_sqlite(self) -> tuple[bool, str]:
         """Backup SQLite database"""
@@ -203,6 +222,63 @@ class DatabaseBackup:
         except Exception as e:
             logger.exception(f"PostgreSQL backup failed: {e}")
             return False, str(e)
+
+    def backup_open_webui(self) -> tuple[bool, str]:
+        """Back up the Open WebUI data volume from the running container.
+
+        Open WebUI holds all parent/child accounts, chat history, the embeddings
+        vector DB and the seeded proxy auth key in its data dir — none of which
+        the snflwr DB backup covers. We copy the whole data dir out of the
+        container with `docker cp` (the proven approach in guarded_upgrade.sh)
+        and archive it as snflwr_owui_<ts>.tar.gz so it joins the same off-host
+        and retention flow. Returns (ok, archive_path_or_reason).
+        """
+        if shutil.which('docker') is None:
+            return False, (
+                "docker not found on PATH; cannot reach the Open WebUI container "
+                "(set OWUI_BACKUP_ENABLED=false if backups run without docker access)"
+            )
+
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+        archive = self.backup_path / f"snflwr_owui_{timestamp}.tar.gz"
+        tmp_dir = self.backup_path / f".owui_tmp_{timestamp}"
+        try:
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+
+            # `docker cp <container>:<dir> <dest>` lands the directory under
+            # <dest>/<basename>. Run without a shell; the container name and
+            # path come from our own config, never untrusted input.
+            src = f"{self.owui_container}:{self.owui_data_path}"
+            logger.info(f"Backing up Open WebUI data: {src}")
+            result = subprocess.run(
+                ['docker', 'cp', src, str(tmp_dir)],
+                capture_output=True, text=True, timeout=300
+            )
+            if result.returncode != 0:
+                msg = result.stderr.strip() or f"docker cp failed (exit {result.returncode})"
+                logger.error(f"Open WebUI backup failed: {msg}")
+                return False, msg
+
+            copied = tmp_dir / Path(self.owui_data_path).name
+            if not copied.exists():
+                return False, f"copied data dir not found at {copied}"
+
+            import tarfile
+            with tarfile.open(archive, 'w:gz') as tar:
+                tar.add(copied, arcname='open-webui-data')
+
+            size_mb = archive.stat().st_size / (1024 * 1024)
+            logger.info(f"[OK] Open WebUI backup completed: {archive} ({size_mb:.2f} MB)")
+            return True, str(archive)
+
+        except subprocess.TimeoutExpired:
+            logger.error("Open WebUI backup timed out (docker cp)")
+            return False, "docker cp timed out"
+        except Exception as e:
+            logger.exception(f"Open WebUI backup failed: {e}")
+            return False, str(e)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def _rclone_cmd(self, *args: str) -> list:
         """Build an rclone argv list, injecting --config when configured.
@@ -424,16 +500,38 @@ class DatabaseBackup:
         if success:
             self.create_backup_metadata(result, success)
 
+        # Open WebUI data backup (additive — snflwr's DB backup does not cover
+        # the OWUI volume). Run after the primary DB backup; an OWUI failure
+        # marks the overall run unsuccessful (so monitoring alarms) but must not
+        # prevent the DB backup itself from going off-host.
+        owui_artifact = None
+        owui_failed = False
+        if success and self.owui_backup_enabled:
+            owui_ok, owui_result = self.backup_open_webui()
+            if owui_ok:
+                owui_artifact = owui_result
+            else:
+                logger.error(f"[FAIL] Open WebUI backup failed: {owui_result}")
+                owui_failed = True
+
         # Push off-host. Fail-closed: a local-only backup is not a success
         # when off-host is enabled.
         if success and self.offhost_enabled:
             metadata_file = str(Path(result).with_suffix('.json'))
-            up_ok, up_msg = self.upload_offhost(result, metadata_file)
+            artifacts = [result, metadata_file]
+            if owui_artifact:
+                artifacts.append(owui_artifact)
+            up_ok, up_msg = self.upload_offhost(*artifacts)
             if not up_ok:
                 logger.error(f"[FAIL] Off-host copy failed: {up_msg}")
                 success = False
             else:
                 self.prune_offhost()
+
+        # An Open WebUI backup failure marks the run unsuccessful (heartbeat +
+        # exit code) AFTER the DB backup and its off-host push have run.
+        if owui_failed:
+            success = False
 
         # Cleanup old backups
         self.cleanup_old_backups()

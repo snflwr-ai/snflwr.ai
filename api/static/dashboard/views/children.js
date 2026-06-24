@@ -11,6 +11,7 @@ import { apiRequest } from '../core/api.js';
 import { getParentId } from '../core/session.js';
 import { el } from '../core/dom.js';
 import { skeleton } from '../components/skeleton.js';
+import { showToast } from '../components/toast.js';
 
 const GRADES = [
   { v: '', l: 'Select grade...' },
@@ -91,7 +92,7 @@ function exportProfile(profileId, name) {
       URL.revokeObjectURL(url);
     })
     .catch((err) => {
-      alert('Export failed: ' + err.message);
+      showToast('Export failed: ' + err.message);
     });
 }
 
@@ -115,13 +116,17 @@ function showCreateProfileModal(parentId, onSuccess) {
   row.appendChild(gradeSelectGroup('Grade', 'new-grade', ''));
   body.appendChild(row);
 
+  // COPPA's verifiable-parental-consent requirement applies only to children
+  // under 13. The consent group is hidden by default and revealed (and required)
+  // only when an under-13 age is entered — see the age listener below.
   const consentGroup = el('div', { class: 'form-group checkbox-group' });
+  consentGroup.style.display = 'none';
   const consentInput = document.createElement('input');
   consentInput.type = 'checkbox';
   consentInput.id = 'new-consent';
   const consentLabel = el('label', {
     for: 'new-consent',
-    text: 'I verify parental consent for this child (required for COPPA compliance)',
+    text: 'I have obtained verifiable parental consent for this child (required for children under 13 — COPPA).',
   });
   consentGroup.appendChild(consentInput);
   consentGroup.appendChild(consentLabel);
@@ -144,6 +149,17 @@ function showCreateProfileModal(parentId, onSuccess) {
   cancelBtn.addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
+  // Show/require the COPPA consent box only for under-13 children.
+  const ageInput = document.getElementById('new-age');
+  function syncConsentVisibility() {
+    const a = parseInt(ageInput.value, 10);
+    const under13 = !isNaN(a) && a < 13;
+    consentGroup.style.display = under13 ? '' : 'none';
+    if (!under13) consentInput.checked = false;
+  }
+  ageInput.addEventListener('input', syncConsentVisibility);
+  syncConsentVisibility();
+
   createBtn.addEventListener('click', () => {
     errBox.textContent = '';
     const name = document.getElementById('new-name').value.trim();
@@ -154,7 +170,10 @@ function showCreateProfileModal(parentId, onSuccess) {
     if (!name) { showFormError(errBox, 'Name is required'); return; }
     if (isNaN(age) || age < 3 || age > 25) { showFormError(errBox, 'Age must be between 3 and 25'); return; }
     if (!grade) { showFormError(errBox, 'Grade is required'); return; }
-    if (!consent) { showFormError(errBox, 'Parental consent is required for COPPA compliance'); return; }
+    if (age < 13 && !consent) {
+      showFormError(errBox, 'Verifiable parental consent is required for children under 13 (COPPA).');
+      return;
+    }
 
     createBtn.disabled = true;
     createBtn.textContent = 'Creating...';
@@ -337,7 +356,7 @@ async function loadProfiles(container) {
         if (confirm('Are you sure you want to deactivate this profile?')) {
           apiRequest('DELETE', '/api/profiles/' + encodeURIComponent(p.profile_id))
             .then(() => loadProfiles(container))
-            .catch((err) => alert(err.detail || 'Failed'));
+            .catch((err) => showToast(err.detail || 'Deactivation failed'));
         }
       });
       actions.appendChild(deactivateBtn);

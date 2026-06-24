@@ -130,7 +130,8 @@ export async function render(container) {
 
       // Use profile-level totals (no per-session API available in overview context)
       const sessions = p.total_sessions || 0;
-      const questions = p.total_questions || 0;
+      // Pending safety alerts for this child (from the parent's alert list).
+      const childAlerts = allAlerts.filter((a) => a.profile_id === p.profile_id).length;
 
       const avatar = el('div', { class: 'profile-avatar', text: initial });
       const nameEl = el('div', { class: 'profile-name', text: p.name });
@@ -144,8 +145,8 @@ export async function render(container) {
           el('div', { class: 'label', text: 'Sessions' }),
         ]),
         el('div', { class: 'profile-stat' }, [
-          el('div', { class: 'value', text: String(questions) }),
-          el('div', { class: 'label', text: 'Questions' }),
+          el('div', { class: 'value', text: String(childAlerts) }),
+          el('div', { class: 'label', text: 'Alerts' }),
         ]),
       ]);
 

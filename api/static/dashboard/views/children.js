@@ -86,7 +86,14 @@ function exportProfile(profileId, name) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'child_data_' + (name || 'export') + '.json';
+      // Date-stamp + slugify the name so repeat exports don't overwrite and the
+      // filename is filesystem-safe (e.g. child_data_alex_test_2026-06-24.json).
+      const slug = String(name || 'export')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'export';
+      const date = new Date().toISOString().slice(0, 10);
+      a.download = 'child_data_' + slug + '_' + date + '.json';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

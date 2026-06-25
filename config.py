@@ -147,12 +147,14 @@ class _SystemConfig:
         "ENABLE_SAFETY_MONITORING", "True"
     ).lower() in ("1", "true", "yes")
     # When the ML safety classifier is unavailable, fail closed (block tutoring)
-    # for ALL ages, not just under-13 (which always fails closed). Recommended
-    # for production once the safety model is reliably provisioned. Default off
-    # so a deployment without the model still serves teens via deterministic
-    # filtering. See security finding F2.
+    # for ALL ages, not just under-13. Defaults ON: every snflwr.ai user is a
+    # minor (K-12) and the safety model (llama-guard3) ships in every stack, so a
+    # downed classifier is a *broken safety layer* that must block rather than
+    # silently degrade teens/unknown-age to deterministic-only filtering (the F2
+    # fail-open gap). A deployment that intentionally runs without the safety
+    # model must opt out explicitly with SAFETY_CLASSIFIER_REQUIRED=false.
     SAFETY_CLASSIFIER_REQUIRED: bool = os.getenv(
-        "SAFETY_CLASSIFIER_REQUIRED", "false"
+        "SAFETY_CLASSIFIER_REQUIRED", "true"
     ).lower() in ("1", "true", "yes")
 
     # Email Configuration (SMTP for parent alerts)

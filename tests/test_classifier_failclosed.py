@@ -38,3 +38,19 @@ def test_required_flag_fails_closed_for_all_ages():
         for age in (15, None, 9):
             r = clf.classify("hello", age=age)
             assert r is not None and r.is_safe is False
+
+
+def test_default_config_fails_closed_for_teens_and_unknown_age():
+    """F2 fix: the SHIPPED default must fail closed for teens AND unknown age,
+    not just under-13. Every user on a K-12 platform is a minor, and the safety
+    classifier ships in every stack — so a downed classifier is a broken safety
+    layer that should block, not silently degrade to deterministic-only."""
+    from config import system_config
+
+    # The shipped default (no env override) must be strict.
+    assert system_config.SAFETY_CLASSIFIER_REQUIRED is True
+
+    clf = _unavailable_classifier()  # classifier down
+    for age in (15, None, 9):  # teen, unknown, child — all blocked
+        r = clf.classify("hello", age=age)
+        assert r is not None and r.is_safe is False

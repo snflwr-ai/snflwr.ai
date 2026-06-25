@@ -1000,14 +1000,16 @@ class _SemanticClassifier:
         Returns:
             SafetyResult on block, None to continue.
 
-        Fail-open-on-unavailable policy (finding F2): when the classifier is
+        Fail-closed-on-unavailable policy (finding F2): when the classifier is
         unavailable (e.g. safety model not loaded at init), the ML layer would
-        otherwise be silently skipped. We instead fail CLOSED for the most
-        at-risk users — under-13 children must never receive ML-unfiltered
-        tutoring — and operators can extend strictness to all ages via
-        SAFETY_CLASSIFIER_REQUIRED. Teens/unknown-age degrade to deterministic
-        stages only (current behavior) unless that flag is set. The operator is
-        alerted regardless (alert_if_unavailable / state transitions).
+        otherwise be silently skipped. We fail CLOSED. SAFETY_CLASSIFIER_REQUIRED
+        defaults True, so teens AND unknown-age block too — every user is a minor
+        and the safety model ships in every stack, so an unavailable classifier
+        is a broken safety layer, not a normal config. Under-13 always fails
+        closed regardless of the flag. A deployment intentionally running without
+        the safety model must set SAFETY_CLASSIFIER_REQUIRED=false to opt out, in
+        which case teens/unknown-age degrade to deterministic stages only. The
+        operator is alerted regardless (alert_if_unavailable / state transitions).
         """
         if not self._available or self._client is None:
             try:

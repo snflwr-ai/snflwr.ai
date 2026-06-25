@@ -798,8 +798,11 @@ class TestPatternMatcher:
 class TestSemanticClassifier:
     """Stage 4: _SemanticClassifier tests."""
 
-    def test_unavailable_returns_none(self):
-        """When Ollama is unavailable, classify() should return None."""
+    def test_unavailable_fails_closed_by_default(self):
+        """When the classifier is unavailable, classify() fails CLOSED by default
+        (F2): SAFETY_CLASSIFIER_REQUIRED defaults True, so even unknown-age blocks.
+        The opt-out (REQUIRED=false) degrade-to-None path is covered in
+        tests/test_classifier_failclosed.py."""
         from safety.pipeline import _SemanticClassifier
         with patch("safety.pipeline._SemanticClassifier.__init__", return_value=None):
             classifier = _SemanticClassifier.__new__(_SemanticClassifier)
@@ -807,7 +810,8 @@ class TestSemanticClassifier:
             classifier._client = None
             classifier._model = None
             result = classifier.classify("hello")
-            assert result is None
+            assert result is not None
+            assert result.is_safe is False
 
     def test_available_safe_json_response(self):
         """When model says safe+acceptable, classifier returns None (pass)."""

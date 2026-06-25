@@ -101,18 +101,24 @@ class Filter:
         if not user_info:
             return None
 
-        # Get grade from user metadata
         metadata = user_info.get('info', {})
+
+        # The age-onboarding function stores an integer age directly in
+        # info['age'] (openwebui_age_onboarding_function.py). Read that first —
+        # previously this only looked at info['grade'], which onboarding never
+        # sets, so age-adaptation was always dead (defaulted to None/strictest).
+        age = metadata.get('age')
+        if isinstance(age, int) and 0 < age < 120:
+            return age
+
+        # Back-compat: derive age from a stored grade level if that's present.
         grade = metadata.get('grade')
-
         if grade:
-            # Convert grade to approximate age
-            # K-12 grade mapping to age ranges
-            age = self._grade_to_age(grade)
-            if age:
-                return age
+            derived = self._grade_to_age(grade)
+            if derived:
+                return derived
 
-        # If no grade available, default to strictest (youngest) filtering
+        # Nothing usable — default to strictest (youngest) filtering.
         return None
 
     def _grade_to_age(self, grade) -> Optional[int]:
@@ -421,7 +427,7 @@ class Filter:
         # Standard redirects for all other categories
         redirects = {
             "JAILBREAK": "I'm Snflwr, your STEM tutor! I'm here to help with science, math, technology, and engineering. I can't pretend to be someone else or change my role. What would you like to learn about today?",
-            "S11": "I noticed you might be going through something difficult. I'm here to help with math, science, and other school subjects. If you need to talk to someone about how you're feeling, please reach out to a trusted adult, teacher, or counselor. What STEM topic can I help you explore today?",
+            "S11": "I noticed you might be going through something difficult. I'm here to help with math, science, and other school subjects. If you need to talk to someone about how you're feeling, please reach out to a trusted adult, teacher, or counselor. You can also reach the 988 Suicide & Crisis Lifeline by calling or texting 988. What STEM topic can I help you explore today?",
             "S10": "I'm here to help with science, math, technology, and engineering! Let's keep our conversation positive and focused on learning. What would you like to explore?",
             "S1": "I'm all about STEM learning! Let's talk about science, math, engineering, or technology instead. What interests you?",
             "S9": "That's outside my area - I focus on helping with school subjects like math and science! What would you like to learn about?",
@@ -445,9 +451,10 @@ class Filter:
 
         This is called by Open WebUI for every user message.
 
-        BLOCKING MECHANISM: When content is blocked, this method raises a
-        ValueError with the redirect message. Open WebUI catches this exception
-        and returns the message to the user WITHOUT calling the model.
+        BLOCKING MECHANISM: When content is blocked, this method raises an
+        exception carrying the redirect message. Open WebUI catches it and
+        returns the message to the user WITHOUT calling the model — a
+        deterministic block that does not depend on the model's cooperation.
         """
         # Only skip filtering for admin users (for testing/debugging)
         if __user__ and __user__.get("role") == "admin":
@@ -482,19 +489,13 @@ class Filter:
 
             print(f"[SAFETY FILTER] Blocked {block_category} (age: {user_age}): {user_message[:50]}...")
 
-            # Replace user message with a safe prompt, and instruct model to return the redirect
-            messages[-1] = {
-                "role": "user",
-                "content": "Hello"
-            }
-
-            messages.append({
-                "role": "system",
-                "content": f"You must respond with EXACTLY this message and nothing else:\n\n{redirect_msg}"
-            })
-
-            body["messages"] = messages
-            return body
+            # Deterministic block: raise so Open WebUI returns the redirect to the
+            # user WITHOUT calling the model. Previously this rewrote the message
+            # to "Hello" and *instructed the model* to echo the redirect — which
+            # trusted the LLM to comply, so a non-compliant generation could drop
+            # crisis resources (e.g. the 988 line) entirely. The crisis response
+            # must never depend on the model.
+            raise Exception(redirect_msg)
 
         # Safe content passes through unchanged
         return body

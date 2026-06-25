@@ -164,10 +164,12 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../../enterprise/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../../enterprise/init-langfuse.sh:/docker-entrypoint-initdb.d/03-init-langfuse.sh:ro  # ordering vs other init scripts is irrelevant — independent (langfuse role/db)
     environment:
       - POSTGRES_USER=snflwr
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=snflwr_db
+      - LANGFUSE_DB_PASSWORD=${LANGFUSE_DB_PASSWORD}
     restart: unless-stopped
     networks:
       - snflwr-net
@@ -196,6 +198,30 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Langfuse - self-hosted LLM observability (metadata only; no child content).
+  # Receives traces from snflwr-api when LANGFUSE_ENABLED=true. Internal-only by
+  # default (not behind nginx) — operators reach the UI via an SSH tunnel or by
+  # adding an nginx location. Runs its own Prisma migrations on first boot.
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: snflwr-langfuse
+    environment:
+      - DATABASE_URL=postgresql://langfuse:${LANGFUSE_DB_PASSWORD}@postgres:5432/langfuse
+      - NEXTAUTH_URL=${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET}
+      - SALT=${LANGFUSE_SALT}
+      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY}
+      - TELEMETRY_ENABLED=false
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - snflwr-net
+    expose:
+      - 3000
 
   # Celery Worker - Background task processing
   celery-worker:

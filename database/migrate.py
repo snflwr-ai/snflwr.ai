@@ -118,7 +118,7 @@ def _migrate_sqlite(schema_tables: dict) -> list:
     Returns:
         List of strings describing each change made.
     """
-    import sqlite3
+    from storage.db_adapters import create_adapter
 
     db_path = Path(system_config.DB_PATH)
     if not db_path.exists():
@@ -126,7 +126,11 @@ def _migrate_sqlite(schema_tables: dict) -> list:
         return []
 
     changes = []
-    conn = sqlite3.connect(str(db_path))
+    # Open through the encryption-aware adapter. A plain sqlite3.connect() cannot
+    # read a SQLCipher-encrypted database and fails with "file is not a database"
+    # (storage/database.py learned the same lesson in its initializer).
+    adapter = create_adapter("sqlite", db_path=str(db_path))
+    conn = adapter.connect()
     conn.execute("PRAGMA foreign_keys = OFF")  # allow schema changes
 
     try:
@@ -154,7 +158,7 @@ def _migrate_sqlite(schema_tables: dict) -> list:
         raise
     finally:
         conn.execute("PRAGMA foreign_keys = ON")
-        conn.close()
+        adapter.close()
 
     return changes
 

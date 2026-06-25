@@ -43,7 +43,7 @@ def init_database():
 
 def _init_sqlite(schema_sql):
     """Initialize SQLite database."""
-    import sqlite3
+    from storage.db_adapters import create_adapter
 
     db_path = Path(system_config.DB_PATH)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,7 +59,11 @@ def _init_sqlite(schema_sql):
     except Exception as mig_err:
         logger.warning(f"Pre-init migration step encountered an issue: {mig_err}")
 
-    conn = sqlite3.connect(str(db_path))
+    # Open through the encryption-aware adapter so an encrypted (SQLCipher)
+    # database is created/opened with its key applied. A plain sqlite3.connect()
+    # fails with "file is not a database" against an encrypted file.
+    adapter = create_adapter("sqlite", db_path=str(db_path))
+    conn = adapter.connect()
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         conn.executescript(schema_sql)
@@ -67,7 +71,7 @@ def _init_sqlite(schema_sql):
         logger.info("SQLite database schema initialized successfully")
         return True
     finally:
-        conn.close()
+        adapter.close()
 
 
 def _init_postgresql(schema_sql):
@@ -151,14 +155,17 @@ def verify_tables():
 
 
 def _list_tables_sqlite():
-    import sqlite3
-    conn = sqlite3.connect(str(system_config.DB_PATH))
+    # Use the encryption-aware adapter; a plain sqlite3.connect() fails with
+    # "file is not a database" against an encrypted (SQLCipher) file.
+    from storage.db_adapters import create_adapter
+    adapter = create_adapter("sqlite", db_path=str(system_config.DB_PATH))
+    conn = adapter.connect()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         return [row[0] for row in cursor.fetchall()]
     finally:
-        conn.close()
+        adapter.close()
 
 
 def _list_tables_postgresql():

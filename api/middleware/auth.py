@@ -629,9 +629,21 @@ class RedisRateLimiter:
         # Use SQLite fallback for persistence when Redis is unavailable
         if not self._redis:
             try:
+                import config
                 from config import system_config
 
-                db_path = os.path.join(str(system_config.APP_DATA_DIR), "snflwr.db")
+                # Dedicated, unencrypted rate-limit store — NOT the main snflwr.db,
+                # which is SQLCipher-encrypted in production. Opening the encrypted
+                # DB with a plain sqlite3 connection fails with "file is not a
+                # database", which previously degraded rate limiting to in-memory
+                # silently. Rate-limit counters are ephemeral (sliding-window) and
+                # don't need encryption. Honor config.DATA_DIR when set (tests
+                # inject it); otherwise fall back to the app data dir.
+                data_dir = getattr(config, "DATA_DIR", None) or str(
+                    system_config.APP_DATA_DIR
+                )
+                os.makedirs(data_dir, exist_ok=True)
+                db_path = os.path.join(str(data_dir), "rate_limits.db")
                 self._sqlite_limiter = SqliteRateLimiter(db_path)
                 logger.warning(
                     "Rate limiter using SQLite fallback (single-instance only). "

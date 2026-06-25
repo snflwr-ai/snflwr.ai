@@ -41,6 +41,8 @@ except ImportError:
 
 from utils.logger import get_logger, mask_email
 from core.email_crypto import get_email_crypto
+from core.auth_session_cache import SessionCacheMixin
+from core.auth_email_verification import EmailVerificationMixin
 
 logger = get_logger(__name__)
 
@@ -82,7 +84,7 @@ class AuthSession:
     created_at: Optional[str] = None
 
 
-class AuthenticationManager:
+class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin):
     """Lightweight Authentication manager used by tests.
 
     This implementation focuses on the operations exercised by unit tests:
@@ -100,116 +102,6 @@ class AuthenticationManager:
         self._fallback_sessions = {}  # In-memory fallback if Redis unavailable
         self._session_ttl = 86400  # 24 hours in seconds
         self._initialize_redis()
-
-    def _initialize_redis(self):
-        """Initialize Redis for distributed session caching"""
-        try:
-            from utils.cache import cache
-
-            if cache.enabled and cache._client:
-                self._redis = cache._client
-                logger.info("[OK] Session cache using Redis (distributed mode)")
-            else:
-                logger.warning(
-                    "[WARN] Session cache using in-memory fallback (single-instance only)"
-                )
-        except (ImportError, RedisError) as e:
-            logger.warning(
-                f"[WARN] Session cache Redis init failed, using fallback: {e}"
-            )
-
-    def _get_session_from_cache(self, session_token: str) -> Optional[dict]:
-        """Get session from Redis or fallback cache, checking expiry"""
-        session_data = None
-        if self._redis:
-            try:
-                import json
-
-                redis_key = f"snflwr:session:{session_token}"
-                data = self._redis.get(redis_key)
-                if data:
-                    session_data = json.loads(data)
-            except RedisError as e:
-                logger.debug(f"Redis session get failed: {e}")
-        else:
-            with self._session_lock:
-                session_data = self._fallback_sessions.get(session_token)
-
-        # Check expiry if present in cached data
-        if session_data and "expires_at" in session_data:
-            try:
-                expires_at = datetime.fromisoformat(session_data["expires_at"])
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-                if expires_at < datetime.now(timezone.utc):
-                    # Expired - remove from cache and return None
-                    self._delete_session_from_cache(session_token)
-                    return None
-            except ValueError as e:
-                logger.debug(f"Failed to check cached session expiry: {e}")
-
-        return session_data
-
-    def _set_session_in_cache(self, session_token: str, session_data: dict):
-        """Store session in Redis or fallback cache"""
-        if self._redis:
-            try:
-                import json
-
-                redis_key = f"snflwr:session:{session_token}"
-                self._redis.setex(
-                    redis_key, self._session_ttl, json.dumps(session_data)
-                )
-                # Maintain reverse index for O(1) bulk invalidation on password change
-                user_key = f"snflwr:user_sessions:{session_data['parent_id']}"
-                self._redis.sadd(user_key, session_token)
-                self._redis.expire(user_key, self._session_ttl)
-            except RedisError as e:
-                logger.debug(f"Redis session set failed: {e}")
-        else:
-            with self._session_lock:
-                self._fallback_sessions[session_token] = session_data
-
-    def _delete_session_from_cache(self, session_token: str):
-        """Remove session from Redis or fallback cache"""
-        if self._redis:
-            try:
-                redis_key = f"snflwr:session:{session_token}"
-                self._redis.delete(redis_key)
-            except RedisError as e:
-                logger.debug(f"Redis session delete failed: {e}")
-        else:
-            with self._session_lock:
-                self._fallback_sessions.pop(session_token, None)
-
-    def _delete_user_sessions_from_cache(self, user_id: str):
-        """Remove all sessions for a user from cache.
-
-        Uses reverse index snflwr:user_sessions:{user_id} for O(k) deletion
-        where k = number of sessions for this user (typically 1-5).
-        """
-        if self._redis:
-            try:
-                user_key = f"snflwr:user_sessions:{user_id}"
-                tokens = self._redis.smembers(user_key)
-                if tokens:
-                    session_keys = [
-                        f"snflwr:session:{t.decode() if isinstance(t, bytes) else t}"
-                        for t in tokens
-                    ]
-                    self._redis.delete(*session_keys)
-                self._redis.delete(user_key)
-            except RedisError as e:
-                logger.debug(f"Redis user sessions delete failed: {e}")
-        else:
-            with self._session_lock:
-                to_remove = [
-                    sid
-                    for sid, data in self._fallback_sessions.items()
-                    if data.get("parent_id") == user_id
-                ]
-                for sid in to_remove:
-                    del self._fallback_sessions[sid]
 
     def _validate_password_strength(self, password: str) -> Tuple[bool, Optional[str]]:
         if not password or len(password) < 8:
@@ -789,111 +681,6 @@ class AuthenticationManager:
         except DB_ERRORS as e:
             logger.error(f"Failed to get user info: {e}")
             return None
-
-    def generate_verification_token(
-        self, user_id: str
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """
-        Generate email verification token
-
-        Args:
-            user_id: User identifier
-
-        Returns:
-            Tuple: (success, token, error_message)
-        """
-        try:
-            # Generate secure random token (URL-safe)
-            token = secrets.token_urlsafe(32)
-            token_hash = hashlib.sha256(token.encode()).hexdigest()
-            token_id = f"verify_{secrets.token_hex(8)}"
-
-            # Token expires in 24 hours
-            created_at = datetime.now(timezone.utc)
-            expires_at = created_at + timedelta(hours=24)
-
-            # Store token in database
-            self.db.execute_write(
-                """
-                INSERT INTO auth_tokens (token_id, user_id, token_type, token_hash, created_at, expires_at)
-                VALUES (?, ?, 'email_verification', ?, ?, ?)
-                """,
-                (
-                    token_id,
-                    user_id,
-                    token_hash,
-                    created_at.isoformat(),
-                    expires_at.isoformat(),
-                ),
-            )
-
-            logger.info(f"Email verification token generated for user: {user_id}")
-            return True, token, None
-
-        except DB_ERRORS as e:
-            logger.error(f"Failed to generate verification token: {e}")
-            return False, None, str(e)
-
-    def verify_email_token(
-        self, token: str
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """
-        Verify email verification token and mark email as verified
-
-        Args:
-            token: Verification token from email link
-
-        Returns:
-            Tuple: (success, user_id, error_message)
-        """
-        try:
-            token_hash = hashlib.sha256(token.encode()).hexdigest()
-            now = datetime.now(timezone.utc)
-
-            # Find valid token
-            result = self.db.execute_read(
-                """
-                SELECT token_id, user_id, expires_at
-                FROM auth_tokens
-                WHERE token_hash = ? AND token_type = 'email_verification'
-                  AND is_valid = 1 AND used_at IS NULL
-                """,
-                (token_hash,),
-            )
-
-            if not result:
-                return False, None, "Invalid or expired verification token"
-
-            token_id, user_id, expires_at = result[0]
-
-            # Check expiration using proper datetime comparison
-            expires_dt = (
-                datetime.fromisoformat(expires_at)
-                if isinstance(expires_at, str)
-                else expires_at
-            )
-            if expires_dt.tzinfo is None:
-                expires_dt = expires_dt.replace(tzinfo=timezone.utc)
-            if expires_dt < now:
-                return False, None, "Verification token has expired"
-
-            # Mark token as used
-            self.db.execute_write(
-                "UPDATE auth_tokens SET used_at = ?, is_valid = 0 WHERE token_id = ?",
-                (now.isoformat(), token_id),
-            )
-
-            # Mark email as verified
-            self.db.execute_write(
-                "UPDATE accounts SET email_verified = 1 WHERE parent_id = ?", (user_id,)
-            )
-
-            logger.info(f"Email verified for user: {user_id}")
-            return True, user_id, None
-
-        except DB_ERRORS as e:
-            logger.error(f"Email verification failed: {e}")
-            return False, None, str(e)
 
     def generate_password_reset_token(
         self, email: str

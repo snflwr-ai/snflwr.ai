@@ -1019,7 +1019,9 @@ class _SemanticClassifier:
             if require or (age is not None and age < 13):
                 logger.warning(
                     "Safety classifier unavailable — failing closed (age=%s, "
-                    "required=%s).", age, require,
+                    "required=%s).",
+                    age,
+                    require,
                 )
                 return _block(
                     Severity.MAJOR,

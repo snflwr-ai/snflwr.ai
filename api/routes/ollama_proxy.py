@@ -88,6 +88,42 @@ def _get_user_from_headers(request: Request) -> tuple:
     return user_id, role
 
 
+def _effective_role(request: Request, session: AuthSession) -> str:
+    """Resolve the trustworthy role for an authenticated proxy request.
+
+    The ``X-OpenWebUI-User-Role`` header is only honoured when the caller
+    authenticated with the internal API key (``user_id == "internal_service"``,
+    i.e. Open WebUI stamping its own authenticated user). Any other caller holds
+    a real user session, so we use the authenticated session role — never a
+    client-supplied header — exactly as ``proxy_chat`` does (finding F1).
+    """
+    if session.user_id == "internal_service":
+        _, role = _get_user_from_headers(request)
+    else:
+        role = session.role
+    return role
+
+
+def _admin_only(request: Request, session: AuthSession) -> Optional[Response]:
+    """Gate an endpoint to admins. Returns a 403 response for non-admins, else None.
+
+    Used for the raw inference (``/api/generate``, ``/api/embed*``) and
+    model-management (``/api/pull|delete|copy``) endpoints, which are NOT part of
+    the student flow — Open WebUI drives all user-facing generation through
+    ``/api/chat`` (which runs the safety pipeline). Without this gate a non-admin
+    session could reach raw, unfiltered model output or mutate the model set.
+    """
+    if _effective_role(request, session) != "admin":
+        logger.info(
+            "Blocked non-admin access to %s %s", request.method, request.url.path
+        )
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "This endpoint is restricted to administrators."},
+        )
+    return None
+
+
 def _student_visible_models() -> set:
     """Model names a non-admin (student) may see in the chat dropdown.
 
@@ -696,32 +732,67 @@ async def proxy_show(request: Request) -> Response:
 
 
 @router.post("/generate")
-async def proxy_generate(request: Request) -> Response:
+async def proxy_generate(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    # Admin-only: raw completion bypasses the /api/chat safety pipeline and would
+    # return UNFILTERED model output to a child. Students use /api/chat only.
+    blocked = _admin_only(request, session)
+    if blocked is not None:
+        return blocked
     return await _proxy_to_ollama(request, "/api/generate")
 
 
 @router.post("/embed")
-async def proxy_embed(request: Request) -> Response:
+async def proxy_embed(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    blocked = _admin_only(request, session)
+    if blocked is not None:
+        return blocked
     return await _proxy_to_ollama(request, "/api/embed")
 
 
 @router.post("/embeddings")
-async def proxy_embeddings(request: Request) -> Response:
+async def proxy_embeddings(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    blocked = _admin_only(request, session)
+    if blocked is not None:
+        return blocked
     return await _proxy_to_ollama(request, "/api/embeddings")
 
 
 @router.delete("/delete")
-async def proxy_delete(request: Request) -> Response:
+async def proxy_delete(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    # Admin-only: mutates the installed model set (destructive).
+    blocked = _admin_only(request, session)
+    if blocked is not None:
+        return blocked
     return await _proxy_to_ollama(request, "/api/delete")
 
 
 @router.post("/pull")
-async def proxy_pull(request: Request) -> Response:
+async def proxy_pull(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    # Admin-only: could introduce an unvetted (uncensored) model.
+    blocked = _admin_only(request, session)
+    if blocked is not None:
+        return blocked
     return await _proxy_to_ollama(request, "/api/pull")
 
 
 @router.post("/copy")
-async def proxy_copy(request: Request) -> Response:
+async def proxy_copy(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    # Admin-only: mutates the installed model set.
+    blocked = _admin_only(request, session)
+    if blocked is not None:
+        return blocked
     return await _proxy_to_ollama(request, "/api/copy")
 
 

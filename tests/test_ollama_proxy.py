@@ -746,7 +746,12 @@ class TestStreamChatFromOllama:
 
 
 class TestPassThroughEndpoints:
-    """Cover all single-line pass-through handlers (lines 325-360)."""
+    """Cover the single-line pass-through handlers.
+
+    generate/embed/embeddings/pull/delete/copy are admin-only (P0 gate); the
+    admin path reaches them with X-OpenWebUI-User-Role: admin via Open WebUI.
+    show/version remain ungated reads. Student-blocked cases live in
+    test_proxy_generate_gate.py."""
 
     def _get_client(self):
         from fastapi.testclient import TestClient
@@ -769,7 +774,7 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"response": "hi"}),
         ):
-            resp = client.post("/api/generate", json={"model": "test", "prompt": "hi"})
+            resp = client.post("/api/generate", json={"model": "test", "prompt": "hi"}, headers={"X-OpenWebUI-User-Role": "admin"})
             assert resp.status_code == 200
 
     def test_embed_endpoint(self):
@@ -779,7 +784,7 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"embedding": [0.1]}),
         ):
-            resp = client.post("/api/embed", json={"model": "test", "input": "hi"})
+            resp = client.post("/api/embed", json={"model": "test", "input": "hi"}, headers={"X-OpenWebUI-User-Role": "admin"})
             assert resp.status_code == 200
 
     def test_embeddings_endpoint(self):
@@ -789,7 +794,7 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"embedding": [0.1]}),
         ):
-            resp = client.post("/api/embeddings", json={"model": "test", "prompt": "hi"})
+            resp = client.post("/api/embeddings", json={"model": "test", "prompt": "hi"}, headers={"X-OpenWebUI-User-Role": "admin"})
             assert resp.status_code == 200
 
     def test_delete_endpoint(self):
@@ -799,7 +804,7 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={}),
         ):
-            resp = client.request("DELETE", "/api/delete", json={"name": "test"})
+            resp = client.request("DELETE", "/api/delete", json={"name": "test"}, headers={"X-OpenWebUI-User-Role": "admin"})
             assert resp.status_code == 200
 
     def test_pull_endpoint(self):
@@ -809,7 +814,7 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"status": "ok"}),
         ):
-            resp = client.post("/api/pull", json={"name": "test"})
+            resp = client.post("/api/pull", json={"name": "test"}, headers={"X-OpenWebUI-User-Role": "admin"})
             assert resp.status_code == 200
 
     def test_copy_endpoint(self):
@@ -819,7 +824,7 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={}),
         ):
-            resp = client.post("/api/copy", json={"source": "a", "destination": "b"})
+            resp = client.post("/api/copy", json={"source": "a", "destination": "b"}, headers={"X-OpenWebUI-User-Role": "admin"})
             assert resp.status_code == 200
 
     def test_version_endpoint(self):

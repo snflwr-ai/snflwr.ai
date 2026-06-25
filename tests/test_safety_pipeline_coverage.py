@@ -96,7 +96,7 @@ class TestKeywordPatternCompilationFailure:
             "violence": ["badkeyword"],
         }
 
-        with patch("safety.pipeline.safety_config") as mock_config:
+        with patch("safety.pipeline.pattern_matcher.safety_config") as mock_config:
             mock_config.PROHIBITED_KEYWORDS = fake_config_keywords
             with patch("safety.pipeline.re.compile", side_effect=patched_compile):
                 # _build_prohibited_patterns is called during __init__
@@ -114,7 +114,7 @@ class TestKeywordPatternCompilationFailure:
             "violence": ["", "gun"],
         }
 
-        with patch("safety.pipeline.safety_config") as mock_config:
+        with patch("safety.pipeline.pattern_matcher.safety_config") as mock_config:
             mock_config.PROHIBITED_KEYWORDS = fake_config_keywords
             matcher = _PatternMatcher()
             kw_list = [kw for _, kw, _ in matcher._prohibited_patterns]
@@ -140,7 +140,7 @@ class TestSharedPatternAllowlistSkip:
         prohibited list interferes.
         """
         from safety.pipeline import _PatternMatcher
-        import safety.pipeline as pipeline_mod
+        import safety.pipeline.pattern_matcher as pipeline_mod
 
         matcher = _PatternMatcher()
 
@@ -169,7 +169,7 @@ class TestSharedPatternEducationalExemption:
         """A shared VIOLENCE pattern with desc starting 'violence term'
         should be skipped if educational context is present."""
         from safety.pipeline import _PatternMatcher
-        import safety.pipeline as pipeline_mod
+        import safety.pipeline.pattern_matcher as pipeline_mod
 
         matcher = _PatternMatcher()
 
@@ -190,7 +190,7 @@ class TestSharedPatternEducationalExemption:
     def test_violence_term_without_educational_context_blocked(self):
         """A shared VIOLENCE pattern without educational context blocks."""
         from safety.pipeline import _PatternMatcher
-        import safety.pipeline as pipeline_mod
+        import safety.pipeline.pattern_matcher as pipeline_mod
 
         matcher = _PatternMatcher()
 
@@ -224,7 +224,7 @@ class TestSubstringEvasionDetection:
     def test_substring_evasion_detected(self):
         """When a prohibited substring is found in normalized text, block."""
         from safety.pipeline import _PatternMatcher, Category
-        import safety.pipeline as pipeline_mod
+        import safety.pipeline.pattern_matcher as pipeline_mod
 
         matcher = _PatternMatcher()
 

@@ -35,6 +35,10 @@ def test_backup_postgresql_defaults_unchanged(backup_obj):
         ok, result = backup_obj.backup_postgresql()
     assert ok is True
     assert "snflwr_postgres_" in result
+    # Defaults must still target the primary snflwr DB/user, not openwebui.
+    from config import system_config
+    assert captured["cmd"][captured["cmd"].index("-d") + 1] == system_config.POSTGRES_DB
+    assert captured["cmd"][captured["cmd"].index("-U") + 1] == system_config.POSTGRES_USER
 
 
 def test_backup_postgresql_targets_openwebui_with_owui_creds(backup_obj):

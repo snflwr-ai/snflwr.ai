@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
+import importlib
 import os
 import httpx
 import json
@@ -1105,7 +1106,16 @@ class TestCrisisEscalation:
             patch.object(proxy_mod, "_get_profile_for_user",
                          new=AsyncMock(return_value="profile-sh")),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
-            patch("safety.incident_logger.incident_logger", mock_incident),
+            # Patch the module object directly. `safety/__init__.py` re-exports
+            # the `incident_logger` instance, which shadows the same-named
+            # submodule, so the string target "safety.incident_logger.incident_logger"
+            # resolves to the instance (not the module) under Python 3.10's mock and
+            # raises AttributeError. importlib.import_module returns the real module.
+            patch.object(
+                importlib.import_module("safety.incident_logger"),
+                "incident_logger",
+                mock_incident,
+            ),
         ):
             resp = client.post(
                 "/api/chat",
@@ -1145,7 +1155,16 @@ class TestCrisisEscalation:
             patch.object(proxy_mod, "_get_profile_for_user",
                          new=AsyncMock(return_value="profile-x")),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
-            patch("safety.incident_logger.incident_logger", mock_incident),
+            # Patch the module object directly. `safety/__init__.py` re-exports
+            # the `incident_logger` instance, which shadows the same-named
+            # submodule, so the string target "safety.incident_logger.incident_logger"
+            # resolves to the instance (not the module) under Python 3.10's mock and
+            # raises AttributeError. importlib.import_module returns the real module.
+            patch.object(
+                importlib.import_module("safety.incident_logger"),
+                "incident_logger",
+                mock_incident,
+            ),
         ):
             resp = client.post(
                 "/api/chat",
@@ -1185,7 +1204,16 @@ class TestCrisisEscalation:
             patch.object(proxy_mod, "_forward_request",
                          new_callable=AsyncMock, return_value=ollama_resp),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
-            patch("safety.incident_logger.incident_logger", mock_incident),
+            # Patch the module object directly. `safety/__init__.py` re-exports
+            # the `incident_logger` instance, which shadows the same-named
+            # submodule, so the string target "safety.incident_logger.incident_logger"
+            # resolves to the instance (not the module) under Python 3.10's mock and
+            # raises AttributeError. importlib.import_module returns the real module.
+            patch.object(
+                importlib.import_module("safety.incident_logger"),
+                "incident_logger",
+                mock_incident,
+            ),
         ):
             resp = client.post(
                 "/api/chat",

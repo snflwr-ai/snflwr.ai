@@ -134,7 +134,7 @@ reseed_owui() {
 # Component: owui  (Open WebUI image)
 # =============================================================================
 owui_label() { echo "Open WebUI"; }
-owui_current() { get_env_var OWU_IMAGE_TAG "v0.8.12"; }
+owui_current() { get_env_var OWU_IMAGE_TAG "v0.9.6"; }
 owui_resolve_target() {
     if [[ -n "${1:-}" ]]; then echo "$1"; else
         python3 "$SCRIPT_DIR/gh_latest_release.py" open-webui/open-webui

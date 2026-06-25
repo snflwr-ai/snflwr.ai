@@ -70,6 +70,34 @@ def test_verified_under13_allowed(monkeypatch):
     chk.assert_called()   # passed the COPPA gate into the safety pipeline
 
 
+def test_under13_failclosed_on_lookup_error(monkeypatch):
+    """If the consent lookup ERRORS for a known under-13 profile, fail CLOSED
+    (block) rather than allow — the COPPA control must not fail open on a DB
+    hiccup. Age is resolved independently (via ProfileManager); only the gate's
+    consent query raises here."""
+    from core.authentication import auth_manager
+    from core.profile_manager import ProfileManager
+
+    class _Profile:
+        age = 9
+
+    client = TestClient(_app())
+    with (
+        patch("api.routes.ollama_proxy._get_profile_for_user",
+              new_callable=AsyncMock, return_value="prof_child"),
+        patch.object(ProfileManager, "get_profile", return_value=_Profile()),
+        patch.object(auth_manager.db, "execute_query",
+                     side_effect=RuntimeError("db down")),
+        patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
+        patch("api.routes.ollama_proxy._forward_request", new_callable=AsyncMock) as fwd,
+    ):
+        resp = client.post("/api/chat", json=_body(), headers=_student_headers())
+    assert resp.status_code == 200
+    assert "parent" in json.dumps(resp.json()).lower()   # blocked with consent message
+    chk.assert_not_called()   # gated before safety/model
+    fwd.assert_not_called()
+
+
 def test_teen_not_coppa_gated(monkeypatch):
     """13+ is never COPPA-gated even if coppa_verified is 0."""
     from core.authentication import auth_manager

@@ -569,6 +569,46 @@ def vacuum_database() -> bool:
         return False
 
 
+@celery_app.task(name='tasks.background_tasks.backup_database')
+def backup_database() -> bool:
+    """
+    Run a full database backup (local + opt-in off-host / Open WebUI volume).
+
+    Wraps scripts.backup_database.DatabaseBackup.run_backup, which already
+    handles rotation, the fail-closed off-host push, and the dead-man's-switch
+    heartbeat. Registered in Celery Beat (daily) so backups actually run — the
+    tooling previously existed but was never scheduled, so no shipped deployment
+    backed up automatically.
+
+    Raises:
+        RuntimeError: if the backup did not fully succeed. Raising (rather than
+        returning False) ensures a failed backup surfaces as a *failed* Celery
+        task instead of a silent success — an unmonitored backup that stops
+        running is a backup that didn't happen.
+
+    Returns:
+        True when the backup completed successfully.
+    """
+    from scripts.backup_database import DatabaseBackup
+
+    backup = DatabaseBackup()
+
+    # BACKUP_ENABLED=false is a deliberate operator choice (run_backup returns
+    # False for it). Skip cleanly rather than raising — otherwise the daily task
+    # would "fail" every run in deployments that intentionally disable backups.
+    if not backup.backup_enabled:
+        logger.info("Scheduled database backup skipped (BACKUP_ENABLED=false)")
+        return True
+
+    logger.info("Starting scheduled database backup")
+    if backup.run_backup():
+        logger.info("Scheduled database backup completed successfully")
+        return True
+
+    # run_backup already logged the cause and pinged the heartbeat /fail URL.
+    raise RuntimeError("Scheduled database backup failed (see backup logs)")
+
+
 # ============================================================================
 # AI PROCESSING TASKS
 # ============================================================================

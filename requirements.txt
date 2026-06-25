@@ -48,6 +48,7 @@ python-json-logger==2.0.7     # JSON logging formatter (kept at 2.x; 3.x/4.x hav
 schedule==1.2.2               # Task scheduling for data retention
 sentry-sdk==2.53.0            # Error tracking and performance monitoring (CVE-2024-40647 fix in 2.8.0)
 prometheus_client==0.21.1     # Prometheus metrics export
+langfuse==2.60.3              # Self-hosted LLM observability (metadata-only tracing)
 
 # Build & Packaging
 setuptools==78.1.1            # Package utilities (security patches for CVE-2024-6345)

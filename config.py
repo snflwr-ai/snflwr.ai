@@ -182,6 +182,14 @@ class _SystemConfig:
     REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
     REDIS_DB: int = int(os.getenv("REDIS_DB") or "0")
 
+    # Self-hosted Langfuse observability (enterprise). Default OFF; when on, the
+    # proxy emits METADATA-ONLY traces (no chat content) — see utils/observability.py.
+    LANGFUSE_ENABLED: bool = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
+    LANGFUSE_HOST: str = os.getenv("LANGFUSE_HOST", "http://langfuse:3000")
+    LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_HASH_SALT: str = os.getenv("LANGFUSE_HASH_SALT", "")
+
     # CORS Configuration
     CORS_ORIGINS: List[str] = field(
         default_factory=lambda: os.getenv(

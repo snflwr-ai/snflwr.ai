@@ -8,8 +8,8 @@ none of these symbols are patched by the test suite via ``core.authentication``
 (``verify_email_token`` is only ever stubbed on Mock instances of the manager).
 """
 
-import secrets
 import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 

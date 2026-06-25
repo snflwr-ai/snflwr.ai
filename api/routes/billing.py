@@ -6,16 +6,16 @@ parent/admin manages the subscription. Holds no card data (Lemon Squeezy hosts
 checkout) and no student data.
 """
 
-import time
 import logging
+import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
+from api.middleware.auth import require_admin
 from config import system_config
 from core import licensing
-from api.middleware.auth import require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin)])

@@ -57,15 +57,16 @@ Example Client Code:
 
 import asyncio
 import json
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
 
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+
+from api.middleware.auth import get_current_session
 from api.websocket_server import (
-    websocket_manager,
     authenticate_websocket,
     handle_websocket_message,
+    websocket_manager,
 )
 from core.authentication import AuthSession
-from api.middleware.auth import get_current_session
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

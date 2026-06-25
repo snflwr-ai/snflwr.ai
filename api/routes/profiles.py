@@ -8,52 +8,48 @@ Child profile CRUD operations
 """
 
 import re
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator, Field
-from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
-from core.profile_manager import (
-    ProfileManager,
-    ProfileError,
-    ProfileValidationError,
-    ProfileNotFoundError,
-    PermissionDeniedError,
-)
-from utils.input_validation import (
-    validate_parent_id,
-    validate_name,
-    validate_age,
-    validate_grade_level,
-    validate_model_role,
-    UUID_HEX_PATTERN,
-    MIN_NAME_LENGTH,
-    MAX_NAME_LENGTH,
-    VALID_GRADE_LEVELS,
-    VALID_MODEL_ROLES,
-    MIN_AGE,
-    MAX_AGE,
-)
-from core.authentication import auth_manager, AuthSession
-from core.age_verification import (
-    AgeVerificationManager,
-    calculate_age_from_birthdate,
-    validate_birthdate,
-    AgeVerificationError,
-    ParentalConsentRequired,
-)
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
+
 from api.middleware.auth import (
-    get_current_session,
     VerifyParentAccess,
     VerifyProfileAccess,
     audit_log,
+    get_current_session,
 )
+from core.age_verification import (
+    AgeVerificationError,
+    AgeVerificationManager,
+    calculate_age_from_birthdate,
+    validate_birthdate,
+)
+from core.authentication import AuthSession, auth_manager
+from core.profile_manager import (
+    PermissionDeniedError,
+    ProfileError,
+    ProfileManager,
+    ProfileNotFoundError,
+    ProfileValidationError,
+)
+from safety.incident_logger import incident_logger
 from storage.conversation_store import conversation_store
 from storage.db_adapters import DB_ERRORS
-from safety.incident_logger import incident_logger
-from utils.rate_limiter import RateLimiter
+from utils.input_validation import (
+    MAX_AGE,
+    MAX_NAME_LENGTH,
+    MIN_AGE,
+    MIN_NAME_LENGTH,
+    validate_grade_level,
+    validate_model_role,
+    validate_name,
+    validate_parent_id,
+)
 from utils.logger import get_logger, sanitize_log_value
+from utils.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
@@ -221,7 +217,7 @@ def create_profile(
             # Use provided age (less accurate, but allowed)
             calculated_age = request.age
             logger.warning(
-                f"Profile created with age only (no birthdate) - less accurate for COPPA"
+                "Profile created with age only (no birthdate) - less accurate for COPPA"
             )
 
         else:

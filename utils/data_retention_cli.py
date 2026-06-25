@@ -6,13 +6,13 @@ Command-line utility for managing COPPA-compliant data retention
 """
 
 import argparse
-import sys
 import json
+import sys
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 
-from utils.data_retention import data_retention_manager
 from config import safety_config
+from utils.data_retention import data_retention_manager
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -264,7 +264,7 @@ Examples:
                         total_deleted += deleted
                         print(f"      Deleted: {deleted:,} records")
                     else:
-                        print(f"      Status: Completed")
+                        print("      Status: Completed")
                 else:
                     error = task_result.get("error", "Unknown error")
                     print(f"      Error: {error}")
@@ -288,6 +288,7 @@ Examples:
     def _dry_run_cleanup(self) -> int:
         """Show what cleanup would delete without deleting anything"""
         from datetime import timedelta
+
         from storage.database import db_manager
         from storage.db_adapters import DB_ERRORS
 
@@ -435,8 +436,8 @@ Examples:
             # Compliance summary
             print("[LOCKED] Compliance Status:")
             print(f"   {'─' * 60}")
-            print(f"   Framework: COPPA/FERPA")
-            print(f"   Data Minimization: [OK] Active")
+            print("   Framework: COPPA/FERPA")
+            print("   Data Minimization: [OK] Active")
             print(
                 f"   Automatic Cleanup: {'[OK] Enabled' if safety_config.DATA_CLEANUP_ENABLED else '[FAIL] Disabled'}"
             )

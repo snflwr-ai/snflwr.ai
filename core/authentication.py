@@ -1,10 +1,10 @@
-import uuid
+import hashlib
 import secrets
 import threading
-import hashlib
-from datetime import datetime, timedelta, timezone
-from typing import Any, Tuple, Optional, Dict
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional, Tuple
 
 from storage.db_adapters import DB_ERRORS
 
@@ -14,7 +14,7 @@ except ImportError:
     RedisError = OSError  # type: ignore[misc,assignment]
 
 try:
-    from argon2 import PasswordHasher, exceptions as argon2_exceptions
+    from argon2 import PasswordHasher
 except ImportError:
     # Secure fallback PasswordHasher using PBKDF2 for environments without argon2
     from storage.encryption import EncryptionManager
@@ -39,10 +39,10 @@ except ImportError:
             return self._enc_manager.verify_password(password, pbkdf2_hash)
 
 
-from utils.logger import get_logger, mask_email
-from core.email_crypto import get_email_crypto
-from core.auth_session_cache import SessionCacheMixin
 from core.auth_email_verification import EmailVerificationMixin
+from core.auth_session_cache import SessionCacheMixin
+from core.email_crypto import get_email_crypto
+from utils.logger import get_logger, mask_email
 
 logger = get_logger(__name__)
 
@@ -386,9 +386,6 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin):
         try:
             # Check cache first for parent_id (performance optimization)
             cached_session = self._get_session_from_cache(session_token)
-            cached_parent_id = (
-                cached_session.get("parent_id") if cached_session else None
-            )
 
             # Always verify token validity and expiry from database
             # This ensures immediate effect when tokens are invalidated or expired
@@ -705,7 +702,7 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin):
 
             if not result:
                 # Don't reveal if email exists - return success anyway for security
-                logger.warning(f"Password reset requested for non-existent email")
+                logger.warning("Password reset requested for non-existent email")
                 return True, None, None
 
             user_id = (

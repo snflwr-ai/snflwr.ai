@@ -13,15 +13,14 @@ Addresses key management challenges for schools:
 Designed for non-technical administrators while maintaining security.
 """
 
+import base64
 import hashlib
-import secrets
 import json
 import os
+import secrets
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
-from datetime import datetime, timedelta, timezone
-from functools import reduce
-import base64
+from typing import Any, Dict, List, Optional, Tuple
 
 from utils.logger import get_logger
 

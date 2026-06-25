@@ -3,14 +3,12 @@ Database Connection Pooling for PostgreSQL
 Optimized connection management for production deployments
 """
 
-import os
-from contextlib import contextmanager
-from typing import Optional, Any, Dict
-import psycopg2
-from psycopg2 import pool, extras
-from psycopg2.extensions import connection as Connection
 import threading
-import time
+from contextlib import contextmanager
+from typing import Any, Dict, Optional
+
+import psycopg2
+from psycopg2 import extras, pool
 
 from config import system_config
 from utils.logger import get_logger
@@ -54,7 +52,7 @@ class PostgreSQLConnectionPool:
             "errors": 0,
         }
 
-        logger.info(f"Initializing PostgreSQL connection pool:")
+        logger.info("Initializing PostgreSQL connection pool:")
         logger.info(f"  Min connections: {self.min_connections}")
         logger.info(f"  Max connections: {self.max_connections}")
         logger.info(f"  Connection timeout: {connection_timeout}s")

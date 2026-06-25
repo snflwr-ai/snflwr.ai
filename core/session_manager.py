@@ -1,13 +1,13 @@
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-import uuid
 import platform
 import threading
-from typing import Optional, List
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
-from utils.logger import get_logger, sanitize_log_value
-from utils.cache import cached
 from storage.db_adapters import DB_ERRORS
+from utils.cache import cached
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -116,7 +116,7 @@ class SessionManager:
                         f"Failed to persist session {session_id!r} to database: {e}"
                     )
                     raise SessionError(
-                        f"Could not create session: database write failed"
+                        "Could not create session: database write failed"
                     ) from e
 
             return Session(
@@ -221,7 +221,7 @@ class SessionManager:
                     f"Failed to persist session end for {sanitize_log_value(session_id)!r}: {e}"
                 )
                 raise SessionError(
-                    f"Could not end session: database write failed"
+                    "Could not end session: database write failed"
                 ) from e
 
         return True

@@ -27,12 +27,12 @@ Usage:
         ...
 """
 
-import time
 import threading
+import time
+from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Optional, Any
 from functools import wraps
-from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 from utils.logger import get_logger
 
@@ -42,10 +42,9 @@ logger = get_logger(__name__)
 _metrics_available = False
 try:
     from utils.metrics import (
-        record_circuit_breaker_state,
-        record_circuit_breaker_transition,
-        record_circuit_breaker_request,
         circuit_breaker_failure_count,
+        record_circuit_breaker_request,
+        record_circuit_breaker_transition,
     )
 
     _metrics_available = True

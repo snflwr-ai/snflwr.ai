@@ -5,9 +5,10 @@ Serves the self-contained admin dashboard SPA for platform management.
 [LOCKED] SECURED: Both routes require admin authentication.
 """
 
+from pathlib import Path
+
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
-from pathlib import Path
 
 from utils.logger import get_logger
 

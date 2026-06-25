@@ -11,17 +11,17 @@ Handles SMTP email delivery for safety notifications
 
 import smtplib
 import ssl
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from html import escape as html_escape
-from typing import Optional, Dict, Any, List
-from urllib.parse import quote as url_quote, urlparse
 from datetime import datetime, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from html import escape as html_escape
+from typing import Optional
+from urllib.parse import urlparse
 
 from config import system_config
+from core.email_crypto import get_email_crypto
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
-from core.email_crypto import get_email_crypto
 from utils.logger import get_logger, mask_email, sanitize_log_value
 
 logger = get_logger(__name__)

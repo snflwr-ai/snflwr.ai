@@ -4,15 +4,14 @@ Handles model loading, caching, memory management, and inference
 """
 
 import threading
-import time
-from typing import Optional, Dict, List, Tuple, Any
-from datetime import datetime, timedelta, timezone
-from dataclasses import dataclass
 from collections import OrderedDict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
-from utils.ollama_client import OllamaClient, OllamaError
-from utils.logger import get_logger
 from config import system_config
+from utils.logger import get_logger
+from utils.ollama_client import OllamaClient, OllamaError
 
 logger = get_logger(__name__)
 

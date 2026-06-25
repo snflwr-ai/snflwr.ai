@@ -14,9 +14,9 @@ logger = get_logger(__name__)
 
 try:
     import sentry_sdk
+    from sentry_sdk.integrations.celery import CeleryIntegration
     from sentry_sdk.integrations.logging import LoggingIntegration
     from sentry_sdk.integrations.redis import RedisIntegration
-    from sentry_sdk.integrations.celery import CeleryIntegration
 
     _SENTRY_AVAILABLE = True
 except ImportError:

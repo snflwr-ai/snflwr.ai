@@ -13,23 +13,23 @@ Methods supported:
 - Email + electronic signature
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends, Request
-from pydantic import BaseModel, EmailStr
-from typing import Optional
-from datetime import datetime, timedelta, timezone
 import secrets
-import hashlib
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, EmailStr
+
+from api.middleware.auth import audit_log, get_current_session
 from config import system_config
-from core.authentication import auth_manager, AuthSession
 from core.age_verification import (
-    AgeVerificationManager,
     AgeVerificationError,
+    AgeVerificationManager,
     generate_consent_verification_token,
 )
+from core.authentication import AuthSession, auth_manager
 from core.email_service import email_service
 from storage.db_adapters import DB_ERRORS
-from api.middleware.auth import get_current_session, audit_log
 from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
@@ -75,8 +75,6 @@ async def request_parental_consent(
     [LOCKED] SECURED: Parents can only request consent for their own children
     """
     try:
-        age_manager = AgeVerificationManager(auth_manager.db)
-
         # Verify this is the child's parent
         profile_rows = auth_manager.db.execute_query(
             "SELECT parent_id, age FROM child_profiles WHERE profile_id = ?",

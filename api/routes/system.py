@@ -67,6 +67,7 @@ async def get_profile_for_user(user_id: str, authorization: str = Header(None)):
     Returns {"profile_id": "..."} or {"profile_id": "no_profile_<user_id>"}.
     """
     import hmac as _hmac
+
     from config import INTERNAL_API_KEY
 
     token = (

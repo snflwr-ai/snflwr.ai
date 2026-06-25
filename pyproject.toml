@@ -1,0 +1,32 @@
+# Tooling configuration for snflwr.ai.
+#
+# Ruff is the linter (fast pyflakes + import sorting + a curated pycodestyle
+# subset). Black remains the formatter (see CI: `black --check`); Ruff's import
+# sorting is black-compatible, so the two coexist.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+# Match the packages gated in CI (api/core/safety/storage/utils).
+src = ["api", "core", "safety", "storage", "utils"]
+
+[tool.ruff.lint]
+# Start high-signal and blocking, then ratchet up over time:
+#   E/W  pycodestyle    F  pyflakes (real bugs)   I  import sorting
+select = ["E", "W", "F", "I"]
+ignore = [
+    "E501",  # line-too-long — 473 pre-existing; defer to a formatting pass.
+    "E402",  # module-import-not-at-top — many are deliberate inline imports
+             #   used to break circular dependencies; not bugs.
+    "E741",  # ambiguous variable name — one pre-existing `l`; cosmetic.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Intentional re-export hubs: imports are re-exported for sibling modules and
+# the admin "patchability contract" (tests patch api.routes.admin.<symbol>), so
+# F401 "unused import" does not apply.
+"api/routes/admin/_common.py" = ["F401"]
+"**/__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "core", "safety", "storage", "utils", "config", "tasks"]

@@ -38,13 +38,17 @@ jobs:
       run: |
         black --check --diff api/ core/ safety/ storage/ utils/
 
+    - name: Lint with Ruff
+      run: |
+        ruff check api/ core/ safety/ storage/ utils/
+
     - name: Run Pylint
       run: |
         pylint api/ core/ safety/ storage/ utils/ --output-format=colorized --fail-under=5.0
 
     - name: Run MyPy type checking
       run: |
-        mypy api/ core/ safety/ storage/ utils/ --ignore-missing-imports --no-strict-optional || echo "::warning::Type checking issues found"
+        mypy api/ core/ safety/ storage/ utils/ --ignore-missing-imports --no-strict-optional
 
   # Job 2: Security Scanning
   security:

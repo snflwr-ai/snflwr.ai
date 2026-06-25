@@ -3,12 +3,12 @@ Database Adapters
 Provides unified interface for SQLite and PostgreSQL databases
 """
 
-import sqlite3
 import os
+import sqlite3
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Any, Optional
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, List, Tuple
 
 try:
     import psycopg2
@@ -182,7 +182,7 @@ class SQLiteAdapter(DatabaseAdapter):
                     cursor.close()
                 except sqlite3.Error as e:
                     logger.debug(f"Failed to close cursor (non-critical): {e}")
-        except sqlite3.Error as e:
+        except sqlite3.Error:
             if auto_commit:
                 conn.rollback()
             raise
@@ -201,7 +201,7 @@ class SQLiteAdapter(DatabaseAdapter):
                     cursor.close()
                 except sqlite3.Error as e:
                     logger.debug(f"Failed to close cursor (non-critical): {e}")
-        except sqlite3.Error as e:
+        except sqlite3.Error:
             conn.rollback()
             raise
 
@@ -340,7 +340,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
             cursor.execute(query, params)
             results = cursor.fetchall()
             return results
-        except psycopg2.Error as e:
+        except psycopg2.Error:
             # Rollback to clear InFailedSqlTransaction state
             try:
                 conn.rollback()
@@ -377,7 +377,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
             if auto_commit:
                 conn.commit()
             return rowcount
-        except psycopg2.Error as e:
+        except psycopg2.Error:
             if auto_commit:
                 conn.rollback()
             raise
@@ -399,7 +399,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
             rowcount = cursor.rowcount
             conn.commit()
             return rowcount
-        except psycopg2.Error as e:
+        except psycopg2.Error:
             conn.rollback()
             raise
         finally:

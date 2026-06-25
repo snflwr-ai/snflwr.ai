@@ -5,12 +5,13 @@ Automated cleanup of old data according to retention policies
 """
 
 import threading
-import schedule
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-from config import safety_config, system_config
+import schedule
+
+from config import safety_config
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger

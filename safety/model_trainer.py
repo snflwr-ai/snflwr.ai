@@ -4,13 +4,14 @@ Safety Model Self-Learning System
 Logs classification edge cases and failures, then uses them to improve the safety model
 """
 
-from typing import Optional, Dict, List, Tuple
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from utils.logger import get_logger
+from typing import Dict, List, Optional, Tuple
+
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
+from utils.logger import get_logger
 from utils.ollama_client import ollama_client
 
 logger = get_logger(__name__)

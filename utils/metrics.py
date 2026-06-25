@@ -29,20 +29,18 @@ Usage:
 """
 
 import time
-from functools import wraps
-from typing import Callable, Optional
 from contextlib import contextmanager
+from functools import wraps
+from typing import Callable
 
 from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    REGISTRY,
     Counter,
     Gauge,
     Histogram,
-    Summary,
     Info,
     generate_latest,
-    CONTENT_TYPE_LATEST,
-    REGISTRY,
-    CollectorRegistry,
 )
 
 from utils.logger import get_logger
@@ -399,7 +397,7 @@ def track_llm_request(model: str, operation: str):
                 duration = time.time() - start_time
                 record_llm_request(model, operation, "success", duration)
                 return result
-            except Exception as e:
+            except Exception:
                 duration = time.time() - start_time
                 record_llm_request(model, operation, "error", duration)
                 raise
@@ -412,7 +410,7 @@ def track_llm_request(model: str, operation: str):
                 duration = time.time() - start_time
                 record_llm_request(model, operation, "success", duration)
                 return result
-            except Exception as e:
+            except Exception:
                 duration = time.time() - start_time
                 record_llm_request(model, operation, "error", duration)
                 raise

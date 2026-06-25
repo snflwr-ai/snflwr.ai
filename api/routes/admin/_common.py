@@ -15,26 +15,25 @@ so ``_pkg.DatabaseManager`` etc. resolve to the (possibly patched) attribute.
 """
 
 import importlib
-from typing import List, Optional
-
-from fastapi import APIRouter, HTTPException, Depends, Response, Request, Query
-from pydantic import BaseModel, EmailStr, Field
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, EmailStr, Field
+
+from api.middleware.auth import audit_log, require_admin
+from api.middleware.csrf_protection import set_csrf_cookie
+from config import system_config
+from core.age_verification import AgeVerificationManager
+from core.authentication import AuthSession, auth_manager, hash_session_token
+from core.email_crypto import get_email_crypto
 from storage.database import DatabaseManager
 from storage.db_adapters import DB_ERRORS
-from core.authentication import auth_manager, AuthSession, hash_session_token
-from core.email_crypto import get_email_crypto
 from storage.encryption import encryption_manager
-from api.middleware.auth import require_admin, audit_log
-from api.middleware.csrf_protection import set_csrf_cookie
-from utils.rate_limiter import RateLimiter
-from config import system_config
-
-from core.age_verification import AgeVerificationManager
 from utils.logger import get_logger, sanitize_log_value
+from utils.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
@@ -81,6 +80,7 @@ def _get_owui_token(session: "AuthSession") -> str:
 def _owui_find_user_by_email(open_webui_url: str, owui_token: str, email: str):
     """Look up an existing OWU user by email. Returns (user_dict, error) tuple."""
     import requests as http_client  # type: ignore[import-untyped]
+
     from utils.logger import get_logger as _get_logger
 
     _log = _get_logger(__name__)
@@ -98,7 +98,7 @@ def _owui_find_user_by_email(open_webui_url: str, owui_token: str, email: str):
                     return u, None
             return None, "User not found"
         return None, f"OWU users list error ({resp.status_code})"
-    except Exception as e:
+    except Exception:
         _log.exception("Unexpected error looking up OWU user by email")
         return None, "An internal error occurred"
 
@@ -129,6 +129,7 @@ def _owui_activate_user(open_webui_url: str, owui_token: str, user: dict):
 def _owui_delete_user(open_webui_url: str, owui_token: str, owui_user_id: str):
     """Delete an OWU user account. Best-effort — errors are logged, not raised."""
     import requests as http_client  # type: ignore[import-untyped]
+
     from utils.logger import get_logger as _get_logger
 
     _log = _get_logger(__name__)
@@ -159,6 +160,7 @@ def _owui_create_user(
     Returns (owui_user_id, error_detail) tuple.
     """
     import requests as http_client  # type: ignore[import-untyped]
+
     from utils.logger import get_logger as _get_logger
 
     _log = _get_logger(__name__)

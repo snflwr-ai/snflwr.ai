@@ -11,18 +11,17 @@ Features:
 - Log rotation with configurable size limits
 """
 
+import contextvars
+import json
 import logging
 import logging.handlers
-import sys
-import json
 import os
 import re
-import contextvars
-from pathlib import Path
-from typing import Optional, Dict, Any, Union
-from datetime import datetime, timezone
+import sys
 import threading
-import traceback
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Optional
 
 from config import system_config
 

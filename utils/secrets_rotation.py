@@ -29,16 +29,16 @@ Usage:
     await secret_manager.rotate_secret('ollama_api_key', new_value)
 """
 
-import os
 import asyncio
-import json
 import hashlib
+import json
+import os
 import threading
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any, Callable, Awaitable, Union
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import wraps
+from typing import Any, Awaitable, Callable, Dict, Optional, Union
 
 from utils.logger import get_logger
 
@@ -202,7 +202,7 @@ class SecretManager:
             self._secrets[name] = secret
 
             logger.info(
-                f"Registered secret",
+                "Registered secret",
                 extra={
                     "secret_name": name,
                     "has_initial_value": initial_value is not None,
@@ -359,7 +359,7 @@ class SecretManager:
             await self._execute_callbacks(name, new_value)
 
             logger.info(
-                f"Secret rotated successfully",
+                "Secret rotated successfully",
                 extra={
                     "secret_name": name,
                     "new_version": new_version_num,
@@ -418,7 +418,7 @@ class SecretManager:
         await self._persist_to_redis(name, secret)
 
         logger.warning(
-            f"Secret rolled back",
+            "Secret rolled back",
             extra={
                 "secret_name": name,
                 "rolled_back_to_version": secret.current_version.version,

@@ -5,15 +5,16 @@ Simplified, robust interface for Ollama operations with comprehensive error hand
 Includes circuit breaker pattern to prevent cascading failures
 """
 
-import requests  # type: ignore[import-untyped]
 import json
 import random
-from typing import Optional, Dict, List, Generator, Tuple, Callable
 import time
+from typing import Callable, Dict, List, Optional, Tuple
+
+import requests  # type: ignore[import-untyped]
 
 from config import system_config
+from utils.circuit_breaker import CircuitOpenError, ollama_circuit
 from utils.logger import get_logger, log_performance_metric
-from utils.circuit_breaker import ollama_circuit, CircuitOpenError
 
 logger = get_logger(__name__)
 

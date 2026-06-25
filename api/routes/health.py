@@ -20,10 +20,10 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from api.middleware.auth import require_admin
 from config import system_config
 from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger
-from api.middleware.auth import require_admin
 
 logger = get_logger(__name__)
 
@@ -80,8 +80,8 @@ async def health_check_detailed(session=Depends(require_admin)):
         from storage.database import db_manager
 
         db_manager.adapter.connect()
-        # Try a simple query
-        result = db_manager.adapter.execute_query("SELECT 1")
+        # Try a simple query (the call is the health probe; result unused)
+        db_manager.adapter.execute_query("SELECT 1")
         health["checks"]["database"] = {
             "status": "healthy",
             "type": system_config.DATABASE_TYPE,
@@ -297,7 +297,7 @@ async def prometheus_metrics(request: Request):
     from fastapi.responses import Response
 
     try:
-        from utils.metrics import get_metrics, get_content_type
+        from utils.metrics import get_content_type, get_metrics
 
         return Response(content=get_metrics(), media_type=get_content_type())
     except ImportError:

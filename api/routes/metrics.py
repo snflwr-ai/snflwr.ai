@@ -3,18 +3,19 @@ Prometheus Metrics Endpoint
 Exposes application metrics in Prometheus format for monitoring
 """
 
-from fastapi import APIRouter, Response, Depends
-from core.authentication import AuthSession
-from api.middleware.auth import require_admin
-from datetime import datetime, timezone
-import psutil
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from utils.logger import get_logger, logger_manager, sanitize_log_value
+import psutil
+from fastapi import APIRouter, Depends, Response
+
+from api.middleware.auth import require_admin
+from config import system_config
+from core.authentication import AuthSession
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
-from config import system_config
+from utils.logger import get_logger, logger_manager, sanitize_log_value
 
 logger = get_logger(__name__)
 

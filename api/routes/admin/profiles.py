@@ -1,25 +1,25 @@
 """Admin dashboard routes for child/student profiles and bulk roster import."""
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from storage.db_adapters import DB_ERRORS
-from core.authentication import AuthSession
 from api.middleware.auth import require_admin
 from config import system_config
+from core.authentication import AuthSession
+from storage.db_adapters import DB_ERRORS
 from utils.logger import sanitize_log_value
 
 from ._common import (
-    logger,
+    _PROFILE_UPDATE_COLUMNS,
+    BulkImportRequest,
+    CreateProfileRequest,
+    UpdateProfileAdminRequest,
     _pkg,
     _to_dict,
-    _PROFILE_UPDATE_COLUMNS,
-    CreateProfileRequest,
-    BulkImportRequest,
-    UpdateProfileAdminRequest,
+    logger,
 )
 
 router = APIRouter()
@@ -30,7 +30,6 @@ async def create_profile(
     request: CreateProfileRequest, session: AuthSession = Depends(require_admin)
 ):
     """Create a new student profile with Open WebUI login"""
-    import requests as http_client  # type: ignore[import-untyped]
 
     try:
         db = _pkg().DatabaseManager()

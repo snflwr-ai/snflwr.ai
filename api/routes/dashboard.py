@@ -4,9 +4,10 @@ Serves the self-contained dashboard SPA for managing child profiles,
 viewing safety alerts, and monitoring analytics.
 """
 
+from pathlib import Path
+
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
-from pathlib import Path
 
 from utils.logger import get_logger
 

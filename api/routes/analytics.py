@@ -7,17 +7,16 @@ Usage analytics and reporting for parent dashboard
 - Admins can access all analytics
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from core.session_manager import session_manager
-from core.authentication import auth_manager, AuthSession
-from storage.db_adapters import DB_ERRORS
 from api.middleware.auth import (
-    get_current_session,
     VerifyProfileAccess,
     VerifySessionAccess,
     audit_log,
 )
+from core.authentication import AuthSession
+from core.session_manager import session_manager
+from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

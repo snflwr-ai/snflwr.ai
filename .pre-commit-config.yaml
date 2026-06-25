@@ -1,0 +1,25 @@
+# Pre-commit hooks for snflwr.ai — catch lint/format/type issues locally,
+# before CI. Install once with:  pre-commit install
+#
+# Mirrors the CI gates (black, ruff, mypy) so a clean commit is a green build.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^(api|core|safety|storage|utils)/
+
+  - repo: https://github.com/psf/black
+    rev: 26.3.1
+    hooks:
+      - id: black
+        files: ^(api|core|safety|storage|utils)/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --no-strict-optional]
+        files: ^(api|core|safety|storage|utils)/
+        additional_dependencies: []

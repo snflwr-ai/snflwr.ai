@@ -4,24 +4,23 @@ Encryption and Data Protection Utilities
 AES-256 encryption for sensitive data with secure key management
 """
 
+import base64
+import hashlib
+import json
 import os
 import secrets
-import hashlib
-import base64
-from typing import Any, Optional, Tuple
-from pathlib import Path
-import json
-
 import warnings
+from pathlib import Path
+from typing import Any, Optional
 
 # Flag to track if we're using real encryption or fallback
 _USING_REAL_ENCRYPTION = False
 
 try:
     from cryptography.fernet import Fernet, InvalidToken
+    from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    from cryptography.hazmat.backends import default_backend
 
     _USING_REAL_ENCRYPTION = True
 except ImportError as _crypto_import_error:

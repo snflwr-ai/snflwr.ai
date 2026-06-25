@@ -6,14 +6,14 @@ Includes circuit breaker pattern to prevent cascading failures
 """
 
 import asyncio
-import aiohttp
-from typing import Dict, Any, Optional, Tuple
 import json
-from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
+
+import aiohttp
 
 from config import system_config
+from utils.circuit_breaker import CircuitOpenError, ollama_circuit
 from utils.logger import get_logger, log_performance_metric
-from utils.circuit_breaker import ollama_circuit, CircuitOpenError
 from utils.ollama_client import OllamaError
 
 logger = get_logger(__name__)

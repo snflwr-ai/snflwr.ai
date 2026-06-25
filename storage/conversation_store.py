@@ -4,13 +4,13 @@ Conversation Storage and Retrieval System
 Manages chat history with encryption, search, and export capabilities
 """
 
-import secrets
-from typing import List, Optional, Dict, Tuple
-from datetime import datetime, timedelta, timezone
-from dataclasses import dataclass
 import json
+import secrets
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional
 
-from config import system_config, safety_config
+from config import safety_config
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
 from storage.encryption import encryption_manager
@@ -648,13 +648,13 @@ class ConversationStore:
 
             elif format == "markdown":
                 lines = [
-                    f"# Conversation Export",
-                    f"",
+                    "# Conversation Export",
+                    "",
                     f"**ID**: {conversation.conversation_id}",
                     f"**Created**: {conversation.created_at.strftime('%Y-%m-%d %H:%M')}",
                     f"**Subject**: {conversation.subject_area or 'General'}",
                     f"**Messages**: {conversation.message_count}",
-                    f"",
+                    "",
                     "---",
                     "",
                 ]
@@ -668,9 +668,9 @@ class ConversationStore:
                     lines.append(
                         f"### {role_emoji} {msg.role.title()} - {msg.timestamp.strftime('%H:%M')}"
                     )
-                    lines.append(f"")
+                    lines.append("")
                     lines.append(msg.content)
-                    lines.append(f"")
+                    lines.append("")
 
                 return "\n".join(lines)
 

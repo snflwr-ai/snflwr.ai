@@ -4,21 +4,20 @@ Database Manager for snflwr.ai
 Production-grade database layer supporting both SQLite and PostgreSQL
 """
 
-import threading
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple, Union
-from datetime import datetime, timedelta, timezone
-from contextlib import contextmanager
 import re
 import sqlite3
+import threading
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from config import system_config
 from storage.db_adapters import (
-    create_adapter,
-    DatabaseAdapter,
-    SQLiteAdapter,
-    PostgreSQLAdapter,
     DB_ERRORS,
+    DatabaseAdapter,
+    PostgreSQLAdapter,
+    create_adapter,
 )
 from utils.logger import get_logger, sanitize_log_value
 
@@ -44,7 +43,7 @@ def _redact_sensitive_params(params: Tuple) -> str:
         return str(params)
     redacted = []
     for p in params:
-        if isinstance(p, str) and len(p) > 40 and not " " in p:
+        if isinstance(p, str) and len(p) > 40 and " " not in p:
             redacted.append("[REDACTED-TOKEN]")
         else:
             redacted.append(p)
@@ -52,10 +51,10 @@ def _redact_sensitive_params(params: Tuple) -> str:
 
 
 from storage.schema import (
-    create_sqlite_tables,
-    create_postgres_tables,
     ACCOUNT_MIGRATION_COLUMNS,
     PROFILE_MIGRATION_COLUMNS,
+    create_postgres_tables,
+    create_sqlite_tables,
 )
 
 
@@ -262,11 +261,11 @@ class DatabaseManager:
                 # Add new columns for admin/educator support (idempotent for existing DBs)
                 for col_def in ACCOUNT_MIGRATION_COLUMNS:
                     try:
-                        cursor.execute(f"SAVEPOINT add_col")
+                        cursor.execute("SAVEPOINT add_col")
                         cursor.execute(
                             f"ALTER TABLE accounts ADD COLUMN IF NOT EXISTS {col_def}"
                         )
-                        cursor.execute(f"RELEASE SAVEPOINT add_col")
+                        cursor.execute("RELEASE SAVEPOINT add_col")
                     except Exception:
                         cursor.execute("ROLLBACK TO SAVEPOINT add_col")
 
@@ -274,11 +273,11 @@ class DatabaseManager:
                 # Add grade_level, tier, model_role (exist in schema.sql but not original CREATE TABLE)
                 for col_def in PROFILE_MIGRATION_COLUMNS:
                     try:
-                        cursor.execute(f"SAVEPOINT add_col")
+                        cursor.execute("SAVEPOINT add_col")
                         cursor.execute(
                             f"ALTER TABLE child_profiles ADD COLUMN IF NOT EXISTS {col_def}"
                         )
-                        cursor.execute(f"RELEASE SAVEPOINT add_col")
+                        cursor.execute("RELEASE SAVEPOINT add_col")
                     except Exception:
                         cursor.execute("ROLLBACK TO SAVEPOINT add_col")
 
@@ -739,7 +738,8 @@ class DatabaseManager:
             pass
         # Force garbage collection and a tiny pause to ensure OS releases file handles (helps on Windows)
         try:
-            import gc, time
+            import gc
+            import time
 
             gc.collect()
             # Increase pause to help Windows release file handles reliably

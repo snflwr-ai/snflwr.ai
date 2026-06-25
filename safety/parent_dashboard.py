@@ -3,14 +3,16 @@ Parent Dashboard API
 Simple Flask API for parents/teachers to review safety logs
 """
 
-from functools import wraps
-from flask import Flask, jsonify, request, render_template_string
-from safety.incident_logger import incident_logger
-from datetime import datetime, timezone
 import hmac
 import json
 import logging
 import os
+from datetime import datetime, timezone
+from functools import wraps
+
+from flask import Flask, jsonify, render_template_string, request
+
+from safety.incident_logger import incident_logger
 
 logger = logging.getLogger(__name__)
 

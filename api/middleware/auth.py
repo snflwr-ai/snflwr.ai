@@ -9,13 +9,13 @@ import sqlite3
 import threading
 import time as _time
 from typing import Optional
-from fastapi import HTTPException, Header, Depends, status
-from functools import wraps
 
-from core.authentication import auth_manager, AuthSession
+from fastapi import Depends, Header, HTTPException, status
+
+from config import INTERNAL_API_KEY, INTERNAL_API_KEY_PREVIOUS, system_config
+from core.authentication import AuthSession, auth_manager
 from core.profile_manager import ProfileManager
 from storage.db_adapters import DB_ERRORS
-from config import INTERNAL_API_KEY, INTERNAL_API_KEY_PREVIOUS, system_config
 from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
@@ -459,7 +459,7 @@ def _send_audit_failure_alert(failure_count: int, error):
         from config import system_config
 
         if hasattr(system_config, "ADMIN_EMAIL") and system_config.ADMIN_EMAIL:
-            from tasks.background_tasks import send_email, safe_dispatch
+            from tasks.background_tasks import safe_dispatch, send_email
 
             safe_dispatch(
                 send_email,
@@ -492,8 +492,9 @@ def audit_log(
     Returns:
         True if audit log was written successfully, False otherwise
     """
-    from storage.database import db_manager
     from datetime import datetime, timezone
+
+    from storage.database import db_manager
 
     try:
         db_manager.execute_write(

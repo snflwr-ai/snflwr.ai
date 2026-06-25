@@ -171,7 +171,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../../enterprise/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - ../../enterprise/init-openwebui.sh:/docker-entrypoint-initdb.d/02-init-openwebui.sh:ro  # runs after init.sql (glob order); the two scripts are independent
+      - ../../enterprise/init-openwebui.sh:/docker-entrypoint-initdb.d/02-init-openwebui.sh:ro  # ordering vs init.sql is irrelevant — the two scripts are independent (openwebui role/db vs snflwr_db schema)
     environment:
       - POSTGRES_USER=snflwr
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}

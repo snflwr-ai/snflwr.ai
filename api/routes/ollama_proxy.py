@@ -15,7 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from api.middleware.auth import get_current_session
+from api.middleware.auth import get_current_session, is_genuine_admin
 from config import system_config
 from core.authentication import AuthSession
 from utils import observability
@@ -87,32 +87,19 @@ def _get_user_from_headers(request: Request) -> tuple:
     return user_id, role
 
 
-def _effective_role(request: Request, session: AuthSession) -> str:
-    """Resolve the trustworthy role for an authenticated proxy request.
-
-    The ``X-OpenWebUI-User-Role`` header is only honoured when the caller
-    authenticated with the internal API key (``user_id == "internal_service"``,
-    i.e. Open WebUI stamping its own authenticated user). Any other caller holds
-    a real user session, so we use the authenticated session role — never a
-    client-supplied header — exactly as ``proxy_chat`` does (finding F1).
-    """
-    if session.user_id == "internal_service":
-        _, role = _get_user_from_headers(request)
-    else:
-        role = session.role
-    return role
-
-
 def _admin_only(request: Request, session: AuthSession) -> Optional[Response]:
-    """Gate an endpoint to admins. Returns a 403 response for non-admins, else None.
+    """Gate an endpoint to a genuine admin session. Returns 403 otherwise, else None.
 
     Used for the raw inference (``/api/generate``, ``/api/embed*``) and
     model-management (``/api/pull|delete|copy``) endpoints, which are NOT part of
     the student flow — Open WebUI drives all user-facing generation through
-    ``/api/chat`` (which runs the safety pipeline). Without this gate a non-admin
-    session could reach raw, unfiltered model output or mutate the model set.
+    ``/api/chat`` (which runs the safety pipeline). Authority requires a genuine
+    admin *session*: the internal service key (Open WebUI) is a relay, not an
+    admin, so it cannot reach these even by forwarding X-OpenWebUI-User-Role:
+    admin. Without this gate a leaked key could reach raw, unfiltered model
+    output or mutate the model set.
     """
-    if _effective_role(request, session) != "admin":
+    if not is_genuine_admin(session):
         logger.info(
             "Blocked non-admin access to %s %s", request.method, request.url.path
         )
@@ -363,20 +350,19 @@ async def proxy_chat(
     messages: list = body.get("messages", [])
     stream: bool = body.get("stream", False)
 
-    # Resolve identity. The X-OpenWebUI-User-* headers are only trustworthy when
-    # the caller authenticated with the internal API key (i.e. Open WebUI, which
-    # stamps the role from its own authenticated user). Any other caller holds a
-    # real user session, so we MUST use the authenticated session role — never a
-    # client-supplied header — to decide the safety-pipeline bypass (else a
-    # non-admin session-holder could send X-OpenWebUI-User-Role: admin and skip
-    # child-safety entirely).
+    # Resolve IDENTITY (which user) — the X-OpenWebUI-User-* headers carry the
+    # forwarded user only when the caller is Open WebUI (the internal key). This
+    # is used purely to look up the right child profile below.
     if session.user_id == "internal_service":
-        user_id, role = _get_user_from_headers(request)
+        user_id, _ = _get_user_from_headers(request)
     else:
-        user_id, role = session.user_id, session.role
+        user_id = session.user_id
 
-    # Admins bypass the safety pipeline entirely
-    if role == "admin":
+    # Safety-pipeline bypass is an AUTHORITY decision, never an identity one: it
+    # requires a genuine admin *session*. The internal service key is a relay,
+    # not an admin, so a forwarded X-OpenWebUI-User-Role: admin can NOT skip
+    # child safety (parity with chat.py). A leaked key therefore can't bypass.
+    if is_genuine_admin(session):
         logger.debug("Admin user %s — forwarding /api/chat directly", user_id)
         # Suppress extended-thinking so OWU doesn't render a raw <thinking> block
         body["think"] = False
@@ -707,17 +693,20 @@ async def proxy_chat(
 
 
 @router.get("/tags")
-async def proxy_tags(request: Request) -> Response:
-    """GET /api/tags — admins see every model; students only the tutor model.
+async def proxy_tags(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    """GET /api/tags — genuine admins see every model; everyone else (incl. all
+    Open WebUI relay traffic) only the tutor model.
 
     Filtering the backbone/rollback/backup variants out for students happens
     here at the proxy, so the guarantee holds regardless of Open WebUI's own
     model-access config and survives a fresh open-webui-data volume. Fails
-    closed: a request without an admin role header is treated as a student.
+    closed: only a genuine admin *session* sees the full list — the internal
+    service key (relay) cannot unlock it with a forwarded admin header.
     """
     response = await _proxy_to_ollama(request, "/api/tags")
-    _, role = _get_user_from_headers(request)
-    if role == "admin" or response.status_code != 200:
+    if is_genuine_admin(session) or response.status_code != 200:
         return response
     return Response(
         content=_filter_tags_for_students(response.body),

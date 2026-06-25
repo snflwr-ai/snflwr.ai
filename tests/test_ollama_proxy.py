@@ -46,8 +46,12 @@ class TestOllamaPassThrough:
 # Helpers for chat tests
 # ---------------------------------------------------------------------------
 
-def _make_app():
+def _make_app(user_id="internal_service", role="admin"):
     """Build a TestClient app with auth bypassed via dependency override.
+
+    Defaults to the internal service (Open WebUI relay) session. Pass a distinct
+    user_id (e.g. "admin_1") to simulate a GENUINE admin session, which is what
+    now carries admin authority — the internal key is a relay, not an admin.
 
     Key the override on `proxy_mod.get_current_session` — the reference the
     router captured at import time — rather than re-importing the symbol
@@ -66,8 +70,8 @@ def _make_app():
     app = FastAPI()
     app.include_router(proxy_mod.router)
     app.dependency_overrides[proxy_mod.get_current_session] = lambda: AuthSession(
-        user_id="internal_service",
-        role="admin",
+        user_id=user_id,
+        role=role,
         session_token="test-token",
         email="internal@snflwr.ai",
     )
@@ -187,11 +191,13 @@ class TestChatSafety:
         assert "That topic isn't allowed." in data["message"]["content"]
 
     def test_admin_bypasses_safety(self):
-        """Admin role forwards directly to Ollama without calling safety pipeline."""
+        """A genuine admin session forwards directly to Ollama without safety.
+
+        (The internal service relay does NOT — see test_internal_key_authority.)"""
         from fastapi.testclient import TestClient
         import api.routes.ollama_proxy as proxy_mod
 
-        client = TestClient(_make_app())
+        client = TestClient(_make_app(user_id="admin-001"))
         ollama_resp = httpx.Response(200, json={"model": "test-model", "done": True})
 
         mock_pipeline = MagicMock()
@@ -499,7 +505,7 @@ class TestAdminStreamAndConnectError:
         from fastapi.testclient import TestClient
         import api.routes.ollama_proxy as proxy_mod
 
-        client = TestClient(_make_app())
+        client = TestClient(_make_app(user_id="admin-err"))
 
         with patch.object(
             proxy_mod, "_forward_request",
@@ -755,7 +761,9 @@ class TestPassThroughEndpoints:
 
     def _get_client(self):
         from fastapi.testclient import TestClient
-        return TestClient(_make_app())
+        # Genuine admin session — the model-mgmt + raw-inference endpoints now
+        # require real admin authority, not the internal relay + a forwarded header.
+        return TestClient(_make_app(user_id="admin_1"))
 
     def test_show_endpoint(self):
         client = self._get_client()
@@ -1280,14 +1288,16 @@ class TestTagsModelVisibility:
         assert "gemma4:e4b" not in names
 
     def test_admin_sees_all_models(self):
+        from fastapi.testclient import TestClient
+        # A genuine admin SESSION sees the full list — not the internal relay
+        # with a forwarded admin header (which now gets the student-filtered view).
+        admin_client = TestClient(_make_app(user_id="admin_1"))
         with patch(
             "api.routes.ollama_proxy._forward_request",
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json=self._ALL_MODELS),
         ):
-            resp = self._client().get(
-                "/api/tags", headers={"X-OpenWebUI-User-Role": "admin"}
-            )
+            resp = admin_client.get("/api/tags")
         assert resp.status_code == 200
         names = {m["name"] for m in resp.json()["models"]}
         assert names == {

@@ -74,11 +74,12 @@ def test_forged_admin_header_cannot_unlock_gated_endpoints():
         fwd.assert_not_called()
 
 
-def test_internal_service_with_admin_role_is_allowed():
-    """Open WebUI (internal key) acting as an admin still reaches the endpoint."""
+def test_internal_service_with_admin_header_is_blocked():
+    """HARDENED: the internal key (Open WebUI relay) forwarding an admin header
+    is NOT admin — these endpoints require a genuine admin session, so the relay
+    is rejected even when it forwards X-OpenWebUI-User-Role: admin."""
     app = _app_with_session(user_id="internal_service", role="admin")
     client = TestClient(app)
-    ollama_resp = httpx.Response(200, json={"response": "ok", "done": True})
     for method, path in GATED:
         with (
             patch(
@@ -88,12 +89,14 @@ def test_internal_service_with_admin_role_is_allowed():
             patch(
                 "api.routes.ollama_proxy._forward_request",
                 new_callable=AsyncMock,
-                return_value=ollama_resp,
             ) as fwd,
         ):
-            resp = client.request(method.upper(), path, json={"model": "m"})
-        assert resp.status_code == 200, f"{path} should be allowed for admin"
-        fwd.assert_called_once()
+            resp = client.request(
+                method.upper(), path, json={"model": "m"},
+                headers={"X-OpenWebUI-User-Role": "admin"},
+            )
+        assert resp.status_code == 403, f"{path} relay+header must be blocked"
+        fwd.assert_not_called()
 
 
 def test_real_admin_session_is_allowed():

@@ -48,19 +48,24 @@ def test_non_internal_session_cannot_forge_admin_via_header():
     chk.assert_called()  # safety ran => the forged admin header did NOT bypass
 
 
-def test_internal_service_still_trusts_header_role():
-    """Open WebUI (internal key) path still uses the forwarded role (admin bypass)."""
+def test_internal_service_does_not_bypass_safety_via_header():
+    """HARDENED: the internal key is a relay, not an admin. A forwarded
+    X-OpenWebUI-User-Role: admin must NOT bypass the safety pipeline — admin
+    authority requires a genuine admin session, not the shared service key."""
     app = _app_with_session(user_id="internal_service", role="admin")
     client = TestClient(app)
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
     with (
         patch("api.routes.ollama_proxy._get_user_from_headers",
-              return_value=("admin_1", "admin")),
+              return_value=("kid_1", "admin")),
+        patch("api.routes.ollama_proxy._get_profile_for_user",
+              new_callable=AsyncMock, return_value="profile-1"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
+        patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
         patch("api.routes.ollama_proxy._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_body(),
                            headers={"X-OpenWebUI-User-Role": "admin"})
     assert resp.status_code == 200
-    chk.assert_not_called()  # admin bypass via trusted internal-key path
+    chk.assert_called()  # safety RAN — the relay cannot bypass via a header

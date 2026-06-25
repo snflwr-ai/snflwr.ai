@@ -21,7 +21,10 @@ OWUI_IMAGE="${OWUI_IMAGE:-ghcr.io/open-webui/open-webui:v0.9.6}"
 PG_SUPERUSER="${POSTGRES_USER:-snflwr}"
 PG_SUPERDB="${POSTGRES_DB:-snflwr_db}"
 FORCE=0
-[ "${1:-}" = "--force" ] && FORCE=1
+# Recognize --force in any argument position.
+for arg in "$@"; do
+    [ "$arg" = "--force" ] && FORCE=1
+done
 
 die() { echo "migrate-owui: ERROR: $*" >&2; exit 1; }
 log() { echo "migrate-owui: $*"; }
@@ -35,7 +38,25 @@ PG_NET="$(docker inspect "$PG_CONTAINER" -f '{{range $k,$v := .NetworkSettings.N
 [ -n "$PG_NET" ] || die "could not determine Postgres container network"
 TS="$(date -u +%Y%m%d_%H%M%S)"
 WORKDIR="$(mktemp -d)"
-trap 'rm -rf "$WORKDIR"' EXIT
+
+# On any early exit (error or interrupt) before the migration completes, restart
+# the production OWUI container so it rolls back to its pre-migration SQLite
+# state (it was `docker stop`ped in step 2). On SUCCESS we intentionally leave
+# OWUI stopped for the operator to redeploy with DATABASE_URL, so the trap only
+# restarts when COMPLETED is unset. $WORKDIR cleanup always runs.
+COMPLETED=0
+OWUI_STOPPED=0
+cleanup() {
+    local rc=$?
+    if [ "$COMPLETED" -ne 1 ] && [ "$OWUI_STOPPED" -eq 1 ]; then
+        echo "migrate-owui: ERROR: migration aborted (exit $rc). Restarting '$OWUI_CONTAINER' on its previous (SQLite) config." >&2
+        docker start "$OWUI_CONTAINER" >/dev/null 2>&1 \
+            && echo "migrate-owui: '$OWUI_CONTAINER' restarted; no changes were applied to your running deployment." >&2 \
+            || echo "migrate-owui: WARNING: failed to restart '$OWUI_CONTAINER' — start it manually: docker start $OWUI_CONTAINER" >&2
+    fi
+    rm -rf "$WORKDIR"
+}
+trap cleanup EXIT
 
 psql_super() { docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$PG_SUPERUSER" -d "$PG_SUPERDB" "$@"; }
 
@@ -56,7 +77,8 @@ if [ "$(psql_super -tAc "SELECT 1 FROM pg_database WHERE datname='openwebui'")" 
     psql_super -c "CREATE DATABASE openwebui OWNER openwebui;"
 fi
 
-# Refuse to double-load: 'user' is a core OWUI table; its presence means data exists.
+# Refuse to double-load: 'user' is a core OWUI table; we treat the target as
+# already-populated only when that table both exists AND holds at least one row.
 HAS_DATA="$(docker exec -i "$PG_CONTAINER" psql -tAX -U openwebui -d openwebui \
     -c "SELECT to_regclass('public.user') IS NOT NULL AND EXISTS (SELECT 1 FROM public.\"user\")" 2>/dev/null || echo f)"
 if [ "$HAS_DATA" = "t" ] && [ "$FORCE" -ne 1 ]; then
@@ -73,6 +95,7 @@ fi
 # only webui.db would silently drop any un-checkpointed data.
 log "stopping $OWUI_CONTAINER and copying webui.db (+ WAL/SHM) out"
 docker stop "$OWUI_CONTAINER" >/dev/null
+OWUI_STOPPED=1
 docker cp "$OWUI_CONTAINER:/app/backend/data/webui.db" "$WORKDIR/webui.db"
 for sidecar in webui.db-wal webui.db-shm; do
     docker cp "$OWUI_CONTAINER:/app/backend/data/$sidecar" "$WORKDIR/$sidecar" 2>/dev/null || true
@@ -107,6 +130,9 @@ LOAD DATABASE
  EXCLUDING TABLE NAMES LIKE 'alembic_version'
   SET work_mem to '64MB', maintenance_work_mem to '256MB';
 EOF
+# This load file embeds the cleartext DATABASE_URL (DB password). Lock it down
+# to owner-only; the EXIT trap cleans up $WORKDIR (and this file) on exit.
+chmod 600 "$WORKDIR/owui.load"
 # Mount the db plus any WAL/SHM sidecars so pgloader's reader replays the WAL.
 PGLOADER_MOUNTS=(-v "$WORKDIR/webui.db:/data/webui.db:ro" -v "$WORKDIR/owui.load:/data/owui.load:ro")
 for sidecar in webui.db-wal webui.db-shm; do
@@ -114,7 +140,7 @@ for sidecar in webui.db-wal webui.db-shm; do
 done
 docker run --rm --network "$PG_NET" \
     "${PGLOADER_MOUNTS[@]}" \
-    dimitri/pgloader:latest pgloader /data/owui.load
+    dimitri/pgloader:v3.6.7 pgloader /data/owui.load
 
 # 5. Verify a couple of row counts match. The source count is read with Python's
 # sqlite3 (present in the OWUI image) so the WAL is replayed; mount the sidecars
@@ -127,6 +153,10 @@ SRC_USERS="$(docker run --rm --entrypoint python "${SRC_MOUNTS[@]}" "$OWUI_IMAGE
     -c "import sqlite3; print(sqlite3.connect('/data/webui.db').execute('SELECT COUNT(*) FROM user').fetchone()[0])" 2>/dev/null || echo '?')"
 DST_USERS="$(docker exec -i "$PG_CONTAINER" psql -tAX -U openwebui -d openwebui -c 'SELECT COUNT(*) FROM "user"')"
 log "row-count check — user: sqlite=$SRC_USERS postgres=$DST_USERS"
+
+# Success: leave OWUI stopped for the operator to redeploy with DATABASE_URL.
+# Setting COMPLETED disarms the trap's rollback restart (cleanup still removes $WORKDIR).
+COMPLETED=1
 
 cat <<EOF
 

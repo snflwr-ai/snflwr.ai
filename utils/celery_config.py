@@ -138,6 +138,11 @@ celery_app.conf.update(
             "schedule": timedelta(days=7),  # Weekly
             "options": {"queue": "maintenance"},
         },
+        "backup-database": {
+            "task": "tasks.background_tasks.backup_database",
+            "schedule": timedelta(days=1),  # Daily — actually run the backups
+            "options": {"queue": "maintenance"},
+        },
     },
 )
 

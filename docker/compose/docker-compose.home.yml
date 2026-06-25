@@ -172,6 +172,63 @@ services:
     networks:
       - snflwr-home-net
 
+  # Backup cron sidecar — the home stack runs no Celery Beat, so without this
+  # the backup tooling never runs automatically (the enterprise stack schedules
+  # it via celery-beat). Reuses the snflwr-api image (it has the script, deps
+  # and the shared data volume); a plain sleep-until-hour loop avoids needing a
+  # cron daemon OR the docker socket. Runs `backup_database.py backup` daily at
+  # BACKUP_HOUR (default 03:00 local). Backups land in /app/data/backups (inside
+  # the persisted snflwr-home-data volume); set OFFHOST_BACKUP_ENABLED + rclone
+  # env in .env.home to also push them off-host (fail-closed).
+  backup-cron:
+    image: snflwr-api:latest
+    container_name: snflwr-backup-cron
+    working_dir: /app
+    # Same entrypoint as the API image: fixes volume ownership, drops to the
+    # non-root snflwr user, then execs this command.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "[backup-cron] started; daily backup at ${BACKUP_HOUR:-03}:00"
+        while true; do
+          now=$$(date +%s)
+          target=$$(date -d "${BACKUP_HOUR:-03}:00 today" +%s)
+          [ "$$target" -le "$$now" ] && target=$$(date -d "${BACKUP_HOUR:-03}:00 tomorrow" +%s)
+          sleep_for=$$((target - now))
+          echo "[backup-cron] next backup in $${sleep_for}s"
+          sleep "$$sleep_for"
+          echo "[backup-cron] running backup at $$(date -u +%FT%TZ)"
+          python /app/scripts/backup_database.py backup \
+            || echo "[backup-cron] backup FAILED (exit $$?) — see logs / heartbeat"
+        done
+    volumes:
+      - snflwr-home-data:/app/data
+      - snflwr-home-logs:/app/logs
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DB_TYPE=sqlite
+      - SNFLWR_DATA_DIR=/app/data
+      - LOG_PATH=/app/logs
+      - DB_ENCRYPTION_ENABLED=${DB_ENCRYPTION_ENABLED:-true}
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+      # Backup behaviour (all optional; sane defaults). Set BACKUP_ENABLED=false
+      # to keep the sidecar idle without removing it.
+      - BACKUP_ENABLED=${BACKUP_ENABLED:-true}
+      - BACKUP_HOUR=${BACKUP_HOUR:-03}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+      # Off-host (opt-in, fail-closed) — configure rclone in .env.home to enable.
+      - OFFHOST_BACKUP_ENABLED=${OFFHOST_BACKUP_ENABLED:-false}
+      - RCLONE_REMOTE=${RCLONE_REMOTE:-}
+      - RCLONE_CONFIG=${RCLONE_CONFIG:-}
+      - BACKUP_HEARTBEAT_URL=${BACKUP_HEARTBEAT_URL:-}
+    depends_on:
+      snflwr-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - snflwr-home-net
+
 volumes:
   ollama-data:
     driver: local

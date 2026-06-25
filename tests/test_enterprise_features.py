@@ -222,6 +222,10 @@ class TestRateLimiterFallback:
 
         limiter = RedisRateLimiter()
         limiter._redis = None  # Force fallback mode
+        # Force the *in-memory* fallback (per-instance dict), not the persistent
+        # rate_limits.db SQLite store which is shared across instances/tests and
+        # otherwise leaks user1/test counts between tests (suite-order flake).
+        limiter._sqlite_limiter = None
 
         # Use custom low limit for testing
         limiter.limits['test'] = (3, 60)
@@ -242,6 +246,7 @@ class TestRateLimiterFallback:
 
         limiter = RedisRateLimiter()
         limiter._redis = None
+        limiter._sqlite_limiter = None  # in-memory fallback only; no shared store
         limiter.limits['test2'] = (2, 60)
 
         # User 1 hits limit

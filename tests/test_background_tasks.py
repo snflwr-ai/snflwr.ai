@@ -185,6 +185,61 @@ class TestVacuumDatabase:
         mock_db.execute_write.assert_not_called()
 
 
+class TestBackupDatabase:
+    """The scheduled backup task — closes the gap where backups never ran."""
+
+    def test_success_runs_backup_and_returns_true(self):
+        from tasks.background_tasks import backup_database
+        with patch("scripts.backup_database.DatabaseBackup") as MockBackup:
+            MockBackup.return_value.backup_enabled = True
+            MockBackup.return_value.run_backup.return_value = True
+
+            result = backup_database()
+
+        assert result is True
+        MockBackup.return_value.run_backup.assert_called_once_with()
+
+    def test_failure_raises_so_celery_records_a_failed_task(self):
+        """A failed backup must surface as a Celery failure, never a silent success."""
+        from tasks.background_tasks import backup_database
+        with patch("scripts.backup_database.DatabaseBackup") as MockBackup:
+            MockBackup.return_value.backup_enabled = True
+            MockBackup.return_value.run_backup.return_value = False
+
+            with pytest.raises(RuntimeError):
+                backup_database()
+
+    def test_disabled_backup_skips_without_raising(self):
+        """BACKUP_ENABLED=false is a deliberate config choice, not a failure —
+        the daily task must skip cleanly, never raise (else it fails every day)."""
+        from tasks.background_tasks import backup_database
+        with patch("scripts.backup_database.DatabaseBackup") as MockBackup:
+            MockBackup.return_value.backup_enabled = False
+
+            result = backup_database()
+
+        assert result is True
+        MockBackup.return_value.run_backup.assert_not_called()
+
+
+class TestBackupScheduled:
+    """Regression for the HIGH finding: backup tooling existed but was never
+    registered in Celery Beat, so it never auto-ran in any shipped deployment."""
+
+    def test_backup_is_in_beat_schedule_daily(self):
+        from utils.celery_config import celery_app
+
+        schedule = celery_app.conf.beat_schedule
+        entries = [
+            e for e in schedule.values()
+            if e.get("task") == "tasks.background_tasks.backup_database"
+        ]
+        assert entries, "backup_database must be registered in beat_schedule"
+        entry = entries[0]
+        assert entry["schedule"] == timedelta(days=1), "backup should run daily"
+        assert entry.get("options", {}).get("queue") == "maintenance"
+
+
 # ---------------------------------------------------------------------------
 # EMAIL TASKS
 # ---------------------------------------------------------------------------

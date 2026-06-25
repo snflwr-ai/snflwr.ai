@@ -310,7 +310,16 @@ git commit -m "feat(owui): point enterprise Open WebUI at the openwebui Postgres
 
 ## Task 4: Back up (and restore) the `openwebui` Postgres database
 
-Mirror the existing `backup_postgresql()` for the `openwebui` DB, gated by `OWUI_PG_BACKUP_ENABLED`, fail-closed, folded into the same off-host + heartbeat flow. Add a restore helper. Unit-tested with `subprocess.run` mocked.
+> **AMENDED 2026-06-25 (DRY decision):** Instead of adding duplicate
+> `backup_open_webui_postgres()` / `restore_open_webui_postgres()` functions,
+> **parameterize the existing** `backup_postgresql()` and `restore_postgresql()`
+> with optional `(db_name, user, password, label)` args that default to the
+> primary snflwr DB, and call them with the `openwebui` credentials for the OWUI
+> backup. DRYer; reuses already-tested code paths. The steps below use the
+> parameterized design; the `owui_pg_backup_enabled` / `owui_db_*` config flags
+> from Step 3 still apply.
+
+Gate the OWUI dump on `OWUI_PG_BACKUP_ENABLED`, fail-closed, folded into the same off-host + heartbeat flow. Unit-tested with `subprocess.run` mocked.
 
 **Files:**
 - Modify: `scripts/backup_database.py`
@@ -318,7 +327,9 @@ Mirror the existing `backup_postgresql()` for the `openwebui` DB, gated by `OWUI
 
 **Interfaces:**
 - Consumes: env `OWUI_PG_BACKUP_ENABLED`, `OWUI_DB_NAME` (default `openwebui`), `OWUI_DB_USER` (default `openwebui`), `OWUI_DB_PASSWORD`; reuses `system_config.POSTGRES_HOST`/`POSTGRES_PORT`.
-- Produces: `DatabaseBackup.backup_open_webui_postgres() -> tuple[bool, str]`, `restore_open_webui_postgres(backup_file: Path) -> bool`. Artifact name: `snflwr_owui_postgres_<ts>.sql[.gz]`.
+- Produces: `DatabaseBackup.backup_postgresql(db_name=None, user=None, password=None, label='postgres') -> tuple[bool, str]` and module-level `restore_postgresql(backup_file, db_name=None, user=None, password=None) -> bool` (both default to the snflwr DB; called with `openwebui`/`openwebui`/`OWUI_DB_PASSWORD` and `label='owui_postgres'` for OWUI). Artifact name: `snflwr_owui_postgres_<ts>.sql[.gz]`.
+
+The detailed steps below were written for the dropped duplicate-function design; the implementer's brief supersedes them with the parameterized code.
 
 - [ ] **Step 1: Write the failing tests**
 

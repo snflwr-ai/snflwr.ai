@@ -22,11 +22,15 @@ services:
 
   # Open WebUI - Frontend (pre-built image)
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.8.12
+    image: ghcr.io/open-webui/open-webui:v0.9.6
     container_name: snflwr-frontend
     volumes:
       - open-webui-data:/app/backend/data
     environment:
+      # Relational store moved off the bundled SQLite webui.db onto a dedicated,
+      # non-superuser Postgres database (vector_db/ + uploads/ stay on the volume).
+      # OWUI rewrites postgres:// -> postgresql:// automatically (env.py).
+      - DATABASE_URL=postgresql://openwebui:${OWUI_DB_PASSWORD}@postgres:5432/openwebui
       # OWU talks to snflwr-api's Ollama proxy — NOT directly to Ollama.
       # Safety pipeline is enforced at the proxy layer.
       - OLLAMA_BASE_URL=http://snflwr-api:8000
@@ -66,7 +70,10 @@ services:
       - ENABLE_AUTOCOMPLETE_GENERATION=false
       - SHOW_ADMIN_DETAILS=false
     depends_on:
-      - snflwr-api
+      snflwr-api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - snflwr-net
@@ -164,11 +171,15 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../../enterprise/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../../enterprise/init-openwebui.sh:/docker-entrypoint-initdb.d/02-init-openwebui.sh:ro  # ordering vs init.sql is irrelevant — the two scripts are independent (openwebui role/db vs snflwr_db schema)
       - ../../enterprise/init-langfuse.sh:/docker-entrypoint-initdb.d/03-init-langfuse.sh:ro  # ordering vs other init scripts is irrelevant — independent (langfuse role/db)
     environment:
       - POSTGRES_USER=snflwr
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=snflwr_db
+      # Dedicated OWUI role password (see enterprise/init-openwebui.sh). Only the
+      # init hook reads this; OWUI itself gets it via DATABASE_URL.
+      - OWUI_DB_PASSWORD=${OWUI_DB_PASSWORD}
       - LANGFUSE_DB_PASSWORD=${LANGFUSE_DB_PASSWORD}
     restart: unless-stopped
     networks:

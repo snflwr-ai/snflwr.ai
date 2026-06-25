@@ -7,8 +7,8 @@
 set -eu
 
 if [ -z "${LANGFUSE_DB_PASSWORD:-}" ]; then
-    echo "init-langfuse: LANGFUSE_DB_PASSWORD is not set; refusing to create the langfuse role with an empty password." >&2
-    exit 1
+    echo "init-langfuse: LANGFUSE_DB_PASSWORD is not set; Langfuse is not configured. Skipping — the langfuse role/database will not be created."
+    exit 0
 fi
 
 psql -v ON_ERROR_STOP=1 \

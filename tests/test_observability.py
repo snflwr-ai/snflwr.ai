@@ -68,6 +68,11 @@ def test_enabled_emits_metadata_only(monkeypatch):
         assert bad not in blob, f"possible content leak via {bad}: {kwargs}"
     assert kwargs.get("user_id") == "h1"          # grouped by hashed profile
     fake_trace.generation.assert_called_once()
+    # The generation payload must ALSO be content-free (it carries model + usage
+    # counts + latency/safety metadata only — never prompt/response text).
+    gen_blob = repr(fake_trace.generation.call_args.kwargs).lower()
+    for bad in ("prompt", "content", "messages", "'text'", "response"):
+        assert bad not in gen_blob, f"possible content leak in generation: {bad}"
 
 
 def test_exception_is_swallowed(monkeypatch):

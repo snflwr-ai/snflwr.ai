@@ -164,10 +164,14 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../../enterprise/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../../enterprise/init-openwebui.sh:/docker-entrypoint-initdb.d/01-init-openwebui.sh:ro
     environment:
       - POSTGRES_USER=snflwr
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=snflwr_db
+      # Dedicated OWUI role password (see enterprise/init-openwebui.sh). Only the
+      # init hook reads this; OWUI itself gets it via DATABASE_URL.
+      - OWUI_DB_PASSWORD=${OWUI_DB_PASSWORD}
     restart: unless-stopped
     networks:
       - snflwr-net

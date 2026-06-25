@@ -19,7 +19,8 @@ first boot.
 ## Migrating an existing SQLite install
 1. `set -a; . ./.env.production; set +a`  (exports OWUI_DB_PASSWORD)
 2. `bash scripts/migrate_owui_to_postgres.sh`
-3. Confirm the printed `user` row counts match.
+3. Confirm the `user` row counts match — the script prints
+   `row-count check — user: sqlite=N postgres=M` to stdout near the end.
 4. `docker compose -f docker/compose/docker-compose.yml up -d open-webui`
 5. Verify login + chat history, then delete the `./webui_migrate_<ts>.db` safety copy.
 
@@ -29,10 +30,13 @@ still on the volume.
 
 ## Backup / DR
 - `OWUI_PG_BACKUP_ENABLED=true` makes `scripts/backup_database.py` also `pg_dump`
-  the `openwebui` database (`snflwr_owui_postgres_<ts>.sql[.gz]`), joining the
-  off-host + retention flow. Restore with:
+  the `openwebui` database, joining the off-host + retention flow. The artifact is
+  `snflwr_owui_postgres_<ts>.sql` (or `….sql.gz` when `COMPRESS_BACKUPS=true`).
+  Note: despite the `.sql` extension it is **pg_dump custom format** (`-F c`), so
+  it must be restored with `pg_restore` — not piped through `psql`. Restore with:
   `restore_postgresql(backup_file, db_name='openwebui', user='openwebui', password=os.getenv('OWUI_DB_PASSWORD'))`
-  (the same parameterized `restore_postgresql` in scripts/backup_database.py, with the openwebui credentials).
+  (the same parameterized `restore_postgresql` in scripts/backup_database.py — it
+  invokes `pg_restore` — with the openwebui credentials).
 - The OWUI volume backup (`OWUI_BACKUP_ENABLED`) still covers `vector_db/` +
   `uploads/`.
 

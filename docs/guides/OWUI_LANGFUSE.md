@@ -17,9 +17,15 @@ NEVER captured: prompt or response text, exact age, raw profile/user id, or emai
    `LANGFUSE_HASH_SALT`.
 2. Bring up the service: `docker compose -f docker/compose/docker-compose.yml up -d langfuse`.
    It runs its own migrations against the dedicated `langfuse` database.
-3. Open the UI (internal-only by default — e.g. `ssh -L 3000:localhost:3000 <host>`
-   then visit http://localhost:3000), create an account + project, and copy the
-   project's public/secret keys.
+3. Reach the UI to create your project keys. The service uses `expose: 3000`
+   (internal to the Docker network — NOT published to the host), so first make
+   it reachable, either by:
+   - temporarily adding `ports: ["127.0.0.1:3000:3000"]` to the `langfuse`
+     service and re-running `up -d langfuse`, then SSH-forwarding the host port:
+     `ssh -L 3000:localhost:3000 <host>` and visiting http://localhost:3000; or
+   - adding the nginx route from "Exposing the UI" below.
+   Create an account + project and copy the project's public/secret keys (then
+   remove the temporary `ports:` mapping if you added one).
 4. Put the keys in `.env.production` as `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`,
    set `LANGFUSE_ENABLED=true`, and restart snflwr-api:
    `docker compose -f docker/compose/docker-compose.yml up -d snflwr-api`.

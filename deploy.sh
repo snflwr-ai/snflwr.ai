@@ -344,7 +344,7 @@ WEBUI_PORT=${RESOLVED_PORT}
 # Image tags for externally-maintained components. Pinned for reproducibility
 # and safety review. The guarded upgrader (./deploy.sh --upgrade <component>)
 # bumps these, smoke-tests the new version, and rolls back on failure.
-OWU_IMAGE_TAG=v0.8.12
+OWU_IMAGE_TAG=v0.9.6
 OLLAMA_IMAGE_TAG=0.30.9
 
 # Security keys (auto-generated — do not share these)

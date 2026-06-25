@@ -68,6 +68,16 @@ class DatabaseBackup:
         self.owui_container = os.getenv('OWUI_CONTAINER', 'snflwr-frontend').strip()
         self.owui_data_path = os.getenv('OWUI_DATA_PATH', '/app/backend/data').strip()
 
+        # Open WebUI relational data on Postgres (enterprise tier). When OWUI is
+        # moved off SQLite onto the dedicated `openwebui` database, that data is
+        # NOT in snflwr_db and the volume backup only covers vector_db/ + uploads/.
+        # This dumps the openwebui DB so relational data stays in DR. Opt-in,
+        # fail-closed (same contract as OWUI_BACKUP_ENABLED).
+        self.owui_pg_backup_enabled = os.getenv('OWUI_PG_BACKUP_ENABLED', 'false').lower() == 'true'
+        self.owui_db_name = os.getenv('OWUI_DB_NAME', 'openwebui').strip()
+        self.owui_db_user = os.getenv('OWUI_DB_USER', 'openwebui').strip()
+        self.owui_db_password = os.getenv('OWUI_DB_PASSWORD', '')
+
         # Heartbeat / dead-man's-switch. A scheduled backup that silently stops
         # running is a backup that didn't happen. When set, a successful run
         # pings this URL and a failed run pings <URL>/fail, so an external
@@ -89,6 +99,7 @@ class DatabaseBackup:
         logger.info(f"  Open WebUI backup: {self.owui_backup_enabled}")
         if self.owui_backup_enabled:
             logger.info(f"  Open WebUI container: {self.owui_container}:{self.owui_data_path}")
+        logger.info(f"  Open WebUI Postgres backup: {self.owui_pg_backup_enabled}")
 
     def backup_sqlite(self) -> tuple[bool, str]:
         """Backup SQLite database"""
@@ -155,18 +166,24 @@ class DatabaseBackup:
             )
         return param
 
-    def backup_postgresql(self) -> tuple[bool, str]:
-        """Backup PostgreSQL database using pg_dump"""
+    def backup_postgresql(self, db_name: str = None, user: str = None,
+                          password: str = None, label: str = 'postgres') -> tuple[bool, str]:
+        """Backup a PostgreSQL database using pg_dump.
+
+        Defaults to the primary snflwr database; pass db_name/user/password/label
+        to back up another database in the same cluster (e.g. Open WebUI's
+        'openwebui'). `label` sets the artifact prefix: snflwr_<label>_<ts>.sql.
+        """
         try:
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            backup_file = self.backup_path / f"snflwr_postgres_{timestamp}.sql"
-
-            logger.info(f"Creating PostgreSQL backup: {backup_file}")
+            backup_file = self.backup_path / f"snflwr_{label}_{timestamp}.sql"
 
             # Validate all PostgreSQL parameters to prevent command injection
             host = self._validate_postgres_param(system_config.POSTGRES_HOST, 'POSTGRES_HOST')
-            user = self._validate_postgres_param(system_config.POSTGRES_USER, 'POSTGRES_USER')
-            database = self._validate_postgres_param(system_config.POSTGRES_DB, 'POSTGRES_DB')
+            user = self._validate_postgres_param(user or system_config.POSTGRES_USER, 'POSTGRES_USER')
+            database = self._validate_postgres_param(db_name or system_config.POSTGRES_DB, 'POSTGRES_DB')
+
+            logger.info(f"Creating PostgreSQL backup of '{database}': {backup_file}")
 
             # Build pg_dump command with validated parameters
             cmd = [
@@ -181,7 +198,7 @@ class DatabaseBackup:
 
             # Set password environment variable
             env = os.environ.copy()
-            env['PGPASSWORD'] = system_config.POSTGRES_PASSWORD
+            env['PGPASSWORD'] = password if password is not None else system_config.POSTGRES_PASSWORD
 
             # Run pg_dump
             result = subprocess.run(
@@ -514,6 +531,20 @@ class DatabaseBackup:
                 logger.error(f"[FAIL] Open WebUI backup failed: {owui_result}")
                 owui_failed = True
 
+        # Open WebUI relational data on Postgres (additive — the snflwr DB dump
+        # covers snflwr_db only; the OWUI volume backup covers vector_db/uploads
+        # but not the relational data once OWUI is on Postgres).
+        owui_pg_artifact = None
+        if success and self.owui_pg_backup_enabled:
+            pg_ok, pg_result = self.backup_postgresql(
+                db_name=self.owui_db_name, user=self.owui_db_user,
+                password=self.owui_db_password, label='owui_postgres')
+            if pg_ok:
+                owui_pg_artifact = pg_result
+            else:
+                logger.error(f"[FAIL] Open WebUI Postgres backup failed: {pg_result}")
+                owui_failed = True
+
         # Push off-host. Fail-closed: a local-only backup is not a success
         # when off-host is enabled.
         if success and self.offhost_enabled:
@@ -521,6 +552,8 @@ class DatabaseBackup:
             artifacts = [result, metadata_file]
             if owui_artifact:
                 artifacts.append(owui_artifact)
+            if owui_pg_artifact:
+                artifacts.append(owui_pg_artifact)
             up_ok, up_msg = self.upload_offhost(*artifacts)
             if not up_ok:
                 logger.error(f"[FAIL] Off-host copy failed: {up_msg}")
@@ -591,8 +624,13 @@ def restore_sqlite(backup_file: Path) -> bool:
         return False
 
 
-def restore_postgresql(backup_file: Path) -> bool:
-    """Restore PostgreSQL database from backup"""
+def restore_postgresql(backup_file: Path, db_name: str = None, user: str = None,
+                       password: str = None) -> bool:
+    """Restore a PostgreSQL database from backup.
+
+    Defaults to the primary snflwr database; pass db_name/user/password to
+    restore another database in the same cluster (e.g. Open WebUI's 'openwebui').
+    """
     logger.info(f"Restoring PostgreSQL database from: {backup_file}")
 
     try:
@@ -618,8 +656,8 @@ def restore_postgresql(backup_file: Path) -> bool:
             return param
 
         host = validate_param(system_config.POSTGRES_HOST, 'POSTGRES_HOST')
-        user = validate_param(system_config.POSTGRES_USER, 'POSTGRES_USER')
-        database = validate_param(system_config.POSTGRES_DB, 'POSTGRES_DB')
+        user = validate_param(user or system_config.POSTGRES_USER, 'POSTGRES_USER')
+        database = validate_param(db_name or system_config.POSTGRES_DB, 'POSTGRES_DB')
 
         # Build pg_restore command with validated parameters
         cmd = [
@@ -635,7 +673,7 @@ def restore_postgresql(backup_file: Path) -> bool:
 
         # Set password environment variable
         env = os.environ.copy()
-        env['PGPASSWORD'] = system_config.POSTGRES_PASSWORD
+        env['PGPASSWORD'] = password if password is not None else system_config.POSTGRES_PASSWORD
 
         # Run pg_restore
         result = subprocess.run(

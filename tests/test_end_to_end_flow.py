@@ -51,12 +51,25 @@ def temp_environment():
 def system_components(temp_environment):
     """Initialize all system components"""
     env = temp_environment
-    
+
+    # The SafetyPipeline's ML stage (llama-guard via Ollama) is unavailable in
+    # CI/unit environments. Per the F2 fail-closed policy it would BLOCK every
+    # under-13 message when the classifier can't be reached, which is correct in
+    # production but turns these end-to-end *flow* tests into a test of Ollama
+    # availability rather than the session/conversation logic they target.
+    # Stub the ML layer to "skip" (return None) so the deterministic safety
+    # stages decide — benign content passes, genuinely prohibited content (e.g.
+    # "Tell me about weapons") is still blocked by the pattern stages, so every
+    # safety assertion in this file holds without a live model.
+    content_filter = SafetyPipeline()
+    if hasattr(content_filter, "_classifier"):
+        content_filter._classifier.classify = lambda text, age=None: None
+
     components = {
         'auth': AuthenticationManager(env['db'], env['usb_path']),
         'profiles': ProfileManager(env['db']),
         'sessions': SessionManager(env['db']),
-        'content_filter': SafetyPipeline(),
+        'content_filter': content_filter,
         'safety_monitor': SafetyMonitor(env['db']),
         'incident_logger': IncidentLogger(env['db']),
         'encryption': EncryptionManager(env['usb_path']),

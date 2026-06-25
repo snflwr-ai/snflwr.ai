@@ -335,6 +335,14 @@ class TestRedisErrorFallback:
         # Save references
         redis_mod = sys.modules.get("redis")
         redis_exc_mod = sys.modules.get("redis.exceptions")
+        # Snapshot the module namespace so we can restore the ORIGINAL function
+        # objects after reloading. importlib.reload() rebinds every top-level
+        # name to a new object; routers that did `from api.middleware.auth
+        # import require_admin` (e.g. api/routes/billing.py) hold a reference to
+        # the pre-reload object, and FastAPI's dependency_overrides are keyed by
+        # object identity. Restoring via another reload would leak a *new*
+        # require_admin and silently break those overrides in later tests.
+        saved_dict = dict(auth_mod.__dict__)
 
         try:
             # Block redis imports
@@ -352,7 +360,9 @@ class TestRedisErrorFallback:
                 sys.modules["redis.exceptions"] = redis_exc_mod
             else:
                 sys.modules.pop("redis.exceptions", None)
-            importlib.reload(auth_mod)
+            # Rebind the original objects (preserves require_admin identity).
+            auth_mod.__dict__.clear()
+            auth_mod.__dict__.update(saved_dict)
 
 
 # --------------------------------------------------------------------------
@@ -465,6 +475,11 @@ class TestMetricsFallback:
         from api.middleware import auth as auth_mod
 
         metrics_mod = sys.modules.get("utils.metrics")
+        # Snapshot to restore original function objects after reload — see the
+        # detailed note in test_redis_import_fallback_path. Restoring via a
+        # second reload would leak a new require_admin and break later tests'
+        # FastAPI dependency_overrides (identity-keyed).
+        saved_dict = dict(auth_mod.__dict__)
         try:
             sys.modules["utils.metrics"] = None
             importlib.reload(auth_mod)
@@ -474,7 +489,9 @@ class TestMetricsFallback:
                 sys.modules["utils.metrics"] = metrics_mod
             else:
                 sys.modules.pop("utils.metrics", None)
-            importlib.reload(auth_mod)
+            # Rebind the original objects (preserves require_admin identity).
+            auth_mod.__dict__.clear()
+            auth_mod.__dict__.update(saved_dict)
 
 
 # --------------------------------------------------------------------------

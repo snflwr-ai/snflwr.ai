@@ -7,6 +7,7 @@ Cross-platform GUI launcher with automatic detection and routing
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox
 from pathlib import Path
 from typing import Optional, Tuple
@@ -31,7 +32,7 @@ class LauncherWindow:
     Universal launcher window with platform detection and routing
     Non-technical parents must succeed in <5 minutes
     """
-    
+
     def __init__(self):
         """Initialize launcher window"""
         self.root = None
@@ -62,7 +63,7 @@ class LauncherWindow:
         self.session_data = None
 
         logger.info("Launcher initialized")
-    
+
     def create_window(self):
         """Create main launcher window"""
         try:
@@ -73,11 +74,11 @@ class LauncherWindow:
                 ctk.set_default_color_theme("blue")
             else:
                 self.root = tk.Tk()
-            
+
             self.root.title(f"{system_config.APPLICATION_NAME} - Launcher")
             self.root.geometry(f"{self.window_width}x{self.window_height}")
             self.root.resizable(False, False)
-            
+
             # Center window on screen
             self._center_window()
 
@@ -91,34 +92,34 @@ class LauncherWindow:
             self._start_detection_process()
 
             logger.info("Launcher window created successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to create launcher window: {e}")
             self._show_critical_error(
                 "Startup Error",
                 f"Failed to create application window.\n\nError: {str(e)}\n\n"
-                "Please contact support if this problem persists."
+                "Please contact support if this problem persists.",
             )
             sys.exit(1)
-    
+
     def _center_window(self):
         """Center window on screen"""
         try:
             self.root.update_idletasks()
-            
+
             # Get screen dimensions
             screen_width = self.root.winfo_screenwidth()
             screen_height = self.root.winfo_screenheight()
-            
+
             # Calculate position
             x = (screen_width - self.window_width) // 2
             y = (screen_height - self.window_height) // 2
-            
+
             self.root.geometry(f"{self.window_width}x{self.window_height}+{x}+{y}")
-            
+
         except Exception as e:
             logger.warning(f"Failed to center window: {e}")
-    
+
     def _create_ui(self):
         """Create launcher UI components"""
         try:
@@ -128,100 +129,77 @@ class LauncherWindow:
             else:
                 main_frame = tk.Frame(self.root, bg="white")
             main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-            
+
             # Logo/Title section
             title_frame = self._create_title_section(main_frame)
             title_frame.pack(fill=tk.X, pady=(0, 30))
-            
+
             # Status section
             status_frame = self._create_status_section(main_frame)
             status_frame.pack(fill=tk.BOTH, expand=True)
-            
+
             # Action button section
             button_frame = self._create_button_section(main_frame)
             button_frame.pack(fill=tk.X, pady=(20, 0))
-            
+
             # Error display section (hidden by default)
             self.error_frame = self._create_error_section(main_frame)
-            
+
         except Exception as e:
             logger.error(f"Failed to create UI: {e}")
             raise
-    
+
     def _create_title_section(self, parent) -> tk.Frame:
         """Create title section with logo and app name"""
         if ctk:
             frame = ctk.CTkFrame(parent, fg_color="transparent")
         else:
             frame = tk.Frame(parent, bg="white")
-        
+
         # Application title
         title_text = system_config.APPLICATION_NAME
         if ctk:
-            title = ctk.CTkLabel(
-                frame,
-                text=title_text,
-                font=("Arial", 28, "bold")
-            )
+            title = ctk.CTkLabel(frame, text=title_text, font=("Arial", 28, "bold"))
         else:
             title = tk.Label(
-                frame,
-                text=title_text,
-                font=("Arial", 28, "bold"),
-                bg="white"
+                frame, text=title_text, font=("Arial", 28, "bold"), bg="white"
             )
         title.pack()
-        
+
         # Version info
         version_text = f"Version {system_config.VERSION}"
         if ctk:
-            version = ctk.CTkLabel(
-                frame,
-                text=version_text,
-                font=("Arial", 12)
-            )
+            version = ctk.CTkLabel(frame, text=version_text, font=("Arial", 12))
         else:
             version = tk.Label(
-                frame,
-                text=version_text,
-                font=("Arial", 12),
-                bg="white",
-                fg="gray"
+                frame, text=version_text, font=("Arial", 12), bg="white", fg="gray"
             )
         version.pack()
-        
+
         return frame
-    
+
     def _create_status_section(self, parent) -> tk.Frame:
         """Create status display section"""
         if ctk:
             frame = ctk.CTkFrame(parent)
         else:
             frame = tk.Frame(parent, bg="#f0f0f0", relief=tk.RIDGE, bd=2)
-        
+
         # Status title
         if ctk:
             status_title = ctk.CTkLabel(
-                frame,
-                text="System Status",
-                font=("Arial", 18, "bold")
+                frame, text="System Status", font=("Arial", 18, "bold")
             )
         else:
             status_title = tk.Label(
-                frame,
-                text="System Status",
-                font=("Arial", 18, "bold"),
-                bg="#f0f0f0"
+                frame, text="System Status", font=("Arial", 18, "bold"), bg="#f0f0f0"
             )
         status_title.pack(pady=(20, 10))
-        
+
         # Status message
         if ctk:
             self.status_label = ctk.CTkLabel(
-                frame,
-                text="Initializing...",
-                font=("Arial", 14),
-                wraplength=700
+                frame, text="Initializing...", font=("Arial", 14), wraplength=700
             )
         else:
             self.status_label = tk.Label(
@@ -230,17 +208,14 @@ class LauncherWindow:
                 font=("Arial", 14),
                 bg="#f0f0f0",
                 wraplength=700,
-                justify=tk.CENTER
+                justify=tk.CENTER,
             )
         self.status_label.pack(pady=10)
-        
+
         # Progress details
         if ctk:
             self.progress_label = ctk.CTkLabel(
-                frame,
-                text="",
-                font=("Arial", 12),
-                wraplength=700
+                frame, text="", font=("Arial", 12), wraplength=700
             )
         else:
             self.progress_label = tk.Label(
@@ -250,19 +225,19 @@ class LauncherWindow:
                 bg="#f0f0f0",
                 fg="gray",
                 wraplength=700,
-                justify=tk.CENTER
+                justify=tk.CENTER,
             )
         self.progress_label.pack(pady=(0, 20))
-        
+
         return frame
-    
+
     def _create_button_section(self, parent) -> tk.Frame:
         """Create action button section"""
         if ctk:
             frame = ctk.CTkFrame(parent, fg_color="transparent")
         else:
             frame = tk.Frame(parent, bg="white")
-        
+
         # Action button (initially hidden)
         if ctk:
             self.action_button = ctk.CTkButton(
@@ -271,7 +246,7 @@ class LauncherWindow:
                 font=("Arial", 14, "bold"),
                 height=40,
                 width=200,
-                command=self._on_action_button_click
+                command=self._on_action_button_click,
             )
         else:
             self.action_button = tk.Button(
@@ -282,27 +257,27 @@ class LauncherWindow:
                 width=20,
                 bg="#007AFF",
                 fg="white",
-                command=self._on_action_button_click
+                command=self._on_action_button_click,
             )
-        
+
         # Don't pack yet - will be shown after detection
-        
+
         return frame
-    
+
     def _create_error_section(self, parent) -> tk.Frame:
         """Create error display section (hidden by default)"""
         if ctk:
             frame = ctk.CTkFrame(parent, fg_color="#ffebee")
         else:
             frame = tk.Frame(parent, bg="#ffebee", relief=tk.RIDGE, bd=2)
-        
+
         # Error title
         if ctk:
             error_title = ctk.CTkLabel(
                 frame,
                 text="[WARN] Setup Required",
                 font=("Arial", 16, "bold"),
-                text_color="#c62828"
+                text_color="#c62828",
             )
         else:
             error_title = tk.Label(
@@ -310,17 +285,14 @@ class LauncherWindow:
                 text="[WARN] Setup Required",
                 font=("Arial", 16, "bold"),
                 bg="#ffebee",
-                fg="#c62828"
+                fg="#c62828",
             )
         error_title.pack(pady=(10, 5))
-        
+
         # Error message
         if ctk:
             error_message = ctk.CTkLabel(
-                frame,
-                text="",
-                font=("Arial", 12),
-                wraplength=700
+                frame, text="", font=("Arial", 12), wraplength=700
             )
         else:
             error_message = tk.Label(
@@ -329,20 +301,17 @@ class LauncherWindow:
                 font=("Arial", 12),
                 bg="#ffebee",
                 wraplength=700,
-                justify=tk.LEFT
+                justify=tk.LEFT,
             )
         error_message.pack(pady=(5, 10), padx=20)
-        
+
         return frame
-    
+
     def _start_detection_process(self):
         """Start system detection in background thread"""
-        detection_thread = threading.Thread(
-            target=self._run_detection,
-            daemon=True
-        )
+        detection_thread = threading.Thread(target=self._run_detection, daemon=True)
         detection_thread.start()
-    
+
     def _run_detection(self):
         """Run detection sequence (runs in background thread).
 
@@ -357,13 +326,15 @@ class LauncherWindow:
             logger.info(f"Detection started — deploy mode: {deploy_mode}")
 
             # ── thin_client mode ──────────────────────────────────
-            if deploy_mode == 'thin_client':
+            if deploy_mode == "thin_client":
                 self._run_thin_client_detection()
                 return
 
             # ── USB detection (usb + auto modes) ──────────────────
-            if deploy_mode in ('usb', 'auto'):
-                self._update_status("Detecting snflwr.ai device...", "Checking for USB device...")
+            if deploy_mode in ("usb", "auto"):
+                self._update_status(
+                    "Detecting snflwr.ai device...", "Checking for USB device..."
+                )
                 usb = partition_detector.find_snflwr_usb()
 
                 if usb is not None:
@@ -372,7 +343,9 @@ class LauncherWindow:
                     self._update_status("Device found!", f"Data: {usb}")
 
                     # Verify write access
-                    self._update_status("Verifying device integrity...", "Checking system files...")
+                    self._update_status(
+                        "Verifying device integrity...", "Checking system files..."
+                    )
                     if not partition_detector.is_writable(usb):
                         self._show_partition_error(
                             "USB partition is not writable.\n\n"
@@ -384,12 +357,14 @@ class LauncherWindow:
                     return
 
                 # Strict USB mode — fail if no USB found
-                if deploy_mode == 'usb':
+                if deploy_mode == "usb":
                     self._show_partition_error("No snflwr.ai USB device found.")
                     return
 
             # ── Local install detection (auto fallback + local mode) ──
-            self._update_status("Checking local installation...", "Looking for snflwr.ai data...")
+            self._update_status(
+                "Checking local installation...", "Looking for snflwr.ai data..."
+            )
             local_path = partition_detector.find_local_install()
 
             if local_path is not None:
@@ -454,7 +429,7 @@ class LauncherWindow:
         # Apply server-pushed configuration
         manager.apply_config(manifest)
 
-        welcome = manifest.get('message', 'Connected to management server')
+        welcome = manifest.get("message", "Connected to management server")
         self._update_status(welcome, f"Version: {manifest.get('version', 'unknown')}")
 
         # Check for launcher updates
@@ -467,34 +442,33 @@ class LauncherWindow:
         self.partitions_detected = True
         self.data_path = system_config.APP_DATA_DIR
         self._check_existing_account()
-    
+
     def _update_status(self, status: str, progress: str):
         """Update status labels (thread-safe)"""
+
         def update():
             if self.status_label:
                 if ctk:
                     self.status_label.configure(text=status)
                 else:
                     self.status_label.config(text=status)
-            
+
             if self.progress_label:
                 if ctk:
                     self.progress_label.configure(text=progress)
                 else:
                     self.progress_label.config(text=progress)
-            
+
             self.root.update()
-        
+
         self.root.after(0, update)
-    
+
     def _show_partition_error(self, error_message: str):
         """Show partition detection error"""
+
         def show():
-            self._update_status(
-                "snflwr.ai Device Not Found",
-                ""
-            )
-            
+            self._update_status("snflwr.ai Device Not Found", "")
+
             # Show error frame with helpful message
             if self.error_frame:
                 # Update error message
@@ -514,9 +488,9 @@ class LauncherWindow:
                                 widget.configure(text=error_text)
                             else:
                                 widget.config(text=error_text)
-                
+
                 self.error_frame.pack(fill=tk.X, pady=(20, 0))
-            
+
             # Show retry button
             if self.action_button:
                 if ctk:
@@ -524,24 +498,22 @@ class LauncherWindow:
                 else:
                     self.action_button.config(text="Retry Detection")
                 self.action_button.pack()
-        
+
         self.root.after(0, show)
-    
+
     def _show_detection_error(self, error_message: str):
         """Show general detection error"""
+
         def show():
-            self._update_status(
-                "Setup Error",
-                ""
-            )
-            
+            self._update_status("Setup Error", "")
+
             messagebox.showerror(
                 "Detection Error",
                 f"An error occurred during system detection:\n\n{error_message}\n\n"
                 "Please try restarting the application. If the problem persists, "
-                "contact support."
+                "contact support.",
             )
-            
+
             # Show exit button
             if self.action_button:
                 if ctk:
@@ -549,17 +521,18 @@ class LauncherWindow:
                 else:
                     self.action_button.config(text="Exit")
                 self.action_button.pack()
-        
+
         self.root.after(0, show)
-    
+
     def _show_setup_ready(self):
         """Show setup wizard ready state"""
+
         def show():
             self._hide_login_form()
             self._hide_browser_button()
             self._update_status(
                 "Welcome to snflwr.ai!",
-                "Let's set up your family's account (takes about 3 minutes)"
+                "Let's set up your family's account (takes about 3 minutes)",
             )
 
             if self.action_button:
@@ -573,11 +546,9 @@ class LauncherWindow:
 
     def _show_login_ready(self):
         """Show inline login form — same window, same visual style as launcher"""
+
         def show():
-            self._update_status(
-                "Welcome Back!",
-                "Sign in to start snflwr.ai"
-            )
+            self._update_status("Welcome Back!", "Sign in to start snflwr.ai")
 
             # Hide the generic action button — login form has its own
             if self.action_button:
@@ -604,55 +575,82 @@ class LauncherWindow:
 
         # Username
         if ctk:
-            ctk.CTkLabel(self.login_frame, text="Username", font=("Arial", 12),
-                         anchor="w").pack(fill=tk.X)
-            self.username_entry = ctk.CTkEntry(self.login_frame, height=36,
-                                               font=("Arial", 13))
+            ctk.CTkLabel(
+                self.login_frame, text="Username", font=("Arial", 12), anchor="w"
+            ).pack(fill=tk.X)
+            self.username_entry = ctk.CTkEntry(
+                self.login_frame, height=36, font=("Arial", 13)
+            )
         else:
-            tk.Label(self.login_frame, text="Username", font=("Arial", 12),
-                     bg="#f0f0f0", anchor="w").pack(fill=tk.X)
+            tk.Label(
+                self.login_frame,
+                text="Username",
+                font=("Arial", 12),
+                bg="#f0f0f0",
+                anchor="w",
+            ).pack(fill=tk.X)
             self.username_entry = tk.Entry(self.login_frame, font=("Arial", 13))
         self.username_entry.pack(fill=tk.X, pady=(2, 10))
 
         # Password
         if ctk:
-            ctk.CTkLabel(self.login_frame, text="Password", font=("Arial", 12),
-                         anchor="w").pack(fill=tk.X)
-            self.password_entry = ctk.CTkEntry(self.login_frame, height=36,
-                                               font=("Arial", 13), show="*")
+            ctk.CTkLabel(
+                self.login_frame, text="Password", font=("Arial", 12), anchor="w"
+            ).pack(fill=tk.X)
+            self.password_entry = ctk.CTkEntry(
+                self.login_frame, height=36, font=("Arial", 13), show="*"
+            )
         else:
-            tk.Label(self.login_frame, text="Password", font=("Arial", 12),
-                     bg="#f0f0f0", anchor="w").pack(fill=tk.X)
-            self.password_entry = tk.Entry(self.login_frame, font=("Arial", 13),
-                                           show="*")
+            tk.Label(
+                self.login_frame,
+                text="Password",
+                font=("Arial", 12),
+                bg="#f0f0f0",
+                anchor="w",
+            ).pack(fill=tk.X)
+            self.password_entry = tk.Entry(
+                self.login_frame, font=("Arial", 13), show="*"
+            )
         self.password_entry.pack(fill=tk.X, pady=(2, 14))
 
         # Error label (hidden until needed)
         if ctk:
             self.login_error_label = ctk.CTkLabel(
-                self.login_frame, text="", font=("Arial", 11),
-                text_color="#c62828", wraplength=500
+                self.login_frame,
+                text="",
+                font=("Arial", 11),
+                text_color="#c62828",
+                wraplength=500,
             )
         else:
             self.login_error_label = tk.Label(
-                self.login_frame, text="", font=("Arial", 11),
-                bg="#f0f0f0", fg="#c62828", wraplength=500
+                self.login_frame,
+                text="",
+                font=("Arial", 11),
+                bg="#f0f0f0",
+                fg="#c62828",
+                wraplength=500,
             )
         self.login_error_label.pack(fill=tk.X, pady=(0, 6))
 
         # Sign-in button
         if ctk:
             self.sign_in_button = ctk.CTkButton(
-                self.login_frame, text="Sign In", height=40,
+                self.login_frame,
+                text="Sign In",
+                height=40,
                 font=("Arial", 14, "bold"),
-                command=self._attempt_login
+                command=self._attempt_login,
             )
         else:
             self.sign_in_button = tk.Button(
-                self.login_frame, text="Sign In",
-                font=("Arial", 14, "bold"), height=2,
-                bg="#007AFF", fg="white",
-                command=self._attempt_login
+                self.login_frame,
+                text="Sign In",
+                font=("Arial", 14, "bold"),
+                height=2,
+                bg="#007AFF",
+                fg="white",
+                command=self._attempt_login,
             )
         self.sign_in_button.pack(fill=tk.X, pady=(0, 8))
 
@@ -710,22 +708,19 @@ class LauncherWindow:
             success, result = auth_manager.authenticate_parent(username, password)
         except Exception as e:
             logger.error(f"Login error: {e}")
-            self._show_login_error(
-                "An unexpected error occurred. Please try again."
-            )
+            self._show_login_error("An unexpected error occurred. Please try again.")
             self._reset_sign_in_button()
             return
 
         if success:
             logger.info(f"Admin authenticated: {username}")
             # Enrich session_data with fields the dashboard expects
-            result['username'] = username
+            result["username"] = username
             self.session_data = result
             self._show_authenticated_ready()
         else:
             error_msg = (
-                result if isinstance(result, str)
-                else "Invalid username or password"
+                result if isinstance(result, str) else "Invalid username or password"
             )
             self._show_login_error(error_msg)
             self._reset_sign_in_button()
@@ -754,10 +749,7 @@ class LauncherWindow:
     def _show_authenticated_ready(self):
         """Post-login: tear down login form, show launch and browser buttons"""
         self._hide_login_form()
-        self._update_status(
-            "Ready to Go!",
-            "snflwr.ai is ready to launch"
-        )
+        self._update_status("Ready to Go!", "snflwr.ai is ready to launch")
 
         if self.action_button:
             if ctk:
@@ -830,14 +822,22 @@ class LauncherWindow:
                 row = tk.Frame(self._service_frame, bg=_STATUS_BG)
             row.pack(fill=tk.X, pady=2)
 
-            dot_canvas = tk.Canvas(row, width=14, height=14, bg=_STATUS_BG, highlightthickness=0)
+            dot_canvas = tk.Canvas(
+                row, width=14, height=14, bg=_STATUS_BG, highlightthickness=0
+            )
             dot_id = dot_canvas.create_oval(2, 2, 12, 12, fill="#9ca3af", outline="")
             dot_canvas.pack(side="left", padx=(0, 8))
 
             if ctk:
                 lbl = ctk.CTkLabel(row, text=f"{name}: checking...", font=("Arial", 11))
             else:
-                lbl = tk.Label(row, text=f"{name}: checking...", font=("Arial", 11), bg="#f0f0f0", fg="#555")
+                lbl = tk.Label(
+                    row,
+                    text=f"{name}: checking...",
+                    font=("Arial", 11),
+                    bg="#f0f0f0",
+                    fg="#555",
+                )
             lbl.pack(side="left")
 
             self._service_labels.append((name, dot_canvas, dot_id, lbl))
@@ -846,10 +846,10 @@ class LauncherWindow:
 
     def _poll_services(self):
         """Schedule a background health check every 3 seconds."""
-        if not getattr(self, '_service_monitor_alive', False) or not self.root:
+        if not getattr(self, "_service_monitor_alive", False) or not self.root:
             return
         # Guard: skip if the previous check is still running
-        if not getattr(self, '_check_in_progress', False):
+        if not getattr(self, "_check_in_progress", False):
             self._check_in_progress = True
             threading.Thread(target=self._check_services, daemon=True).start()
         self.root.after(3000, self._poll_services)
@@ -872,7 +872,7 @@ class LauncherWindow:
         finally:
             self._check_in_progress = False
 
-        if getattr(self, '_service_monitor_alive', False):
+        if getattr(self, "_service_monitor_alive", False):
             try:
                 self.root.after(0, self._update_service_dots, results)
             except Exception:
@@ -902,16 +902,14 @@ class LauncherWindow:
         # Disable button while probing to signal activity
         if self.browser_button:
             if ctk:
-                self.browser_button.configure(state="disabled",
-                                              text="Checking...")
+                self.browser_button.configure(state="disabled", text="Checking...")
             else:
-                self.browser_button.config(state="disabled",
-                                           text="Checking...")
+                self.browser_button.config(state="disabled", text="Checking...")
 
         def probe():
             import urllib.request
-            for url in ("http://localhost:3000",
-                        "http://localhost:39150/docs"):
+
+            for url in ("http://localhost:3000", "http://localhost:39150/docs"):
                 try:
                     urllib.request.urlopen(url, timeout=2)
                     return url
@@ -921,14 +919,15 @@ class LauncherWindow:
 
         def on_result(found_url):
             import webbrowser
+
             # Re-enable button
             if self.browser_button:
                 if ctk:
-                    self.browser_button.configure(state="normal",
-                                                  text="Open in Browser")
+                    self.browser_button.configure(
+                        state="normal", text="Open in Browser"
+                    )
                 else:
-                    self.browser_button.config(state="normal",
-                                               text="Open in Browser")
+                    self.browser_button.config(state="normal", text="Open in Browser")
             if found_url:
                 webbrowser.open(found_url)
             else:
@@ -937,7 +936,7 @@ class LauncherWindow:
                     "Could not detect a running web interface.\n\n"
                     "Make sure snflwr.ai services are started\n"
                     "(run START_SNFLWR.bat or start_snflwr.sh "
-                    "first),\nthen try again."
+                    "first),\nthen try again.",
                 )
 
         def background():
@@ -972,28 +971,21 @@ class LauncherWindow:
 
         except Exception as e:
             logger.error(f"Action button click failed: {e}")
-            messagebox.showerror(
-                "Error",
-                f"An error occurred: {str(e)}"
-            )
-    
+            messagebox.showerror("Error", f"An error occurred: {str(e)}")
+
     def _launch_setup_wizard(self):
         """Launch setup wizard"""
         try:
             logger.info("Launching setup wizard")
-            
+
             # Hide launcher window
             self.root.withdraw()
-            
+
             # Import and launch setup wizard
             from ui.setup_wizard import SetupWizard
-            
-            wizard = SetupWizard(
-                self.root,
-                self.cdrom_path,
-                self.data_path
-            )
-            
+
+            wizard = SetupWizard(self.root, self.cdrom_path, self.data_path)
+
             # When wizard completes, either show login or exit
             def on_wizard_complete(success):
                 if success:
@@ -1002,26 +994,25 @@ class LauncherWindow:
                 else:
                     # User cancelled - show launcher again
                     self.root.deiconify()
-            
+
             wizard.on_complete = on_wizard_complete
             wizard.show()
-            
+
         except ImportError as e:
             logger.error(f"Setup wizard not available: {e}")
             messagebox.showerror(
                 "Setup Error",
                 "Setup wizard is not available yet.\n\n"
-                "This is a development version. Please check back later."
+                "This is a development version. Please check back later.",
             )
             self.root.deiconify()
         except Exception as e:
             logger.error(f"Failed to launch setup wizard: {e}")
             messagebox.showerror(
-                "Setup Error",
-                f"Failed to launch setup wizard:\n\n{str(e)}"
+                "Setup Error", f"Failed to launch setup wizard:\n\n{str(e)}"
             )
             self.root.deiconify()
-    
+
     def _launch_login(self):
         """Show inline login form after wizard completes"""
         try:
@@ -1041,8 +1032,7 @@ class LauncherWindow:
         except Exception as e:
             logger.error(f"Failed to show login form: {e}")
             messagebox.showerror(
-                "Login Error",
-                f"Failed to show login form:\n\n{str(e)}"
+                "Login Error", f"Failed to show login form:\n\n{str(e)}"
             )
             self.root.deiconify()
 
@@ -1050,53 +1040,28 @@ class LauncherWindow:
         """Check if any admin/parent accounts are registered"""
         try:
             from storage.database import db_manager
-            rows = db_manager.execute_query(
-                "SELECT COUNT(*) as count FROM accounts"
-            )
-            return bool(rows and rows[0]['count'] > 0)
+
+            rows = db_manager.execute_query("SELECT COUNT(*) as count FROM accounts")
+            return bool(rows and rows[0]["count"] > 0)
         except Exception as e:
             logger.warning(f"Could not check account registry: {e}")
             return False
 
     def _launch_parent_dashboard(self, session_data: dict):
-        """Launch parent dashboard"""
+        """Open the web parent dashboard in the system browser.
+
+        The dashboard is served by the API at /dashboard and is reachable from
+        any device on the network; we no longer ship a separate desktop GUI.
+        """
+        from config import system_config
+
+        url = f"http://{system_config.API_HOST}:{system_config.API_PORT}/dashboard"
         try:
-            logger.info("Launching parent dashboard")
-            
-            # Hide launcher
-            self.root.withdraw()
-            
-            # Import and launch dashboard
-            from ui.parent_dashboard import ParentDashboard
-            
-            dashboard = ParentDashboard(
-                self.root,
-                session_data
-            )
-            
-            # When dashboard closes, tear down everything
-            def on_dashboard_close():
-                self._shutdown()
-            
-            dashboard.on_close = on_dashboard_close
-            dashboard.show()
-            
-        except ImportError as e:
-            logger.error(f"Parent dashboard not available: {e}")
-            messagebox.showerror(
-                "Dashboard Error",
-                "Parent dashboard is not available yet.\n\n"
-                "This is a development version. Please check back later."
-            )
-            self.root.deiconify()
-        except Exception as e:
-            logger.error(f"Failed to launch parent dashboard: {e}")
-            messagebox.showerror(
-                "Dashboard Error",
-                f"Failed to launch parent dashboard:\n\n{str(e)}"
-            )
-            self.root.deiconify()
-    
+            webbrowser.open(url)
+            logger.info("Opened parent dashboard in browser: %s", url)
+        except Exception as e:  # best-effort; show the URL if the browser fails
+            logger.error("Could not open browser for dashboard (%s): %s", url, e)
+
     def _show_critical_error(self, title: str, message: str):
         """Show critical error message box"""
         try:
@@ -1112,7 +1077,7 @@ class LauncherWindow:
             print(f"{'='*60}")
             print(message)
             print(f"{'='*60}\n")
-    
+
     def _shutdown(self):
         """Release all resources (DB, loggers) and exit mainloop.
 
@@ -1130,6 +1095,7 @@ class LauncherWindow:
         # Close database connections (releases SQLite/Postgres file locks)
         try:
             from storage.database import db_manager
+
             db_manager.close()
         except Exception:
             pass
@@ -1137,6 +1103,7 @@ class LauncherWindow:
         # Flush and close log file handlers
         try:
             from utils.logger import logger_manager
+
             logger_manager.cleanup()
         except Exception:
             pass
@@ -1165,7 +1132,7 @@ class LauncherWindow:
             self._show_critical_error(
                 "Application Error",
                 f"The application encountered a critical error:\n\n{str(e)}\n\n"
-                "Please contact support."
+                "Please contact support.",
             )
         finally:
             self._shutdown()
@@ -1175,11 +1142,13 @@ def _atexit_cleanup():
     """Safety-net: release file handles even if _shutdown was never called."""
     try:
         from storage.database import db_manager
+
         db_manager.close()
     except Exception:
         pass
     try:
         from utils.logger import logger_manager
+
         logger_manager.cleanup()
     except Exception:
         pass
@@ -1188,6 +1157,7 @@ def _atexit_cleanup():
 def main():
     """Main entry point for snflwr.ai"""
     import atexit
+
     atexit.register(_atexit_cleanup)
 
     try:
@@ -1196,14 +1166,14 @@ def main():
         logger.info(f"Starting snflwr.ai v{system_config.VERSION}")
         logger.info(f"Platform: {system_config.PLATFORM}")
         logger.info(f"Python: {sys.version}")
-        
+
         # Create and run launcher
         launcher = LauncherWindow()
         launcher.run()
-        
+
     except Exception as e:
         logger.error(f"Application startup failed: {e}")
-        
+
         # Show error to user
         root = tk.Tk()
         root.withdraw()
@@ -1211,7 +1181,7 @@ def main():
             "Startup Error",
             f"snflwr.ai failed to start:\n\n{str(e)}\n\n"
             "Please try restarting the application. If the problem persists, "
-            "contact support at support@snflwr.ai"
+            "contact support at support@snflwr.ai",
         )
         root.destroy()
 
@@ -1228,4 +1198,4 @@ if __name__ == "__main__":
 
 
 # Export public interface
-__all__ = ['LauncherWindow', 'main']
+__all__ = ["LauncherWindow", "main"]

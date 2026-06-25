@@ -72,3 +72,6 @@ CREDENTIALS*.md
 
 # Local Claude Code permission allowlist (not for the public repo)
 .claude/settings.json
+
+# Local Claude Code working-instructions file (not application docs — keep local)
+CLAUDE.md

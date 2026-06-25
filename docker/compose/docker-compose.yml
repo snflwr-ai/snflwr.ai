@@ -206,6 +206,7 @@ services:
   langfuse:
     image: langfuse/langfuse:2
     container_name: snflwr-langfuse
+    profiles: ["observability"]
     environment:
       - DATABASE_URL=postgresql://langfuse:${LANGFUSE_DB_PASSWORD}@postgres:5432/langfuse
       - NEXTAUTH_URL=${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}

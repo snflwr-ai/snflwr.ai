@@ -15,8 +15,20 @@ NEVER captured: prompt or response text, exact age, raw profile/user id, or emai
    `LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT`, `LANGFUSE_ENCRYPTION_KEY`
    (each `python -c 'import secrets; print(secrets.token_hex(32))'`), and
    `LANGFUSE_HASH_SALT`.
-2. Bring up the service: `docker compose -f docker/compose/docker-compose.yml up -d langfuse`.
+2. Bring up the service: `docker compose -f docker/compose/docker-compose.yml --profile observability up -d langfuse`.
    It runs its own migrations against the dedicated `langfuse` database.
+
+   > **Already-initialized Postgres:** the `langfuse` role/database are created by a
+   > Postgres init hook that runs **only on first cluster init**. If your cluster was
+   > first initialized before `LANGFUSE_DB_PASSWORD` was set, the hook skipped
+   > gracefully and the role/db do not exist. Create them once by hand:
+   >
+   > ```sh
+   > docker exec -e PGPASSWORD=$POSTGRES_PASSWORD snflwr-db psql -U snflwr -d snflwr_db \
+   >   -v lf_pw="$LANGFUSE_DB_PASSWORD" \
+   >   -c "CREATE ROLE langfuse LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD :'lf_pw';" \
+   >   -c "CREATE DATABASE langfuse OWNER langfuse;"
+   > ```
 3. Reach the UI to create your project keys. The service uses `expose: 3000`
    (internal to the Docker network — NOT published to the host), so first make
    it reachable, either by:

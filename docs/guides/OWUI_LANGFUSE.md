@@ -1,0 +1,39 @@
+# Self-hosted Langfuse Observability (Enterprise)
+
+snflwr-api can emit **metadata-only** LLM traces to a self-hosted Langfuse running
+in the enterprise stack. It is **off by default** and never sends chat content.
+
+## What is captured (and what is NOT)
+Captured: model, per-stage latency, token counts (when the model returns them),
+safety verdict (category / severity / which layer blocked / allowed-or-blocked),
+an **age-band** (`<13` / `13-17` / `18+`), and a **salted one-way hash** of the
+profile id (for per-child grouping).
+NEVER captured: prompt or response text, exact age, raw profile/user id, or email.
+
+## Enabling
+1. Set the Langfuse service secrets in `.env.production`: `LANGFUSE_DB_PASSWORD`,
+   `LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT`, `LANGFUSE_ENCRYPTION_KEY`
+   (each `python -c 'import secrets; print(secrets.token_hex(32))'`), and
+   `LANGFUSE_HASH_SALT`.
+2. Bring up the service: `docker compose -f docker/compose/docker-compose.yml up -d langfuse`.
+   It runs its own migrations against the dedicated `langfuse` database.
+3. Open the UI (internal-only by default — e.g. `ssh -L 3000:localhost:3000 <host>`
+   then visit http://localhost:3000), create an account + project, and copy the
+   project's public/secret keys.
+4. Put the keys in `.env.production` as `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`,
+   set `LANGFUSE_ENABLED=true`, and restart snflwr-api:
+   `docker compose -f docker/compose/docker-compose.yml up -d snflwr-api`.
+
+## Exposing the UI (optional)
+By default Langfuse is internal-only (no nginx route). To expose it, add an nginx
+`location` to `enterprise/nginx/nginx.conf` proxying to `http://langfuse:3000`, ideally
+behind auth — it is an operator tool, not a parent/child surface.
+
+## Disable / rollback
+Set `LANGFUSE_ENABLED=false` and restart snflwr-api (tracing no-ops immediately).
+Remove the `langfuse` service to stop it; `DROP DATABASE langfuse;` to reclaim space.
+
+## Privacy stance
+Self-hosted + metadata-only means no child content or raw identifier ever leaves
+snflwr-api into the observability store, satisfying the COPPA/FERPA constraint
+regardless of where Langfuse runs.

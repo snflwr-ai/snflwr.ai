@@ -340,13 +340,18 @@ class TestClassifierStateMachine:
     """Stage 4 classifier state machine and recovery."""
 
     def test_classify_returns_none_when_degraded(self):
+        """Degraded + unavailable degrades to None only under the explicit opt-out
+        (SAFETY_CLASSIFIER_REQUIRED=false). The shipped default now fails closed
+        for all minors/unknown-age (F2) — see test_classifier_failclosed.py."""
         from safety.pipeline import _SemanticClassifier
+        from config import system_config
 
         clf = _SemanticClassifier.__new__(_SemanticClassifier)
         clf._available = False
         clf._client = None
         clf._state = "degraded"
-        result = clf.classify("test input")
+        with patch.object(system_config, "SAFETY_CLASSIFIER_REQUIRED", False):
+            result = clf.classify("test input")
         assert result is None
 
     def test_classify_blocks_and_transitions_on_error(self):

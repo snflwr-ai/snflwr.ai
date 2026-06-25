@@ -173,7 +173,10 @@ class TestProxyAdminBypassDisablesThinking:
         )
 
     def test_admin_bypass_branch_still_present(self, proxy_source: str):
-        assert 'role == "admin"' in proxy_source, (
+        # The admin bypass is now gated on a genuine admin session
+        # (is_genuine_admin) rather than a forwarded role header, but the
+        # bypass branch (which sets think=false) must still exist.
+        assert "is_genuine_admin(session)" in proxy_source, (
             "The admin-bypass branch is missing from the Ollama proxy."
         )
 

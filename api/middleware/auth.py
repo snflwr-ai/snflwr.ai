@@ -128,23 +128,40 @@ async def get_optional_session(
 # AUTHORIZATION - Role-Based Access Control (RBAC)
 # ============================================================================
 
+# The fixed user_id assigned to the INTERNAL_API_KEY principal (Open WebUI).
+INTERNAL_SERVICE_USER_ID = "internal_service"
+
+
+def is_genuine_admin(session: AuthSession) -> bool:
+    """True only for a real admin USER session — never the internal service key.
+
+    The INTERNAL_API_KEY authenticates Open WebUI as a trusted *relay*: it may
+    assert which user it is forwarding (identity) and, via its admin role, bypass
+    the per-request profile-ownership check while relaying a student's message.
+    But it must NOT wield admin *authority* — a leaked key must not reach admin
+    routes, bypass the child-safety pipeline, or manage models. Admin authority
+    therefore requires a genuine admin session, not the shared service key plus a
+    forwarded X-OpenWebUI-User-Role header.
+    """
+    return session.role == "admin" and session.user_id != INTERNAL_SERVICE_USER_ID
+
 
 async def require_admin(
     session: AuthSession = Depends(get_current_session),
 ) -> AuthSession:
     """
-    Require user to be an admin
+    Require a genuine admin user (not the internal service key)
 
     Args:
         session: Current authenticated session
 
     Returns:
-        AuthSession if user is admin
+        AuthSession if user is a genuine admin
 
     Raises:
-        HTTPException: 403 if not admin
+        HTTPException: 403 if not a genuine admin
     """
-    if session.role != "admin":
+    if not is_genuine_admin(session):
         logger.warning(
             f"Access denied: User {session.user_id} (role: {session.role}) attempted admin action"
         )

@@ -8,7 +8,7 @@ from unittest.mock import patch, AsyncMock
 import httpx
 
 
-def _make_app():
+def _make_app(user_id="internal_service", role="admin"):
     from fastapi import FastAPI
     import api.routes.ollama_proxy as proxy_mod
     from core.authentication import AuthSession
@@ -16,8 +16,8 @@ def _make_app():
     app = FastAPI()
     app.include_router(proxy_mod.router)
     app.dependency_overrides[proxy_mod.get_current_session] = lambda: AuthSession(
-        user_id="internal_service",
-        role="admin",
+        user_id=user_id,
+        role=role,
         session_token="test-token",
         email="internal@snflwr.ai",
     )
@@ -93,12 +93,12 @@ def test_admin_never_gated():
     from config import system_config
 
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
-    client = TestClient(_make_app())
+    # A genuine admin session bypasses both safety and the license gate (the
+    # internal relay does not — it takes the student path and is gated).
+    client = TestClient(_make_app(user_id="admin_1"))
     with (
         patch.object(system_config, "LICENSE_ENFORCED", True),
         patch("core.licensing.current_state", return_value=_unlicensed()),
-        patch("api.routes.ollama_proxy._get_user_from_headers",
-              return_value=("admin_1", "admin")),
         patch("api.routes.ollama_proxy._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):

@@ -19,6 +19,9 @@ from core.authentication import AuthSession
 from config import system_config
 from utils.logger import get_logger
 
+import time
+from utils import observability
+
 logger = get_logger(__name__)
 
 # Every Ollama-compatible proxy route requires a Bearer token. The expected
@@ -404,6 +407,35 @@ async def proxy_chat(
     except Exception as exc:
         logger.debug("Could not resolve age for profile %s: %s", profile_id, exc)
 
+    # Observation-only tracing context. Metadata only — never any chat content.
+    # Fail-safe: a tracing error must never change the response.
+    _t0 = time.perf_counter()
+    _trace = {
+        "model": model,
+        "age_band": observability.age_band(age),
+        "profile_hash": observability.hash_profile(profile_id),
+        "blocked": True,
+        "safety": {},
+        "latency_ms": {},
+        "tokens": None,
+    }
+
+    def _emit_trace():
+        _trace["latency_ms"]["total"] = round((time.perf_counter() - _t0) * 1000, 2)
+        try:
+            observability.trace_chat_turn(**_trace)
+        except Exception:  # belt-and-suspenders; wrapper is already fail-safe
+            pass
+
+    def _usage_from(payload):
+        if not isinstance(payload, dict):
+            return None
+        pin = payload.get("prompt_eval_count")
+        out = payload.get("eval_count")
+        if pin is None and out is None:
+            return None
+        return {"input": pin or 0, "output": out or 0}
+
     # COPPA gate — an under-13 profile may only tutor once per-child parental
     # consent has been verified (coppa_verified=1). Consent is set per-profile
     # by /api/parental-consent/verify; it is never granted at profile creation
@@ -430,6 +462,8 @@ async def proxy_chat(
                     "chat. Please ask a parent to complete the consent step in "
                     "Settings."
                 )
+                _trace["safety"] = {"blocked_layer": "coppa"}
+                _emit_trace()
                 return JSONResponse(content=_ollama_block_response(model, msg))
     except Exception as exc:  # never break chat on a COPPA-lookup error
         logger.debug("COPPA gate lookup failed for %s (allowing): %s", profile_id, exc)
@@ -444,6 +478,8 @@ async def proxy_chat(
         logger.error("Safety pipeline raised unexpectedly: %s", exc, exc_info=True)
         # Fail closed — block the message
         block_msg = "I'm unable to process that request right now."
+        _trace["safety"] = {"blocked_layer": "input"}
+        _emit_trace()
         return JSONResponse(content=_ollama_block_response(model, block_msg))
 
     if not result.is_safe:
@@ -458,6 +494,12 @@ async def proxy_chat(
             result.category,
         )
         _record_safety_incident(profile_id, result, text)
+        _trace["safety"] = {
+            "category": str(result.category),
+            "severity": str(result.severity),
+            "blocked_layer": "input",
+        }
+        _emit_trace()
         return JSONResponse(content=_ollama_block_response(model, block_message))
 
     # Safe — forward to Ollama
@@ -473,6 +515,8 @@ async def proxy_chat(
             async for chunk in _stream_chunks_from_ollama(body_bytes, fwd_headers):
                 collected.append(chunk)
         except httpx.ConnectError:
+            _trace["safety"] = {"blocked_layer": "error"}
+            _emit_trace()
             return JSONResponse(
                 status_code=503,
                 content={"detail": "Ollama backend unreachable"},
@@ -493,6 +537,8 @@ async def proxy_chat(
                 "check_output raised on streaming path: %s", exc, exc_info=True
             )
             block_msg = "I'm unable to process that request right now."
+            _trace["safety"] = {"blocked_layer": "output"}
+            _emit_trace()
             return Response(
                 content=_ollama_block_stream_bytes(model, block_msg),
                 media_type="application/x-ndjson",
@@ -510,11 +556,20 @@ async def proxy_chat(
                 out_result.category,
             )
             _record_safety_incident(profile_id, out_result, assistant_text)
+            _trace["safety"] = {
+                "category": str(out_result.category),
+                "severity": str(out_result.severity),
+                "blocked_layer": "output",
+            }
+            _emit_trace()
             return Response(
                 content=_ollama_block_stream_bytes(model, block_msg),
                 media_type="application/x-ndjson",
             )
 
+        _trace["blocked"] = False
+        _trace["safety"] = {"blocked_layer": None}
+        _emit_trace()
         return Response(
             content=b"".join(collected),
             media_type="application/x-ndjson",
@@ -528,6 +583,8 @@ async def proxy_chat(
             headers=fwd_headers,
         )
     except httpx.ConnectError:
+        _trace["safety"] = {"blocked_layer": "error"}
+        _emit_trace()
         return JSONResponse(
             status_code=503,
             content={"detail": "Ollama backend unreachable"},
@@ -553,6 +610,8 @@ async def proxy_chat(
                 "check_output raised on non-streaming path: %s", exc, exc_info=True
             )
             block_msg = "I'm unable to process that request right now."
+            _trace["safety"] = {"blocked_layer": "output"}
+            _emit_trace()
             return JSONResponse(content=_ollama_block_response(model, block_msg))
 
         if not out_result.is_safe:
@@ -567,8 +626,18 @@ async def proxy_chat(
                 out_result.category,
             )
             _record_safety_incident(profile_id, out_result, assistant_text)
+            _trace["safety"] = {
+                "category": str(out_result.category),
+                "severity": str(out_result.severity),
+                "blocked_layer": "output",
+            }
+            _emit_trace()
             return JSONResponse(content=_ollama_block_response(model, block_msg))
 
+    _trace["blocked"] = False
+    _trace["safety"] = {"blocked_layer": None}
+    _trace["tokens"] = _usage_from(upstream_json)
+    _emit_trace()
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,

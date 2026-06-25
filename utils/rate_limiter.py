@@ -9,8 +9,8 @@ and must work correctly in multi-instance deployments.
 
 import os
 import time
-from typing import Any, Dict, Tuple, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any, Dict, Tuple
 
 from utils.cache import cache
 from utils.logger import get_logger

@@ -3,23 +3,23 @@ Authentication API Routes
 Parent/admin authentication
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from core.authentication import (
-    auth_manager,
-    AuthSession,
-    AuthenticationError,
-    InvalidCredentialsError,
-    AccountLockedError,
-)
-from core.email_service import email_service
-from core.email_crypto import get_email_crypto
-from storage.db_adapters import DB_ERRORS
-from api.middleware.auth import get_current_session, audit_log
+from api.middleware.auth import audit_log, get_current_session
 from api.middleware.csrf_protection import set_csrf_cookie
-from utils.rate_limiter import RateLimiter
+from core.authentication import (
+    AccountLockedError,
+    AuthenticationError,
+    AuthSession,
+    InvalidCredentialsError,
+    auth_manager,
+)
+from core.email_crypto import get_email_crypto
+from core.email_service import email_service
+from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger
+from utils.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 

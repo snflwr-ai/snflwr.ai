@@ -12,14 +12,14 @@ The management server exposes a manifest at:
 Uses only stdlib so there are no extra dependencies on the client side.
 """
 
-import json
 import hashlib
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
-from urllib.request import urlopen, Request
+from typing import Any, Dict, Optional
 from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 

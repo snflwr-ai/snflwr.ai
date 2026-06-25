@@ -7,36 +7,35 @@ Handles chat requests with integrated safety monitoring
 - Admins can chat for any profile
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends, Request
-from pydantic import BaseModel, field_validator, Field
-from typing import Optional, Dict, Any
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
-from config import system_config
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, field_validator
 from resource_detection import get_resource_profile as _get_resource_profile
 
+from config import system_config
+
 _resources = _get_resource_profile()
-from utils.input_validation import (
-    validate_profile_id,
-    validate_session_id,
-    validate_message,
-    UUID_HEX_PATTERN,
-    SESSION_TOKEN_PATTERN,
-    MIN_MESSAGE_LENGTH,
-    MAX_MESSAGE_LENGTH,
-)
+from api.middleware.auth import VerifySessionAccess, audit_log, get_current_session
+from core.authentication import AuthSession, auth_manager
 from core.profile_manager import ProfileManager
-from core.session_manager import session_manager, SessionError, SessionLimitError
-from core.authentication import auth_manager, AuthSession
-from api.middleware.auth import get_current_session, VerifySessionAccess, audit_log
+from core.session_manager import SessionError, SessionLimitError, session_manager
+from safety.incident_logger import incident_logger
 from safety.pipeline import safety_pipeline
 from safety.safety_monitor import safety_monitor
-from safety.incident_logger import incident_logger
-from utils.ollama_client import ollama_client, OllamaError
-from storage.db_adapters import DB_ERRORS
 from storage.conversation_store import conversation_store
-from utils.rate_limiter import RateLimiter
+from storage.db_adapters import DB_ERRORS
+from utils.input_validation import (
+    MAX_MESSAGE_LENGTH,
+    MIN_MESSAGE_LENGTH,
+    validate_message,
+    validate_profile_id,
+    validate_session_id,
+)
 from utils.logger import get_logger, sanitize_log_value
+from utils.ollama_client import OllamaError, ollama_client
+from utils.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
@@ -261,6 +260,7 @@ async def send_chat_message(
         if is_admin_test:
             # Admin test: ephemeral in-memory session — no DB write needed.
             import uuid as _uuid
+
             from core.session_manager import Session as _Session
 
             session = _Session(

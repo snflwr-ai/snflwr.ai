@@ -30,9 +30,17 @@ from typing import Dict, Optional, Tuple
 from config import safety_config
 from safety.patterns import (
     COMPILED_PATTERNS as _SHARED_COMPILED,
-    SUBSTR_CHECKS as _SHARED_SUBSTR,
+)
+from safety.patterns import (
     FALSE_POSITIVE_ALLOWLIST as _SHARED_ALLOWLIST,
+)
+from safety.patterns import (
     STRIP_CHARS as _STRIP_CHARS,
+)
+from safety.patterns import (
+    SUBSTR_CHECKS as _SHARED_SUBSTR,
+)
+from safety.patterns import (
     normalize_text as _normalize_text,
 )
 from utils.logger import get_logger, log_safety_incident
@@ -835,8 +843,10 @@ class _SemanticClassifier:
         try:
             from utils.ollama_client import (
                 OllamaClient as _OllamaClient,
-                OllamaError as _OE,
             )  # noqa: F811
+            from utils.ollama_client import (
+                OllamaError as _OE,
+            )
 
             self._client = _OllamaClient(timeout=45, max_retries=1)
             self._OllamaError = _OE

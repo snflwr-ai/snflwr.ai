@@ -3,10 +3,10 @@ snflwr.ai API Server
 FastAPI backend for safety monitoring and profile management
 """
 
-import os
-import sys
-import signal
 import asyncio
+import os
+import signal
+import sys
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,27 +15,26 @@ from typing import Optional
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from datetime import datetime, timezone
+
+import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-import uvicorn
-from datetime import datetime, timezone
 
 from api import __version__
 from config import system_config
-from storage.encryption import is_encryption_available
 from storage.db_adapters import DB_ERRORS
+from storage.encryption import is_encryption_available
 from utils.logger import (
-    get_logger,
     correlation_id_var,
-    set_correlation_id,
     get_correlation_id,
-    sanitize_log_value,
+    get_logger,
+    set_correlation_id,
 )
-from api.middleware.auth import require_admin
 
 logger = get_logger(__name__)
 
@@ -209,10 +208,11 @@ async def lifespan(app: FastAPI):
         logger.error(f"Database schema initialization failed: {e}")
         raise RuntimeError(f"Cannot start without database: {e}")
 
-    # Validate cryptography library is available (required for encryption)
+    # Validate cryptography library is available (required for encryption).
+    # The imports themselves are the availability probe (ImportError below).
     try:
-        from cryptography.fernet import Fernet
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.fernet import Fernet  # noqa: F401
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC  # noqa: F401
 
         logger.info("Cryptography library available")
     except ImportError as e:
@@ -702,21 +702,21 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Import routers after app creation to avoid circular imports
 from api.routes import (
+    admin,
+    admin_dashboard,
+    analytics,
+    auth,
+    billing,
     chat,
+    dashboard,
+    health,
+    metrics,
+    parental_consent,
     profiles,
     safety,
-    auth,
-    analytics,
-    admin,
-    metrics,
-    websocket,
-    parental_consent,
-    dashboard,
-    admin_dashboard,
-    thin_client,
-    billing,
-    health,
     system,
+    thin_client,
+    websocket,
 )
 
 # Register routes
@@ -749,6 +749,7 @@ app.include_router(ollama_proxy_router)
 
 # Serve dashboard static assets (JS, CSS)
 from pathlib import Path as _Path
+
 from fastapi.staticfiles import StaticFiles
 
 app.mount(
@@ -979,8 +980,8 @@ def _needs_first_run_setup() -> bool:
 
 def _run_interactive_setup():
     """Launch the interactive setup script and reload env afterwards."""
-    from pathlib import Path
     import subprocess
+    from pathlib import Path
 
     setup_script = Path(__file__).parent.parent / "scripts" / "setup_production.py"
     if not setup_script.exists():

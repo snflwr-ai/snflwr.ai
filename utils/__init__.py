@@ -5,17 +5,16 @@ Shared utility functions and helper classes
 
 from .logger import (
     get_logger,
-    log_safety_incident,
-    log_performance_metric,
     get_performance_statistics,
+    log_performance_metric,
+    log_safety_incident,
     log_system_startup,
     logger_manager,
 )
-
 from .ollama_client import (
     OllamaClient,
-    OllamaError,
     OllamaConnectionError,
+    OllamaError,
     OllamaTimeoutError,
     ollama_client,
 )

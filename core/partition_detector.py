@@ -5,7 +5,8 @@ Detects and manages USB partitions for offline data storage
 
 import platform
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import List, Optional
+
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,8 +59,8 @@ class PartitionDetector:
         usb_drives = []
 
         try:
-            import string
             import ctypes
+            import string
 
             # Check all drive letters
             for drive_letter in string.ascii_uppercase:

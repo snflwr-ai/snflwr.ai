@@ -4,16 +4,16 @@ Production Error Tracking and Monitoring System
 Comprehensive error tracking, aggregation, and alerting for production deployment
 """
 
-import os
-import traceback
-import sys
-import json
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
-from collections import defaultdict
-import threading
 import hashlib
+import json
+import os
+import sys
+import threading
+import traceback
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional
 
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
@@ -345,8 +345,8 @@ class ErrorTracker:
             f"Error alert: {error_hash} occurred {count} times in last hour (severity: {severity})"
         )
         try:
-            from utils.email_alerts import email_alert_system
             from config import system_config
+            from utils.email_alerts import email_alert_system
 
             if system_config.SMTP_ENABLED and system_config.ADMIN_EMAIL:
                 error_summary = (

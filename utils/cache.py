@@ -4,17 +4,15 @@ Distributed caching with automatic invalidation and TTL management
 Supports both standalone Redis and Redis Sentinel for high availability
 """
 
-import os
 import json
-import hashlib
-from typing import Any, Optional, Callable, List, Tuple
-from datetime import timedelta
+import os
 from functools import wraps
+from typing import Any, Callable, List, Optional, Tuple
+
 import redis
-from redis.exceptions import RedisError, ConnectionError
+from redis.exceptions import ConnectionError, RedisError
 from redis.sentinel import Sentinel
 
-from config import system_config
 from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
@@ -24,7 +22,6 @@ _metrics_available = False
 try:
     from utils.metrics import (
         record_cache_operation,
-        cache_connection_pool_size,
         redis_sentinel_failovers_total,
         redis_sentinel_slaves,
     )

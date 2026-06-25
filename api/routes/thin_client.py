@@ -5,9 +5,10 @@ Serves deployment manifests and accepts registrations from managed thin clients.
 Runs on the central management server — NOT on the thin client itself.
 """
 
+from typing import Dict
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from typing import Dict, Optional
 
 from config import system_config
 from utils.logger import get_logger, sanitize_log_value

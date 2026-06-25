@@ -10,13 +10,14 @@ Features:
 - Comprehensive task monitoring
 """
 
-import os
 import json
-from celery import Celery, signals
-from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
-from kombu import Queue, Exchange
+import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
+from typing import Dict, Optional
+
+from celery import Celery, signals
+from celery.exceptions import MaxRetriesExceededError
+from kombu import Exchange, Queue
 
 from config import system_config
 from utils.logger import get_logger
@@ -196,7 +197,7 @@ def handle_task_failure(
 
     # Log the failure with full context
     logger.error(
-        f"Task failed permanently",
+        "Task failed permanently",
         extra={
             "task_id": task_id,
             "task_name": task_name,
@@ -248,7 +249,7 @@ def handle_task_retry(sender=None, request=None, reason=None, einfo=None, **kw):
     retry_count = request.retries if request else 0
 
     logger.warning(
-        f"Task retry attempt",
+        "Task retry attempt",
         extra={
             "task_id": task_id,
             "task_name": task_name,
@@ -297,7 +298,7 @@ def handle_task_revoked(
     task_id = request.id if request else "unknown"
 
     logger.warning(
-        f"Task revoked",
+        "Task revoked",
         extra={
             "task_id": task_id,
             "task_name": task_name,
@@ -353,7 +354,7 @@ def store_failed_task(self, payload: dict):
         payload: Dictionary containing failed task metadata
     """
     logger.info(
-        f"Stored failed task in dead letter queue",
+        "Stored failed task in dead letter queue",
         extra={
             "task_id": payload.get("task_id"),
             "task_name": payload.get("task_name"),
@@ -449,7 +450,7 @@ def replay_dead_letter_task(task_id: str) -> Optional[str]:
                     r.delete(key)
 
                     logger.info(
-                        f"Replayed dead letter task",
+                        "Replayed dead letter task",
                         extra={
                             "original_task_id": task_id,
                             "new_task_id": result.id,

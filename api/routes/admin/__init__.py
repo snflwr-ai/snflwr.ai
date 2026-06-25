@@ -25,56 +25,56 @@ This package preserves the original public contract of the former
 
 from fastapi import APIRouter
 
+from . import accounts, activity, auth, misc, profiles
+
 # Re-export the names that tests patch and that other modules may import,
 # so the public contract of the old single-file module is preserved.
 from ._common import (  # noqa: F401
-    logger,
-    rate_limiter,
-    check_auth_rate_limit,
-    DatabaseManager,
-    DB_ERRORS,
-    auth_manager,
-    AuthSession,
-    hash_session_token,
-    get_email_crypto,
-    encryption_manager,
-    require_admin,
-    audit_log,
-    set_csrf_cookie,
-    RateLimiter,
-    system_config,
-    AgeVerificationManager,
-    get_logger,
-    sanitize_log_value,
-    _get_owui_token,
-    _owui_find_user_by_email,
-    _owui_activate_user,
-    _owui_delete_user,
-    _owui_create_user,
-    _to_dict,
     _ACCOUNT_UPDATE_COLUMNS,
     _PROFILE_UPDATE_COLUMNS,
-    AdminSyncRequest,
-    AdminResponse,
+    DB_ERRORS,
     AdminLoginRequest,
-    UpdateAccountRequest,
-    UpdateProfileAdminRequest,
+    AdminResponse,
+    AdminSyncRequest,
+    AgeVerificationManager,
+    AuthSession,
+    BulkImportRequest,
     CreateAccountRequest,
     CreateProfileRequest,
-    StudentImportRecord,
-    BulkImportRequest,
+    DatabaseManager,
     FalsePositiveReview,
+    RateLimiter,
+    StudentImportRecord,
+    UpdateAccountRequest,
+    UpdateProfileAdminRequest,
+    _get_owui_token,
+    _owui_activate_user,
+    _owui_create_user,
+    _owui_delete_user,
+    _owui_find_user_by_email,
+    _to_dict,
+    audit_log,
+    auth_manager,
+    check_auth_rate_limit,
+    encryption_manager,
+    get_email_crypto,
+    get_logger,
+    hash_session_token,
+    logger,
+    rate_limiter,
+    require_admin,
+    sanitize_log_value,
+    set_csrf_cookie,
+    system_config,
 )
-
-from . import auth, accounts, profiles, activity, misc
 
 # Re-export route handler callables that tests import directly. The handlers
 # look up patched symbols (DatabaseManager, audit_log, ...) via the package
 # namespace at call-time, so patching ``api.routes.admin.X`` still applies when
 # these are invoked directly.
-from .accounts import delete_account, batch_delete_accounts  # noqa: F401
-from .profiles import delete_profile, batch_delete_profiles  # noqa: F401
-from .activity import batch_delete_alerts, batch_delete_activity  # noqa: F401
+from .accounts import batch_delete_accounts, delete_account  # noqa: F401
+from .activity import batch_delete_activity, batch_delete_alerts  # noqa: F401
+from .profiles import batch_delete_profiles, delete_profile  # noqa: F401
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 

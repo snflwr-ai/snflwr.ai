@@ -5,15 +5,16 @@ Implements double-submit cookie pattern for CSRF protection.
 Protects all state-changing operations (POST, PUT, DELETE, PATCH).
 """
 
-import secrets
 import hashlib
 import hmac
+import secrets
 from typing import Optional
-from fastapi import Request, HTTPException, status
+
+from fastapi import HTTPException, Request, status
 from fastapi.responses import Response
 
-from utils.logger import get_logger
 from config import SECURITY_CONFIG
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -189,14 +190,14 @@ async def validate_csrf_token(request: Request) -> bool:
 
     # Verify cookie token signature
     if not verify_csrf_token(cookie_token):
-        logger.warning(f"CSRF validation failed: Invalid cookie token signature")
+        logger.warning("CSRF validation failed: Invalid cookie token signature")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid CSRF token signature"
         )
 
     # Verify request token signature
     if not verify_csrf_token(request_token):
-        logger.warning(f"CSRF validation failed: Invalid request token signature")
+        logger.warning("CSRF validation failed: Invalid request token signature")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid CSRF token signature"
         )

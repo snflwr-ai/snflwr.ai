@@ -7,13 +7,13 @@ profiles in the `child_profiles` table (schema is created by
 """
 
 import uuid
-from datetime import datetime, timezone
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
+from datetime import datetime, timezone
+from typing import List, Optional
 
-from utils.logger import get_logger, sanitize_log_value
-from utils.cache import cached
 from storage.db_adapters import DB_ERRORS
+from utils.cache import cached
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -159,9 +159,7 @@ class ProfileManager:
             ):
                 raise ProfileError(f"Invalid parent_id: {parent_id}")
             logger.error(f"Failed to write profile {profile_id} to database: {e}")
-            raise ProfileError(
-                f"Could not create profile: database write failed"
-            ) from e
+            raise ProfileError("Could not create profile: database write failed") from e
 
         return ChildProfile(
             profile_id=profile_id,

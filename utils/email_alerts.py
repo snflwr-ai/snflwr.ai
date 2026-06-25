@@ -6,17 +6,15 @@ Production-ready email system for safety incidents and system alerts
 
 import smtplib
 import ssl
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.utils import formataddr
-from typing import List, Optional, Dict
-from datetime import datetime, timezone
-from pathlib import Path
 import threading
-from queue import Queue
 import time
+from datetime import datetime, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formataddr
+from queue import Queue
+from typing import Dict, List, Optional
 
-from config import system_config
 from storage.database import db_manager
 from utils.logger import get_logger
 

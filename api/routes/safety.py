@@ -7,20 +7,20 @@ Safety alerts and incident management
 - Admins can access all safety data
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from safety.safety_monitor import safety_monitor
-from safety.incident_logger import incident_logger
-from core.authentication import auth_manager, AuthSession
-from storage.db_adapters import DB_ERRORS
 from api.middleware.auth import (
-    get_current_session,
+    VerifyAlertAccess,
     VerifyParentAccess,
     VerifyProfileAccess,
-    VerifyAlertAccess,
     audit_log,
+    get_current_session,
 )
+from core.authentication import AuthSession, auth_manager
+from safety.incident_logger import incident_logger
+from safety.safety_monitor import safety_monitor
+from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

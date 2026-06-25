@@ -7,20 +7,19 @@ real Ollama backend configured in system_config.OLLAMA_PROXY_TARGET.
 """
 
 import json as _json
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
-import httpx
 
 from api.middleware.auth import get_current_session
-from core.authentication import AuthSession
 from config import system_config
-from utils.logger import get_logger
-
-import time
+from core.authentication import AuthSession
 from utils import observability
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -414,6 +413,7 @@ async def proxy_chat(
 
     if system_config.LICENSE_ENFORCED:
         import time as _time
+
         from core import licensing
 
         lic = licensing.current_state(int(_time.time()))

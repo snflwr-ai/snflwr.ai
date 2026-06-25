@@ -18,7 +18,7 @@ Usage:
 """
 
 import re
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 from utils.logger import get_logger
 
@@ -362,7 +362,7 @@ def sanitize_string(value: str, max_length: int = 1000) -> str:
 # Pydantic Field Validators (for use in Pydantic models)
 # ==============================================================================
 
-from pydantic import field_validator, ValidationInfo
+from pydantic import field_validator
 
 
 def create_id_validator(field_name: str):

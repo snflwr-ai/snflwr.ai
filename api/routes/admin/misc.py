@@ -4,13 +4,13 @@ The ``/{admin_id}`` path must be registered after all specific routes so that
 ``/stats``, ``/accounts``, etc. match first.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from storage.db_adapters import DB_ERRORS
-from core.authentication import AuthSession
 from api.middleware.auth import require_admin
+from core.authentication import AuthSession
+from storage.db_adapters import DB_ERRORS
 
-from ._common import logger, _pkg, _to_dict
+from ._common import _pkg, _to_dict, logger
 
 router = APIRouter()
 

@@ -162,6 +162,7 @@ def load_public_key():
     global _public_key_cache
     if _public_key_cache is None:
         from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
         from config import system_config
 
         with open(system_config.LICENSE_PUBLIC_KEY_PATH, "rb") as f:

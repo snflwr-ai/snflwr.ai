@@ -4,17 +4,17 @@ Safety Incident Logging and Reporting System
 Comprehensive tracking, analysis, and reporting of safety incidents with real-time WebSocket notifications
 """
 
-from typing import Any, Optional, Dict, List, Tuple
-from datetime import datetime, timedelta, timezone
-from dataclasses import dataclass
-import json
 import asyncio
+import json
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 from config import safety_config
+from core.email_crypto import get_email_crypto
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
 from storage.encryption import encryption_manager
-from core.email_crypto import get_email_crypto
 from utils.logger import get_logger, sanitize_log_value
 
 try:
@@ -924,7 +924,7 @@ class IncidentLogger:
                         ),
                     )
                     logger.info(
-                        f"Email alert queued for parent (encrypted storage)"
+                        "Email alert queued for parent (encrypted storage)"
                     )  # Don't log actual email
 
             # Mark incident as parent-notified
@@ -1030,9 +1030,10 @@ class IncidentLogger:
             # Create async task to broadcast
             # Use asyncio.create_task to avoid blocking the synchronous log_incident method
             try:
-                # Try to get running loop (raises RuntimeError if no loop running)
+                # Probe for a running loop (raises RuntimeError if none); the
+                # return value is unused — the call is the guard.
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     asyncio.create_task(
                         ws_manager.broadcast_to_parent(parent_id, ws_message)
                     )

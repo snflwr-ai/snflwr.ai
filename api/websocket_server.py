@@ -21,13 +21,14 @@ Usage:
 import asyncio
 import json
 import os
-from typing import Dict, Set, Optional, Any
-from datetime import datetime, timezone
-from fastapi import WebSocket, WebSocketDisconnect, Depends, status
-from fastapi.websockets import WebSocketState
 import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Set
 
-from core.authentication import auth_manager, AuthSession
+from fastapi import WebSocket
+from fastapi.websockets import WebSocketState
+
+from core.authentication import AuthSession, auth_manager
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

@@ -1,23 +1,23 @@
 """Admin authentication routes: login (OWUI bridge + Snflwr fallback) and sync."""
 
-from datetime import datetime, timedelta, timezone
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Depends, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from storage.db_adapters import DB_ERRORS
-from core.authentication import AuthSession, hash_session_token
 from api.middleware.auth import require_admin
 from config import system_config
+from core.authentication import AuthSession, hash_session_token
+from storage.db_adapters import DB_ERRORS
 from utils.logger import sanitize_log_value
 
 from ._common import (
-    logger,
+    AdminLoginRequest,
+    AdminSyncRequest,
     _pkg,
     check_auth_rate_limit,
-    AdminSyncRequest,
-    AdminLoginRequest,
+    logger,
 )
 
 router = APIRouter()

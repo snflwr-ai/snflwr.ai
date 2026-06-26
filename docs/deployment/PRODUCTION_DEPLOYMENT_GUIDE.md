@@ -43,7 +43,7 @@ Complete guide for deploying snflwr.ai in production environments (schools, home
 
 2. **Start snflwr.ai**
    ```bash
-   cd loving-morse
+   cd snflwr.ai
    START_SNFLWR.bat  # Windows
    # OR
    ./start_snflwr.sh  # Mac/Linux
@@ -57,7 +57,7 @@ Complete guide for deploying snflwr.ai in production environments (schools, home
 4. **Install Safety Filter**
    - Login as admin
    - Go to Admin Panel → Functions
-   - Copy/paste code from `openwebui_safety_filter_with_logging.py`
+   - Copy/paste code from `openwebui_safety_filter_age_adaptive.py`
    - Enable the filter
 
 5. **Create Student Accounts**
@@ -234,7 +234,7 @@ START_SNFLWR.bat
 
 **Mac/Linux**:
 ```bash
-cd ~/snflwr-ai/loving-morse
+cd ~/snflwr-ai/snflwr.ai
 ./start_snflwr.sh
 ```
 
@@ -256,7 +256,7 @@ Wait ~2 minutes for all services to start.
 2. **Click profile icon** (top right) → **Admin Panel**
 3. **Click "Functions"** in sidebar
 4. **Click "+ Create New Function"**
-5. **Open** `loving-morse/openwebui_safety_filter_with_logging.py`
+5. **Open** `snflwr.ai/openwebui_safety_filter_age_adaptive.py`
 6. **Copy ALL code** and paste into editor
 7. **Name**: "Snflwr Safety Filter"
 8. **Click Save**
@@ -347,7 +347,7 @@ For parent dashboard and logging:
 
 1. **Start monitoring service**:
    ```bash
-   cd loving-morse/safety
+   cd snflwr.ai/safety
    python parent_dashboard.py
    ```
 
@@ -837,7 +837,7 @@ docker exec open-webui sh -c "sqlite3 /app/backend/data/webui.db"
 
 1. **Update Open WebUI**:
    ```bash
-   cd loving-morse/frontend/open-webui
+   cd snflwr.ai/frontend/open-webui
    docker-compose pull
    docker-compose down
    docker-compose up -d
@@ -1016,7 +1016,7 @@ docker-compose restart open-webui
 1. Check Docker Desktop is running
 2. Restart services:
    ```bash
-   cd loving-morse/frontend/open-webui
+   cd snflwr.ai/frontend/open-webui
    docker-compose restart
    ```
 3. Check logs:
@@ -1146,7 +1146,7 @@ Before deploying to students:
 
 **Common Files**:
 - Start script: `START_SNFLWR.bat`
-- Safety filter: `openwebui_safety_filter_with_logging.py`
+- Safety filter: `openwebui_safety_filter_age_adaptive.py`
 - Parent dashboard: `safety/parent_dashboard.py`
 - Docker config: `frontend/open-webui/docker-compose.yaml`
 

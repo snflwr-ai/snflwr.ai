@@ -608,13 +608,13 @@ chmod 600 /tmp/new_internal_api_key.txt
 
 # 2. Update OWU's outbound auth header FIRST. snflwr-api still accepts
 #    the OLD key — every existing chat request keeps working.
-docker exec snflwr-owu sh -c "sed -i 's|^OLLAMA_API_KEY=.*|OLLAMA_API_KEY=$NEW_KEY|' /app/backend/.env"
-docker compose -f docker/compose/docker-compose.home.yml restart snflwr-owu
+docker exec snflwr-frontend sh -c "sed -i 's|^OLLAMA_API_KEY=.*|OLLAMA_API_KEY=$NEW_KEY|' /app/backend/.env"
+docker compose -f docker/compose/docker-compose.home.yml restart snflwr-frontend
 
 # 3. Verify OWU is now sending the NEW key — chat should fail with 401
 #    against snflwr-api because the API still expects the OLD key.
 curl -fsS -H "Authorization: Bearer $NEW_KEY" http://snflwr-api:39150/health  # should succeed
-curl -fsS http://snflwr-owu:38000/api/health                                  # should succeed
+curl -fsS http://snflwr-frontend:8080/api/health                                  # should succeed
 # Now drive a chat through the UI. It WILL fail with "401 from Ollama" —
 # that's the expected intermediate state. Do not panic, do not skip step 4.
 
@@ -625,7 +625,7 @@ sed -i "s|^INTERNAL_API_KEY=.*|INTERNAL_API_KEY=$NEW_KEY|" /opt/snflwr/.env.prod
 docker compose -f docker/compose/docker-compose.home.yml restart snflwr-api
 
 # 5. Validate end-to-end: a chat request from the UI should now return 200.
-curl -fsS http://snflwr-owu:38000/api/health && \
+curl -fsS http://snflwr-frontend:8080/api/health && \
   echo "OWU healthy" || echo "OWU broken — investigate"
 ```
 

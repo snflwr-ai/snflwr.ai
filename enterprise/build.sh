@@ -9,13 +9,13 @@
 # services overhead (PostgreSQL, Redis, nginx, API, Celery, OS).
 #
 # The user-facing chat model is always 'snflwr.ai' — built locally by
-# docker/Dockerfile.ollama as a wrapper around the BASE qwen3.5 model
-# selected here. Kids never see the raw qwen3.5 tag in the chat dropdown.
+# docker/Dockerfile.ollama as a wrapper around the BASE model selected
+# here. Kids never see the raw base-model tag in the chat dropdown.
 #
 # Usage:
 #   enterprise/build.sh                                                  # interactive
-#   enterprise/build.sh --model qwen3.5:27b                              # specify base model
-#   enterprise/build.sh --model qwen3.5:27b --safety llama-guard3:8b     # specify both
+#   enterprise/build.sh --model gemma4:e4b                               # specify base model
+#   enterprise/build.sh --model gemma4:e4b --safety llama-guard3:8b      # specify both
 #   enterprise/build.sh --auto                                           # auto-select by RAM
 
 set -e
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: enterprise/build.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --model MODEL     Base model used to build snflwr.ai (e.g., qwen3.5:27b)"
+            echo "  --model MODEL     Base model used to build snflwr.ai (e.g., gemma4:e4b)"
             echo "  --safety MODEL    Safety classifier model (e.g., llama-guard3:8b)"
             echo "  --auto            Auto-select models based on server RAM"
             echo "  -h, --help        Show this help"
@@ -56,13 +56,12 @@ while [[ $# -gt 0 ]]; do
             echo "The user-facing chat model is always 'snflwr.ai' — built locally"
             echo "by docker/Dockerfile.ollama as a wrapper around the base below."
             echo ""
-            echo "Base model tiers (Qwen3.5 family):"
-            echo "  qwen3.5:0.8b  ~1 GB runtime    Low-resource devices"
-            echo "  qwen3.5:2b    ~2 GB runtime    Older laptops"
-            echo "  qwen3.5:4b    ~3 GB runtime    Everyday use"
-            echo "  qwen3.5:9b    ~6 GB runtime    Mid-range systems (default)"
-            echo "  qwen3.5:27b   ~16 GB runtime   Higher quality"
-            echo "  qwen3.5:35b   ~22 GB runtime   Server-grade"
+            echo "Base model tiers — gemma4:e4b is the default backbone; small"
+            echo "boxes fall back to a qwen3.5 tier (no gemma that small exists):"
+            echo "  gemma4:e4b    ~10 GB runtime  Default — recommended backbone (16 GB+)"
+            echo "  qwen3.5:4b    ~3 GB runtime   Fallback — everyday use (8 GB+)"
+            echo "  qwen3.5:2b    ~2 GB runtime   Fallback — older laptops (6 GB+)"
+            echo "  qwen3.5:0.8b  ~1 GB runtime   Fallback — low-resource devices"
             echo ""
             echo "Safety classifier tiers (Meta Llama Guard):"
             echo "  llama-guard3:1b   ~2 GB runtime   Fast, good accuracy"
@@ -137,10 +136,8 @@ chat_model_ram() {
         qwen3.5:0.8b) echo 1 ;;
         qwen3.5:2b)   echo 2 ;;
         qwen3.5:4b)   echo 3 ;;
-        qwen3.5:9b)   echo 6 ;;
-        qwen3.5:27b)  echo 16 ;;
-        qwen3.5:35b)  echo 22 ;;
-        *)           echo 5 ;;
+        gemma4:e4b)   echo 10 ;;
+        *)           echo 10 ;;
     esac
 }
 
@@ -175,14 +172,14 @@ recommend_models() {
     local ram_gb=$1
     local budget=$(( ram_gb - SERVICES_OVERHEAD ))
 
-    # Try from largest chat model down, pairing with the best safety model that fits
+    # gemma4:e4b (~10 GB) is the backbone — it won the 2026-06-17 tutoring
+    # bake-off outright, beating the old qwen3.5:27b/35b tiers at a fraction of
+    # the VRAM, so there is no reason to offer a larger qwen. Pair it with the
+    # best safety model that fits; boxes too small for gemma fall back to a small
+    # qwen3.5 tier (no gemma that small exists).
     local chat safety
-    if   [ "$budget" -ge 27 ]; then chat="qwen3.5:35b";  safety="llama-guard3:8b"   # 22+5=27
-    elif [ "$budget" -ge 24 ]; then chat="qwen3.5:35b";  safety="llama-guard3:1b"   # 22+2=24
-    elif [ "$budget" -ge 21 ]; then chat="qwen3.5:27b";  safety="llama-guard3:8b"   # 16+5=21
-    elif [ "$budget" -ge 18 ]; then chat="qwen3.5:27b";  safety="llama-guard3:1b"   # 16+2=18
-    elif [ "$budget" -ge 11 ]; then chat="qwen3.5:9b";   safety="llama-guard3:8b"   # 6+5=11
-    elif [ "$budget" -ge 8 ];  then chat="qwen3.5:9b";   safety="llama-guard3:1b"   # 6+2=8
+    if   [ "$budget" -ge 15 ]; then chat="gemma4:e4b";   safety="llama-guard3:8b"   # 10+5=15
+    elif [ "$budget" -ge 12 ]; then chat="gemma4:e4b";   safety="llama-guard3:1b"   # 10+2=12
     elif [ "$budget" -ge 5 ];  then chat="qwen3.5:4b";   safety="llama-guard3:1b"   # 3+2=5
     elif [ "$budget" -ge 4 ];  then chat="qwen3.5:2b";   safety="llama-guard3:1b"   # 2+2=4
     else                            chat="qwen3.5:0.8b";  safety="llama-guard3:1b"   # 1+2=3
@@ -197,8 +194,8 @@ RAM_GB=$(detect_ram_gb)
 
 if [ "$AUTO_SELECT" = true ]; then
     if [ "$RAM_GB" -eq 0 ]; then
-        warn "Could not detect RAM. Using qwen3.5:9b + llama-guard3:1b (8 GB+ assumed)"
-        CHAT_MODEL="${CHAT_MODEL:-qwen3.5:9b}"
+        warn "Could not detect RAM. Using gemma4:e4b + llama-guard3:1b (16 GB+ assumed)"
+        CHAT_MODEL="${CHAT_MODEL:-gemma4:e4b}"
         SAFETY_MODEL="${SAFETY_MODEL:-llama-guard3:1b}"
     else
         PAIR=$(recommend_models "$RAM_GB")
@@ -215,7 +212,7 @@ if [ -z "$CHAT_MODEL" ]; then
     echo ""
     echo "   The user-facing chat model is always 'snflwr.ai' — built as a wrapper"
     echo "   around the base model you choose below. Kids never see the raw"
-    echo "   qwen3.5 tag in the Open WebUI dropdown."
+    echo "   base-model tag in the Open WebUI dropdown."
     echo ""
 
     if [ "$RAM_GB" -gt 0 ]; then
@@ -227,31 +224,27 @@ if [ -z "$CHAT_MODEL" ]; then
         echo "   Available for models: ~${MODEL_BUDGET} GB (chat + safety combined)"
         echo "   Recommended base:     ${REC_CHAT}"
     else
-        REC_CHAT="qwen3.5:9b"
+        REC_CHAT="gemma4:e4b"
         echo "   Could not detect RAM. Default: ${REC_CHAT}"
     fi
 
     echo ""
-    echo "   Available base models (Qwen3.5):"
+    echo "   Available base models (gemma4:e4b default; small boxes fall back to qwen3.5):"
     echo "   ─────────────────────────────────────────────────────────"
-    echo "    1) qwen3.5:0.8b   ~1 GB runtime    Low-resource"
-    echo "    2) qwen3.5:2b     ~2 GB runtime    Older laptops"
-    echo "    3) qwen3.5:4b     ~3 GB runtime    Everyday use"
-    echo "    4) qwen3.5:9b     ~6 GB runtime    Mid-range systems (default)"
-    echo "    5) qwen3.5:27b   ~16 GB runtime    Higher quality"
-    echo "    6) qwen3.5:35b   ~22 GB runtime    Server-grade"
+    echo "    1) gemma4:e4b     ~10 GB runtime   Default — recommended (16 GB+)"
+    echo "    2) qwen3.5:4b     ~3 GB runtime    Fallback — everyday use (8 GB+)"
+    echo "    3) qwen3.5:2b     ~2 GB runtime    Fallback — older laptops (6 GB+)"
+    echo "    4) qwen3.5:0.8b   ~1 GB runtime    Fallback — low-resource"
     echo "   ─────────────────────────────────────────────────────────"
     echo ""
 
-    read -rp "   Select base model [1-6] or Enter for ${REC_CHAT}: " choice
+    read -rp "   Select base model [1-4] or Enter for ${REC_CHAT}: " choice
 
     case "${choice}" in
-        1) CHAT_MODEL="qwen3.5:0.8b" ;;
-        2) CHAT_MODEL="qwen3.5:2b" ;;
-        3) CHAT_MODEL="qwen3.5:4b" ;;
-        4) CHAT_MODEL="qwen3.5:9b" ;;
-        5) CHAT_MODEL="qwen3.5:27b" ;;
-        6) CHAT_MODEL="qwen3.5:35b" ;;
+        1) CHAT_MODEL="gemma4:e4b" ;;
+        2) CHAT_MODEL="qwen3.5:4b" ;;
+        3) CHAT_MODEL="qwen3.5:2b" ;;
+        4) CHAT_MODEL="qwen3.5:0.8b" ;;
         "") CHAT_MODEL="$REC_CHAT" ;;
         *)
             warn "Invalid choice '${choice}'. Using ${REC_CHAT}"

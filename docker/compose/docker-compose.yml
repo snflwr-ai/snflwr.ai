@@ -152,7 +152,7 @@ services:
       context: ../..
       dockerfile: docker/Dockerfile.ollama
       args:
-        CHAT_MODEL: ${CHAT_MODEL:?Set CHAT_MODEL in .env (e.g. qwen3.5:9b)}
+        CHAT_MODEL: ${CHAT_MODEL:?Set CHAT_MODEL in .env (e.g. gemma4:e4b)}
         SAFETY_MODEL: ${SAFETY_MODEL:-llama-guard3:1b}
     container_name: snflwr-ollama
     volumes:

@@ -6,7 +6,11 @@ metadata:
   labels:
     app: ollama
 spec:
-  replicas: 3
+  # One pod pins one GPU (nvidia.com/gpu: 1 below), so this is bounded by your
+  # GPU-node count. Default 1 so a fresh deploy succeeds on a single-GPU cluster
+  # (replicas: 3 would leave 2 pods Pending forever on one GPU). Scale up as you
+  # add GPUs: kubectl scale deployment ollama --replicas=<num_gpu_nodes>.
+  replicas: 1
   selector:
     matchLabels:
       app: ollama
@@ -20,7 +24,7 @@ spec:
         accelerator: nvidia-gpu
       containers:
       - name: ollama
-        image: ollama/ollama:latest
+        image: ollama/ollama:0.30.9  # pinned (matches deploy.sh); never :latest — non-reproducible deploys
         ports:
         - containerPort: 11434
         env:
@@ -74,29 +78,34 @@ spec:
   sessionAffinityConfig:
     clientIP:
       timeoutSeconds: 3600  # 1 hour session affinity
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: ollama-hpa
-  namespace: snflwr-ai
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: ollama
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+# ---------------------------------------------------------------------------
+# Scaling note — Ollama is GPU-bound, so it is deliberately NOT autoscaled on
+# CPU/memory.
+#
+# A previous HorizontalPodAutoscaler here targeted CPU 70% / memory 80%. That is
+# the WRONG signal for GPU inference: CPU and memory stay low while the GPU
+# saturates and requests queue, so the HPA would never scale up under real load
+# (and its minReplicas pinned that many GPUs at idle). It has been removed.
+#
+# Each pod pins one GPU (nvidia.com/gpu: 1), so scaling Ollama means adding GPU
+# capacity — a manual/infra decision, not a CPU threshold:
+#   kubectl scale deployment ollama --replicas=<num_gpu_nodes> -n snflwr-ai
+#
+# For responsive autoscaling, scale on real GPU utilization. That needs the
+# NVIDIA DCGM exporter + Prometheus Adapter (NOT bundled in enterprise/
+# monitoring/). Once those are deployed, an HPA like this works (maxReplicas
+# must be <= the number of available GPUs):
+#
+#   apiVersion: autoscaling/v2
+#   kind: HorizontalPodAutoscaler
+#   metadata: { name: ollama-hpa, namespace: snflwr-ai }
+#   spec:
+#     scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: ollama }
+#     minReplicas: 1
+#     maxReplicas: 10
+#     metrics:
+#     - type: Pods
+#       pods:
+#         metric: { name: DCGM_FI_DEV_GPU_UTIL }
+#         target: { type: AverageValue, averageValue: "70" }
+# ---------------------------------------------------------------------------

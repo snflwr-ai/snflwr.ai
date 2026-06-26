@@ -39,7 +39,7 @@ We build **three Docker images** with different model sizes, and customers choos
 # Build for different hardware targets (both args required)
 docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=qwen3.5:0.8b --build-arg SAFETY_MODEL=llama-guard3:1b -t snflwr-ollama:minimal .
 docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=gemma4:e4b --build-arg SAFETY_MODEL=llama-guard3:1b -t snflwr-ollama:standard .
-docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=qwen3.5:35b --build-arg SAFETY_MODEL=llama-guard3:8b -t snflwr-ollama:premium .
+docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=gemma4:e4b --build-arg SAFETY_MODEL=llama-guard3:8b -t snflwr-ollama:premium .
 
 # Push to registry
 docker push yourregistry/snflwr-ollama:minimal
@@ -141,7 +141,7 @@ User Question
     ↓
 Safety Check (llama-guard3:1b) ← Fast, always same
     ↓
-Snflwr Tutor (qwen3.5:35b) ← Largest model
+Snflwr Tutor (gemma4:e4b) ← Recommended backbone
     ↓
 Response (Exceptional quality, slower without GPU)
 ```
@@ -179,7 +179,7 @@ TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:0.8b
 TUTOR_MODEL = "snflwr.ai"  # Based on gemma4:e4b
 
 # Premium tier
-TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:35b
+TUTOR_MODEL = "snflwr.ai"  # Based on gemma4:e4b
 ```
 
 ### Admin/Parent Access
@@ -250,7 +250,7 @@ def get_tutor_response(message: str, profile_id: str):
 
     models_to_try = [
         MODEL_CONFIG['tutor_model'],      # Preferred
-        'qwen3.5:9b',                      # Fallback 1
+        'qwen3.5:4b',                      # Fallback 1
         'qwen3.5:0.8b',                   # Fallback 2
     ]
 
@@ -454,7 +454,7 @@ Trade-off: Three smaller images vs one huge image → **smaller wins**
 ```bash
 # Build premium tier with Dockerfile.ollama using build args
 docker build -f docker/Dockerfile.ollama \
-  --build-arg CHAT_MODEL=qwen3.5:35b \
+  --build-arg CHAT_MODEL=gemma4:e4b \
   --build-arg SAFETY_MODEL=llama-guard3:8b \
   -t snflwr-ollama:premium .
 ```

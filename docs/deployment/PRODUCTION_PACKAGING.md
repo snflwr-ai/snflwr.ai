@@ -29,7 +29,7 @@ snflwr.ai packages as a **self-contained Docker stack** with all models, code, a
 │  ┌────────▼─────────▼───┐         ┌───────────▼────────┐  │
 │  │  Ollama + Models      │         │  PostgreSQL        │  │
 │  │  (Custom Build)       │         │  (Official Image)  │  │
-│  │  - qwen3.5:9b          │         │  + Redis Cache     │  │
+│  │  - gemma4:e4b         │         │  + Redis Cache     │  │
 │  │  - llama-guard3:1b    │         │                    │  │
 │  │  - safety classifier  │         └────────────────────┘  │
 │  │  - snflwr tutor    │                                 │
@@ -279,7 +279,7 @@ kubectl apply -f kubernetes/
 ```bash
 # 1. Rebuild images with updates
 docker build -f docker/Dockerfile.ollama \
-  --build-arg CHAT_MODEL=qwen3.5:9b --build-arg SAFETY_MODEL=llama-guard3:1b \
+  --build-arg CHAT_MODEL=gemma4:e4b --build-arg SAFETY_MODEL=llama-guard3:8b \
   -t snflwr-ollama:v1.1 .
 docker build -f docker/Dockerfile -t snflwr-api:v1.1 .
 

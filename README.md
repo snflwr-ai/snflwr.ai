@@ -285,15 +285,12 @@ with 16 GB+ RAM the default is **`gemma4:e4b`** (it won the June 2026 tutoring
 bake-off); smaller systems fall back to the Qwen3.5 tiers. Kids never see the
 raw base-model tag.
 
-| Base model | Size | RAM | Best for |
+| Base model | Size | RAM | Use Case |
 |-------|------|-----|----------|
-| `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ | Low-resource devices (fallback) |
-| `qwen3.5:2b` | ~1.3 GB | 4 GB+ | Older laptops (fallback) |
-| `qwen3.5:4b` | ~2.5 GB | 6 GB+ | Everyday use (fallback) |
-| `qwen3.5:9b` | ~5.5 GB | 8 GB+ | Mid-range systems (fallback) |
-| `gemma4:e4b` | ~10 GB | 16 GB+ | **Default** — recommended backbone |
-| `qwen3.5:27b` | ~16 GB | 24 GB+ | Higher quality |
-| `qwen3.5:35b` | ~22 GB | 32 GB+ | Workstation / server |
+| `gemma4:e4b` | ~10 GB | 16 GB+ | **Default — recommended backbone** |
+| `qwen3.5:4b` | ~2.5 GB | 8 GB+ | Fallback (gemma too large) |
+| `qwen3.5:2b` | ~1.3 GB | 6 GB+ | Fallback (older laptops) |
+| `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ | Fallback (low-resource) |
 
 The wrapper bundles the K-12 STEM tutor system prompt, sampling parameters
 (including `repeat_penalty` to prevent reasoning loops), and safety stop

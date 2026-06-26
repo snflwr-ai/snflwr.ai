@@ -347,7 +347,7 @@ Enterprise deployments include Grafana dashboards, Prometheus alerting, and Sent
 | Getting Started | [Setup](docs/guides/SETUP.md) &middot; [Quickstart](docs/guides/QUICKSTART.md) |
 | Administration | [Admin Guide](docs/guides/ADMIN_SETUP_GUIDE.md) |
 | Security | [Database Encryption](docs/guides/DATABASE_ENCRYPTION.md) &middot; [Compliance](docs/compliance/SECURITY_COMPLIANCE.md) |
-| Safety | [Backend Enforcement](docs/safety/BACKEND_SAFETY_ENFORCEMENT.md) &middot; [Grade Filtering](docs/safety/GRADE_BASED_FILTERING.md) |
+| Safety | [Request Flow & Safety](docs/architecture/REQUEST_FLOW_AND_SAFETY.md) &middot; [Grade Filtering](docs/safety/GRADE_BASED_FILTERING.md) |
 | Compliance | [COPPA Consent](docs/compliance/COPPA_CONSENT_MECHANISM.md) &middot; [Age Policy](docs/compliance/AGE_16_POLICY.md) |
 | Deployment | [Production](docs/deployment/PRODUCTION_DEPLOYMENT_GUIDE.md) &middot; [USB](docs/deployment/USB_DEPLOYMENT_GUIDE.md) |
 | Architecture | [Overview](docs/architecture/ARCHITECTURE.md) &middot; [API Examples](docs/architecture/API_EXAMPLES.md) |

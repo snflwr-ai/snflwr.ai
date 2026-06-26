@@ -426,6 +426,25 @@ class PostgreSQLAdapter(DatabaseAdapter):
         return "%s"
 
 
+def _sqlite_file_is_plaintext(db_path):
+    """Inspect an on-disk SQLite file's encryption shape.
+
+    Returns True if it is an unencrypted SQLite database (begins with the
+    standard 16-byte magic header), False if it exists but does not look like
+    one (e.g. a SQLCipher-encrypted file, whose header is ciphertext), or None
+    if there is nothing to inspect (missing or empty file — a fresh DB that
+    will be created to match the configured mode).
+    """
+    try:
+        p = Path(db_path)
+        if not p.exists() or p.stat().st_size == 0:
+            return None
+        with open(p, "rb") as fh:
+            return fh.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        return None
+
+
 def create_adapter(db_type: str, **config) -> DatabaseAdapter:
     """
     Factory function to create appropriate database adapter
@@ -454,6 +473,18 @@ def create_adapter(db_type: str, **config) -> DatabaseAdapter:
     if db_type.lower() == "sqlite":
         # Check if encryption is enabled
         if system_config.DB_ENCRYPTION_ENABLED and system_config.DB_ENCRYPTION_KEY:
+            # Pre-flight: an existing UNENCRYPTED file would otherwise fail at
+            # connect() with a cryptic SQLCipher "file is not a database" error.
+            if _sqlite_file_is_plaintext(config["db_path"]) is True:
+                raise RuntimeError(
+                    f"Database mismatch: '{config['db_path']}' is an UNENCRYPTED "
+                    "SQLite database, but DB_ENCRYPTION_ENABLED=true — the server "
+                    "would fail to open it ('file is not a database').\n"
+                    "Resolve one of:\n"
+                    "  - Dev without encryption: set DB_ENCRYPTION_ENABLED=false in .env\n"
+                    "  - Use encryption: move/delete this file and re-create it "
+                    "encrypted (python -m database.init_db)."
+                )
             # Lazy import to avoid circular dependency
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
 
@@ -475,6 +506,17 @@ def create_adapter(db_type: str, **config) -> DatabaseAdapter:
                     "DB_ENCRYPTION_KEY is not set. Refusing to create an unencrypted "
                     "database that would store student data in plaintext. "
                     "Set DB_ENCRYPTION_KEY or disable DB_ENCRYPTION_ENABLED."
+                )
+            # Pre-flight: an existing ENCRYPTED file can't be read in plain mode.
+            if _sqlite_file_is_plaintext(config["db_path"]) is False:
+                raise RuntimeError(
+                    f"Database mismatch: '{config['db_path']}' looks ENCRYPTED "
+                    "(SQLCipher), but DB_ENCRYPTION_ENABLED is not enabled — the "
+                    "server cannot read it.\n"
+                    "Resolve one of:\n"
+                    "  - Set DB_ENCRYPTION_ENABLED=true and DB_ENCRYPTION_KEY in .env\n"
+                    "  - Move/delete this file and re-create it unencrypted "
+                    "(python -m database.init_db)."
                 )
             return SQLiteAdapter(
                 db_path=config["db_path"],

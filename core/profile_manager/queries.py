@@ -101,6 +101,7 @@ class _ProfileQueryMixin:
             total_questions=total_questions,
             last_active=g("last_active", 13),
             subjects_focus=subjects,
+            parental_consent_verified=bool(g("coppa_verified", 19)),
         )
 
     def get_profiles_by_parent(self, parent_id: str) -> List[ChildProfile]:
@@ -150,6 +151,7 @@ class _ProfileQueryMixin:
                     total_questions=0,  # Will be updated from sessions table
                     last_active=g("last_active", 13),
                     subjects_focus=[],  # Skip subject lookup for list view (use get_profile for details)
+                    parental_consent_verified=bool(g("coppa_verified", 19)),
                 )
                 profiles.append(profile)
             except (KeyError, IndexError, TypeError) as e:

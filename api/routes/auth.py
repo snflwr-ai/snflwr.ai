@@ -89,6 +89,20 @@ class ResetPasswordRequest(BaseModel):
     verify_password: str
 
 
+class ChangeEmailRequest(BaseModel):
+    """Change the account / notification email of the current parent"""
+
+    new_email: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change the current parent's password (requires the current password)"""
+
+    current_password: str
+    new_password: str
+    verify_password: str
+
+
 @router.post("/login")
 def login(
     request: LoginRequest,
@@ -206,6 +220,89 @@ def logout(session: AuthSession = Depends(get_current_session)):
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
     except Exception as e:
         logger.exception(f"Unexpected error during logout: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/change-email")
+def change_email(
+    request: ChangeEmailRequest,
+    session: AuthSession = Depends(get_current_session),
+):
+    """
+    Update the current parent's account / notification email.
+
+    This is where safety alerts and account notifications are delivered. It is
+    intentionally separate from the sign-in identity — changing it does not
+    change the email you log in with.
+
+    [LOCKED] SECURED: Acts only on the authenticated session's own account.
+    """
+    try:
+        updated = auth_manager.update_parent_email(session.user_id, request.new_email)
+        if not updated:
+            # update_parent_email returns False for an invalid format or an
+            # address already in use by another account.
+            raise HTTPException(
+                status_code=400,
+                detail="Could not update email. It may be invalid or already in use.",
+            )
+
+        audit_log("update", "account_email", session.user_id, session)
+
+        return {"status": "success", "email": request.new_email}
+
+    except HTTPException:
+        raise
+    except DB_ERRORS as e:
+        logger.error(f"Database error during email change: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected error during email change: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    session: AuthSession = Depends(get_current_session),
+):
+    """
+    Change the current parent's password.
+
+    Requires the current password. On success the auth layer invalidates all
+    of this account's sessions, so the client must sign in again (reauth=True).
+
+    [LOCKED] SECURED: Acts only on the authenticated session's own account.
+    """
+    try:
+        if request.new_password != request.verify_password:
+            raise HTTPException(status_code=400, detail="Passwords do not match")
+
+        success, error = auth_manager.change_password(
+            session.user_id, request.current_password, request.new_password
+        )
+
+        if not success:
+            # e.g. wrong current password, or new password too weak.
+            raise HTTPException(
+                status_code=400, detail=error or "Could not change password"
+            )
+
+        audit_log("update", "account_password", session.user_id, session)
+
+        return {
+            "status": "success",
+            "reauth": True,
+            "message": "Password changed. Please sign in again.",
+        }
+
+    except HTTPException:
+        raise
+    except DB_ERRORS as e:
+        logger.error(f"Database error during password change: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected error during password change: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

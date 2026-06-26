@@ -1119,3 +1119,125 @@ class TestResetPassword:
         with pytest.raises(HTTPException) as exc:
             reset_password(request, rate_limit_info=_make_rate_limit_info())
         assert exc.value.status_code == 500
+
+
+# ============================================================================
+# CHANGE EMAIL (notification / account email)
+# ============================================================================
+
+class TestChangeEmail:
+
+    def test_change_email_success(self, parent_session, mock_deps):
+        """A valid new email updates and is echoed back (masked or full)."""
+        from api.routes.auth import change_email, ChangeEmailRequest
+
+        mock_deps["auth_manager"].update_parent_email.return_value = True
+
+        request = ChangeEmailRequest(new_email="newaddr@example.com")
+        result = change_email(request, session=parent_session)
+
+        mock_deps["auth_manager"].update_parent_email.assert_called_once_with(
+            "test-parent-id", "newaddr@example.com"
+        )
+        assert result["status"] == "success"
+        assert result["email"] == "newaddr@example.com"
+
+    def test_change_email_rejected(self, parent_session, mock_deps):
+        """A duplicate/invalid email (manager returns False) maps to 400."""
+        from api.routes.auth import change_email, ChangeEmailRequest
+
+        mock_deps["auth_manager"].update_parent_email.return_value = False
+
+        request = ChangeEmailRequest(new_email="taken@example.com")
+        with pytest.raises(HTTPException) as exc:
+            change_email(request, session=parent_session)
+        assert exc.value.status_code == 400
+
+    def test_change_email_db_error(self, parent_session, mock_deps):
+        """A DB error maps to 503."""
+        from api.routes.auth import change_email, ChangeEmailRequest
+
+        mock_deps["auth_manager"].update_parent_email.side_effect = sqlite3.Error(
+            "boom"
+        )
+
+        request = ChangeEmailRequest(new_email="newaddr@example.com")
+        with pytest.raises(HTTPException) as exc:
+            change_email(request, session=parent_session)
+        assert exc.value.status_code == 503
+
+
+# ============================================================================
+# CHANGE PASSWORD
+# ============================================================================
+
+class TestChangePassword:
+
+    def test_change_password_success(self, parent_session, mock_deps):
+        """Correct current password + matching new password succeeds and the
+        response tells the client to re-authenticate (all sessions invalidated)."""
+        from api.routes.auth import change_password, ChangePasswordRequest
+
+        mock_deps["auth_manager"].change_password.return_value = (True, None)
+
+        request = ChangePasswordRequest(
+            current_password="OldP@ss1!",
+            new_password="NewP@ss2!",
+            verify_password="NewP@ss2!",
+        )
+        result = change_password(request, session=parent_session)
+
+        mock_deps["auth_manager"].change_password.assert_called_once_with(
+            "test-parent-id", "OldP@ss1!", "NewP@ss2!"
+        )
+        assert result["status"] == "success"
+        assert result["reauth"] is True
+
+    def test_change_password_mismatch(self, parent_session, mock_deps):
+        """New password and confirmation must match (400, manager not called)."""
+        from api.routes.auth import change_password, ChangePasswordRequest
+
+        request = ChangePasswordRequest(
+            current_password="OldP@ss1!",
+            new_password="NewP@ss2!",
+            verify_password="Different9!",
+        )
+        with pytest.raises(HTTPException) as exc:
+            change_password(request, session=parent_session)
+        assert exc.value.status_code == 400
+        mock_deps["auth_manager"].change_password.assert_not_called()
+
+    def test_change_password_wrong_current(self, parent_session, mock_deps):
+        """A wrong current password (manager returns False) maps to 400 and
+        surfaces the manager's reason."""
+        from api.routes.auth import change_password, ChangePasswordRequest
+
+        mock_deps["auth_manager"].change_password.return_value = (
+            False,
+            "Current password is incorrect",
+        )
+
+        request = ChangePasswordRequest(
+            current_password="WrongP@ss1!",
+            new_password="NewP@ss2!",
+            verify_password="NewP@ss2!",
+        )
+        with pytest.raises(HTTPException) as exc:
+            change_password(request, session=parent_session)
+        assert exc.value.status_code == 400
+        assert "incorrect" in str(exc.value.detail).lower()
+
+    def test_change_password_db_error(self, parent_session, mock_deps):
+        """A DB error maps to 503."""
+        from api.routes.auth import change_password, ChangePasswordRequest
+
+        mock_deps["auth_manager"].change_password.side_effect = sqlite3.Error("boom")
+
+        request = ChangePasswordRequest(
+            current_password="OldP@ss1!",
+            new_password="NewP@ss2!",
+            verify_password="NewP@ss2!",
+        )
+        with pytest.raises(HTTPException) as exc:
+            change_password(request, session=parent_session)
+        assert exc.value.status_code == 503

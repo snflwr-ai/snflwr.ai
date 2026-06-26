@@ -1116,9 +1116,15 @@ a:hover {
 }
 
 .empty-state .empty-icon {
-  font-size: 2.5rem;
+  display: flex;
+  justify-content: center;
   margin-bottom: var(--space-3);
   line-height: 1;
+  color: var(--text-light);
+}
+.empty-state .empty-svg {
+  width: 44px;
+  height: 44px;
 }
 
 .empty-state p {

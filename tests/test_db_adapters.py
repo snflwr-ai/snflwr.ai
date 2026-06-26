@@ -970,3 +970,58 @@ class TestPostgreSQLAdapterEdgeCases:
 
             rowcount = adapter.execute_many("INSERT INTO t VALUES (?)", [(1,), (2,), (3,)])
             assert rowcount == 3
+
+
+class TestCreateAdapterEncryptionFileMismatch:
+    """A deployer who flips DB_ENCRYPTION_ENABLED (or runs without SQLCipher)
+    against an existing DB file gets a cryptic 'file is not a database' crash.
+    create_adapter() should preflight the on-disk file and explain the fix."""
+
+    def _plaintext_db(self, path):
+        import sqlite3
+        con = sqlite3.connect(str(path))
+        con.execute("CREATE TABLE t(x)")
+        con.commit()
+        con.close()
+        return path
+
+    def test_encryption_on_but_file_is_plaintext_raises_clearly(self, tmp_path):
+        from storage.db_adapters import create_adapter
+
+        db = self._plaintext_db(tmp_path / "plain.db")
+        with patch("storage.db_adapters.system_config") as sc:
+            sc.DB_ENCRYPTION_ENABLED = True
+            sc.DB_ENCRYPTION_KEY = "k" * 32
+            sc.DB_KDF_ITERATIONS = 1000
+            with pytest.raises(RuntimeError, match="(?i)unencrypted|DB_ENCRYPTION_ENABLED=false"):
+                create_adapter("sqlite", db_path=db)
+
+    def test_encryption_off_but_file_looks_encrypted_raises_clearly(self, tmp_path):
+        from storage.db_adapters import create_adapter
+
+        enc = tmp_path / "enc.db"
+        enc.write_bytes(b"\xDE\xAD\xBE\xEF" * 16)  # not the SQLite magic header
+        with patch("storage.db_adapters.system_config") as sc:
+            sc.DB_ENCRYPTION_ENABLED = False
+            sc.DB_ENCRYPTION_KEY = None
+            with pytest.raises(RuntimeError, match="(?i)encrypted"):
+                create_adapter("sqlite", db_path=enc)
+
+    def test_encryption_off_with_plaintext_file_is_fine(self, tmp_path):
+        from storage.db_adapters import create_adapter, SQLiteAdapter
+
+        db = self._plaintext_db(tmp_path / "ok.db")
+        with patch("storage.db_adapters.system_config") as sc:
+            sc.DB_ENCRYPTION_ENABLED = False
+            sc.DB_ENCRYPTION_KEY = None
+            adapter = create_adapter("sqlite", db_path=db)
+        assert isinstance(adapter, SQLiteAdapter)
+
+    def test_missing_file_does_not_raise(self, tmp_path):
+        from storage.db_adapters import create_adapter, SQLiteAdapter
+
+        with patch("storage.db_adapters.system_config") as sc:
+            sc.DB_ENCRYPTION_ENABLED = False
+            sc.DB_ENCRYPTION_KEY = None
+            adapter = create_adapter("sqlite", db_path=tmp_path / "does_not_exist.db")
+        assert isinstance(adapter, SQLiteAdapter)

@@ -19,7 +19,7 @@ import urllib.request
 # `b2:snflwr-backups-prod`. We pass it as an argv element (never through a
 # shell) but still validate the shape to catch operator typos and reject
 # anything with whitespace/shell metacharacters before invoking rclone.
-_RCLONE_REMOTE_RE = re.compile(r'^[A-Za-z0-9_-]+:[A-Za-z0-9_./-]*$')
+_RCLONE_REMOTE_RE = re.compile(r"^[A-Za-z0-9_-]+:[A-Za-z0-9_./-]*$")
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -35,19 +35,23 @@ class DatabaseBackup:
 
     def __init__(self):
         # Backup configuration from environment or defaults
-        self.backup_enabled = os.getenv('BACKUP_ENABLED', 'true').lower() == 'true'
-        self.backup_path = Path(os.getenv('BACKUP_PATH', system_config.APP_DATA_DIR / 'backups'))
-        self.backup_retention_days = int(os.getenv('BACKUP_RETENTION_DAYS', '30'))
-        self.compress_backups = os.getenv('COMPRESS_BACKUPS', 'true').lower() == 'true'
+        self.backup_enabled = os.getenv("BACKUP_ENABLED", "true").lower() == "true"
+        self.backup_path = Path(
+            os.getenv("BACKUP_PATH", system_config.APP_DATA_DIR / "backups")
+        )
+        self.backup_retention_days = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
+        self.compress_backups = os.getenv("COMPRESS_BACKUPS", "true").lower() == "true"
 
         # Off-host (remote) backup configuration. Local backups protect
         # against rm -rf / corruption but not host failure; when enabled, the
         # backup is pushed to an rclone remote and the run fails closed if the
         # copy cannot be made (see DR_RUNBOOK.md "Off-host destination").
-        self.offhost_enabled = os.getenv('OFFHOST_BACKUP_ENABLED', 'false').lower() == 'true'
-        self.rclone_remote = os.getenv('RCLONE_REMOTE', '').strip()
-        self.rclone_config = os.getenv('RCLONE_CONFIG', '').strip()
-        offhost_retention = os.getenv('OFFHOST_RETENTION_DAYS', '').strip()
+        self.offhost_enabled = (
+            os.getenv("OFFHOST_BACKUP_ENABLED", "false").lower() == "true"
+        )
+        self.rclone_remote = os.getenv("RCLONE_REMOTE", "").strip()
+        self.rclone_config = os.getenv("RCLONE_CONFIG", "").strip()
+        offhost_retention = os.getenv("OFFHOST_RETENTION_DAYS", "").strip()
         self.offhost_retention_days = (
             int(offhost_retention) if offhost_retention else self.backup_retention_days
         )
@@ -64,25 +68,29 @@ class DatabaseBackup:
         # the env/compose. When on, it is fail-closed — an OWUI backup failure
         # marks the run unsuccessful so monitoring alarms rather than silently
         # leaving chat history/accounts unprotected.
-        self.owui_backup_enabled = os.getenv('OWUI_BACKUP_ENABLED', 'false').lower() == 'true'
-        self.owui_container = os.getenv('OWUI_CONTAINER', 'snflwr-frontend').strip()
-        self.owui_data_path = os.getenv('OWUI_DATA_PATH', '/app/backend/data').strip()
+        self.owui_backup_enabled = (
+            os.getenv("OWUI_BACKUP_ENABLED", "false").lower() == "true"
+        )
+        self.owui_container = os.getenv("OWUI_CONTAINER", "snflwr-frontend").strip()
+        self.owui_data_path = os.getenv("OWUI_DATA_PATH", "/app/backend/data").strip()
 
         # Open WebUI relational data on Postgres (enterprise tier). When OWUI is
         # moved off SQLite onto the dedicated `openwebui` database, that data is
         # NOT in snflwr_db and the volume backup only covers vector_db/ + uploads/.
         # This dumps the openwebui DB so relational data stays in DR. Opt-in,
         # fail-closed (same contract as OWUI_BACKUP_ENABLED).
-        self.owui_pg_backup_enabled = os.getenv('OWUI_PG_BACKUP_ENABLED', 'false').lower() == 'true'
-        self.owui_db_name = os.getenv('OWUI_DB_NAME', 'openwebui').strip()
-        self.owui_db_user = os.getenv('OWUI_DB_USER', 'openwebui').strip()
-        self.owui_db_password = os.getenv('OWUI_DB_PASSWORD', '')
+        self.owui_pg_backup_enabled = (
+            os.getenv("OWUI_PG_BACKUP_ENABLED", "false").lower() == "true"
+        )
+        self.owui_db_name = os.getenv("OWUI_DB_NAME", "openwebui").strip()
+        self.owui_db_user = os.getenv("OWUI_DB_USER", "openwebui").strip()
+        self.owui_db_password = os.getenv("OWUI_DB_PASSWORD", "")
 
         # Heartbeat / dead-man's-switch. A scheduled backup that silently stops
         # running is a backup that didn't happen. When set, a successful run
         # pings this URL and a failed run pings <URL>/fail, so an external
         # monitor (e.g. healthchecks.io) alarms if no success arrives in time.
-        self.heartbeat_url = os.getenv('BACKUP_HEARTBEAT_URL', '').strip()
+        self.heartbeat_url = os.getenv("BACKUP_HEARTBEAT_URL", "").strip()
 
         # Create backup directory
         self.backup_path.mkdir(parents=True, exist_ok=True)
@@ -98,13 +106,15 @@ class DatabaseBackup:
             logger.info(f"  Off-host retention: {self.offhost_retention_days} days")
         logger.info(f"  Open WebUI backup: {self.owui_backup_enabled}")
         if self.owui_backup_enabled:
-            logger.info(f"  Open WebUI container: {self.owui_container}:{self.owui_data_path}")
+            logger.info(
+                f"  Open WebUI container: {self.owui_container}:{self.owui_data_path}"
+            )
         logger.info(f"  Open WebUI Postgres backup: {self.owui_pg_backup_enabled}")
 
     def backup_sqlite(self) -> tuple[bool, str]:
         """Backup SQLite database"""
         try:
-            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             backup_file = self.backup_path / f"snflwr_sqlite_{timestamp}.db"
 
             logger.info(f"Creating SQLite backup: {backup_file}")
@@ -121,9 +131,9 @@ class DatabaseBackup:
 
             # Compress if enabled
             if self.compress_backups:
-                compressed_file = Path(str(backup_file) + '.gz')
-                with open(backup_file, 'rb') as f_in:
-                    with gzip.open(compressed_file, 'wb') as f_out:
+                compressed_file = Path(str(backup_file) + ".gz")
+                with open(backup_file, "rb") as f_in:
+                    with gzip.open(compressed_file, "wb") as f_out:
                         shutil.copyfileobj(f_in, f_out)
 
                 # Remove uncompressed backup
@@ -133,7 +143,9 @@ class DatabaseBackup:
 
             # Get backup size
             size_mb = backup_file.stat().st_size / (1024 * 1024)
-            logger.info(f"[OK] SQLite backup completed: {backup_file} ({size_mb:.2f} MB)")
+            logger.info(
+                f"[OK] SQLite backup completed: {backup_file} ({size_mb:.2f} MB)"
+            )
 
             return True, str(backup_file)
 
@@ -159,15 +171,20 @@ class DatabaseBackup:
         import re
 
         # Only allow alphanumeric, dots, hyphens, underscores
-        if not re.match(r'^[a-zA-Z0-9._-]+$', param):
+        if not re.match(r"^[a-zA-Z0-9._-]+$", param):
             raise ValueError(
                 f"Invalid {param_name}: contains disallowed characters. "
                 f"Only alphanumeric, dots, hyphens, and underscores are allowed."
             )
         return param
 
-    def backup_postgresql(self, db_name: str = None, user: str = None,
-                          password: str = None, label: str = 'postgres') -> tuple[bool, str]:
+    def backup_postgresql(
+        self,
+        db_name: str = None,
+        user: str = None,
+        password: str = None,
+        label: str = "postgres",
+    ) -> tuple[bool, str]:
         """Backup a PostgreSQL database using pg_dump.
 
         Defaults to the primary snflwr database; pass db_name/user/password/label
@@ -175,30 +192,44 @@ class DatabaseBackup:
         'openwebui'). `label` sets the artifact prefix: snflwr_<label>_<ts>.sql.
         """
         try:
-            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             backup_file = self.backup_path / f"snflwr_{label}_{timestamp}.sql"
 
             # Validate all PostgreSQL parameters to prevent command injection
-            host = self._validate_postgres_param(system_config.POSTGRES_HOST, 'POSTGRES_HOST')
-            user = self._validate_postgres_param(user or system_config.POSTGRES_USER, 'POSTGRES_USER')
-            database = self._validate_postgres_param(db_name or system_config.POSTGRES_DB, 'POSTGRES_DB')
+            host = self._validate_postgres_param(
+                system_config.POSTGRES_HOST, "POSTGRES_HOST"
+            )
+            user = self._validate_postgres_param(
+                user or system_config.POSTGRES_USER, "POSTGRES_USER"
+            )
+            database = self._validate_postgres_param(
+                db_name or system_config.POSTGRES_DB, "POSTGRES_DB"
+            )
 
             logger.info(f"Creating PostgreSQL backup of '{database}': {backup_file}")
 
             # Build pg_dump command with validated parameters
             cmd = [
-                'pg_dump',
-                '-h', host,
-                '-p', str(system_config.POSTGRES_PORT),  # Port is int, already safe
-                '-U', user,
-                '-d', database,
-                '-F', 'c',  # Custom format (compressed)
-                '-f', str(backup_file)
+                "pg_dump",
+                "-h",
+                host,
+                "-p",
+                str(system_config.POSTGRES_PORT),  # Port is int, already safe
+                "-U",
+                user,
+                "-d",
+                database,
+                "-F",
+                "c",  # Custom format (compressed)
+                "-f",
+                str(backup_file),
             ]
 
             # Set password environment variable
             env = os.environ.copy()
-            env['PGPASSWORD'] = password if password is not None else system_config.POSTGRES_PASSWORD
+            env["PGPASSWORD"] = (
+                password if password is not None else system_config.POSTGRES_PASSWORD
+            )
 
             # Run pg_dump
             result = subprocess.run(
@@ -206,7 +237,7 @@ class DatabaseBackup:
                 env=env,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
             )
 
             if result.returncode != 0:
@@ -215,9 +246,9 @@ class DatabaseBackup:
 
             # Additional gzip compression if enabled
             if self.compress_backups:
-                compressed_file = Path(str(backup_file) + '.gz')
-                with open(backup_file, 'rb') as f_in:
-                    with gzip.open(compressed_file, 'wb') as f_out:
+                compressed_file = Path(str(backup_file) + ".gz")
+                with open(backup_file, "rb") as f_in:
+                    with gzip.open(compressed_file, "wb") as f_out:
                         shutil.copyfileobj(f_in, f_out)
 
                 backup_file.unlink()
@@ -226,7 +257,9 @@ class DatabaseBackup:
 
             # Get backup size
             size_mb = backup_file.stat().st_size / (1024 * 1024)
-            logger.info(f"[OK] PostgreSQL backup completed: {backup_file} ({size_mb:.2f} MB)")
+            logger.info(
+                f"[OK] PostgreSQL backup completed: {backup_file} ({size_mb:.2f} MB)"
+            )
 
             return True, str(backup_file)
 
@@ -250,13 +283,13 @@ class DatabaseBackup:
         and archive it as snflwr_owui_<ts>.tar.gz so it joins the same off-host
         and retention flow. Returns (ok, archive_path_or_reason).
         """
-        if shutil.which('docker') is None:
+        if shutil.which("docker") is None:
             return False, (
                 "docker not found on PATH; cannot reach the Open WebUI container "
                 "(set OWUI_BACKUP_ENABLED=false if backups run without docker access)"
             )
 
-        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         archive = self.backup_path / f"snflwr_owui_{timestamp}.tar.gz"
         tmp_dir = self.backup_path / f".owui_tmp_{timestamp}"
         try:
@@ -268,11 +301,16 @@ class DatabaseBackup:
             src = f"{self.owui_container}:{self.owui_data_path}"
             logger.info(f"Backing up Open WebUI data: {src}")
             result = subprocess.run(
-                ['docker', 'cp', src, str(tmp_dir)],
-                capture_output=True, text=True, timeout=300
+                ["docker", "cp", src, str(tmp_dir)],
+                capture_output=True,
+                text=True,
+                timeout=300,
             )
             if result.returncode != 0:
-                msg = result.stderr.strip() or f"docker cp failed (exit {result.returncode})"
+                msg = (
+                    result.stderr.strip()
+                    or f"docker cp failed (exit {result.returncode})"
+                )
                 logger.error(f"Open WebUI backup failed: {msg}")
                 return False, msg
 
@@ -281,11 +319,14 @@ class DatabaseBackup:
                 return False, f"copied data dir not found at {copied}"
 
             import tarfile
-            with tarfile.open(archive, 'w:gz') as tar:
-                tar.add(copied, arcname='open-webui-data')
+
+            with tarfile.open(archive, "w:gz") as tar:
+                tar.add(copied, arcname="open-webui-data")
 
             size_mb = archive.stat().st_size / (1024 * 1024)
-            logger.info(f"[OK] Open WebUI backup completed: {archive} ({size_mb:.2f} MB)")
+            logger.info(
+                f"[OK] Open WebUI backup completed: {archive} ({size_mb:.2f} MB)"
+            )
             return True, str(archive)
 
         except subprocess.TimeoutExpired:
@@ -302,9 +343,9 @@ class DatabaseBackup:
 
         Returned as a list and run without a shell, so remote/path values are
         never interpreted by a shell."""
-        cmd = ['rclone', *args]
+        cmd = ["rclone", *args]
         if self.rclone_config:
-            cmd += ['--config', self.rclone_config]
+            cmd += ["--config", self.rclone_config]
         return cmd
 
     def _offhost_preflight(self) -> tuple[bool, str]:
@@ -317,7 +358,7 @@ class DatabaseBackup:
                 f"RCLONE_REMOTE is malformed: {self.rclone_remote!r} "
                 "(expected form 'remote:path', e.g. 'b2:snflwr-backups-prod')"
             )
-        if shutil.which('rclone') is None:
+        if shutil.which("rclone") is None:
             return False, (
                 "rclone binary not found on PATH; install rclone or disable "
                 "OFFHOST_BACKUP_ENABLED"
@@ -338,7 +379,7 @@ class DatabaseBackup:
         for f in files:
             if not f or not Path(f).exists():
                 continue
-            cmd = self._rclone_cmd('copy', f, self.rclone_remote)
+            cmd = self._rclone_cmd("copy", f, self.rclone_remote)
             logger.info(f"Off-host copy: {f} -> {self.rclone_remote}")
             try:
                 result = subprocess.run(
@@ -353,7 +394,10 @@ class DatabaseBackup:
                 logger.error(msg)
                 return False, msg
             if result.returncode != 0:
-                msg = result.stderr.strip() or f"rclone copy failed (exit {result.returncode})"
+                msg = (
+                    result.stderr.strip()
+                    or f"rclone copy failed (exit {result.returncode})"
+                )
                 logger.error(f"Off-host copy failed for {f}: {msg}")
                 return False, msg
 
@@ -371,15 +415,20 @@ class DatabaseBackup:
             return False, reason
 
         min_age = f"{self.offhost_retention_days}d"
-        cmd = self._rclone_cmd('delete', self.rclone_remote, '--min-age', min_age)
-        logger.info(f"Off-host prune: deleting on {self.rclone_remote} older than {min_age}")
+        cmd = self._rclone_cmd("delete", self.rclone_remote, "--min-age", min_age)
+        logger.info(
+            f"Off-host prune: deleting on {self.rclone_remote} older than {min_age}"
+        )
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             logger.warning(f"Off-host prune error (ignored): {e}")
             return False, str(e)
         if result.returncode != 0:
-            msg = result.stderr.strip() or f"rclone delete failed (exit {result.returncode})"
+            msg = (
+                result.stderr.strip()
+                or f"rclone delete failed (exit {result.returncode})"
+            )
             logger.warning(f"Off-host prune failed (ignored): {msg}")
             return False, msg
         return True, "pruned"
@@ -398,7 +447,7 @@ class DatabaseBackup:
         # rclone copy treats the source as a file when it has no trailing
         # slash; it lands in the destination directory under the same name.
         remote_src = f"{self.rclone_remote}/{filename}"
-        cmd = self._rclone_cmd('copy', remote_src, str(self.backup_path))
+        cmd = self._rclone_cmd("copy", remote_src, str(self.backup_path))
         logger.info(f"Off-host pull: {remote_src} -> {self.backup_path}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -406,7 +455,10 @@ class DatabaseBackup:
             logger.error(f"Off-host pull error: {e}")
             return False, str(e)
         if result.returncode != 0:
-            msg = result.stderr.strip() or f"rclone copy failed (exit {result.returncode})"
+            msg = (
+                result.stderr.strip()
+                or f"rclone copy failed (exit {result.returncode})"
+            )
             logger.error(f"Off-host pull failed: {msg}")
             return False, msg
 
@@ -419,7 +471,7 @@ class DatabaseBackup:
         not affect the backup result."""
         if not self.heartbeat_url:
             return
-        if not self.heartbeat_url.lower().startswith(('http://', 'https://')):
+        if not self.heartbeat_url.lower().startswith(("http://", "https://")):
             logger.warning(
                 f"BACKUP_HEARTBEAT_URL is not http(s); ignoring: {self.heartbeat_url!r}"
             )
@@ -427,7 +479,9 @@ class DatabaseBackup:
 
         url = self.heartbeat_url if success else f"{self.heartbeat_url}/fail"
         try:
-            with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 (scheme validated above)
+            with urllib.request.urlopen(
+                url, timeout=10
+            ) as resp:  # noqa: S310 (scheme validated above)
                 resp.read()
             logger.info(f"Heartbeat pinged ({'success' if success else 'fail'})")
         except Exception as e:  # noqa: BLE001 — heartbeat is best-effort
@@ -437,11 +491,13 @@ class DatabaseBackup:
         """Remove backups older than retention period"""
         logger.info(f"Cleaning up backups older than {self.backup_retention_days} days")
 
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=self.backup_retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(
+            days=self.backup_retention_days
+        )
         removed_count = 0
         removed_size = 0
 
-        for backup_file in self.backup_path.glob('snflwr_*'):
+        for backup_file in self.backup_path.glob("snflwr_*"):
             if backup_file.is_file():
                 file_time = datetime.fromtimestamp(
                     backup_file.stat().st_mtime, tz=timezone.utc
@@ -456,7 +512,9 @@ class DatabaseBackup:
 
         if removed_count > 0:
             size_mb = removed_size / (1024 * 1024)
-            logger.info(f"[OK] Removed {removed_count} old backups ({size_mb:.2f} MB freed)")
+            logger.info(
+                f"[OK] Removed {removed_count} old backups ({size_mb:.2f} MB freed)"
+            )
         else:
             logger.info("No old backups to remove")
 
@@ -464,7 +522,7 @@ class DatabaseBackup:
         """List all available backups"""
         logger.info("Available backups:")
 
-        backups = sorted(self.backup_path.glob('snflwr_*'), reverse=True)
+        backups = sorted(self.backup_path.glob("snflwr_*"), reverse=True)
 
         if not backups:
             logger.info("  No backups found")
@@ -473,24 +531,106 @@ class DatabaseBackup:
         for backup_file in backups:
             size_mb = backup_file.stat().st_size / (1024 * 1024)
             mtime = datetime.fromtimestamp(backup_file.stat().st_mtime)
-            logger.info(f"  {backup_file.name} ({size_mb:.2f} MB) - {mtime.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(
+                f"  {backup_file.name} ({size_mb:.2f} MB) - {mtime.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
 
     def create_backup_metadata(self, backup_file: str, success: bool):
         """Create metadata file for backup"""
         metadata = {
-            'backup_file': backup_file,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'database_type': system_config.DATABASE_TYPE,
-            'success': success,
-            'retention_days': self.backup_retention_days,
-            'compressed': self.compress_backups,
+            "backup_file": backup_file,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "database_type": system_config.DATABASE_TYPE,
+            "success": success,
+            "retention_days": self.backup_retention_days,
+            "compressed": self.compress_backups,
         }
 
-        metadata_file = Path(backup_file).with_suffix('.json')
-        with open(metadata_file, 'w') as f:
+        metadata_file = Path(backup_file).with_suffix(".json")
+        with open(metadata_file, "w") as f:
             json.dump(metadata, f, indent=2)
 
         logger.info(f"Metadata saved: {metadata_file}")
+
+    def _alert_operator_failure(self, detail: str) -> None:
+        """Best-effort operator alert when a backup fails or fails verification —
+        so a broken backup is NEVER silent, even without BACKUP_HEARTBEAT_URL set
+        (the heartbeat is opt-in; this is the always-on fallback)."""
+        try:
+            from core.email_service import email_service
+
+            email_service.send_operator_alert(
+                subject="snflwr.ai database backup FAILED",
+                description=(
+                    f"A scheduled database backup failed: {detail}. The last "
+                    "successful off-host backup may now be stale — investigate "
+                    "immediately, child data may be unprotected against loss."
+                ),
+            )
+        except Exception as exc:  # never let alerting raise from a backup run
+            logger.error(
+                "Operator alert for backup failure failed (non-fatal): %s", exc
+            )
+
+    def verify_backup(self, backup_file=None) -> tuple[bool, str]:
+        """Integrity-check a backup by opening it and running PRAGMA
+        integrity_check + confirming it has tables. Closes the "nobody ever
+        test-restores the backups" gap: catches a corrupt/empty/half-written
+        backup (and, via the encryption-aware adapter, a key/format mismatch)
+        before a real disaster needs it. Non-destructive — restores to a temp
+        file. Returns (ok, detail)."""
+        import tempfile
+
+        if backup_file is None:
+            cands = sorted(self.backup_path.glob("snflwr_sqlite_*.db*"), reverse=True)
+            if not cands:
+                return False, "no SQLite backups found to verify"
+            backup_file = cands[0]
+        backup_file = Path(backup_file)
+        if not backup_file.exists():
+            return False, f"backup not found: {backup_file}"
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="snflwr_verify_"))
+        tmp_db = tmp_dir / "verify.db"
+        try:
+            if backup_file.suffix == ".gz":
+                with gzip.open(backup_file, "rb") as f_in, open(tmp_db, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            else:
+                shutil.copy2(backup_file, tmp_db)
+
+            # Open through the encryption-aware adapter so an encrypted (SQLCipher)
+            # backup is decrypted with the configured key; a key/format mismatch
+            # surfaces here as a clear failure rather than at restore time.
+            from storage.db_adapters import create_adapter
+
+            adapter = create_adapter("sqlite", db_path=tmp_db)
+            conn = adapter.connect()
+            cur = conn.cursor()
+            cur.execute("PRAGMA integrity_check")
+            row = cur.fetchone()
+            integ = (
+                row["integrity_check"]
+                if isinstance(row, dict)
+                else (row[0] if row else None)
+            )
+            cur.execute("SELECT count(*) AS n FROM sqlite_master WHERE type='table'")
+            row = cur.fetchone()
+            ntables = row["n"] if isinstance(row, dict) else (row[0] if row else 0)
+            adapter.close()
+
+            if integ != "ok":
+                return False, f"integrity_check failed: {integ!r}"
+            if not ntables or ntables < 1:
+                return False, "backup opened but has no tables"
+            return (
+                True,
+                f"OK — integrity_check passed, {ntables} tables readable ({backup_file.name})",
+            )
+        except Exception as exc:
+            return False, f"could not open/verify backup: {exc}"
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def run_backup(self) -> bool:
         """Execute backup based on database type"""
@@ -505,9 +645,9 @@ class DatabaseBackup:
         # Determine database type
         db_type = system_config.DATABASE_TYPE.lower()
 
-        if db_type == 'sqlite':
+        if db_type == "sqlite":
             success, result = self.backup_sqlite()
-        elif db_type == 'postgresql':
+        elif db_type == "postgresql":
             success, result = self.backup_postgresql()
         else:
             logger.error(f"Unsupported database type: {db_type}")
@@ -537,8 +677,11 @@ class DatabaseBackup:
         owui_pg_artifact = None
         if success and self.owui_pg_backup_enabled:
             pg_ok, pg_result = self.backup_postgresql(
-                db_name=self.owui_db_name, user=self.owui_db_user,
-                password=self.owui_db_password, label='owui_postgres')
+                db_name=self.owui_db_name,
+                user=self.owui_db_user,
+                password=self.owui_db_password,
+                label="owui_postgres",
+            )
             if pg_ok:
                 owui_pg_artifact = pg_result
             else:
@@ -548,7 +691,7 @@ class DatabaseBackup:
         # Push off-host. Fail-closed: a local-only backup is not a success
         # when off-host is enabled.
         if success and self.offhost_enabled:
-            metadata_file = str(Path(result).with_suffix('.json'))
+            metadata_file = str(Path(result).with_suffix(".json"))
             artifacts = [result, metadata_file]
             if owui_artifact:
                 artifacts.append(owui_artifact)
@@ -579,6 +722,11 @@ class DatabaseBackup:
             logger.error(f"[FAIL] Backup failed: {result}")
         logger.info("=" * 60)
 
+        # On failure, alert the operator directly — not only via the optional
+        # heartbeat — so a broken backup is never silent.
+        if not success:
+            self._alert_operator_failure(str(result))
+
         # Heartbeat reflects the FINAL result (after off-host), so a monitor
         # only sees success when the backup is truly off-box.
         self._ping_heartbeat(success)
@@ -595,15 +743,15 @@ def restore_sqlite(backup_file: Path) -> bool:
 
         # Backup current database
         if db_path.exists():
-            backup_current = db_path.with_suffix('.db.pre-restore')
+            backup_current = db_path.with_suffix(".db.pre-restore")
             shutil.copy2(db_path, backup_current)
             logger.info(f"Current database backed up to: {backup_current}")
 
         # Decompress if needed
-        if backup_file.suffix == '.gz':
-            temp_file = backup_file.with_suffix('')
-            with gzip.open(backup_file, 'rb') as f_in:
-                with open(temp_file, 'wb') as f_out:
+        if backup_file.suffix == ".gz":
+            temp_file = backup_file.with_suffix("")
+            with gzip.open(backup_file, "rb") as f_in:
+                with open(temp_file, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)
             restore_source = temp_file
         else:
@@ -613,7 +761,7 @@ def restore_sqlite(backup_file: Path) -> bool:
         shutil.copy2(restore_source, db_path)
 
         # Cleanup temp file
-        if backup_file.suffix == '.gz':
+        if backup_file.suffix == ".gz":
             temp_file.unlink()
 
         logger.info("[OK] SQLite database restored successfully")
@@ -624,8 +772,9 @@ def restore_sqlite(backup_file: Path) -> bool:
         return False
 
 
-def restore_postgresql(backup_file: Path, db_name: str = None, user: str = None,
-                       password: str = None) -> bool:
+def restore_postgresql(
+    backup_file: Path, db_name: str = None, user: str = None, password: str = None
+) -> bool:
     """Restore a PostgreSQL database from backup.
 
     Defaults to the primary snflwr database; pass db_name/user/password to
@@ -635,10 +784,10 @@ def restore_postgresql(backup_file: Path, db_name: str = None, user: str = None,
 
     try:
         # Decompress if needed
-        if backup_file.suffix == '.gz':
-            temp_file = backup_file.with_suffix('')
-            with gzip.open(backup_file, 'rb') as f_in:
-                with open(temp_file, 'wb') as f_out:
+        if backup_file.suffix == ".gz":
+            temp_file = backup_file.with_suffix("")
+            with gzip.open(backup_file, "rb") as f_in:
+                with open(temp_file, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)
             restore_source = temp_file
         else:
@@ -647,33 +796,40 @@ def restore_postgresql(backup_file: Path, db_name: str = None, user: str = None,
         # Validate all PostgreSQL parameters to prevent command injection
         # Reuse validation method from DatabaseBackup class
         import re
+
         def validate_param(param: str, param_name: str) -> str:
-            if not re.match(r'^[a-zA-Z0-9._-]+$', param):
+            if not re.match(r"^[a-zA-Z0-9._-]+$", param):
                 raise ValueError(
                     f"Invalid {param_name}: contains disallowed characters. "
                     f"Only alphanumeric, dots, hyphens, and underscores are allowed."
                 )
             return param
 
-        host = validate_param(system_config.POSTGRES_HOST, 'POSTGRES_HOST')
-        user = validate_param(user or system_config.POSTGRES_USER, 'POSTGRES_USER')
-        database = validate_param(db_name or system_config.POSTGRES_DB, 'POSTGRES_DB')
+        host = validate_param(system_config.POSTGRES_HOST, "POSTGRES_HOST")
+        user = validate_param(user or system_config.POSTGRES_USER, "POSTGRES_USER")
+        database = validate_param(db_name or system_config.POSTGRES_DB, "POSTGRES_DB")
 
         # Build pg_restore command with validated parameters
         cmd = [
-            'pg_restore',
-            '-h', host,
-            '-p', str(system_config.POSTGRES_PORT),  # Port is int, already safe
-            '-U', user,
-            '-d', database,
-            '--clean',  # Drop existing objects
-            '--if-exists',  # Don't error on non-existent objects
-            str(restore_source)
+            "pg_restore",
+            "-h",
+            host,
+            "-p",
+            str(system_config.POSTGRES_PORT),  # Port is int, already safe
+            "-U",
+            user,
+            "-d",
+            database,
+            "--clean",  # Drop existing objects
+            "--if-exists",  # Don't error on non-existent objects
+            str(restore_source),
         ]
 
         # Set password environment variable
         env = os.environ.copy()
-        env['PGPASSWORD'] = password if password is not None else system_config.POSTGRES_PASSWORD
+        env["PGPASSWORD"] = (
+            password if password is not None else system_config.POSTGRES_PASSWORD
+        )
 
         # Run pg_restore
         result = subprocess.run(
@@ -681,11 +837,11 @@ def restore_postgresql(backup_file: Path, db_name: str = None, user: str = None,
             env=env,
             capture_output=True,
             text=True,
-            timeout=600  # 10 minute timeout
+            timeout=600,  # 10 minute timeout
         )
 
         # Cleanup temp file
-        if backup_file.suffix == '.gz':
+        if backup_file.suffix == ".gz":
             temp_file.unlink()
 
         if result.returncode != 0:
@@ -704,25 +860,31 @@ def main():
     """Main execution"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='snflwr.ai Database Backup/Restore')
-    parser.add_argument('action', choices=['backup', 'restore', 'list', 'pull'],
-                        help='Action to perform')
-    parser.add_argument('--file', type=str,
-                        help='Backup file path for restore; backup file NAME for pull')
+    parser = argparse.ArgumentParser(description="snflwr.ai Database Backup/Restore")
+    parser.add_argument(
+        "action",
+        choices=["backup", "restore", "list", "pull", "verify"],
+        help="Action to perform (verify = integrity-check the latest or --file backup)",
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        help="Backup file path for restore; backup file NAME for pull",
+    )
 
     args = parser.parse_args()
 
     backup_manager = DatabaseBackup()
 
-    if args.action == 'backup':
+    if args.action == "backup":
         success = backup_manager.run_backup()
         sys.exit(0 if success else 1)
 
-    elif args.action == 'list':
+    elif args.action == "list":
         backup_manager.list_backups()
         sys.exit(0)
 
-    elif args.action == 'pull':
+    elif args.action == "pull":
         if not args.file:
             logger.error("--file (backup name) required for pull")
             sys.exit(1)
@@ -731,7 +893,18 @@ def main():
             logger.info(f"Pulled to: {result}")
         sys.exit(0 if ok else 1)
 
-    elif args.action == 'restore':
+    elif args.action == "verify":
+        ok, detail = backup_manager.verify_backup(args.file)
+        if ok:
+            logger.info(f"Backup verify: {detail}")
+        else:
+            logger.error(f"Backup verify FAILED: {detail}")
+            backup_manager._alert_operator_failure(
+                f"backup verification failed: {detail}"
+            )
+        sys.exit(0 if ok else 1)
+
+    elif args.action == "restore":
         if not args.file:
             logger.error("--file required for restore")
             sys.exit(1)
@@ -743,9 +916,9 @@ def main():
 
         db_type = system_config.DATABASE_TYPE.lower()
 
-        if db_type == 'sqlite':
+        if db_type == "sqlite":
             success = restore_sqlite(backup_file)
-        elif db_type == 'postgresql':
+        elif db_type == "postgresql":
             success = restore_postgresql(backup_file)
         else:
             logger.error(f"Unsupported database type: {db_type}")

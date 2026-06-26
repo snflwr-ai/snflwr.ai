@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 
-
 # --------------------------------------------------------------------------
 # Fixtures
 # --------------------------------------------------------------------------
@@ -292,7 +291,9 @@ class TestRunBackupOffhostIntegration:
             c and c[0] == "rclone" for c in runner.calls
         ), "rclone must not run when off-host is disabled"
 
-    def test_run_backup_succeeds_when_offhost_upload_succeeds(self, offhost_env, monkeypatch):
+    def test_run_backup_succeeds_when_offhost_upload_succeeds(
+        self, offhost_env, monkeypatch
+    ):
         """Local backup + successful off-host copy => overall success."""
         import scripts.backup_database as bd
 
@@ -490,6 +491,7 @@ class TestPullOffhost:
         offhost_store = offhost_env["backup_dir"].parent / "remote"
         offhost_store.mkdir(parents=True, exist_ok=True)
         import shutil as _sh
+
         _sh.move(backup_file, offhost_store / backup_name)
         seed_path.write_bytes(b"corrupted")
 
@@ -508,11 +510,16 @@ class TestPullOffhost:
         # 4. Restore from the pulled file and verify recovery.
         from scripts.backup_database import restore_sqlite
         import sqlite3
+
         assert restore_sqlite(Path(local_path)) is True
         conn = sqlite3.connect(str(seed_path))
         try:
-            tables = {r[0] for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'")}
+            tables = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
         finally:
             conn.close()
         assert "child_profiles" in tables
@@ -592,7 +599,9 @@ class TestBackupOpenWebUI:
         import scripts.backup_database as bd
 
         monkeypatch.setattr(bd.shutil, "which", lambda _: "/usr/bin/docker")
-        runner = _docker_cp_runner(returncode=1, stderr="No such container: snflwr-frontend")
+        runner = _docker_cp_runner(
+            returncode=1, stderr="No such container: snflwr-frontend"
+        )
         monkeypatch.setattr(bd.subprocess, "run", runner)
 
         bak = bd.DatabaseBackup()
@@ -633,3 +642,49 @@ class TestBackupOpenWebUI:
 
         assert ok is True
         assert any("snflwr_owui_" in u for u in uploaded), uploaded
+
+
+class TestBackupVerifyAndAlert:
+    """verify = integrity-check a backup before disaster needs it; failures alert
+    the operator directly (not only via the optional heartbeat)."""
+
+    def test_verify_passes_on_good_backup(self, offhost_env):
+        from scripts.backup_database import DatabaseBackup
+
+        _seed_db(offhost_env["db_path"])
+        b = DatabaseBackup()
+        ok, _ = b.backup_sqlite()
+        assert ok
+        ok, detail = b.verify_backup()
+        assert ok, detail
+        assert "integrity_check passed" in detail
+
+    def test_verify_fails_on_corrupt_backup(self, offhost_env):
+        from scripts.backup_database import DatabaseBackup
+
+        b = DatabaseBackup()
+        b.backup_path.mkdir(parents=True, exist_ok=True)
+        (b.backup_path / "snflwr_sqlite_99999999_000000.db").write_bytes(
+            b"not a database"
+        )
+        ok, detail = b.verify_backup()
+        assert not ok
+        assert detail  # a clear reason, not a silent pass
+
+    def test_verify_reports_when_no_backups(self, offhost_env):
+        from scripts.backup_database import DatabaseBackup
+
+        ok, detail = DatabaseBackup().verify_backup()
+        assert not ok and "no SQLite backups" in detail
+
+    def test_failure_alerts_operator(self, offhost_env, monkeypatch):
+        from scripts.backup_database import DatabaseBackup
+        import core.email_service as es
+
+        called = {}
+        monkeypatch.setattr(
+            es.email_service, "send_operator_alert", lambda **kw: called.update(kw)
+        )
+        DatabaseBackup()._alert_operator_failure("disk full")
+        assert "FAILED" in called.get("subject", "")
+        assert "disk full" in called.get("description", "")

@@ -963,6 +963,11 @@ async def proxy_copy(
 
 @router.get("/version")
 async def proxy_version(request: Request) -> Response:
+    # Session-gated (router dependency) but intentionally NOT admin-gated: Open
+    # WebUI calls /api/version as the relay (non-admin) for its Ollama-connection
+    # health check, and the body is just the Ollama version string — non-sensitive,
+    # unlike /api/show (which leaks the Modelfile). Admin-gating it would break
+    # OWUI's connection indicator for no security gain.
     return await _proxy_to_ollama(request, "/api/version")
 
 

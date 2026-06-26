@@ -1241,3 +1241,49 @@ class TestChangePassword:
         with pytest.raises(HTTPException) as exc:
             change_password(request, session=parent_session)
         assert exc.value.status_code == 503
+
+
+# ============================================================================
+# GET ACCOUNT (accurate sign-in + notification email for the Settings view)
+# ============================================================================
+
+class TestGetAccount:
+
+    def test_get_account_success(self, parent_session, mock_deps):
+        """Returns the stored notification email and the real sign-in username
+        so Settings can display both faithfully (not from the login session)."""
+        from api.routes.auth import get_account
+
+        mock_deps["auth_manager"].get_user_info.return_value = {
+            "username": "parent@test.com",
+            "email": "alerts@test.com",
+            "created_at": "2024-01-01T00:00:00",
+        }
+
+        result = get_account(session=parent_session)
+
+        mock_deps["auth_manager"].get_user_info.assert_called_once_with(
+            "test-parent-id"
+        )
+        assert result["sign_in_email"] == "parent@test.com"
+        assert result["notification_email"] == "alerts@test.com"
+
+    def test_get_account_not_found(self, parent_session, mock_deps):
+        """A missing account maps to 404."""
+        from api.routes.auth import get_account
+
+        mock_deps["auth_manager"].get_user_info.return_value = None
+
+        with pytest.raises(HTTPException) as exc:
+            get_account(session=parent_session)
+        assert exc.value.status_code == 404
+
+    def test_get_account_db_error(self, parent_session, mock_deps):
+        """A DB error maps to 503."""
+        from api.routes.auth import get_account
+
+        mock_deps["auth_manager"].get_user_info.side_effect = sqlite3.Error("boom")
+
+        with pytest.raises(HTTPException) as exc:
+            get_account(session=parent_session)
+        assert exc.value.status_code == 503

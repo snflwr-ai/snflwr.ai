@@ -223,6 +223,38 @@ def logout(session: AuthSession = Depends(get_current_session)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/account")
+def get_account(session: AuthSession = Depends(get_current_session)):
+    """
+    Return the current parent's account details for the Settings view.
+
+    Crucially this exposes the *stored* notification email (where safety alerts
+    are delivered) rather than the login-session email, so a parent can always
+    confirm the true alert destination after changing it.
+
+    [LOCKED] SECURED: Returns only the authenticated session's own account.
+    """
+    try:
+        info = auth_manager.get_user_info(session.user_id)
+        if not info:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        return {
+            "sign_in_email": info.get("username"),
+            "notification_email": info.get("email"),
+            "created_at": info.get("created_at"),
+        }
+
+    except HTTPException:
+        raise
+    except DB_ERRORS as e:
+        logger.error(f"Database error fetching account: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected error fetching account: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.post("/change-email")
 def change_email(
     request: ChangeEmailRequest,

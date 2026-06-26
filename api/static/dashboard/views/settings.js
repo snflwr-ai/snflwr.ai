@@ -1,7 +1,7 @@
 // views/settings.js — Account settings view
 // Account info, notification-email management, password change, billing, logout.
 
-import { getEmail, getParentId, setEmail } from '../core/session.js';
+import { getEmail, getParentId } from '../core/session.js';
 import { apiRequest } from '../core/api.js';
 import { el } from '../core/dom.js';
 import { card } from '../components/card.js';
@@ -42,12 +42,24 @@ export async function render(container, params) {
 
   const parentId = getParentId();
 
+  // Pull the account from the server so the notification email reflects the
+  // *stored* value (the true alert destination), not the login session. Fall
+  // back to the session email if the request fails.
+  let account = null;
+  try {
+    account = await apiRequest('GET', '/api/auth/account');
+  } catch (e) {
+    account = null;
+  }
+  const signInEmail = (account && account.sign_in_email) || getEmail();
+  let currentNotif = (account && account.notification_email) || getEmail();
+
   // --- Account info card (read-only sign-in identity) ---
   const accountBody = el('div', { class: 'settings-section' });
   accountBody.appendChild(
     el('div', { class: 'settings-row' }, [
       el('span', { class: 'settings-label', text: 'Sign-in email' }),
-      el('span', { class: 'settings-value', text: getEmail() || '—' }),
+      el('span', { class: 'settings-value', text: signInEmail || '—' }),
     ])
   );
   accountBody.appendChild(
@@ -71,7 +83,7 @@ export async function render(container, params) {
     label: 'Notification email',
     type: 'email',
     autocomplete: 'email',
-    value: getEmail(),
+    value: currentNotif,
   });
   emailForm.appendChild(emailFld.group);
   emailBody.appendChild(emailForm);
@@ -87,7 +99,7 @@ export async function render(container, params) {
       setStatus(emailMsg, 'Please enter a valid email address.', 'is-error');
       return;
     }
-    if (next === getEmail()) {
+    if (next === currentNotif) {
       setStatus(emailMsg, 'That is already your notification email.', 'is-error');
       return;
     }
@@ -95,7 +107,8 @@ export async function render(container, params) {
     setStatus(emailMsg, 'Saving…');
     apiRequest('POST', '/api/auth/change-email', { new_email: next })
       .then((data) => {
-        setEmail((data && data.email) || next);
+        // Sign-in identity is unchanged; only the alert destination moves.
+        currentNotif = (data && data.email) || next;
         setStatus(emailMsg, 'Notification email updated.', 'is-success');
       })
       .catch((err) => {

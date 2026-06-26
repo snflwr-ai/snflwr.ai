@@ -72,7 +72,7 @@ Create: `docker-compose.ollama-k12.yaml`
 ```yaml
 services:
   ollama-k12:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.30.10  # pin a reviewed tag (avoid :latest)
     container_name: ollama-k12
     ports:
       - "11435:11434"  # Different port

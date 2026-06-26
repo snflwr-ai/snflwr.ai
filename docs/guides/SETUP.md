@@ -90,7 +90,11 @@ On first visit to http://localhost:3000:
 
 In Open WebUI Admin Panel:
 1. Go to **Settings** → **Models**
-2. Ensure Ollama connection: `http://host.docker.internal:11434`
+2. Point the Ollama API connection at the **snflwr safety proxy**, not raw Ollama:
+   `http://snflwr-api:39150` (in-container) or `http://localhost:39150` (host).
+   ⚠️ **Do NOT** connect Open WebUI directly to Ollama (`:11434`) — that bypasses the
+   safety pipeline. The proxy exposes an Ollama-compatible API gated by
+   `check_input`/`check_output` (fail-closed).
 3. Verify Snflwr models appear in model list
 
 ## Creating Child Profiles

@@ -1610,3 +1610,18 @@ tr:hover td {
   .sfx-modal.is-in .sfx-shield, .sfx-modal.is-in .sfx-shield-check { animation: none; }
   .sfx-shield-check { stroke-dashoffset: 0; }
 }
+
+/* Required disclosure footer (AI-generated content + crisis resources).
+   Persistent under the main content on every view. */
+.disclosure-footer {
+  margin: 24px 16px 8px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border, #e2e2e2);
+  color: var(--text-muted, #666);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.disclosure-footer p { margin: 4px 0; }
+.disclosure-footer .disclosure-crisis { font-weight: 600; }
+.disclosures-body h3 { font-size: 14px; margin: 14px 0 4px; }
+.disclosures-body p { margin: 0 0 8px; color: var(--text-muted, #555); font-size: 13px; line-height: 1.5; }

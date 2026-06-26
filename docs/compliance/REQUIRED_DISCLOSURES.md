@@ -80,6 +80,16 @@ until the operating entity exists.** Do not invent them. Fill once registered
 - **Privacy Policy body:** the entity-dependent block above (once unblocked).
 - **Settings / About page:** links to ToS, Privacy Policy, DPA.
 
-> **Open gap:** none of #1–#6 are surfaced in the product UI today (the chat is
-> stock Open WebUI with no disclosure footer/onboarding copy). Wiring these into
-> the UI is a launch blocker — see the live-readiness blocker list.
+> **Status:** the **parent/admin dashboard** now surfaces the accurate-now notices
+> — #1 (AI-generated) and #2 (crisis/988) in a persistent page footer, and #1/#2/#3
+> (supervision) in **Settings → Safety & Disclosures**
+> (`api/static/dashboard/components/disclosures.js`). #4/#6 ("agree to the ToS /
+> Privacy Policy") are intentionally **not** shown yet because those documents are
+> still DRAFT / not-in-effect, and the entity-dependent operator disclosures are
+> blocked until a business entity is registered.
+>
+> **Remaining gap (deploy-config):** the **kids' chat is stock Open WebUI** and has
+> no disclosure banner yet. Surface #1 (AI-generated) + #2 (crisis/988) there via
+> an Open WebUI **admin banner** (Admin Panel → Settings → Banners, or seed it in
+> the OWUI config) as part of deployment. This is the last UI disclosure step
+> before launch.

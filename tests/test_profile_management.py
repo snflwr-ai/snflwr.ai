@@ -158,6 +158,38 @@ class TestProfileRetrieval:
         assert "Alex" not in {p.name for p in active}
 
 
+class TestConsentSerialization:
+    """The dashboard's COPPA 'Action Required' card reads
+    parental_consent_verified off each profile dict. If the profile layer
+    drops the coppa_verified column, that card can never clear — so the
+    field must survive create -> query -> to_dict()."""
+
+    def test_new_profile_reports_consent_unverified(self, profile_manager, test_parent):
+        profile = profile_manager.create_profile(
+            parent_id=test_parent, name="Mia", age=9, grade="4th"
+        )
+        assert profile.to_dict()["parental_consent_verified"] is False
+
+    def test_verified_consent_survives_query_and_to_dict(
+        self, profile_manager, test_parent
+    ):
+        profile = profile_manager.create_profile(
+            parent_id=test_parent, name="Mia", age=9, grade="4th"
+        )
+        # Simulate a completed COPPA verification (POST /api/parental-consent/verify)
+        profile_manager.db.execute_write(
+            "UPDATE child_profiles SET coppa_verified = 1 WHERE profile_id = ?",
+            (profile.profile_id,),
+        )
+
+        by_id = profile_manager.get_profile(profile.profile_id)
+        assert by_id.to_dict()["parental_consent_verified"] is True
+
+        by_parent = profile_manager.get_profiles_by_parent(test_parent)
+        mia = next(p for p in by_parent if p.profile_id == profile.profile_id)
+        assert mia.to_dict()["parental_consent_verified"] is True
+
+
 class TestProfileUpdate:
     """Test profile update operations"""
 

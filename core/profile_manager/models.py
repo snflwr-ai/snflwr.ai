@@ -19,6 +19,10 @@ class ChildProfile:
     total_questions: int = 0
     last_active: Optional[str] = None
     subjects_focus: Optional[List[str]] = None
+    # COPPA: True once a parent has completed verifiable consent for an under-13
+    # child (coppa_verified in the DB). The dashboard's "Action Required" card
+    # reads this — if it's dropped, the card can never clear.
+    parental_consent_verified: bool = False
 
     def to_dict(self) -> dict:
         """Convert profile to dictionary for JSON serialization"""
@@ -36,6 +40,7 @@ class ChildProfile:
             "total_questions": self.total_questions,
             "last_active": self.last_active,
             "subjects_focus": self.subjects_focus or [],
+            "parental_consent_verified": self.parental_consent_verified,
         }
 
 

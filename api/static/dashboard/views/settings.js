@@ -5,6 +5,7 @@ import { getEmail, getParentId } from '../core/session.js';
 import { apiRequest } from '../core/api.js';
 import { el } from '../core/dom.js';
 import { card } from '../components/card.js';
+import { renderDisclosuresBody } from '../components/disclosures.js';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -69,6 +70,11 @@ export async function render(container, params) {
     ])
   );
   container.appendChild(card({ title: 'Account', body: accountBody }));
+
+  // --- Safety & disclosures card (required user-facing notices) ---
+  container.appendChild(
+    card({ title: 'Safety & Disclosures', body: renderDisclosuresBody() })
+  );
 
   // --- Notification email card ---
   const emailBody = el('div', { class: 'settings-section' });

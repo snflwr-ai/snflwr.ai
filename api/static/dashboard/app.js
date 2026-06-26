@@ -6,6 +6,7 @@ import { setUnauthorizedHandler, apiRequest } from './core/api.js';
 import { isAuthenticated, clearSession, getEmail } from './core/session.js';
 import { parseRoute } from './core/router.js';
 import { renderNav } from './components/nav.js';
+import { renderDisclosureFooter } from './components/disclosures.js';
 import { el } from './core/dom.js';
 
 import { render as renderLogin } from './views/login.js';
@@ -79,6 +80,10 @@ function mountShell(initialView) {
   layout.appendChild(mainEl);
 
   appEl.appendChild(layout);
+
+  // Persistent disclosure footer (AI-generated content + crisis resources).
+  // Lives at the page level so route changes (which only touch main) keep it.
+  appEl.appendChild(renderDisclosureFooter());
 
   const sidebar = layout.querySelector('.sidebar');
   if (sidebar) appendSidebarFooter(sidebar);

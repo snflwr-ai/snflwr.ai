@@ -8,480 +8,173 @@
 Different customers have vastly different hardware:
 - **Family laptop**: 8GB RAM, no GPU
 - **School computer lab**: 16GB RAM, basic GPU
-- **Dedicated server**: 64GB RAM, NVIDIA A100
+- **Dedicated server**: 64GB RAM + a 24GB+ GPU
 
-Running the same 8B parameter model on all would either:
-- ❌ Be too slow on low-end hardware (10+ second responses)
-- ❌ Underutilize high-end hardware (wasted potential)
-- ❌ Not run at all (out of memory errors)
+Pinning one model size to all of them would either be too slow on low-end
+hardware, underutilize high-end hardware, or fail to load at all. So the tutor
+backbone and the safety classifier are **sized to the detected hardware** at
+install time (`start_snflwr.sh` / `install.py`), and operators can override.
 
-## The Solution: Multi-Tier Model Packaging
+## The model tiers
 
-We build **three Docker images** with different model sizes, and customers choose (or auto-detect) which tier fits their hardware.
+The tutor is always the `snflwr.ai` Ollama model (a wrapper over a base model via
+`models/Snflwr_AI_Kids.modelfile`). What changes by tier is the **base model** it
+wraps and the **safety classifier** size.
+
+| Tier | RAM / VRAM | Tutor backbone | Safety classifier | Best for |
+|------|-----------|----------------|-------------------|----------|
+| **Fallback** | 6–12GB RAM, no/small GPU | a small **qwen3.5** tier (`qwen3.5:4b` → `2b` → `0.8b` by RAM) | `llama-guard3:1b` | old laptops, Chromebooks |
+| **Standard (default)** | 16GB+ RAM, or any GPU | **gemma4:e4b** (~10GB) | `llama-guard3:8b` | all K-12, most families & schools |
+| **High-end (opt-in)** | GPU **≥26GB** VRAM | **gemma4:31b** (~19GB), via `SNFLWR_ENABLE_GEMMA_31B=true` | `llama-guard3:8b` | big single-GPU / multi-GPU servers |
+
+Notes:
+- **gemma4:e4b is the recommended default** anywhere with ≥16GB RAM or a GPU. A
+  stronger-judge bake-off found **gemma4:31b ≈ gemma4:e4b on tutoring quality**
+  (near-tied), so the high-end tier is about headroom on big hardware, **not** a
+  quality requirement — and it roughly halves per-GPU throughput.
+- The qwen tiers exist **only** as a low-RAM fallback for boxes that can't run
+  gemma4:e4b. They are not the primary backbone.
 
 ---
 
-## Tier Comparison
+## How model sizing works in production
 
-| Tier | RAM Req | GPU Req | Model Size | Response Time | Quality | Best For |
-|------|---------|---------|------------|---------------|---------|----------|
-| **Minimal** | 6-8GB | None | 1B params (~2GB) | 1-2 sec | Good | Elementary (K-5), old laptops, Chromebooks |
-| **Standard** | 12-16GB | Optional | 3B params (~5GB) | 2-4 sec (CPU)<br>1-2 sec (GPU) | Excellent | All K-12, most families/schools |
-| **Premium** | 24GB+ | NVIDIA 8GB+ | 8B params (~10GB) | 4-8 sec (CPU)<br>1-2 sec (GPU) | Exceptional | High schools, dedicated servers, research |
+`start_snflwr.sh` (and `install.py`) detect RAM/GPU and pick:
 
----
+- **Tutor backbone**: `gemma4:e4b` on ≥16GB RAM or any GPU; otherwise a qwen3.5
+  fallback sized to RAM. A GPU with ≥26GB VRAM **and** `SNFLWR_ENABLE_GEMMA_31B=true`
+  selects `gemma4:31b`.
+- **Safety classifier**: `llama-guard3:8b` when there's headroom (GPU ≥16GB VRAM,
+  or ≥24GB RAM); otherwise the faster `llama-guard3:1b`. The API prefers `:8b`
+  (`config.py` `SAFETY_MODEL` default) and falls back to `:1b`.
 
-## How It Works in Production
+The two models stay **co-resident** so every turn (input + output both run through
+the classifier) avoids per-turn reload thrash. This is why the high-end tier needs
+≥26GB VRAM: `gemma4:31b` (~19GB) must fit alongside `llama-guard3:8b` (~5GB); below
+that, keep `gemma4:e4b`.
 
-### 1. **Build Time** (You do this once)
+### Building images with specific models
 
 ```bash
-# Build for different hardware targets (both args required)
-docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=qwen3.5:0.8b --build-arg SAFETY_MODEL=llama-guard3:1b -t snflwr-ollama:minimal .
-docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=gemma4:e4b --build-arg SAFETY_MODEL=llama-guard3:1b -t snflwr-ollama:standard .
-docker build -f docker/Dockerfile.ollama --build-arg CHAT_MODEL=gemma4:e4b --build-arg SAFETY_MODEL=llama-guard3:8b -t snflwr-ollama:premium .
-
-# Push to registry
-docker push yourregistry/snflwr-ollama:minimal
-docker push yourregistry/snflwr-ollama:standard
-docker push yourregistry/snflwr-ollama:premium
-```
-
-**Build time:** ~30 minutes total (10 min each)
-**Storage:** ~17GB total (all three images)
-
-### 2. **Customer Deployment** (They do this)
-
-#### Option A: Auto-Detection (Recommended)
-
-```bash
-# Customer runs hardware detection
-python scripts/auto-select-model.py
-
-# Output:
-# ==================================================
-# RECOMMENDED: STANDARD TIER
-# ==================================================
-# RAM: 16.0GB ✓
-# GPU: NVIDIA RTX 3060 (8192MB VRAM) ✓
-# Model: snflwr.ai (3B)
-# Response Time: 1-2 seconds (GPU)
-# Quality: Excellent
-# Max Users: 30
-#
-# To deploy:
-#   docker-compose -f docker/compose/docker-compose.production-standard.yml up -d
-
-# Customer runs the suggested command
-docker-compose -f docker/compose/docker-compose.production-standard.yml up -d
-```
-
-The system automatically:
-1. Detects RAM, CPU, GPU
-2. Recommends the best tier
-3. Generates configuration
-4. Shows expected performance
-
-#### Option B: Manual Selection
-
-Customer looks at their hardware:
-- 8GB RAM, no GPU → **Choose Minimal tier**
-- 16GB RAM, optional GPU → **Choose Standard tier**
-- 32GB RAM, NVIDIA GPU → **Choose Premium tier**
-
-```bash
-# Download their chosen tier
-docker pull yourregistry/snflwr-ollama:standard
-
-# Deploy
-docker-compose -f docker/compose/docker-compose.production-standard.yml up -d
-```
-
-### 3. **Runtime** (What Happens)
-
-All three tiers run **identically** from the software perspective:
-- Same Snflwr API code
-- Same safety pipeline (always uses 1B for speed)
-- Same Open WebUI frontend
-- Same database schema
-
-The **only** difference:
-- Which model handles the "Kids Tutor" responses
-- Response speed and quality trade-off
-
----
-
-## Architecture Comparison
-
-### Minimal Tier
-```
-User Question
-    ↓
-Safety Check (llama-guard3:1b) ← Fast, always same
-    ↓
-Snflwr Tutor (qwen3.5:0.8b) ← Smaller model
-    ↓
-Response (Good quality, very fast)
-```
-
-### Standard Tier
-```
-User Question
-    ↓
-Safety Check (llama-guard3:1b) ← Fast, always same
-    ↓
-Snflwr Tutor (gemma4:e4b) ← Default backbone
-    ↓
-Response (Excellent quality, fast)
-```
-
-### Premium Tier
-```
-User Question
-    ↓
-Safety Check (llama-guard3:1b) ← Fast, always same
-    ↓
-Snflwr Tutor (gemma4:e4b) ← Recommended backbone
-    ↓
-Response (Exceptional quality, slower without GPU)
-```
-
----
-
-## Model Selection Logic
-
-### Safety Classifier (Always 1B)
-
-**Why not vary this?**
-- Safety checks must be **fast** (< 500ms)
-- 1B model is already highly accurate for classification
-- Consistency across all tiers is important
-- Speed matters more than slight accuracy gains
-
-```python
-# Same for all tiers
-SAFETY_MODEL = "llama-guard3:1b"
-```
-
-### Tutor Model (Varies by Tier)
-
-**Why vary this?**
-- Tutoring requires nuanced explanations
-- Larger models give better educational responses
-- Trade-off: quality vs speed
-- Customer can choose based on their priorities
-
-```python
-# Minimal tier
-TUTOR_MODEL = "snflwr.ai"  # Based on qwen3.5:0.8b
-
-# Standard tier
-TUTOR_MODEL = "snflwr.ai"  # Based on gemma4:e4b
-
-# Premium tier
-TUTOR_MODEL = "snflwr.ai"  # Based on gemma4:e4b
-```
-
-### Admin/Parent Access
-
-Admins and parents use the base chat model (e.g., `gemma4:e4b`) directly -- no custom modelfile needed. This simplifies deployment since no separate educator model is required.
-
----
-
-## Technical Implementation
-
-### Dynamic Model Loading
-
-In your Snflwr API, detect which models are available:
-
-```python
-# api/server.py
-
-import ollama
-
-def detect_available_models():
-    """Detect which Snflwr models are available"""
-    models = ollama.list()
-    model_names = [m['name'] for m in models['models']]
-
-    config = {
-        'tier': 'unknown',
-        'tutor_model': None,
-        'safety_model': None
-    }
-
-    # Safety model (required)
-    if 'llama-guard3:8b' in model_names:
-        config['safety_model'] = 'llama-guard3:8b'
-    elif 'llama-guard3:1b' in model_names:
-        config['safety_model'] = 'llama-guard3:1b'
-    else:
-        raise RuntimeError("Safety model not found!")
-
-    # Tutor model (detect tier)
-    if 'snflwr.ai' in model_names:
-        # Check which base model it uses
-        model_info = ollama.show('snflwr.ai')
-        base = model_info['details']['parent_model']
-
-        if '8b' in base:
-            config['tier'] = 'premium'
-        elif '3b' in base:
-            config['tier'] = 'standard'
-        elif '1b' in base:
-            config['tier'] = 'minimal'
-
-        config['tutor_model'] = 'snflwr.ai'
-
-    return config
-
-# At startup
-MODEL_CONFIG = detect_available_models()
-print(f"Running snflwr.ai - {MODEL_CONFIG['tier'].upper()} tier")
-```
-
-### Graceful Degradation
-
-If a model isn't available, fall back:
-
-```python
-def get_tutor_response(message: str, profile_id: str):
-    """Get response from tutor model with fallback"""
-
-    models_to_try = [
-        MODEL_CONFIG['tutor_model'],      # Preferred
-        'qwen3.5:4b',                      # Fallback 1
-        'qwen3.5:0.8b',                   # Fallback 2
-    ]
-
-    for model in models_to_try:
-        if model:
-            try:
-                return ollama.generate(model=model, prompt=message)
-            except Exception as e:
-                logger.warning(f"Model {model} failed: {e}")
-                continue
-
-    raise RuntimeError("No tutor models available")
-```
-
----
-
-## Benchmark Results
-
-### Response Quality (Measured on 5th grade math question)
-
-**Question:** "Can you explain what a fraction is?"
-
-| Tier | Model | Response Quality Score | Response Length | Accuracy |
-|------|-------|------------------------|-----------------|----------|
-| Minimal | 1B | 7/10 | 45 words | Good |
-| Standard | 3B | 9/10 | 68 words | Excellent |
-| Premium | 8B | 9.5/10 | 95 words | Exceptional |
-
-### Response Speed (Measured on consumer hardware)
-
-**Hardware Tested:**
-- CPU: i5-12400 (6 cores)
-- RAM: 16GB DDR4
-- GPU: None vs RTX 3060 (8GB VRAM)
-
-| Tier | Model Size | CPU Only | With GPU |
-|------|------------|----------|----------|
-| Minimal | 1B (~1.3GB RAM) | 1.2 sec | 0.8 sec |
-| Standard | 3B (~3.5GB RAM) | 3.4 sec | 1.1 sec |
-| Premium | 8B (~9GB RAM) | 7.8 sec | 1.9 sec |
-
-**Takeaway:** GPUs make a massive difference for larger models!
-
-### Concurrent User Capacity
-
-**Test:** Simulated concurrent users asking questions
-
-| Tier | Hardware | Max Concurrent Users (95th percentile < 5 sec) |
-|------|----------|-----------------------------------------------|
-| Minimal | 8GB RAM, No GPU | 8-10 users |
-| Standard | 16GB RAM, No GPU | 12-15 users |
-| Standard | 16GB RAM, RTX 3060 | 25-30 users |
-| Premium | 32GB RAM, RTX 3060 | 15-20 users |
-| Premium | 32GB RAM, RTX 4090 | 40-50 users |
-
----
-
-## Distribution Strategy
-
-### 1. **Default Recommendation: Standard Tier**
-
-In all marketing materials:
-- "Recommended: 16GB RAM, works great on most modern computers"
-- Standard tier balances quality and performance
-- Fits 80% of use cases
-
-### 2. **Offer All Three in Documentation**
-
-In setup guide:
-```markdown
-Choose your hardware tier:
-
-| Your Hardware | Download |
-|---------------|----------|
-| 6-8GB RAM, older laptop | [Minimal Tier](link) |
-| 12-16GB RAM, modern computer | [Standard Tier](link) ⭐ Recommended |
-| 24GB+ RAM, NVIDIA GPU | [Premium Tier](link) |
-```
-
-### 3. **Auto-Detection Script**
-
-Provide a one-liner:
-```bash
-curl -sSL https://install.snflwr.ai/detect.sh | bash
-```
-
-This:
-- Detects hardware
-- Downloads appropriate tier
-- Configures and starts
-
-### 4. **Upsell Path**
-
-Minimal → Standard → Premium
-
-```markdown
-**Enjoying snflwr.ai?**
-
-You're currently on the Minimal tier (1B model).
-Upgrade to Standard tier for:
-- ✓ 50% better explanations
-- ✓ More detailed answers
-- ✓ Better for middle & high school
-
-Requires: 12GB RAM (you have 8GB)
-Cost: Free! Just upgrade your computer RAM.
-```
-
----
-
-## Customer Experience
-
-### Family on Old Laptop (8GB RAM, No GPU)
-
-**What they get:**
-- Downloads: 2GB image (Minimal tier)
-- Install time: 5 minutes
-- Response time: 1-2 seconds
-- Quality: Good for elementary, adequate for middle school
-- Cost: $0 (runs on existing hardware)
-
-**Experience:** "Works great! Fast responses, perfect for our 3rd grader."
-
-### School with Computer Lab (16GB RAM, GTX 1660)
-
-**What they get:**
-- Downloads: 5GB image (Standard tier)
-- Install time: 10 minutes
-- Response time: 1-2 seconds (with GPU)
-- Quality: Excellent for all K-12
-- Supports: 25-30 concurrent students
-- Cost: $0 (runs on existing lab computers)
-
-**Experience:** "Impressive quality! Students love it. Handles our whole class."
-
-### University Research Lab (64GB RAM, A100 GPU)
-
-**What they get:**
-- Downloads: 10GB image (Premium tier)
-- Install time: 15 minutes
-- Response time: <1 second (with A100)
-- Quality: Near-human tutoring
-- Supports: 100+ concurrent students
-- Cost: $0 (runs on existing infrastructure)
-
-**Experience:** "Best educational AI we've tested. Responses rival human tutors."
-
----
-
-## FAQ
-
-### Q: Do customers need to manually choose a tier?
-
-**A:** No! Run the auto-detection script:
-```bash
-python scripts/auto-select-model.py
-```
-
-It detects hardware and recommends the best tier automatically.
-
-### Q: Can customers switch tiers later?
-
-**A:** Yes! Just pull a different image:
-```bash
-# Currently on minimal, want to upgrade
-docker-compose down
-docker pull yourregistry/snflwr-ollama:standard
-docker-compose -f docker/compose/docker-compose.production-standard.yml up -d
-```
-
-All data (users, conversations, profiles) is preserved in PostgreSQL.
-
-### Q: What if a customer has 10GB RAM (between minimal and standard)?
-
-**A:** The standard tier (3B model) needs ~12GB total:
-- 3.5GB for model
-- 2GB for Ollama overhead
-- 1GB for API/frontend
-- 5GB for OS
-
-With 10GB, they could:
-1. Use minimal tier (safe choice)
-2. Try standard tier (might work if little else is running)
-3. Add 6GB RAM (~$30) and comfortably use standard
-
-The auto-detect script recommends minimal for 6-11GB, standard for 12+GB.
-
-### Q: Why not include all models in one image and dynamically select?
-
-**A:** Considered this! Problems:
-- Image would be 17GB (vs 2GB minimal)
-- Wastes bandwidth for 95% of users
-- Slow downloads on rural internet
-- Wastes disk space on constrained devices (Chromebooks, etc.)
-
-Trade-off: Three smaller images vs one huge image → **smaller wins**
-
-### Q: Can premium users fall back to 3B if 8B is slow?
-
-**A:** Yes! Premium images include both 8B and 3B:
-```bash
-# Build premium tier with Dockerfile.ollama using build args
+# Default / standard tier
 docker build -f docker/Dockerfile.ollama \
   --build-arg CHAT_MODEL=gemma4:e4b \
   --build-arg SAFETY_MODEL=llama-guard3:8b \
-  -t snflwr-ollama:premium .
+  -t snflwr-ollama:standard .
+
+# Low-RAM fallback tier
+docker build -f docker/Dockerfile.ollama \
+  --build-arg CHAT_MODEL=qwen3.5:4b \
+  --build-arg SAFETY_MODEL=llama-guard3:1b \
+  -t snflwr-ollama:fallback .
 ```
 
-Users can switch in Open WebUI settings or via env var:
-```bash
-TUTOR_MODEL=snflwr-ai:standard  # Use 3B instead of 8B
+For enterprise builds, `enterprise/build.sh --auto` detects server RAM and selects
+the right base + safety model.
+
+---
+
+## Architecture (same pipeline, different model sizes)
+
+Every tier runs the **same** safety pipeline and API; only the two model sizes
+change:
+
 ```
+User question
+    ↓
+check_input  → Safety classifier (llama-guard3:8b, or :1b on small hardware)
+    ↓
+snflwr.ai tutor (gemma4:e4b default · gemma4:31b on ≥26GB GPU · qwen fallback on small RAM)
+    ↓
+check_output → Safety classifier (same model)
+    ↓
+Response
+```
+
+Enforcement lives in the Ollama proxy (`api/routes/ollama_proxy.py`), fail-closed
+on both input and output — see `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`.
+
+### Admin / parent access
+
+Admins and parents reach the base chat model directly (no custom modelfile). No
+separate educator model is required.
+
+---
+
+## Detecting the active tier
+
+The base model behind `snflwr.ai` tells you the tier:
+
+```python
+import ollama
+
+def detect_tier():
+    info = ollama.show('snflwr.ai')
+    base = (info.get('details', {}) or {}).get('parent_model', '') or ''
+    if base.startswith('gemma4:31b'):
+        return 'high-end'
+    if base.startswith('gemma4:e4b'):
+        return 'standard'
+    if base.startswith('qwen3.5'):
+        return 'fallback'
+    return 'unknown'
+
+# Safety classifier (prefer :8b, fall back to :1b)
+def detect_safety_model():
+    names = [m['name'] for m in ollama.list()['models']]
+    if 'llama-guard3:8b' in names:
+        return 'llama-guard3:8b'
+    if 'llama-guard3:1b' in names:
+        return 'llama-guard3:1b'
+    raise RuntimeError("Safety model not found")
+```
+
+---
+
+## Performance characteristics
+
+Approximate, on consumer hardware (illustrative — run `tests/load/gpu_load_test.py`
+for your box):
+
+| Backbone | VRAM (GPU) | Per-turn latency | Notes |
+|----------|-----------|------------------|-------|
+| qwen3.5 fallback (0.8b–4b) | 1–4 GB | ~1–3 s | low-RAM only; lower tutoring quality |
+| **gemma4:e4b** | ~10 GB | ~4–5 s (GPU) | default; concurrency headroom alongside the 8b guard |
+| **gemma4:31b** | ~19 GB | ~8–15 s (GPU) | dense; ~half the throughput; needs ≥26GB with the guard |
+
+**Single-GPU throughput ceiling** (e.g. one RTX 3090 Ti): ~**13–15 tutor turns/min**,
+and it **plateaus** — adding concurrency raises per-turn latency, not throughput.
+Scaling is **horizontal** (more GPUs behind the nginx LB; see
+`docs/deployment/SCALING_GUIDE.md`), not a bigger model or more concurrency per card.
+
+> A GPU is the single biggest performance lever. If a GPU box is unexpectedly slow,
+> check for the silent GPU→CPU fallback (`docker exec snflwr-ollama ollama ps` →
+> `PROCESSOR` column); `scripts/gpu_watchdog.sh` auto-recovers it.
+
+---
+
+## Switching tiers
+
+The model lives in the Ollama data volume; swap it with the guarded upgrade flow
+(snapshot → swap → smoke-test → auto-rollback):
+
+```bash
+# Change the backbone (e.g. enable the high-end tier on a ≥26GB GPU)
+export SNFLWR_ENABLE_GEMMA_31B=true   # then re-run the deploy / model upgrade
+./deploy.sh --upgrade model
+```
+
+All data (users, conversations, profiles) is preserved in the database — only the
+Ollama model changes.
 
 ---
 
 ## Summary
 
-**Hardware optimization strategy:**
-
-1. ✅ Build three Docker image tiers (minimal, standard, premium)
-2. ✅ Each tier has models sized for that hardware
-3. ✅ Safety model always 1B (consistency + speed)
-4. ✅ Tutor model varies (1B/3B/8B) based on tier
-5. ✅ Auto-detection script recommends best tier
-6. ✅ Customers can manually override if desired
-7. ✅ All tiers work identically (same features, same safety)
-8. ✅ Easy to upgrade (just swap Docker image)
-
-**Result:**
-- Elementary family on laptop → Fast, good quality
-- School computer lab → Fast, excellent quality
-- University server → Fast, exceptional quality
-
-**Everyone gets the best experience their hardware can provide!**
+1. The tutor backbone and the safety classifier are **sized to detected hardware**.
+2. **Default: `gemma4:e4b` + `llama-guard3:8b`** (≥16GB RAM or any GPU).
+3. **Low-RAM fallback:** a small `qwen3.5` tier + `llama-guard3:1b`.
+4. **Opt-in high-end:** `gemma4:31b` on a **≥26GB** GPU (so it co-resides with the
+   8b guard) — for headroom on big hardware, not better tutoring quality.
+5. Same fail-closed safety pipeline and features on every tier.
+6. Scale **horizontally** (more GPUs), not by enlarging the model on one card.

@@ -395,6 +395,7 @@ fi
 # Register cleanup BEFORE starting the API server so there is no gap
 # where a set -e failure or signal could leak a running process.
 API_PID=""
+WATCHDOG_PID=""
 CLEANING_UP=0
 COMPOSE_FILES=()
 cleanup() {
@@ -419,6 +420,11 @@ cleanup() {
             pkill -9 -P "$API_PID" 2>/dev/null || true
             kill -9 "$API_PID" 2>/dev/null || true
         fi
+    fi
+
+    # Stop the GPU self-heal watchdog
+    if [ -n "$WATCHDOG_PID" ]; then
+        kill "$WATCHDOG_PID" 2>/dev/null || true
     fi
 
     # Stop Ollama only if this script started it
@@ -717,6 +723,18 @@ else
     echo -e "${YELLOW}WARNING: Failed to start Open WebUI via Docker${NC}"
     echo "Try running manually: $COMPOSE_CMD ${COMPOSE_FILES[*]} up -d"
     echo "Continuing with API server only."
+fi
+
+# GPU self-heal watchdog: on a GPU box, the NVIDIA container toolkit can silently
+# drop the Ollama container's GPU access after a host daemon-reload, leaving the
+# tutor 20x slower on CPU with no error. Watch for it and auto-restart Ollama to
+# restore the GPU. Only when this script launched the docker stack (compose).
+if [ "$HAS_GPU" = true ] && command -v docker &>/dev/null \
+   && [ -f "$SCRIPT_DIR/scripts/gpu_watchdog.sh" ]; then
+    "$SCRIPT_DIR/scripts/gpu_watchdog.sh" --watch "${GPU_WATCHDOG_INTERVAL:-120}" \
+        >> "$SCRIPT_DIR/logs/gpu_watchdog.log" 2>&1 &
+    WATCHDOG_PID=$!
+    echo -e "${GREEN}GPU self-heal watchdog started (PID: $WATCHDOG_PID) — logs/gpu_watchdog.log${NC}"
 fi
 
 echo ""

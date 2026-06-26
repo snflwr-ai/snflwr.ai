@@ -5,9 +5,9 @@ last_updated: 2026-06-18
 
 # snflwr.ai — Current Status
 
-> This is the single source of truth for launch-readiness. Older "production
-> readiness" reports in `docs/reports/archived/` are historical snapshots and
-> **overstate readiness** — do not rely on them.
+> This is the single source of truth for launch-readiness. (Older point-in-time
+> "production readiness" report docs were removed — they overstated readiness;
+> this file and `PRODUCTION_READINESS_LOCAL_DEPLOYMENT.md` supersede them.)
 
 ## TL;DR
 

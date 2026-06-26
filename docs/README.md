@@ -42,11 +42,9 @@ Setup and configuration guides.
 - [Database Guide](./guides/DATABASE_GUIDE.md)
 - [Troubleshooting Guide](./guides/TROUBLESHOOTING_GUIDE.md)
 
-### [Reports](./reports/)
-Assessment reports and production readiness documentation.
-- **[Current Status (canonical)](./CURRENT_STATUS.md)** — start here
-- [Testing Results](./reports/TESTING_RESULTS.md)
-- _Older readiness/security reports are archived under [`reports/archived/`](./reports/archived/) (they overstate readiness)._
+### Status
+- **[Current Status (canonical)](./CURRENT_STATUS.md)** — the single source of truth for launch-readiness
+- [Production Readiness: Local Deployment](./PRODUCTION_READINESS_LOCAL_DEPLOYMENT.md) — API/DB/security + GPU runtime & deployment-methods assessment
 
 ### [Safety](./safety/)
 Content safety and filtering documentation.

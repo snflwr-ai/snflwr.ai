@@ -26,7 +26,6 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-
 def check_auth_rate_limit(request: Request):
     """
     Rate limiting dependency for auth endpoints

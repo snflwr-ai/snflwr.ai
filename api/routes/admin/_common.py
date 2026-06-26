@@ -38,7 +38,6 @@ from utils.rate_limiter import RateLimiter, rate_limiter
 logger = get_logger(__name__)
 
 
-
 def _pkg():
     """Return the ``api.routes.admin`` package module for call-time symbol lookup.
 

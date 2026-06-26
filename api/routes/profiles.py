@@ -56,7 +56,6 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-
 def check_profile_rate_limit(request: Request):
     """Rate limit profile operations: 20 requests per 60 seconds per IP"""
     client_ip = request.client.host if request.client else "unknown"

@@ -42,7 +42,6 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-
 def _age_band(age: int) -> str:
     """Map a student's age to the named band in Snflwr_AI_Kids.modelfile.
 

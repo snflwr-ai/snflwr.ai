@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 from config import _SystemConfig, INSECURE_JWT_DEFAULTS, MIN_JWT_SECRET_LENGTH
 
-
 # A valid long JWT secret for tests that need config to pass JWT checks
 _VALID_JWT = "a" * 64
 
@@ -21,7 +20,7 @@ _VALID_JWT = "a" * 64
 def _make_config(**overrides):
     """Build a _SystemConfig with sane test defaults, then apply overrides."""
     # We patch _get_jwt_secret to avoid filesystem side effects
-    with patch.object(_SystemConfig, '_get_jwt_secret', return_value=_VALID_JWT):
+    with patch.object(_SystemConfig, "_get_jwt_secret", return_value=_VALID_JWT):
         cfg = _SystemConfig()
     # Apply overrides directly
     for k, v in overrides.items():
@@ -33,14 +32,17 @@ def _make_config(**overrides):
 # JWT Secret Validation
 # =========================================================================
 
+
 class TestJWTSecretValidation:
 
-    @pytest.mark.parametrize("bad_secret", list(INSECURE_JWT_DEFAULTS - {''}))
+    @pytest.mark.parametrize("bad_secret", list(INSECURE_JWT_DEFAULTS - {""}))
     def test_insecure_jwt_default_flagged(self, bad_secret):
         """Every known insecure JWT default must produce an error."""
         cfg = _make_config(JWT_SECRET_KEY=bad_secret)
         errors = cfg.validate_production_security()
-        assert any("insecure default" in e.lower() or "JWT_SECRET_KEY" in e for e in errors)
+        assert any(
+            "insecure default" in e.lower() or "JWT_SECRET_KEY" in e for e in errors
+        )
 
     def test_short_jwt_secret_flagged(self):
         """JWT secrets shorter than MIN_JWT_SECRET_LENGTH must be rejected."""
@@ -59,6 +61,7 @@ class TestJWTSecretValidation:
 # =========================================================================
 # Database Encryption (FERPA)
 # =========================================================================
+
 
 class TestDatabaseEncryptionValidation:
 
@@ -88,6 +91,47 @@ class TestDatabaseEncryptionValidation:
             cfg.validate_production_security()
 
     @patch.dict(os.environ, {"ENVIRONMENT": "production"})
+    def test_production_smtp_enabled_without_admin_email_blocked(self):
+        """SMTP ON but ADMIN_EMAIL/credentials missing must fail — otherwise
+        operator and child-safety alerts are sent to nowhere (silently dropped),
+        which is worse than email-off because it looks configured."""
+        cfg = _make_config(
+            DB_TYPE="sqlite",
+            DB_ENCRYPTION_ENABLED=True,
+            DB_ENCRYPTION_KEY="x" * 40,
+            REDIS_ENABLED=True,
+            SMTP_ENABLED=True,
+            ADMIN_EMAIL="",
+            SMTP_USERNAME="",
+            SMTP_PASSWORD="",
+            SMTP_FROM_EMAIL="",
+        )
+        with pytest.raises(RuntimeError, match="ADMIN_EMAIL"):
+            cfg.validate_production_security()
+
+    @patch.dict(os.environ, {"ENVIRONMENT": "production"})
+    def test_production_smtp_fully_configured_passes(self):
+        """SMTP ON with ADMIN_EMAIL + credentials must not trip the email gate.
+        (Other prod checks may still fail and raise — we only assert the new
+        SMTP-fields-blank gate does not fire.)"""
+        cfg = _make_config(
+            DB_TYPE="sqlite",
+            DB_ENCRYPTION_ENABLED=True,
+            DB_ENCRYPTION_KEY="x" * 40,
+            REDIS_ENABLED=True,
+            SMTP_ENABLED=True,
+            ADMIN_EMAIL="ops@example.com",
+            SMTP_USERNAME="mailer",
+            SMTP_PASSWORD="secret",
+            SMTP_FROM_EMAIL="noreply@example.com",
+        )
+        try:
+            errors = cfg.validate_production_security()
+        except RuntimeError as exc:  # raised if some unrelated prod check fails
+            errors = [str(exc)]
+        assert not [e for e in errors if "required fields are blank" in e]
+
+    @patch.dict(os.environ, {"ENVIRONMENT": "production"})
     def test_production_encryption_without_key_blocked(self):
         """Encryption enabled but no key = error."""
         cfg = _make_config(
@@ -115,6 +159,7 @@ class TestDatabaseEncryptionValidation:
 # Redis Required in Production
 # =========================================================================
 
+
 class TestRedisRequirement:
 
     @patch.dict(os.environ, {"ENVIRONMENT": "production"})
@@ -140,6 +185,7 @@ class TestRedisRequirement:
 # =========================================================================
 # PostgreSQL SSL Mode
 # =========================================================================
+
 
 class TestPostgresSSLValidation:
 
@@ -176,10 +222,13 @@ class TestPostgresSSLValidation:
             assert "SSLMODE" not in str(e)
 
     @pytest.mark.parametrize("weak_mode", ["disable", "allow", "prefer"])
-    @patch.dict(os.environ, {
-        "ENVIRONMENT": "development",
-        "INTERNAL_API_KEY": "a" * 64,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "ENVIRONMENT": "development",
+            "INTERNAL_API_KEY": "a" * 64,
+        },
+    )
     def test_dev_weak_ssl_is_warning_only(self, weak_mode):
         """Dev mode weak SSL should warn, not error."""
         cfg = _make_config(
@@ -195,6 +244,7 @@ class TestPostgresSSLValidation:
 # =========================================================================
 # PostgreSQL Password
 # =========================================================================
+
 
 class TestPostgresPassword:
 
@@ -216,6 +266,7 @@ class TestPostgresPassword:
 # CORS Wildcards
 # =========================================================================
 
+
 class TestCORSValidation:
 
     @patch.dict(os.environ, {"ENVIRONMENT": "production"})
@@ -236,6 +287,7 @@ class TestCORSValidation:
 # =========================================================================
 # Flower Monitoring Credentials
 # =========================================================================
+
 
 class TestFlowerCredentials:
 
@@ -263,12 +315,16 @@ class TestFlowerCredentials:
 # Internal API Key
 # =========================================================================
 
+
 class TestInternalAPIKey:
 
-    @patch.dict(os.environ, {
-        "ENVIRONMENT": "production",
-        "INTERNAL_API_KEY": "snflwr-internal-dev-key",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "ENVIRONMENT": "production",
+            "INTERNAL_API_KEY": "snflwr-internal-dev-key",
+        },
+    )
     def test_production_default_api_key_blocked(self):
         """Production with default internal API key = error."""
         cfg = _make_config(
@@ -280,10 +336,13 @@ class TestInternalAPIKey:
         with pytest.raises(RuntimeError, match="security validation failed"):
             cfg.validate_production_security()
 
-    @patch.dict(os.environ, {
-        "ENVIRONMENT": "production",
-        "INTERNAL_API_KEY": "short",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "ENVIRONMENT": "production",
+            "INTERNAL_API_KEY": "short",
+        },
+    )
     def test_production_short_api_key_blocked(self):
         """Production with too-short internal API key = error."""
         cfg = _make_config(
@@ -299,6 +358,7 @@ class TestInternalAPIKey:
 # =========================================================================
 # Conversation Encryption (COPPA/FERPA)
 # =========================================================================
+
 
 class TestConversationEncryption:
 
@@ -321,6 +381,7 @@ class TestConversationEncryption:
 # =========================================================================
 # Production-Like Detection
 # =========================================================================
+
 
 class TestProductionDetection:
 

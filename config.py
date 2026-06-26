@@ -115,6 +115,10 @@ class _SystemConfig:
     REQUEST_TIMEOUT_SECONDS: int = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "360"))
     # Set by install.py / setup based on hardware detection — no hardcoded fallback
     OLLAMA_DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "")
+    # Admission control for the student /api/chat path: max tutor turns per child
+    # per minute. Each turn is several inferences on one GPU, so this is the
+    # backpressure that stops a single child flooding the backend. 0 disables it.
+    CHAT_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("CHAT_RATE_LIMIT_PER_MINUTE", "20"))
 
     APPLICATION_NAME: str = "snflwr.ai"
     VERSION: str = os.getenv("SNFLWR_VERSION", "1.0.0")
@@ -123,9 +127,11 @@ class _SystemConfig:
     # --- Licensing / billing ---
     LICENSE_SERVER_URL: str = os.getenv("LICENSE_SERVER_URL", "")
     LICENSE_PUBLIC_KEY_PATH: str = os.getenv(
-        "LICENSE_PUBLIC_KEY_PATH", "./config/license_public_key.pem")
+        "LICENSE_PUBLIC_KEY_PATH", "./config/license_public_key.pem"
+    )
     LICENSE_REFRESH_INTERVAL_SECONDS: int = int(
-        os.getenv("LICENSE_REFRESH_INTERVAL_SECONDS", str(14 * 86400)))
+        os.getenv("LICENSE_REFRESH_INTERVAL_SECONDS", str(14 * 86400))
+    )
     # Off by default: enforcement is flipped on only when billing goes live
     # (entity + legal + license server). Shipping this code must NOT instantly
     # gate existing deployments. See billing spec §11 (phased rollout).
@@ -329,8 +335,9 @@ class _SystemConfig:
             if env_path.exists():
                 for line in env_path.read_text().splitlines():
                     stripped = line.strip()
-                    if stripped.startswith("DB_ENCRYPTION_KEY=") and \
-                            not stripped.startswith("#"):
+                    if stripped.startswith(
+                        "DB_ENCRYPTION_KEY="
+                    ) and not stripped.startswith("#"):
                         existing = stripped.split("=", 1)[1].strip()
                         if existing and len(existing) >= 32:
                             return existing

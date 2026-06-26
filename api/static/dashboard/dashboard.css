@@ -555,7 +555,21 @@ a:hover {
 .profile-card .profile-actions {
   display: flex;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+.profile-card .profile-actions .btn {
+  white-space: nowrap;
+  flex: 1 1 0;       /* share the row evenly, no trailing gap */
+  min-width: 0;
+}
+
+/* Child cards hold a full action row (Edit / Deactivate / Export / Incidents),
+   so give them a wider column than the generic .card-grid so the actions sit on
+   one line instead of wrapping. */
+@media (min-width: 480px) {
+  .children-grid {
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  }
 }
 
 .profile-last-active {
@@ -1548,6 +1562,14 @@ tr:hover td {
 .sfx-consent-head { font-size: 0.875rem; font-weight: var(--font-bold); color: var(--color-attention-text); margin-bottom: var(--space-1); }
 .sfx-consent.is-sent .sfx-consent-head { color: var(--color-safe-text); }
 .sfx-consent-note { font-size: 0.8125rem; line-height: 1.5; color: var(--text-secondary); margin-bottom: var(--space-3); }
+.sfx-legal { margin: var(--space-2) 0 var(--space-3); }
+.sfx-legal-link {
+  font-size: 0.75rem; font-weight: var(--font-medium);
+  color: var(--color-attention-text);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.sfx-legal-link:hover { color: var(--color-brand-dark); }
+.sfx-consent.is-sent .sfx-legal-link { color: var(--color-safe-text); }
 .sfx-consent-btn { width: 100%; }
 .sfx-consent-status { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); font-size: 0.8125rem; }
 .sfx-consent-status:empty { display: none; }

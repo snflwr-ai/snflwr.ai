@@ -158,6 +158,17 @@ export function showSafetySetup({ profile, onDone }) {
       class: 'sfx-consent-note',
       text: `Because ${childName} is under 13, COPPA requires your verifiable consent before they can chat. We'll email a one-tap confirmation link${email ? ' to ' + maskEmail(email) : ''}.`,
     }));
+    // Informed consent: link the official FTC explanation of COPPA (we link the
+    // authoritative source rather than hosting our own copy, which would go stale).
+    const learn = el('div', { class: 'sfx-legal' });
+    learn.appendChild(el('a', {
+      class: 'sfx-legal-link',
+      href: 'https://www.ftc.gov/legal-library/browse/rules/childrens-online-privacy-protection-rule-coppa',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      text: 'What COPPA requires ↗',
+    }));
+    consent.appendChild(learn);
     const statusEl = el('div', { class: 'sfx-consent-status', role: 'status' });
     const sendBtn = el('button', { class: 'btn-primary sfx-consent-btn', type: 'button', text: 'Send consent request' });
     sendBtn.addEventListener('click', () => {

@@ -20,18 +20,27 @@ Targets uncovered lines:
 - 1029-1034: WebSocket broadcast DB error
 """
 
-import sqlite3
-import json
 import asyncio
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, AsyncMock
+import json
+import sqlite3
 import sys
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from safety.incident_logger import IncidentLogger, SafetyIncident
+from safety.incident_logger import IncidentLogger
 
 _incident_logger_mod = sys.modules["safety.incident_logger"]
+# After the god-file was split into a package, the escalation methods resolve
+# their collaborators (get_email_system/get_websocket_manager/get_email_crypto/
+# encryption_manager) from the escalation submodule's namespace, so patches must
+# target it too (the facade re-exports the names but escalation binds its own).
+# The package __init__ imports escalation, so it's already in sys.modules.
+_esc_mod = sys.modules["safety.incident_logger.escalation"]
+# The lazy-loader globals (_email_system/_websocket_manager) live in models;
+# the get_* functions (re-exported on the facade) read/write them there.
+_models_mod = sys.modules["safety.incident_logger.models"]
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +114,8 @@ def mock_db():
 
 @pytest.fixture
 def mock_encryption():
+    # encryption_manager lives only in the facade (__init__ sets self.encryption
+    # from it; all methods use self.encryption). Patch there only.
     with patch.object(_incident_logger_mod, "encryption_manager") as enc:
         enc.encrypt_string = MagicMock(side_effect=_encrypt_side_effect)
         enc.decrypt_string = MagicMock(side_effect=_decrypt_side_effect)
@@ -115,20 +126,22 @@ def mock_encryption():
 
 @pytest.fixture
 def mock_websocket():
-    with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=None):
+    with patch.object(_esc_mod, "get_websocket_manager", return_value=None):
         yield
 
 
 @pytest.fixture
 def mock_email():
-    with patch.object(_incident_logger_mod, "get_email_system", return_value=None):
+    with patch.object(_esc_mod, "get_email_system", return_value=None):
         yield
 
 
 @pytest.fixture
 def mock_email_crypto():
-    with patch.object(_incident_logger_mod, "get_email_crypto") as ec:
-        ec.return_value.decrypt_email = MagicMock(return_value="parent@example.com")
+    ec = MagicMock()
+    ec.return_value.decrypt_email = MagicMock(return_value="parent@example.com")
+    with patch.object(_incident_logger_mod, "get_email_crypto", ec), \
+         patch.object(_esc_mod, "get_email_crypto", ec):
         yield ec
 
 
@@ -166,29 +179,29 @@ class TestLazyLoaderFallbacks:
     def test_get_email_system_import_error(self):
         """get_email_system returns None when import fails (lines 40-42)."""
         # Reset the global to force re-evaluation
-        _incident_logger_mod._email_system = None
+        _models_mod._email_system = None
         with patch.dict(sys.modules, {"utils.email_alerts": None}):
             with patch("builtins.__import__", side_effect=ImportError("no module")):
                 result = _incident_logger_mod.get_email_system()
         assert result is None
         # Reset for other tests
-        _incident_logger_mod._email_system = None
+        _models_mod._email_system = None
 
     def test_get_websocket_manager_import_error(self):
         """get_websocket_manager returns None when import fails (lines 54-56)."""
-        _incident_logger_mod._websocket_manager = None
+        _models_mod._websocket_manager = None
         with patch.dict(sys.modules, {"api.websocket_server": None}):
             with patch("builtins.__import__", side_effect=ImportError("no module")):
                 result = _incident_logger_mod.get_websocket_manager()
         assert result is None
-        _incident_logger_mod._websocket_manager = None
+        _models_mod._websocket_manager = None
 
     def test_get_email_system_cached_on_success(self):
         """get_email_system caches the result after first successful import."""
-        _incident_logger_mod._email_system = None
+        _models_mod._email_system = None
         mock_email = MagicMock()
         with patch.object(
-            _incident_logger_mod, "_email_system", None
+            _models_mod, "_email_system", None
         ):
             with patch.dict(
                 sys.modules,
@@ -196,21 +209,21 @@ class TestLazyLoaderFallbacks:
             ):
                 result = _incident_logger_mod.get_email_system()
         # Reset
-        _incident_logger_mod._email_system = None
+        _models_mod._email_system = None
 
     def test_get_websocket_manager_cached_on_success(self):
         """get_websocket_manager caches the result."""
-        _incident_logger_mod._websocket_manager = None
+        _models_mod._websocket_manager = None
         mock_ws = MagicMock()
         with patch.object(
-            _incident_logger_mod, "_websocket_manager", None
+            _models_mod, "_websocket_manager", None
         ):
             with patch.dict(
                 sys.modules,
                 {"api.websocket_server": MagicMock(websocket_manager=mock_ws)},
             ):
                 result = _incident_logger_mod.get_websocket_manager()
-        _incident_logger_mod._websocket_manager = None
+        _models_mod._websocket_manager = None
 
 
 # =========================================================================
@@ -357,7 +370,7 @@ class TestParentEmailAlertQueueing:
     def test_email_alert_sent_when_email_system_available(self, mock_db, mock_encryption, mock_websocket, mock_email_crypto):
         """Email alert is queued when email system is available (lines 884-906)."""
         mock_email_sys = MagicMock()
-        with patch.object(_incident_logger_mod, "get_email_system", return_value=mock_email_sys):
+        with patch.object(_esc_mod, "get_email_system", return_value=mock_email_sys):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],                                    # post-insert ID
                 [_CHILD_PROFILE_ROW],                                    # ws broadcast
@@ -383,7 +396,7 @@ class TestParentEmailAlertQueueing:
     def test_email_alert_not_sent_when_no_encrypted_email(self, mock_db, mock_encryption, mock_websocket, mock_email_crypto):
         """No email alert when parent has no encrypted email."""
         mock_email_sys = MagicMock()
-        with patch.object(_incident_logger_mod, "get_email_system", return_value=mock_email_sys):
+        with patch.object(_esc_mod, "get_email_system", return_value=mock_email_sys):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],
                 [_CHILD_PROFILE_ROW],
@@ -445,7 +458,7 @@ class TestWebSocketBroadcastProfileNotFound:
 
     def test_no_profile_found_for_websocket(self, mock_db, mock_encryption, mock_email, mock_email_crypto):
         """Missing profile for WebSocket broadcast is handled (lines 979-982)."""
-        with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=MagicMock()):
+        with patch.object(_esc_mod, "get_websocket_manager", return_value=MagicMock()):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],  # post-insert ID
                 [],                     # ws broadcast: no child_profiles found
@@ -474,7 +487,7 @@ class TestWebSocketBroadcastEventLoop:
         mock_ws = MagicMock()
         mock_ws.broadcast_to_parent = AsyncMock()
 
-        with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=mock_ws):
+        with patch.object(_esc_mod, "get_websocket_manager", return_value=mock_ws):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],
                 [_CHILD_PROFILE_ROW],
@@ -498,7 +511,7 @@ class TestWebSocketBroadcastEventLoop:
         mock_ws.broadcast_to_parent = AsyncMock()
 
         async def run_in_loop():
-            with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=mock_ws):
+            with patch.object(_esc_mod, "get_websocket_manager", return_value=mock_ws):
                 mock_db.execute_query.side_effect = [
                     [{'incident_id': 1}],
                     [_CHILD_PROFILE_ROW],
@@ -523,7 +536,7 @@ class TestWebSocketBroadcastEventLoop:
         mock_ws = MagicMock()
         mock_ws.broadcast_to_parent = AsyncMock(side_effect=ConnectionError("ws down"))
 
-        with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=mock_ws):
+        with patch.object(_esc_mod, "get_websocket_manager", return_value=mock_ws):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],
                 [_CHILD_PROFILE_ROW],
@@ -543,7 +556,7 @@ class TestWebSocketBroadcastEventLoop:
     def test_broadcast_db_error_handled(self, mock_db, mock_encryption, mock_email, mock_email_crypto):
         """DB error during WebSocket broadcast is caught (lines 1033-1034)."""
         mock_ws = MagicMock()
-        with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=mock_ws):
+        with patch.object(_esc_mod, "get_websocket_manager", return_value=mock_ws):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],          # post-insert ID
                 sqlite3.Error("DB fail"),       # ws broadcast child_profiles query fails

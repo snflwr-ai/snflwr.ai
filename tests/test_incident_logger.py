@@ -15,6 +15,9 @@ from safety.incident_logger import IncidentLogger, SafetyIncident
 import sys
 
 _incident_logger_mod = sys.modules["safety.incident_logger"]
+# Escalation methods resolve their collaborators from the escalation submodule
+# after the god-file split, so patch there (see test_incident_logger_coverage_ext).
+_esc_mod = sys.modules["safety.incident_logger.escalation"]
 
 
 # ---------------------------------------------------------------------------
@@ -112,21 +115,21 @@ def mock_encryption():
 @pytest.fixture
 def mock_websocket():
     """Patch get_websocket_manager to return None."""
-    with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=None):
+    with patch.object(_esc_mod, "get_websocket_manager", return_value=None):
         yield
 
 
 @pytest.fixture
 def mock_email():
     """Patch get_email_system to return None."""
-    with patch.object(_incident_logger_mod, "get_email_system", return_value=None):
+    with patch.object(_esc_mod, "get_email_system", return_value=None):
         yield
 
 
 @pytest.fixture
 def mock_email_crypto():
     """Patch get_email_crypto."""
-    with patch.object(_incident_logger_mod, "get_email_crypto") as ec:
+    with patch.object(_esc_mod, "get_email_crypto") as ec:
         ec.return_value.decrypt_email = MagicMock(return_value="parent@example.com")
         yield ec
 
@@ -378,7 +381,7 @@ class TestLogIncident:
 
     def test_websocket_broadcast_called(self, mock_db, mock_encryption, mock_email, mock_email_crypto):
         """WebSocket broadcast looks up child_profiles for the parent."""
-        with patch.object(_incident_logger_mod, "get_websocket_manager", return_value=None):
+        with patch.object(_esc_mod, "get_websocket_manager", return_value=None):
             mock_db.execute_query.side_effect = _log_incident_query_side_effect(1)
 
             il = IncidentLogger(db=mock_db)
@@ -397,7 +400,7 @@ class TestLogIncident:
     @pytest.mark.parametrize("severity", ["major", "critical"])
     def test_parent_alert_sent_for_major_critical(self, mock_db, mock_encryption, mock_websocket, mock_email_crypto, severity):
         """Parent alert is triggered for major and critical severity when send_alert=True."""
-        with patch.object(_incident_logger_mod, "get_email_system", return_value=None):
+        with patch.object(_esc_mod, "get_email_system", return_value=None):
             mock_db.execute_query.side_effect = [
                 [{'incident_id': 1}],                    # post-insert ID query
                 [{'parent_id': 'p1', 'name': 'Emma'}],  # ws broadcast child_profiles

@@ -461,6 +461,28 @@ class _SystemConfig:
                 "configure SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/SMTP_FROM_EMAIL "
                 "and ADMIN_EMAIL."
             )
+        elif is_prod and self.SMTP_ENABLED:
+            # SMTP "on" is not enough — if the destination/credentials are blank,
+            # safety + operator alerts are sent to nowhere and silently dropped,
+            # which is worse than email-off (it *looks* configured). Require them.
+            missing = [
+                name
+                for name, value in (
+                    ("ADMIN_EMAIL", self.ADMIN_EMAIL),
+                    ("SMTP_USERNAME", self.SMTP_USERNAME),
+                    ("SMTP_PASSWORD", self.SMTP_PASSWORD),
+                    ("SMTP_FROM_EMAIL", self.SMTP_FROM_EMAIL),
+                )
+                if not (value and str(value).strip())
+            ]
+            if missing:
+                errors.append(
+                    "SMTP is enabled but these required fields are blank: "
+                    f"{', '.join(missing)}. Child-safety and operator alerts have "
+                    "no destination/credentials and would be silently dropped. Set "
+                    "ADMIN_EMAIL and the SMTP_USERNAME/SMTP_PASSWORD/SMTP_FROM_EMAIL "
+                    "credentials."
+                )
 
         # =================================================================
         # HIGH: PostgreSQL Password

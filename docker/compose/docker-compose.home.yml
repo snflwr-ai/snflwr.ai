@@ -194,13 +194,19 @@ services:
       - -c
       - |
         echo "[backup-cron] started; daily backup at ${BACKUP_HOUR:-03}:00"
+        # Liveness heartbeat for the healthcheck below — touched every loop
+        # iteration so a wedged loop goes stale (the inherited API image's
+        # HTTP healthcheck does not apply to this sleep-loop sidecar).
+        touch /tmp/backup-cron.alive
         while true; do
+          touch /tmp/backup-cron.alive
           now=$$(date +%s)
           target=$$(date -d "${BACKUP_HOUR:-03}:00 today" +%s)
           [ "$$target" -le "$$now" ] && target=$$(date -d "${BACKUP_HOUR:-03}:00 tomorrow" +%s)
           sleep_for=$$((target - now))
           echo "[backup-cron] next backup in $${sleep_for}s"
           sleep "$$sleep_for"
+          touch /tmp/backup-cron.alive
           echo "[backup-cron] running backup at $$(date -u +%FT%TZ)"
           python /app/scripts/backup_database.py backup \
             || echo "[backup-cron] backup FAILED (exit $$?) — see logs / heartbeat"
@@ -228,6 +234,15 @@ services:
     depends_on:
       snflwr-api:
         condition: service_healthy
+    # Override the API image's HTTP healthcheck (this sidecar serves no HTTP).
+    # Healthy = the loop touched its heartbeat within the last ~26h (it touches
+    # at least once per daily iteration); a wedged loop goes stale and unhealthy.
+    healthcheck:
+      test: ["CMD-SHELL", "find /tmp/backup-cron.alive -mmin -1560 | grep -q . || exit 1"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     networks:
       - snflwr-home-net

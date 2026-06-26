@@ -10,6 +10,7 @@
 import { apiRequest } from '../core/api.js';
 import { getParentId } from '../core/session.js';
 import { el } from '../core/dom.js';
+import { showSafetySetup } from '../components/safetySetup.js';
 import { skeleton } from '../components/skeleton.js';
 import { showToast } from '../components/toast.js';
 import { confirmDialog } from '../components/confirm.js';
@@ -197,7 +198,12 @@ function showCreateProfileModal(parentId, onSuccess) {
       model_role: 'student',
       parental_consent_verified: consent,
     })
-      .then(() => { close(); onSuccess(); })
+      .then((created) => {
+        close();
+        // Guide the parent through where alerts reach them and (under-13) the
+        // verifiable-consent email, then refresh the list.
+        showSafetySetup({ profile: created, onDone: onSuccess });
+      })
       .catch((err) => {
         showFormError(errBox, err.detail || err.message || 'Create failed');
         createBtn.disabled = false;

@@ -1,9 +1,9 @@
 import os
 import secrets
 import warnings
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 # Load .env files if present (production first, then dev fallback).
@@ -288,7 +288,7 @@ class _SystemConfig:
         try:
             fd = os.open(str(env_path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
             with os.fdopen(fd, "a") as f:
-                f.write(f"\n# Auto-generated JWT secret for session persistence\n")
+                f.write("\n# Auto-generated JWT secret for session persistence\n")
                 f.write(f"JWT_SECRET_KEY={generated_secret}\n")
             warnings.warn(
                 "JWT_SECRET_KEY not set - generated and saved to .env.", RuntimeWarning
@@ -427,6 +427,21 @@ class _SystemConfig:
             errors.append(
                 "Redis is REQUIRED in production for rate limiting and session management. "
                 "Set REDIS_ENABLED=true and configure Redis connection."
+            )
+
+        # =================================================================
+        # CRITICAL: Email Required for Child-Safety Alerts + COPPA Consent
+        # =================================================================
+        # A children's product cannot run in production with email off: parent
+        # crisis alerts and the verifiable under-13 consent flow both depend on
+        # it. Without this, a flagged self-harm incident reaches no parent unless
+        # they happen to be watching the live dashboard.
+        if is_prod and not self.SMTP_ENABLED:
+            errors.append(
+                "Email (SMTP) is REQUIRED in production: parental crisis alerts "
+                "and COPPA consent depend on it. Set SMTP_ENABLED=true and "
+                "configure SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/SMTP_FROM_EMAIL "
+                "and ADMIN_EMAIL."
             )
 
         # =================================================================
@@ -752,8 +767,8 @@ def _derive_csrf_secret() -> str:
     explicit = os.getenv("CSRF_SECRET")
     if explicit:
         return explicit
-    import hmac as _hmac
     import hashlib as _hashlib
+    import hmac as _hmac
 
     jwt_key = system_config.JWT_SECRET_KEY
     return _hmac.new(

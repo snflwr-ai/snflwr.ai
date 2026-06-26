@@ -1449,3 +1449,118 @@ tr:hover td {
 .modal-close {
   margin-left: auto;
 }
+
+/* =========================================================================
+   Safety Notification Setup  (components/safetySetup.js)
+   The post-profile-creation "your child is protected" step. Built on the
+   semantic safety palette; calm and reassuring, with a staggered reveal.
+   ========================================================================= */
+.sfx-modal {
+  max-width: 460px;
+  padding: var(--space-7) var(--space-7) var(--space-6);
+  text-align: left;
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+  transition: opacity 0.42s ease, transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sfx-modal.is-in { opacity: 1; transform: none; }
+
+/* Hero ------------------------------------------------------------------- */
+.sfx-hero { text-align: center; margin-bottom: var(--space-6); }
+.sfx-shield {
+  width: 64px; height: 64px; margin: 0 auto var(--space-4);
+  display: grid; place-items: center;
+  border-radius: var(--radius-full);
+  color: var(--color-safe);
+  background: var(--color-safe-bg);
+  box-shadow: 0 0 0 1px var(--color-safe-border) inset, 0 0 0 0 var(--color-safe-border);
+}
+.sfx-modal.is-in .sfx-shield { animation: sfx-halo 0.9s ease-out 0.15s both; }
+.sfx-shield-svg { width: 34px; height: 34px; }
+.sfx-shield-check {
+  stroke-dasharray: 16; stroke-dashoffset: 16;
+}
+.sfx-modal.is-in .sfx-shield-check { animation: sfx-draw 0.5s ease-out 0.5s forwards; }
+@keyframes sfx-draw { to { stroke-dashoffset: 0; } }
+@keyframes sfx-halo {
+  0% { box-shadow: 0 0 0 1px var(--color-safe-border) inset, 0 0 0 0 rgba(21,128,61,0.35); }
+  100% { box-shadow: 0 0 0 1px var(--color-safe-border) inset, 0 0 0 16px rgba(21,128,61,0); }
+}
+.sfx-eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 0.6875rem; font-weight: var(--font-semibold);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--color-safe);
+}
+.sfx-title { margin: 0 0 var(--space-2); font-size: 1.375rem; font-weight: var(--font-bold); color: var(--text-primary); }
+.sfx-sub { margin: 0 auto; max-width: 34ch; font-size: 0.875rem; line-height: 1.55; color: var(--text-secondary); }
+
+/* Staggered reveal of body rows ----------------------------------------- */
+.sfx-body { display: flex; flex-direction: column; gap: var(--space-3); }
+[data-reveal] { opacity: 0; transform: translateY(8px); transition: opacity 0.4s ease, transform 0.4s ease; }
+.sfx-modal.is-in [data-reveal="1"] { opacity: 1; transform: none; transition-delay: 0.30s; }
+.sfx-modal.is-in [data-reveal="2"] { opacity: 1; transform: none; transition-delay: 0.40s; }
+.sfx-modal.is-in [data-reveal="3"] { opacity: 1; transform: none; transition-delay: 0.50s; }
+
+/* Notification-email row ------------------------------------------------- */
+.sfx-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-page);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.sfx-row-icon { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: var(--radius-full); }
+.sfx-row-icon.sfx-ic-safe { color: var(--color-safe); background: var(--color-safe-bg); }
+.sfx-ic { width: 20px; height: 20px; }
+.sfx-row-title { font-size: 0.8125rem; font-weight: var(--font-semibold); color: var(--text-primary); }
+.sfx-row-note { font-size: 0.8125rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Transparency panel ----------------------------------------------------- */
+.sfx-triggers {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+.sfx-triggers-head {
+  font-size: 0.6875rem; font-weight: var(--font-semibold);
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light);
+  margin-bottom: var(--space-3);
+}
+.sfx-trigger { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-1) 0; }
+.sfx-trigger + .sfx-trigger { border-top: 1px solid var(--border); margin-top: var(--space-1); padding-top: var(--space-3); }
+.sfx-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: var(--radius-full); }
+.sfx-sev-crisis .sfx-dot { background: var(--color-crisis); box-shadow: 0 0 0 3px var(--color-crisis-bg); }
+.sfx-sev-attention .sfx-dot { background: var(--color-attention); box-shadow: 0 0 0 3px var(--color-attention-bg); }
+.sfx-trigger-text { display: flex; flex-direction: column; gap: 1px; }
+.sfx-trigger-label { font-size: 0.8125rem; font-weight: var(--font-semibold); color: var(--text-primary); }
+.sfx-trigger-note { font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4; }
+
+/* COPPA consent block (action required) ---------------------------------- */
+.sfx-consent {
+  padding: var(--space-4);
+  border: 1px solid var(--color-attention-border);
+  background: var(--color-attention-bg);
+  border-radius: var(--radius-lg);
+}
+.sfx-consent.is-sent { border-color: var(--color-safe-border); background: var(--color-safe-bg); }
+.sfx-consent-head { font-size: 0.875rem; font-weight: var(--font-bold); color: var(--color-attention-text); margin-bottom: var(--space-1); }
+.sfx-consent.is-sent .sfx-consent-head { color: var(--color-safe-text); }
+.sfx-consent-note { font-size: 0.8125rem; line-height: 1.5; color: var(--text-secondary); margin-bottom: var(--space-3); }
+.sfx-consent-btn { width: 100%; }
+.sfx-consent-status { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); font-size: 0.8125rem; }
+.sfx-consent-status:empty { display: none; }
+.sfx-consent-status.is-ok { color: var(--color-safe-text); font-weight: var(--font-medium); }
+.sfx-consent-status.is-err { color: var(--color-crisis-text); }
+.sfx-mini-check { width: 18px; height: 18px; flex: none; color: var(--color-safe); }
+
+/* Footer ----------------------------------------------------------------- */
+.sfx-footer { margin-top: var(--space-6); }
+.sfx-done { width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sfx-modal, [data-reveal] { transition: none; transform: none; opacity: 1; }
+  .sfx-modal.is-in .sfx-shield, .sfx-modal.is-in .sfx-shield-check { animation: none; }
+  .sfx-shield-check { stroke-dashoffset: 0; }
+}

@@ -269,3 +269,23 @@ class TestEmailService:
         service.db.execute_write.side_effect = sqlite3.Error("db fail")
         # Should not raise — just log the error
         service._log_email_attempt("parent1", "test@test.com", "failed", "err")
+
+
+class TestConsentEmailFailsFastWhenDisabled:
+    """COPPA consent cannot proceed without email — the send must fail fast and
+    return False (never a silent success or a slow live-SMTP connect error)."""
+
+    async def test_consent_request_returns_false_when_smtp_disabled(self):
+        import pytest
+        from core.email_service import EmailService
+
+        svc = EmailService.__new__(EmailService)
+        svc.enabled = False
+        result = await svc.send_parental_consent_request(
+            to_email="parent@example.com",
+            parent_name="Parent",
+            child_name="Kid",
+            child_age=9,
+            consent_url="https://example.com/consent",
+        )
+        assert result is False

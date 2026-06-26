@@ -300,7 +300,7 @@ async function loadProfiles(container) {
   container.appendChild(header);
 
   // Skeletons while loading
-  const skeletons = el('div', { class: 'card-grid' });
+  const skeletons = el('div', { class: 'card-grid children-grid' });
   for (let i = 0; i < 3; i++) skeletons.appendChild(skeleton('card'));
   container.appendChild(skeletons);
 
@@ -331,7 +331,7 @@ async function loadProfiles(container) {
     return;
   }
 
-  const cardGrid = el('div', { class: 'card-grid' });
+  const cardGrid = el('div', { class: 'card-grid children-grid' });
   profiles.forEach((p) => {
     const initial = (p.name || '?')[0].toUpperCase();
     const lastActive = p.last_active ? timeAgo(p.last_active) : 'Never';

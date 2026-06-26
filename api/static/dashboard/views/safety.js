@@ -6,6 +6,7 @@ import { deriveSafetyState } from '../core/safety.js';
 import { el } from '../core/dom.js';
 import { renderBanner } from '../components/banner.js';
 import { skeleton } from '../components/skeleton.js';
+import { emptyState } from '../components/emptyState.js';
 
 function formatTime(iso) {
   if (!iso) return '—';
@@ -21,10 +22,7 @@ function renderAlerts(container, alerts, profiles) {
 
   if (alerts.length === 0) {
     container.appendChild(
-      el('div', { class: 'empty-state' }, [
-        el('div', { class: 'empty-icon', text: '✅' }),
-        el('p', { text: 'No pending safety alerts. Everything looks good!' }),
-      ])
+      emptyState({ icon: 'allClear', text: 'No pending safety alerts. Everything looks good!' })
     );
     return;
   }
@@ -63,10 +61,7 @@ function renderAlerts(container, alerts, profiles) {
           if (container.querySelectorAll('.alert-card').length === 0) {
             container.textContent = '';
             container.appendChild(
-              el('div', { class: 'empty-state' }, [
-                el('div', { class: 'empty-icon', text: '✅' }),
-                el('p', { text: 'No pending safety alerts. Everything looks good!' }),
-              ])
+              emptyState({ icon: 'allClear', text: 'No pending safety alerts. Everything looks good!' })
             );
           }
         })
@@ -117,10 +112,7 @@ function renderIncidents(container, profileId, profileName) {
 
       if (incidents.length === 0) {
         container.appendChild(
-          el('div', { class: 'empty-state' }, [
-            el('div', { class: 'empty-icon', text: '✅' }),
-            el('p', { text: 'No safety incidents recorded for this child.' }),
-          ])
+          emptyState({ icon: 'allClear', text: 'No safety incidents recorded for this child.' })
         );
         return;
       }

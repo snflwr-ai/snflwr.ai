@@ -12,6 +12,7 @@ import { el } from '../core/dom.js';
 import { statCard } from '../components/card.js';
 import { skeleton } from '../components/skeleton.js';
 import { svgChart } from '../components/svgChart.js';
+import { emptyState } from '../components/emptyState.js';
 
 function formatTime(iso) {
   if (!iso) return '—';
@@ -156,10 +157,7 @@ export async function render(container, params) {
 
   if (profiles.length === 0) {
     container.appendChild(
-      el('div', { class: 'empty-state' }, [
-        el('div', { class: 'empty-icon', text: '📊' }),
-        el('p', { text: 'No child profiles to show activity for.' }),
-      ])
+      emptyState({ icon: 'activity', text: 'No child profiles to show activity for.' })
     );
     return;
   }

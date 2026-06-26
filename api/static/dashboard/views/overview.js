@@ -8,6 +8,7 @@ import { el } from '../core/dom.js';
 import { renderBanner } from '../components/banner.js';
 import { statCard, card } from '../components/card.js';
 import { skeleton } from '../components/skeleton.js';
+import { emptyState } from '../components/emptyState.js';
 
 function timeAgo(iso) {
   if (!iso) return 'Never';
@@ -117,10 +118,7 @@ export async function render(container) {
   // Per-child activity summary cards
   if (profiles.length === 0) {
     container.appendChild(
-      el('div', { class: 'empty-state' }, [
-        el('div', { class: 'empty-icon', text: '👶' }),
-        el('p', { text: 'No child profiles yet. Go to Children to add one.' }),
-      ])
+      emptyState({ icon: 'children', text: 'No child profiles yet. Go to Children to add one.' })
     );
   } else {
     const cardGrid = el('div', { class: 'card-grid' });

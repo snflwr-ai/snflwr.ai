@@ -14,6 +14,7 @@ import { showSafetySetup } from '../components/safetySetup.js';
 import { skeleton } from '../components/skeleton.js';
 import { showToast } from '../components/toast.js';
 import { confirmDialog } from '../components/confirm.js';
+import { emptyState } from '../components/emptyState.js';
 
 const GRADES = [
   { v: '', l: 'Select grade...' },
@@ -323,10 +324,7 @@ async function loadProfiles(container) {
 
   if (profiles.length === 0) {
     container.appendChild(
-      el('div', { class: 'empty-state' }, [
-        el('div', { class: 'empty-icon', text: '👶' }),
-        el('p', { text: 'No child profiles yet. Click "Add Child" to create one.' }),
-      ])
+      emptyState({ icon: 'children', text: 'No child profiles yet. Click "Add Child" to create one.' })
     );
     return;
   }

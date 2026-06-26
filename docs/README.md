@@ -48,9 +48,9 @@ Setup and configuration guides.
 
 ### [Safety](./safety/)
 Content safety and filtering documentation.
-- [Safety Filter Installation](./safety/SAFETY_FILTER_INSTALLATION.md)
+- [Request Flow & Safety Pipeline](./architecture/REQUEST_FLOW_AND_SAFETY.md) — how every turn is gated (canonical)
 - [Grade-Based Filtering](./safety/GRADE_BASED_FILTERING.md)
-- [Backend Safety Enforcement](./safety/BACKEND_SAFETY_ENFORCEMENT.md)
+- [Safety Limitations](./safety/SAFETY_LIMITATIONS.md)
 - [Manual Safety Test Checklist](./safety/MANUAL_SAFETY_TEST_CHECKLIST.md)
 
 ## Quick Links

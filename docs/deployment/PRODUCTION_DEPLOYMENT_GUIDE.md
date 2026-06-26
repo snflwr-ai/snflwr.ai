@@ -1140,7 +1140,7 @@ Before deploying to students:
 ## Support & Resources
 
 **Documentation**:
-- Safety Filter Installation: `SAFETY_FILTER_INSTALLATION.md`
+- Request Flow & Safety Pipeline: `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`
 - Model Configuration: `MODEL_UPGRADE_SUMMARY.md`
 - Admin Settings: `ADMIN_SETUP_GUIDE.md`
 

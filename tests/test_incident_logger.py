@@ -24,23 +24,24 @@ _esc_mod = sys.modules["safety.incident_logger.escalation"]
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_row(overrides=None):
     """Build a dict that looks like a DB row from safety_incidents."""
     now = datetime.now(timezone.utc)
     row = {
-        'incident_id': 1,
-        'profile_id': 'child-001',
-        'session_id': 'sess-001',
-        'incident_type': 'violence',
-        'severity': 'major',
-        'content_snippet': 'encrypted_some content',
-        'timestamp': now.isoformat(),
-        'parent_notified': 0,
-        'parent_notified_at': None,
-        'resolved': 0,
-        'resolved_at': None,
-        'resolution_notes': None,
-        'metadata': 'encrypted_meta',
+        "incident_id": 1,
+        "profile_id": "child-001",
+        "session_id": "sess-001",
+        "incident_type": "violence",
+        "severity": "major",
+        "content_snippet": "encrypted_some content",
+        "timestamp": now.isoformat(),
+        "parent_notified": 0,
+        "parent_notified_at": None,
+        "resolved": 0,
+        "resolved_at": None,
+        "resolution_notes": None,
+        "metadata": "encrypted_meta",
     }
     if overrides:
         row.update(overrides)
@@ -55,7 +56,7 @@ def _encrypt_side_effect(value):
 def _decrypt_side_effect(value):
     """Simulate decryption by stripping prefix."""
     if isinstance(value, str) and value.startswith("encrypted_"):
-        return value[len("encrypted_"):]
+        return value[len("encrypted_") :]
     return value
 
 
@@ -67,12 +68,12 @@ def _encrypt_dict_side_effect(d):
 def _decrypt_dict_side_effect(value):
     """Simulate dict decryption."""
     if isinstance(value, str) and value.startswith("encrypted_"):
-        return json.loads(value[len("encrypted_"):])
+        return json.loads(value[len("encrypted_") :])
     return value
 
 
 # Default child profile row returned during WebSocket broadcast lookup.
-_CHILD_PROFILE_ROW = {'parent_id': 'parent-001', 'name': 'Emma', 'age': 10}
+_CHILD_PROFILE_ROW = {"parent_id": "parent-001", "name": "Emma", "age": 10}
 
 
 def _log_incident_query_side_effect(incident_id=1):
@@ -83,7 +84,7 @@ def _log_incident_query_side_effect(incident_id=1):
       2. _broadcast_incident_websocket child_profiles lookup -> [child profile row]
     """
     return [
-        [{'incident_id': incident_id}],
+        [{"incident_id": incident_id}],
         [_CHILD_PROFILE_ROW],
     ]
 
@@ -91,6 +92,7 @@ def _log_incident_query_side_effect(incident_id=1):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_db():
@@ -148,6 +150,7 @@ def logger(mock_db, mock_encryption, mock_websocket, mock_email, mock_email_cryp
 # SafetyIncident dataclass
 # =========================================================================
 
+
 class TestSafetyIncident:
     """Tests for the SafetyIncident dataclass and its to_dict method."""
 
@@ -171,60 +174,88 @@ class TestSafetyIncident:
         )
         d = incident.to_dict()
 
-        assert d['incident_id'] == 42
-        assert d['profile_id'] == "child-001"
-        assert d['session_id'] == "sess-abc"
-        assert d['incident_type'] == "violence"
-        assert d['severity'] == "critical"
-        assert d['content_snippet'] == "bad words"
-        assert d['parent_notified'] is False
-        assert d['resolved'] is False
-        assert d['resolution_notes'] is None
-        assert d['metadata'] == {"key": "value"}
+        assert d["incident_id"] == 42
+        assert d["profile_id"] == "child-001"
+        assert d["session_id"] == "sess-abc"
+        assert d["incident_type"] == "violence"
+        assert d["severity"] == "critical"
+        assert d["content_snippet"] == "bad words"
+        assert d["parent_notified"] is False
+        assert d["resolved"] is False
+        assert d["resolution_notes"] is None
+        assert d["metadata"] == {"key": "value"}
 
     def test_to_dict_timestamp_iso(self):
         """timestamp is serialized as ISO-8601."""
         now = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
         incident = SafetyIncident(
-            incident_id=1, profile_id="p", session_id=None,
-            incident_type="t", severity="minor", content_snippet="c",
-            timestamp=now, parent_notified=False, parent_notified_at=None,
-            resolved=False, resolved_at=None, resolution_notes=None, metadata={},
+            incident_id=1,
+            profile_id="p",
+            session_id=None,
+            incident_type="t",
+            severity="minor",
+            content_snippet="c",
+            timestamp=now,
+            parent_notified=False,
+            parent_notified_at=None,
+            resolved=False,
+            resolved_at=None,
+            resolution_notes=None,
+            metadata={},
         )
         d = incident.to_dict()
-        assert d['timestamp'] == now.isoformat()
+        assert d["timestamp"] == now.isoformat()
 
     def test_to_dict_optional_datetime_fields(self):
         """parent_notified_at and resolved_at serialized when present."""
         now = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
         later = now + timedelta(hours=1)
         incident = SafetyIncident(
-            incident_id=1, profile_id="p", session_id=None,
-            incident_type="t", severity="minor", content_snippet="c",
-            timestamp=now, parent_notified=True, parent_notified_at=now,
-            resolved=True, resolved_at=later, resolution_notes="fixed", metadata={},
+            incident_id=1,
+            profile_id="p",
+            session_id=None,
+            incident_type="t",
+            severity="minor",
+            content_snippet="c",
+            timestamp=now,
+            parent_notified=True,
+            parent_notified_at=now,
+            resolved=True,
+            resolved_at=later,
+            resolution_notes="fixed",
+            metadata={},
         )
         d = incident.to_dict()
-        assert d['parent_notified_at'] == now.isoformat()
-        assert d['resolved_at'] == later.isoformat()
+        assert d["parent_notified_at"] == now.isoformat()
+        assert d["resolved_at"] == later.isoformat()
 
     def test_to_dict_none_optional_datetimes(self):
         """parent_notified_at and resolved_at are None when not set."""
         now = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
         incident = SafetyIncident(
-            incident_id=1, profile_id="p", session_id=None,
-            incident_type="t", severity="minor", content_snippet="c",
-            timestamp=now, parent_notified=False, parent_notified_at=None,
-            resolved=False, resolved_at=None, resolution_notes=None, metadata={},
+            incident_id=1,
+            profile_id="p",
+            session_id=None,
+            incident_type="t",
+            severity="minor",
+            content_snippet="c",
+            timestamp=now,
+            parent_notified=False,
+            parent_notified_at=None,
+            resolved=False,
+            resolved_at=None,
+            resolution_notes=None,
+            metadata={},
         )
         d = incident.to_dict()
-        assert d['parent_notified_at'] is None
-        assert d['resolved_at'] is None
+        assert d["parent_notified_at"] is None
+        assert d["resolved_at"] is None
 
 
 # =========================================================================
 # log_incident
 # =========================================================================
+
 
 class TestLogIncident:
     """Tests for IncidentLogger.log_incident."""
@@ -379,7 +410,9 @@ class TestLogIncident:
         # session_id is the second param in the tuple
         assert write_params[1] == "sess-999"
 
-    def test_websocket_broadcast_called(self, mock_db, mock_encryption, mock_email, mock_email_crypto):
+    def test_websocket_broadcast_called(
+        self, mock_db, mock_encryption, mock_email, mock_email_crypto
+    ):
         """WebSocket broadcast looks up child_profiles for the parent."""
         with patch.object(_esc_mod, "get_websocket_manager", return_value=None):
             mock_db.execute_query.side_effect = _log_incident_query_side_effect(1)
@@ -398,13 +431,17 @@ class TestLogIncident:
             assert "child_profiles" in second_call_sql
 
     @pytest.mark.parametrize("severity", ["major", "critical"])
-    def test_parent_alert_sent_for_major_critical(self, mock_db, mock_encryption, mock_websocket, mock_email_crypto, severity):
+    def test_parent_alert_sent_for_major_critical(
+        self, mock_db, mock_encryption, mock_websocket, mock_email_crypto, severity
+    ):
         """Parent alert is triggered for major and critical severity when send_alert=True."""
         with patch.object(_esc_mod, "get_email_system", return_value=None):
             mock_db.execute_query.side_effect = [
-                [{'incident_id': 1}],                    # post-insert ID query
-                [{'parent_id': 'p1', 'name': 'Emma'}],  # ws broadcast child_profiles
-                [{'parent_id': 'p1', 'name': 'Emma', 'age': 10}],  # _send_parent_alert child_profiles
+                [{"incident_id": 1}],  # post-insert ID query
+                [{"parent_id": "p1", "name": "Emma"}],  # ws broadcast child_profiles
+                [
+                    {"parent_id": "p1", "name": "Emma", "age": 10}
+                ],  # _send_parent_alert child_profiles
             ]
 
             il = IncidentLogger(db=mock_db)
@@ -456,16 +493,21 @@ class TestLogIncident:
 # get_incident
 # =========================================================================
 
+
 class TestGetIncident:
     """Tests for IncidentLogger.get_incident."""
 
     def test_returns_safety_incident(self, logger, mock_db, mock_encryption):
         """Returns a SafetyIncident for a valid row."""
         now = datetime.now(timezone.utc)
-        mock_db.execute_query.return_value = [_make_row({
-            'incident_id': 5,
-            'timestamp': now.isoformat(),
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "incident_id": 5,
+                    "timestamp": now.isoformat(),
+                }
+            )
+        ]
 
         result = logger.get_incident(5)
         assert isinstance(result, SafetyIncident)
@@ -473,9 +515,13 @@ class TestGetIncident:
 
     def test_decrypts_content_snippet(self, logger, mock_db, mock_encryption):
         """Content snippet is decrypted from the DB value."""
-        mock_db.execute_query.return_value = [_make_row({
-            'content_snippet': 'encrypted_hello world',
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "content_snippet": "encrypted_hello world",
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.content_snippet == "hello world"
@@ -484,38 +530,54 @@ class TestGetIncident:
     def test_decrypts_metadata(self, logger, mock_db, mock_encryption):
         """Metadata is decrypted when present."""
         meta_json = json.dumps({"flag": True})
-        mock_db.execute_query.return_value = [_make_row({
-            'metadata': f'encrypted_{meta_json}',
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "metadata": f"encrypted_{meta_json}",
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.metadata == {"flag": True}
 
     def test_empty_metadata_when_none(self, logger, mock_db):
         """Metadata defaults to empty dict when DB value is None."""
-        mock_db.execute_query.return_value = [_make_row({
-            'metadata': None,
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "metadata": None,
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.metadata == {}
 
     def test_decrypts_resolution_notes(self, logger, mock_db, mock_encryption):
         """Resolution notes are decrypted when present."""
-        mock_db.execute_query.return_value = [_make_row({
-            'resolution_notes': 'encrypted_all good',
-            'resolved': 1,
-            'resolved_at': datetime.now(timezone.utc).isoformat(),
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "resolution_notes": "encrypted_all good",
+                    "resolved": 1,
+                    "resolved_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.resolution_notes == "all good"
 
     def test_resolution_notes_none_when_absent(self, logger, mock_db):
         """Resolution notes are None when not set in DB."""
-        mock_db.execute_query.return_value = [_make_row({
-            'resolution_notes': None,
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "resolution_notes": None,
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.resolution_notes is None
@@ -535,10 +597,14 @@ class TestGetIncident:
     def test_parent_notified_at_parsed(self, logger, mock_db):
         """parent_notified_at is parsed from ISO string."""
         notified = datetime(2025, 7, 1, 10, 0, 0, tzinfo=timezone.utc)
-        mock_db.execute_query.return_value = [_make_row({
-            'parent_notified': 1,
-            'parent_notified_at': notified.isoformat(),
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "parent_notified": 1,
+                    "parent_notified_at": notified.isoformat(),
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.parent_notified is True
@@ -547,35 +613,51 @@ class TestGetIncident:
     def test_resolved_at_parsed(self, logger, mock_db):
         """resolved_at is parsed from ISO string."""
         resolved_time = datetime(2025, 7, 2, 15, 30, 0, tzinfo=timezone.utc)
-        mock_db.execute_query.return_value = [_make_row({
-            'resolved': 1,
-            'resolved_at': resolved_time.isoformat(),
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "resolved": 1,
+                    "resolved_at": resolved_time.isoformat(),
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.resolved is True
         assert result.resolved_at == resolved_time
 
-    def test_metadata_decrypt_failure_returns_empty_dict(self, logger, mock_db, mock_encryption):
+    def test_metadata_decrypt_failure_returns_empty_dict(
+        self, logger, mock_db, mock_encryption
+    ):
         """If metadata decryption fails, metadata falls back to empty dict."""
         mock_encryption.decrypt_dict.side_effect = ValueError("bad token")
-        mock_db.execute_query.return_value = [_make_row({
-            'metadata': 'garbage_encrypted_data',
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "metadata": "garbage_encrypted_data",
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.metadata == {}
 
-    def test_resolution_notes_decrypt_failure_returns_none(self, logger, mock_db, mock_encryption):
+    def test_resolution_notes_decrypt_failure_returns_none(
+        self, logger, mock_db, mock_encryption
+    ):
         """If resolution_notes decryption fails, falls back to None."""
         mock_encryption.decrypt_string.side_effect = [
             "decrypted_snippet",  # first call for content_snippet
             ValueError("bad token"),  # second call for resolution_notes
         ]
-        mock_db.execute_query.return_value = [_make_row({
-            'resolution_notes': 'bad_encrypted',
-            'metadata': None,
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "resolution_notes": "bad_encrypted",
+                    "metadata": None,
+                }
+            )
+        ]
 
         result = logger.get_incident(1)
         assert result.resolution_notes is None
@@ -585,6 +667,7 @@ class TestGetIncident:
 # get_profile_incidents
 # =========================================================================
 
+
 class TestGetProfileIncidents:
     """Tests for IncidentLogger.get_profile_incidents."""
 
@@ -592,8 +675,8 @@ class TestGetProfileIncidents:
         """Returns a list of SafetyIncident objects."""
         now = datetime.now(timezone.utc)
         mock_db.execute_query.return_value = [
-            _make_row({'incident_id': 1, 'timestamp': now.isoformat()}),
-            _make_row({'incident_id': 2, 'timestamp': now.isoformat()}),
+            _make_row({"incident_id": 1, "timestamp": now.isoformat()}),
+            _make_row({"incident_id": 2, "timestamp": now.isoformat()}),
         ]
 
         results = logger.get_profile_incidents("child-001")
@@ -637,8 +720,8 @@ class TestGetProfileIncidents:
     def test_decrypts_content_snippets(self, logger, mock_db, mock_encryption):
         """All returned incidents have decrypted content."""
         mock_db.execute_query.return_value = [
-            _make_row({'content_snippet': 'encrypted_text1'}),
-            _make_row({'content_snippet': 'encrypted_text2'}),
+            _make_row({"content_snippet": "encrypted_text1"}),
+            _make_row({"content_snippet": "encrypted_text2"}),
         ]
 
         results = logger.get_profile_incidents("child-001")
@@ -649,7 +732,7 @@ class TestGetProfileIncidents:
         """Metadata in each row is decrypted."""
         meta_json = json.dumps({"source": "filter"})
         mock_db.execute_query.return_value = [
-            _make_row({'metadata': f'encrypted_{meta_json}'}),
+            _make_row({"metadata": f"encrypted_{meta_json}"}),
         ]
 
         results = logger.get_profile_incidents("child-001")
@@ -672,11 +755,15 @@ class TestGetProfileIncidents:
     def test_resolution_notes_decrypted(self, logger, mock_db, mock_encryption):
         """Resolution notes in rows are decrypted."""
         now = datetime.now(timezone.utc)
-        mock_db.execute_query.return_value = [_make_row({
-            'resolution_notes': 'encrypted_resolved it',
-            'resolved': 1,
-            'resolved_at': now.isoformat(),
-        })]
+        mock_db.execute_query.return_value = [
+            _make_row(
+                {
+                    "resolution_notes": "encrypted_resolved it",
+                    "resolved": 1,
+                    "resolved_at": now.isoformat(),
+                }
+            )
+        ]
 
         results = logger.get_profile_incidents("child-001")
         assert results[0].resolution_notes == "resolved it"
@@ -685,6 +772,7 @@ class TestGetProfileIncidents:
 # =========================================================================
 # get_unresolved_incidents
 # =========================================================================
+
 
 class TestGetUnresolvedIncidents:
     """Tests for IncidentLogger.get_unresolved_incidents."""
@@ -702,6 +790,7 @@ class TestGetUnresolvedIncidents:
 # =========================================================================
 # get_incidents_by_severity
 # =========================================================================
+
 
 class TestIncidentsBySeverity:
     """Tests for IncidentLogger.get_incidents_by_severity."""
@@ -766,21 +855,23 @@ class TestIncidentsBySeverity:
     def test_returns_safety_incident_objects(self, logger, mock_db):
         """Returned items are SafetyIncident objects."""
         now = datetime.now(timezone.utc).isoformat()
-        mock_db.execute_query.return_value = [{
-            'incident_id': 1,
-            'profile_id': 'child-001',
-            'session_id': None,
-            'incident_type': 'violence',
-            'severity': 'critical',
-            'content_snippet': 'some text',
-            'timestamp': now,
-            'parent_notified': 0,
-            'parent_notified_at': None,
-            'resolved': 0,
-            'resolved_at': None,
-            'resolution_notes': None,
-            'metadata': None,
-        }]
+        mock_db.execute_query.return_value = [
+            {
+                "incident_id": 1,
+                "profile_id": "child-001",
+                "session_id": None,
+                "incident_type": "violence",
+                "severity": "critical",
+                "content_snippet": "some text",
+                "timestamp": now,
+                "parent_notified": 0,
+                "parent_notified_at": None,
+                "resolved": 0,
+                "resolved_at": None,
+                "resolution_notes": None,
+                "metadata": None,
+            }
+        ]
 
         results = logger.get_incidents_by_severity("child-001")
         assert len(results) == 1
@@ -795,21 +886,23 @@ class TestIncidentsBySeverity:
     def test_metadata_parsed_from_json(self, logger, mock_db):
         """Metadata string is parsed as JSON."""
         now = datetime.now(timezone.utc).isoformat()
-        mock_db.execute_query.return_value = [{
-            'incident_id': 1,
-            'profile_id': 'child-001',
-            'session_id': None,
-            'incident_type': 'test',
-            'severity': 'minor',
-            'content_snippet': 'text',
-            'timestamp': now,
-            'parent_notified': 0,
-            'parent_notified_at': None,
-            'resolved': 0,
-            'resolved_at': None,
-            'resolution_notes': None,
-            'metadata': json.dumps({"key": "val"}),
-        }]
+        mock_db.execute_query.return_value = [
+            {
+                "incident_id": 1,
+                "profile_id": "child-001",
+                "session_id": None,
+                "incident_type": "test",
+                "severity": "minor",
+                "content_snippet": "text",
+                "timestamp": now,
+                "parent_notified": 0,
+                "parent_notified_at": None,
+                "resolved": 0,
+                "resolved_at": None,
+                "resolution_notes": None,
+                "metadata": json.dumps({"key": "val"}),
+            }
+        ]
 
         results = logger.get_incidents_by_severity("child-001")
         assert results[0].metadata == {"key": "val"}
@@ -818,6 +911,7 @@ class TestIncidentsBySeverity:
 # =========================================================================
 # mark_parent_notified
 # =========================================================================
+
 
 class TestMarkParentNotified:
     """Tests for IncidentLogger.mark_parent_notified."""
@@ -857,6 +951,7 @@ class TestMarkParentNotified:
 # resolve_incident
 # =========================================================================
 
+
 class TestResolveIncident:
     """Tests for IncidentLogger.resolve_incident."""
 
@@ -887,7 +982,9 @@ class TestResolveIncident:
         result = logger.resolve_incident(10, "notes")
         assert result is False
 
-    def test_none_resolution_notes_not_encrypted(self, logger, mock_db, mock_encryption):
+    def test_none_resolution_notes_not_encrypted(
+        self, logger, mock_db, mock_encryption
+    ):
         """None resolution_notes are not encrypted (passed as None)."""
         logger.resolve_incident(10, None)
         # encrypt_string should not be called for None
@@ -907,6 +1004,7 @@ class TestResolveIncident:
 # get_incident_statistics
 # =========================================================================
 
+
 class TestIncidentStatistics:
     """Tests for IncidentLogger.get_incident_statistics."""
 
@@ -918,42 +1016,47 @@ class TestIncidentStatistics:
         ]
 
         stats = logger.get_incident_statistics(profile_id="child-001")
-        assert 'total_incidents' in stats
-        assert 'by_severity' in stats
-        assert 'unresolved' in stats
-        assert 'awaiting_parent_notification' in stats
-        assert 'top_incident_types' in stats
+        assert "total_incidents" in stats
+        assert "by_severity" in stats
+        assert "unresolved" in stats
+        assert "awaiting_parent_notification" in stats
+        assert "top_incident_types" in stats
 
     def test_aggregates_severity_counts(self, logger, mock_db):
         """Severity rows are aggregated into by_severity dict."""
         mock_db.execute_query.side_effect = [
             [
-                {'severity': 'minor', 'count': 5, 'unresolved': 2, 'not_notified': 1},
-                {'severity': 'critical', 'count': 3, 'unresolved': 3, 'not_notified': 3},
+                {"severity": "minor", "count": 5, "unresolved": 2, "not_notified": 1},
+                {
+                    "severity": "critical",
+                    "count": 3,
+                    "unresolved": 3,
+                    "not_notified": 3,
+                },
             ],
             [],  # type query
         ]
 
         stats = logger.get_incident_statistics(profile_id="child-001")
-        assert stats['total_incidents'] == 8
-        assert stats['unresolved'] == 5
-        assert stats['awaiting_parent_notification'] == 4
-        assert stats['by_severity']['minor']['count'] == 5
-        assert stats['by_severity']['critical']['unresolved'] == 3
+        assert stats["total_incidents"] == 8
+        assert stats["unresolved"] == 5
+        assert stats["awaiting_parent_notification"] == 4
+        assert stats["by_severity"]["minor"]["count"] == 5
+        assert stats["by_severity"]["critical"]["unresolved"] == 3
 
     def test_top_incident_types(self, logger, mock_db):
         """top_incident_types list is populated from the type query."""
         mock_db.execute_query.side_effect = [
             [],  # severity query
             [
-                {'incident_type': 'violence', 'count': 10},
-                {'incident_type': 'self_harm', 'count': 5},
+                {"incident_type": "violence", "count": 10},
+                {"incident_type": "self_harm", "count": 5},
             ],
         ]
 
         stats = logger.get_incident_statistics(profile_id="child-001")
-        assert len(stats['top_incident_types']) == 2
-        assert stats['top_incident_types'][0] == {'type': 'violence', 'count': 10}
+        assert len(stats["top_incident_types"]) == 2
+        assert stats["top_incident_types"][0] == {"type": "violence", "count": 10}
 
     def test_no_profile_id_queries_all(self, logger, mock_db):
         """When profile_id is None, queries all incidents."""
@@ -999,12 +1102,13 @@ class TestIncidentStatistics:
         mock_db.execute_query.side_effect = [[], []]
 
         stats = logger.get_incident_statistics(profile_id="child-001", days=14)
-        assert stats['time_period_days'] == 14
+        assert stats["time_period_days"] == 14
 
 
 # =========================================================================
 # generate_parent_report
 # =========================================================================
+
 
 class TestParentReport:
     """Tests for IncidentLogger.generate_parent_report."""
@@ -1012,13 +1116,13 @@ class TestParentReport:
     def _make_report_row(self, overrides=None):
         """Build a dict for the parent report query result."""
         row = {
-            'profile_id': 'child-001',
-            'child_name': 'Emma',
-            'incident_count': 10,
-            'critical': 2,
-            'major': 3,
-            'minor': 5,
-            'latest_incident': datetime.now(timezone.utc).isoformat(),
+            "profile_id": "child-001",
+            "child_name": "Emma",
+            "incident_count": 10,
+            "critical": 2,
+            "major": 3,
+            "minor": 5,
+            "latest_incident": datetime.now(timezone.utc).isoformat(),
         }
         if overrides:
             row.update(overrides)
@@ -1032,42 +1136,60 @@ class TestParentReport:
         ]
 
         report = logger.generate_parent_report("parent-001", profile_id="child-001")
-        assert 'parent_id' in report
-        assert report['parent_id'] == "parent-001"
-        assert 'profiles' in report
-        assert 'summary' in report
+        assert "parent_id" in report
+        assert report["parent_id"] == "parent-001"
+        assert "profiles" in report
+        assert "summary" in report
 
     def test_report_profiles_contain_severity_breakdown(self, logger, mock_db):
         """Each profile entry has by_severity breakdown."""
         mock_db.execute_query.side_effect = [
-            [self._make_report_row({'critical': 1, 'major': 2, 'minor': 7})],
+            [self._make_report_row({"critical": 1, "major": 2, "minor": 7})],
             [],  # unresolved
         ]
 
         report = logger.generate_parent_report("parent-001", profile_id="child-001")
-        profile = report['profiles'][0]
-        assert profile['by_severity']['critical'] == 1
-        assert profile['by_severity']['major'] == 2
-        assert profile['by_severity']['minor'] == 7
+        profile = report["profiles"][0]
+        assert profile["by_severity"]["critical"] == 1
+        assert profile["by_severity"]["major"] == 2
+        assert profile["by_severity"]["minor"] == 7
 
     def test_report_summary_totals(self, logger, mock_db):
         """Summary aggregates across all profiles."""
         mock_db.execute_query.side_effect = [
             [
-                self._make_report_row({'profile_id': 'c1', 'child_name': 'Emma', 'incident_count': 5, 'critical': 1, 'major': 2, 'minor': 2}),
-                self._make_report_row({'profile_id': 'c2', 'child_name': 'Noah', 'incident_count': 3, 'critical': 0, 'major': 1, 'minor': 2}),
+                self._make_report_row(
+                    {
+                        "profile_id": "c1",
+                        "child_name": "Emma",
+                        "incident_count": 5,
+                        "critical": 1,
+                        "major": 2,
+                        "minor": 2,
+                    }
+                ),
+                self._make_report_row(
+                    {
+                        "profile_id": "c2",
+                        "child_name": "Noah",
+                        "incident_count": 3,
+                        "critical": 0,
+                        "major": 1,
+                        "minor": 2,
+                    }
+                ),
             ],
             [],  # unresolved for c1
             [],  # unresolved for c2
         ]
 
         report = logger.generate_parent_report("parent-001")
-        summary = report['summary']
-        assert summary['total_profiles_with_incidents'] == 2
-        assert summary['total_incidents'] == 8
-        assert summary['critical_incidents'] == 1
-        assert summary['major_incidents'] == 3
-        assert summary['minor_incidents'] == 4
+        summary = report["summary"]
+        assert summary["total_profiles_with_incidents"] == 2
+        assert summary["total_incidents"] == 8
+        assert summary["critical_incidents"] == 1
+        assert summary["major_incidents"] == 3
+        assert summary["minor_incidents"] == 4
 
     def test_unresolved_incidents_included(self, logger, mock_db, mock_encryption):
         """Unresolved incidents are fetched and included in each profile."""
@@ -1075,34 +1197,38 @@ class TestParentReport:
         mock_db.execute_query.side_effect = [
             [self._make_report_row()],  # main query
             # get_profile_incidents returns one unresolved incident
-            [_make_row({
-                'incident_id': 99,
-                'incident_type': 'violence',
-                'severity': 'major',
-                'resolved': 0,
-                'timestamp': now.isoformat(),
-                'content_snippet': 'encrypted_short',
-            })],
+            [
+                _make_row(
+                    {
+                        "incident_id": 99,
+                        "incident_type": "violence",
+                        "severity": "major",
+                        "resolved": 0,
+                        "timestamp": now.isoformat(),
+                        "content_snippet": "encrypted_short",
+                    }
+                )
+            ],
         ]
 
         report = logger.generate_parent_report("parent-001", profile_id="child-001")
-        profile = report['profiles'][0]
-        assert len(profile['unresolved_incidents']) >= 1
-        assert profile['unresolved_incidents'][0]['incident_id'] == 99
+        profile = report["profiles"][0]
+        assert len(profile["unresolved_incidents"]) >= 1
+        assert profile["unresolved_incidents"][0]["incident_id"] == 99
 
     def test_report_period_days(self, logger, mock_db):
         """Report reflects the requested period."""
         mock_db.execute_query.side_effect = [[], []]
 
         report = logger.generate_parent_report("parent-001", days=14)
-        assert report['report_period_days'] == 14
+        assert report["report_period_days"] == 14
 
     def test_generated_at_is_iso_timestamp(self, logger, mock_db):
         """generated_at is a valid ISO timestamp."""
         mock_db.execute_query.side_effect = [[], []]
 
         report = logger.generate_parent_report("parent-001")
-        parsed = datetime.fromisoformat(report['generated_at'])
+        parsed = datetime.fromisoformat(report["generated_at"])
         assert parsed is not None
 
     def test_no_profile_id_queries_all_children(self, logger, mock_db):
@@ -1144,15 +1270,19 @@ class TestParentReport:
         now = datetime.now(timezone.utc)
         mock_db.execute_query.side_effect = [
             [self._make_report_row()],
-            [_make_row({
-                'content_snippet': f'encrypted_{long_content}',
-                'timestamp': now.isoformat(),
-                'resolved': 0,
-            })],
+            [
+                _make_row(
+                    {
+                        "content_snippet": f"encrypted_{long_content}",
+                        "timestamp": now.isoformat(),
+                        "resolved": 0,
+                    }
+                )
+            ],
         ]
 
         report = logger.generate_parent_report("parent-001", profile_id="child-001")
-        preview = report['profiles'][0]['unresolved_incidents'][0]['content_preview']
+        preview = report["profiles"][0]["unresolved_incidents"][0]["content_preview"]
         assert len(preview) <= 104  # 100 chars + "..."
         assert preview.endswith("...")
 
@@ -1160,6 +1290,7 @@ class TestParentReport:
 # =========================================================================
 # cleanup_old_incidents
 # =========================================================================
+
 
 class TestCleanup:
     """Tests for IncidentLogger.cleanup_old_incidents."""
@@ -1176,7 +1307,9 @@ class TestCleanup:
         assert 59 < diff.days < 61
 
     @patch.object(_incident_logger_mod, "safety_config")
-    def test_uses_config_default_when_no_retention_days(self, mock_safety_config, logger, mock_db):
+    def test_uses_config_default_when_no_retention_days(
+        self, mock_safety_config, logger, mock_db
+    ):
         """Falls back to safety_config.SAFETY_LOG_RETENTION_DAYS when not specified."""
         mock_safety_config.SAFETY_LOG_RETENTION_DAYS = 90
 
@@ -1253,3 +1386,42 @@ class TestCrisisIncidentNotDropped:
                 send_alert=True,
             )
         assert ok is False
+
+
+class TestUnresolvableParentEscalation:
+    """A major/critical crisis whose child profile (and thus parent) cannot be
+    resolved — e.g. a profile-less session's synthetic ``safety_required_<id>`` —
+    must still reach a human via the operator, never vanish silently."""
+
+    def test_unresolvable_parent_escalates_to_operator(self, mock_db):
+        from safety.incident_logger import IncidentLogger
+
+        mock_db.execute_query.return_value = []  # no child_profiles row
+        il = IncidentLogger(db=mock_db)
+        with patch("core.email_service.email_service") as email_svc:
+            il._send_parent_alert(
+                profile_id="safety_required_uid-x",
+                incident_id=7,
+                severity="critical",
+                incident_type="self_harm",
+            )
+        email_svc.send_operator_alert.assert_called_once()
+
+    def test_resolved_parent_does_not_operator_escalate(self, mock_db, mock_encryption):
+        from safety.incident_logger import IncidentLogger
+
+        # Profile resolves to a real parent → normal parent-alert path, no operator alert.
+        mock_db.execute_query.return_value = [
+            {"parent_id": "p1", "name": "Emma", "age": 10}
+        ]
+        with patch.object(_esc_mod, "get_email_system", return_value=None):
+            il = IncidentLogger(db=mock_db)
+            il.encryption = mock_encryption
+            with patch("core.email_service.email_service") as email_svc:
+                il._send_parent_alert(
+                    profile_id="child-001",
+                    incident_id=8,
+                    severity="critical",
+                    incident_type="self_harm",
+                )
+            email_svc.send_operator_alert.assert_not_called()

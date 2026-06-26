@@ -11,6 +11,7 @@ import json
 class TestOllamaProxyConfig:
     def test_proxy_target_defaults_to_ollama_host(self):
         from config import system_config
+
         assert hasattr(system_config, "OLLAMA_PROXY_TARGET")
         assert system_config.OLLAMA_PROXY_TARGET.startswith("http")
 
@@ -18,6 +19,7 @@ class TestOllamaProxyConfig:
 class TestOllamaPassThrough:
     def test_tags_endpoint_proxied(self):
         from fastapi.testclient import TestClient
+
         client = TestClient(_make_app())
 
         with patch(
@@ -31,6 +33,7 @@ class TestOllamaPassThrough:
 
     def test_ollama_unreachable_returns_503(self):
         from fastapi.testclient import TestClient
+
         client = TestClient(_make_app())
 
         with patch(
@@ -45,6 +48,7 @@ class TestOllamaPassThrough:
 # ---------------------------------------------------------------------------
 # Helpers for chat tests
 # ---------------------------------------------------------------------------
+
 
 def _make_app(user_id="internal_service", role="admin"):
     """Build a TestClient app with auth bypassed via dependency override.
@@ -82,6 +86,7 @@ def _make_app_real_auth():
     """No dependency override — exercises the real Bearer check."""
     from fastapi import FastAPI
     from api.routes.ollama_proxy import router
+
     app = FastAPI()
     app.include_router(router)
     return app
@@ -98,6 +103,7 @@ def _chat_body(model="test-model", stream=False, text="What is 2+2?"):
 def _safe_result():
     """A SafetyResult indicating the content is safe."""
     from safety.pipeline import SafetyResult, Severity, Category
+
     return SafetyResult(
         is_safe=True,
         severity=Severity.NONE,
@@ -109,6 +115,7 @@ def _safe_result():
 def _block_result(message="That topic isn't allowed."):
     """A SafetyResult indicating blocked content."""
     from safety.pipeline import SafetyResult, Severity, Category
+
     return SafetyResult(
         is_safe=False,
         severity=Severity.MAJOR,
@@ -130,20 +137,32 @@ class TestChatSafety:
         safe = _safe_result()
 
         with (
-            patch("api.routes.ollama_proxy._get_user_from_headers",
-                  return_value=("uid-123", "user")),
-            patch("api.routes.ollama_proxy._get_profile_for_user",
-                  new_callable=AsyncMock, return_value="profile-abc"),
-            patch("api.routes.ollama_proxy._forward_request",
-                  new_callable=AsyncMock, return_value=ollama_resp) as mock_fwd,
+            patch(
+                "api.routes.ollama_proxy._get_user_from_headers",
+                return_value=("uid-123", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy._get_profile_for_user",
+                new_callable=AsyncMock,
+                return_value="profile-abc",
+            ),
+            patch(
+                "api.routes.ollama_proxy._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ) as mock_fwd,
         ):
             # Patch safety_pipeline inside the module namespace
             import api.routes.ollama_proxy as proxy_mod
+
             mock_pipeline = MagicMock()
             mock_pipeline.check_input.return_value = safe
 
-            with patch.object(proxy_mod, "_get_profile_for_user",
-                              new=AsyncMock(return_value="profile-abc")):
+            with patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-abc"),
+            ):
                 # Use a fresh import scope patch for safety_pipeline
                 with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                     resp = client.post(
@@ -169,10 +188,14 @@ class TestChatSafety:
         mock_pipeline.check_input.return_value = block
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-456", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-xyz")),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-456", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-xyz"),
+            ),
         ):
             # Also patch the lazy import of safety_pipeline inside the endpoint
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
@@ -203,8 +226,12 @@ class TestChatSafety:
         mock_pipeline = MagicMock()
 
         with (
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post(
@@ -232,10 +259,17 @@ class TestChatSafety:
         mock_pipeline.check_input.return_value = safe
 
         with (
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="safety_required_unknown")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="safety_required_unknown"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post("/api/chat", json=_chat_body())
@@ -255,13 +289,20 @@ class TestChatSafety:
         mock_pipeline.check_input.return_value = safe
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-789", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-789")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock,
-                         side_effect=httpx.ConnectError("refused")),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-789", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-789"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                side_effect=httpx.ConnectError("refused"),
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post(
@@ -281,6 +322,7 @@ class TestProxyHealth:
 
     def test_health_returns_healthy(self):
         from fastapi.testclient import TestClient
+
         app = _make_app()
         client = TestClient(app)
         with patch(
@@ -296,6 +338,7 @@ class TestProxyHealth:
 
     def test_health_returns_503_when_ollama_down(self):
         from fastapi.testclient import TestClient
+
         app = _make_app()
         client = TestClient(app)
         with patch(
@@ -327,7 +370,9 @@ class TestForwardRequest:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("api.routes.ollama_proxy.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "api.routes.ollama_proxy.httpx.AsyncClient", return_value=mock_client
+        ):
             result = await _forward_request("GET", "/api/tags")
 
         assert result.status_code == 200
@@ -367,10 +412,13 @@ class TestGetProfileForUser:
         mock_pm_mod = MagicMock()
         mock_pm_mod.ProfileManager = MagicMock(return_value=mock_pm_instance)
 
-        with patch.dict(sys.modules, {
-            "core.authentication": mock_auth_mod,
-            "core.profile_manager": mock_pm_mod,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "core.authentication": mock_auth_mod,
+                "core.profile_manager": mock_pm_mod,
+            },
+        ):
             result = await _get_profile_for_user("user-42")
 
         assert result == "child-001"
@@ -385,10 +433,15 @@ class TestGetProfileForUser:
         mock_auth = MagicMock()
         mock_auth.db = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "core.authentication": MagicMock(auth_manager=mock_auth),
-            "core.profile_manager": MagicMock(ProfileManager=MagicMock(return_value=mock_pm)),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "core.authentication": MagicMock(auth_manager=mock_auth),
+                "core.profile_manager": MagicMock(
+                    ProfileManager=MagicMock(return_value=mock_pm)
+                ),
+            },
+        ):
             result = await _get_profile_for_user("user-99")
 
         assert result == "safety_required_user-99"
@@ -397,14 +450,21 @@ class TestGetProfileForUser:
     async def test_exception_returns_safety_required_user_id(self):
         from api.routes.ollama_proxy import _get_profile_for_user
 
-        with patch.dict("sys.modules", {
-            "core.authentication": MagicMock(
-                auth_manager=MagicMock(db=property(lambda s: (_ for _ in ()).throw(RuntimeError("db boom"))))
-            ),
-            "core.profile_manager": MagicMock(
-                ProfileManager=MagicMock(side_effect=RuntimeError("db boom"))
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "core.authentication": MagicMock(
+                    auth_manager=MagicMock(
+                        db=property(
+                            lambda s: (_ for _ in ()).throw(RuntimeError("db boom"))
+                        )
+                    )
+                ),
+                "core.profile_manager": MagicMock(
+                    ProfileManager=MagicMock(side_effect=RuntimeError("db boom"))
+                ),
+            },
+        ):
             result = await _get_profile_for_user("user-err")
 
         assert result == "safety_required_user-err"
@@ -486,8 +546,9 @@ class TestAdminStreamAndConnectError:
             return StreamingResponse(gen(), media_type="application/x-ndjson")
 
         with (
-            patch.object(proxy_mod, "_stream_chat_from_ollama",
-                         side_effect=_fake_stream),
+            patch.object(
+                proxy_mod, "_stream_chat_from_ollama", side_effect=_fake_stream
+            ),
         ):
             resp = client.post(
                 "/api/chat",
@@ -508,7 +569,8 @@ class TestAdminStreamAndConnectError:
         client = TestClient(_make_app(user_id="admin-err"))
 
         with patch.object(
-            proxy_mod, "_forward_request",
+            proxy_mod,
+            "_forward_request",
             new_callable=AsyncMock,
             side_effect=httpx.ConnectError("refused"),
         ):
@@ -549,16 +611,29 @@ class TestAgeResolution:
         mock_auth.db = MagicMock()
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-age", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-age")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
-            patch.dict("sys.modules", {
-                "core.authentication": MagicMock(auth_manager=mock_auth),
-                "core.profile_manager": MagicMock(ProfileManager=MagicMock(return_value=mock_pm)),
-            }),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-age", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-age"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
+            patch.dict(
+                "sys.modules",
+                {
+                    "core.authentication": MagicMock(auth_manager=mock_auth),
+                    "core.profile_manager": MagicMock(
+                        ProfileManager=MagicMock(return_value=mock_pm)
+                    ),
+                },
+            ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             resp = client.post(
@@ -588,20 +663,35 @@ class TestAgeResolution:
         mock_pipeline.check_input.return_value = safe
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-ageerr", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-ageerr")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
-            patch.dict("sys.modules", {
-                "core.authentication": MagicMock(
-                    auth_manager=MagicMock(db=property(lambda s: (_ for _ in ()).throw(RuntimeError("boom"))))
-                ),
-                "core.profile_manager": MagicMock(
-                    ProfileManager=MagicMock(side_effect=RuntimeError("boom"))
-                ),
-            }),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-ageerr", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-ageerr"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
+            patch.dict(
+                "sys.modules",
+                {
+                    "core.authentication": MagicMock(
+                        auth_manager=MagicMock(
+                            db=property(
+                                lambda s: (_ for _ in ()).throw(RuntimeError("boom"))
+                            )
+                        )
+                    ),
+                    "core.profile_manager": MagicMock(
+                        ProfileManager=MagicMock(side_effect=RuntimeError("boom"))
+                    ),
+                },
+            ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             resp = client.post(
@@ -616,7 +706,11 @@ class TestAgeResolution:
         assert resp.status_code == 200
         # age should be None when resolution fails
         call_kwargs = mock_pipeline.check_input.call_args
-        age_val = call_kwargs[1].get("age") if call_kwargs[1] else call_kwargs.kwargs.get("age")
+        age_val = (
+            call_kwargs[1].get("age")
+            if call_kwargs[1]
+            else call_kwargs.kwargs.get("age")
+        )
         assert age_val is None
 
 
@@ -633,10 +727,14 @@ class TestSafetyPipelineException:
         mock_pipeline.check_input.side_effect = RuntimeError("pipeline crash")
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-exc", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-exc")),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-exc", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-exc"),
+            ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             resp = client.post(
@@ -674,12 +772,17 @@ class TestStudentStreaming:
         ]
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-stream", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-stream")),
-            patch.object(proxy_mod, "_stream_chunks_from_ollama",
-                         new=_async_iter(chunks)),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-stream", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-stream"),
+            ),
+            patch.object(
+                proxy_mod, "_stream_chunks_from_ollama", new=_async_iter(chunks)
+            ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             resp = client.post(
@@ -722,10 +825,13 @@ class TestStreamChatFromOllama:
         mock_client.send = AsyncMock(return_value=mock_resp)
         mock_client.aclose = AsyncMock()
 
-        with patch("api.routes.ollama_proxy.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "api.routes.ollama_proxy.httpx.AsyncClient", return_value=mock_client
+        ):
             result = await _stream_chat_from_ollama(b'{"model":"x"}', {})
 
         from fastapi.responses import StreamingResponse
+
         assert isinstance(result, StreamingResponse)
 
         # Consume the streaming body to cover the _yield_chunks generator
@@ -743,10 +849,13 @@ class TestStreamChatFromOllama:
         mock_client.send = AsyncMock(side_effect=httpx.ConnectError("refused"))
         mock_client.aclose = AsyncMock()
 
-        with patch("api.routes.ollama_proxy.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "api.routes.ollama_proxy.httpx.AsyncClient", return_value=mock_client
+        ):
             result = await _stream_chat_from_ollama(b'{"model":"x"}', {})
 
         from fastapi.responses import JSONResponse
+
         assert isinstance(result, JSONResponse)
         assert result.status_code == 503
 
@@ -761,6 +870,7 @@ class TestPassThroughEndpoints:
 
     def _get_client(self):
         from fastapi.testclient import TestClient
+
         # Genuine admin session — the model-mgmt + raw-inference endpoints now
         # require real admin authority, not the internal relay + a forwarded header.
         return TestClient(_make_app(user_id="admin_1"))
@@ -782,7 +892,11 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"response": "hi"}),
         ):
-            resp = client.post("/api/generate", json={"model": "test", "prompt": "hi"}, headers={"X-OpenWebUI-User-Role": "admin"})
+            resp = client.post(
+                "/api/generate",
+                json={"model": "test", "prompt": "hi"},
+                headers={"X-OpenWebUI-User-Role": "admin"},
+            )
             assert resp.status_code == 200
 
     def test_embed_endpoint(self):
@@ -792,7 +906,11 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"embedding": [0.1]}),
         ):
-            resp = client.post("/api/embed", json={"model": "test", "input": "hi"}, headers={"X-OpenWebUI-User-Role": "admin"})
+            resp = client.post(
+                "/api/embed",
+                json={"model": "test", "input": "hi"},
+                headers={"X-OpenWebUI-User-Role": "admin"},
+            )
             assert resp.status_code == 200
 
     def test_embeddings_endpoint(self):
@@ -802,7 +920,11 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"embedding": [0.1]}),
         ):
-            resp = client.post("/api/embeddings", json={"model": "test", "prompt": "hi"}, headers={"X-OpenWebUI-User-Role": "admin"})
+            resp = client.post(
+                "/api/embeddings",
+                json={"model": "test", "prompt": "hi"},
+                headers={"X-OpenWebUI-User-Role": "admin"},
+            )
             assert resp.status_code == 200
 
     def test_delete_endpoint(self):
@@ -812,7 +934,12 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={}),
         ):
-            resp = client.request("DELETE", "/api/delete", json={"name": "test"}, headers={"X-OpenWebUI-User-Role": "admin"})
+            resp = client.request(
+                "DELETE",
+                "/api/delete",
+                json={"name": "test"},
+                headers={"X-OpenWebUI-User-Role": "admin"},
+            )
             assert resp.status_code == 200
 
     def test_pull_endpoint(self):
@@ -822,7 +949,11 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={"status": "ok"}),
         ):
-            resp = client.post("/api/pull", json={"name": "test"}, headers={"X-OpenWebUI-User-Role": "admin"})
+            resp = client.post(
+                "/api/pull",
+                json={"name": "test"},
+                headers={"X-OpenWebUI-User-Role": "admin"},
+            )
             assert resp.status_code == 200
 
     def test_copy_endpoint(self):
@@ -832,7 +963,11 @@ class TestPassThroughEndpoints:
             new_callable=AsyncMock,
             return_value=httpx.Response(200, json={}),
         ):
-            resp = client.post("/api/copy", json={"source": "a", "destination": "b"}, headers={"X-OpenWebUI-User-Role": "admin"})
+            resp = client.post(
+                "/api/copy",
+                json={"source": "a", "destination": "b"},
+                headers={"X-OpenWebUI-User-Role": "admin"},
+            )
             assert resp.status_code == 200
 
     def test_version_endpoint(self):
@@ -877,12 +1012,20 @@ class TestOutputFiltering:
         mock_pipeline.check_output.return_value = unsafe_output
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-1", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-1")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-1", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-1"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post(
@@ -896,9 +1039,9 @@ class TestOutputFiltering:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert unsafe_text not in data["message"]["content"], (
-            "Unsafe content leaked through — check_output not wired."
-        )
+        assert (
+            unsafe_text not in data["message"]["content"]
+        ), "Unsafe content leaked through — check_output not wired."
         assert "Let's talk about something else!" in data["message"]["content"]
         mock_pipeline.check_output.assert_called_once()
 
@@ -923,12 +1066,20 @@ class TestOutputFiltering:
         mock_pipeline.check_output.return_value = _safe_result()
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-2", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-2")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-2", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-2"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post(
@@ -955,15 +1106,39 @@ class TestOutputFiltering:
 
         # Simulate Ollama streaming NDJSON chunks of an unsafe response
         unsafe_chunks = [
-            json.dumps({"model": "m", "message": {"role": "assistant",
-                       "content": "Here's how "}, "done": False}).encode() + b"\n",
-            json.dumps({"model": "m", "message": {"role": "assistant",
-                       "content": "to make a "}, "done": False}).encode() + b"\n",
-            json.dumps({"model": "m", "message": {"role": "assistant",
-                       "content": "weapon."}, "done": False}).encode() + b"\n",
-            json.dumps({"model": "m", "message": {"role": "assistant",
-                       "content": ""}, "done": True,
-                       "done_reason": "stop"}).encode() + b"\n",
+            json.dumps(
+                {
+                    "model": "m",
+                    "message": {"role": "assistant", "content": "Here's how "},
+                    "done": False,
+                }
+            ).encode()
+            + b"\n",
+            json.dumps(
+                {
+                    "model": "m",
+                    "message": {"role": "assistant", "content": "to make a "},
+                    "done": False,
+                }
+            ).encode()
+            + b"\n",
+            json.dumps(
+                {
+                    "model": "m",
+                    "message": {"role": "assistant", "content": "weapon."},
+                    "done": False,
+                }
+            ).encode()
+            + b"\n",
+            json.dumps(
+                {
+                    "model": "m",
+                    "message": {"role": "assistant", "content": ""},
+                    "done": True,
+                    "done_reason": "stop",
+                }
+            ).encode()
+            + b"\n",
         ]
 
         mock_pipeline = MagicMock()
@@ -973,12 +1148,17 @@ class TestOutputFiltering:
         )
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-3", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-3")),
-            patch.object(proxy_mod, "_stream_chunks_from_ollama",
-                         new=_async_iter(unsafe_chunks)),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-3", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-3"),
+            ),
+            patch.object(
+                proxy_mod, "_stream_chunks_from_ollama", new=_async_iter(unsafe_chunks)
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post(
@@ -1007,15 +1187,18 @@ class TestOutputFiltering:
 
 def _async_iter(items):
     """Build a no-arg callable returning an async iterator over items."""
+
     async def _gen(*_args, **_kwargs):
         for item in items:
             yield item
+
     return _gen
 
 
 def _bearer():
     """Authorization header carrying the configured INTERNAL_API_KEY."""
     from config import INTERNAL_API_KEY
+
     return {"Authorization": f"Bearer {INTERNAL_API_KEY}"}
 
 
@@ -1028,6 +1211,7 @@ class TestProxyBearerAuth:
 
     def test_chat_without_bearer_returns_401(self):
         from fastapi.testclient import TestClient
+
         client = TestClient(_make_app_real_auth())
         resp = client.post(
             "/api/chat",
@@ -1041,6 +1225,7 @@ class TestProxyBearerAuth:
 
     def test_chat_with_invalid_bearer_returns_401(self):
         from fastapi.testclient import TestClient
+
         client = TestClient(_make_app_real_auth())
         resp = client.post(
             "/api/chat",
@@ -1055,6 +1240,7 @@ class TestProxyBearerAuth:
 
     def test_tags_without_bearer_returns_401(self):
         from fastapi.testclient import TestClient
+
         client = TestClient(_make_app_real_auth())
         resp = client.get("/api/tags")
         assert resp.status_code == 401
@@ -1064,21 +1250,31 @@ class TestProxyBearerAuth:
         import api.routes.ollama_proxy as proxy_mod
 
         client = TestClient(_make_app_real_auth())
-        ollama_resp = httpx.Response(200, json={
-            "model": "test-model",
-            "message": {"role": "assistant", "content": "ok"},
-            "done": True,
-        })
+        ollama_resp = httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "message": {"role": "assistant", "content": "ok"},
+                "done": True,
+            },
+        )
 
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = _safe_result()
         mock_pipeline.check_output.return_value = _safe_result()
 
         with (
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-x")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-x"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post(
@@ -1114,10 +1310,14 @@ class TestCrisisEscalation:
         mock_incident.log_incident.return_value = (True, 1)
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-sh", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-sh")),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-sh", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-sh"),
+            ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
             # Patch the module object directly. `safety/__init__.py` re-exports
             # the `incident_logger` instance, which shadows the same-named
@@ -1163,10 +1363,14 @@ class TestCrisisEscalation:
         mock_incident.log_incident.side_effect = RuntimeError("db down")
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-x", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-x")),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-x", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-x"),
+            ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
             # Patch the module object directly. `safety/__init__.py` re-exports
             # the `incident_logger` instance, which shadows the same-named
@@ -1198,11 +1402,14 @@ class TestCrisisEscalation:
         import api.routes.ollama_proxy as proxy_mod
 
         client = TestClient(_make_app())
-        ollama_resp = httpx.Response(200, json={
-            "model": "test-model",
-            "message": {"role": "assistant", "content": "2 + 2 = 4."},
-            "done": True,
-        })
+        ollama_resp = httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "message": {"role": "assistant", "content": "2 + 2 = 4."},
+                "done": True,
+            },
+        )
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = _safe_result()
         mock_pipeline.check_output.return_value = _safe_result()
@@ -1210,12 +1417,20 @@ class TestCrisisEscalation:
         mock_incident = MagicMock()
 
         with (
-            patch.object(proxy_mod, "_get_user_from_headers",
-                         return_value=("uid-ok", "user")),
-            patch.object(proxy_mod, "_get_profile_for_user",
-                         new=AsyncMock(return_value="profile-ok")),
-            patch.object(proxy_mod, "_forward_request",
-                         new_callable=AsyncMock, return_value=ollama_resp),
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-ok", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-ok"),
+            ),
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
             # Patch the module object directly. `safety/__init__.py` re-exports
             # the `incident_logger` instance, which shadows the same-named
@@ -1260,6 +1475,7 @@ class TestTagsModelVisibility:
 
     def _client(self):
         from fastapi.testclient import TestClient
+
         return TestClient(_make_app())
 
     def test_student_sees_only_public_model(self):
@@ -1289,6 +1505,7 @@ class TestTagsModelVisibility:
 
     def test_admin_sees_all_models(self):
         from fastapi.testclient import TestClient
+
         # A genuine admin SESSION sees the full list — not the internal relay
         # with a forwarded admin header (which now gets the student-filtered view).
         admin_client = TestClient(_make_app(user_id="admin_1"))
@@ -1322,14 +1539,16 @@ class TestTagsModelVisibility:
         from api.routes.ollama_proxy import _filter_tags_for_students
         import json as _j
 
-        payload = _j.dumps({
-            "models": [
-                {"name": "snflwr.ai"},
-                {"name": "snflwr.ai:latest"},
-                {"name": "snflwr.ai:qwen-rollback"},
-                {"name": "gemma4:e4b"},
-            ]
-        }).encode()
+        payload = _j.dumps(
+            {
+                "models": [
+                    {"name": "snflwr.ai"},
+                    {"name": "snflwr.ai:latest"},
+                    {"name": "snflwr.ai:qwen-rollback"},
+                    {"name": "gemma4:e4b"},
+                ]
+            }
+        ).encode()
         out = _j.loads(_filter_tags_for_students(payload))
         names = {m["name"] for m in out["models"]}
         assert names == {"snflwr.ai", "snflwr.ai:latest"}
@@ -1358,3 +1577,98 @@ class TestForkedFilesDeleted:
         assert not os.path.exists(
             "frontend/open-webui/backend/open_webui/middleware/__init__.py"
         ), "Middleware __init__.py still exists — should be deleted"
+
+
+class TestChatAdmissionControl:
+    """Student /api/chat is rate-limited per child and fast-fails when the Ollama
+    backend circuit is open — backpressure for the single-GPU path. Admins are
+    never gated (they return before admission control)."""
+
+    def test_rate_limited_student_blocked_before_pipeline(self):
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app())  # internal_service relay -> student path
+        with (
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-rl", "user")
+            ),
+            patch.object(
+                proxy_mod.rate_limiter,
+                "check_rate_limit",
+                return_value=(False, {"retry_after": 30}),
+            ),
+            patch.object(proxy_mod, "_get_profile_for_user", new=AsyncMock()) as prof,
+            patch.object(proxy_mod, "_forward_request", new_callable=AsyncMock) as fwd,
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-rl",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["done"] is True
+        assert "too fast" in data["message"]["content"]
+        prof.assert_not_called()  # bounced BEFORE profile lookup / safety pipeline
+        fwd.assert_not_called()  # ...and before any Ollama work
+
+    def test_open_circuit_fast_fails_student(self):
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        from unittest.mock import PropertyMock
+
+        client = TestClient(_make_app())
+        with (
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-cb", "user")
+            ),
+            patch.object(
+                proxy_mod.rate_limiter, "check_rate_limit", return_value=(True, {})
+            ),
+            patch.object(
+                type(proxy_mod.ollama_circuit),
+                "is_open",
+                new_callable=PropertyMock,
+                return_value=True,
+            ),
+            patch.object(proxy_mod, "_get_profile_for_user", new=AsyncMock()) as prof,
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-cb",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        assert resp.status_code == 200
+        assert "quick break" in resp.json()["message"]["content"]
+        prof.assert_not_called()
+
+    def test_admin_session_not_rate_limited(self):
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        client = TestClient(_make_app(user_id="admin-001", role="admin"))
+        ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
+        with (
+            patch.object(
+                proxy_mod.rate_limiter,
+                "check_rate_limit",
+                return_value=(False, {"retry_after": 30}),
+            ) as rl,
+            patch.object(
+                proxy_mod,
+                "_forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
+        ):
+            resp = client.post("/api/chat", json=_chat_body())
+        assert resp.status_code == 200
+        rl.assert_not_called()  # admin returns before admission control runs

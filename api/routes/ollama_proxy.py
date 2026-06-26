@@ -19,7 +19,9 @@ from api.middleware.auth import get_current_session, is_genuine_admin
 from config import system_config
 from core.authentication import AuthSession
 from utils import observability
+from utils.circuit_breaker import ollama_circuit
 from utils.logger import get_logger
+from utils.rate_limiter import rate_limiter
 
 logger = get_logger(__name__)
 
@@ -417,11 +419,45 @@ async def proxy_chat(
             media_type=upstream.headers.get("content-type", "application/json"),
         )
 
+    # ---- Admission control (students only; admins returned above) ----
+    # One child must not be able to flood the single-GPU backend. Each chat turn
+    # is several inferences, so bounce here BEFORE any of that work.
+    if system_config.CHAT_RATE_LIMIT_PER_MINUTE > 0:
+        allowed, info = rate_limiter.check_rate_limit(
+            identifier=user_id or "unknown",
+            max_requests=system_config.CHAT_RATE_LIMIT_PER_MINUTE,
+            window_seconds=60,
+            limit_type="chat",
+        )
+        if not allowed:
+            logger.info(
+                "Chat rate limit hit for %s (retry_after=%ss)",
+                user_id,
+                info.get("retry_after"),
+            )
+            slow_msg = (
+                "You're sending messages a little too fast — take a breath and "
+                "try again in a moment. 🌻"
+            )
+            return JSONResponse(content=_ollama_block_response(model, slow_msg))
+
+    # If the Ollama backend is unhealthy, fail fast instead of piling onto a
+    # struggling GPU. The shared circuit is tripped by the safety classifier's
+    # own llama-guard calls (OllamaClient -> ollama_circuit), so this reflects
+    # real backend health.
+    if ollama_circuit.is_open:
+        logger.warning(
+            "Ollama circuit OPEN — fast-failing student chat for %s", user_id
+        )
+        busy_msg = (
+            "The tutor is taking a quick break and will be back in a moment. "
+            "Please try again shortly. 🌻"
+        )
+        return JSONResponse(content=_ollama_block_response(model, busy_msg))
+
     # License gate — students must hold a valid subscription/trial token.
     # Fail-safe: any licensing problem => gated, never a crash. Admins already
-    # returned above and are never gated.
-    from config import system_config
-
+    # returned above and are never gated. (system_config is imported at module top.)
     if system_config.LICENSE_ENFORCED:
         import time as _time
 

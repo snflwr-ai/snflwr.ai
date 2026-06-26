@@ -26,6 +26,36 @@ from safety.incident_logger.models import (
 class _IncidentEscalationMixin:
     """Escalation methods for IncidentLogger (composed in __init__.py)."""
 
+    def _escalate_unresolvable_to_operator(
+        self, profile_id: str, incident_id: int, severity: str, incident_type: str
+    ):
+        """Route a major/critical incident with no resolvable parent to the operator.
+
+        Fires when ``_send_parent_alert`` can't find a child profile (so there is
+        no parent to notify) — typically a session with no provisioned child
+        profile. Ensures a crisis is never silent on the human-escalation side.
+        Best-effort: never raises.
+        """
+        try:
+            from core.email_service import email_service
+
+            email_service.send_operator_alert(
+                subject=f"Crisis incident with no resolvable parent ({incident_type})",
+                description=(
+                    f"A {severity} safety incident (type={incident_type}, "
+                    f"incident_id={incident_id}) was recorded for profile "
+                    f"{sanitize_log_value(profile_id)!r}, but no child profile / "
+                    "parent could be resolved, so no parent alert could be sent "
+                    "(likely a session with no provisioned child profile). "
+                    "Review immediately."
+                ),
+            )
+        except Exception as exc:  # operator escalation is best-effort
+            logger.error(
+                "Operator escalation for unresolved parent failed (non-fatal): %s",
+                exc,
+            )
+
     def _send_parent_alert(
         self, profile_id: str, incident_id: int, severity: str, incident_type: str
     ):
@@ -46,8 +76,17 @@ class _IncidentEscalationMixin:
             )
 
             if not result:
+                # No child profile (and thus no parent) for this id — e.g. a
+                # profile-less session's synthetic ``safety_required_<id>``. This
+                # method is only called for major/critical severities, so a crisis
+                # must not vanish on the human-escalation side: route it to the
+                # operator instead of silently returning.
                 logger.error(
-                    f"Could not find profile {sanitize_log_value(profile_id)!r} for parent alert"
+                    f"Could not resolve a parent for profile {sanitize_log_value(profile_id)!r} "
+                    f"(incident {incident_id}, {severity} {incident_type}) — escalating to operator"
+                )
+                self._escalate_unresolvable_to_operator(
+                    profile_id, incident_id, severity, incident_type
                 )
                 return
 

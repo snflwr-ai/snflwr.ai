@@ -142,6 +142,31 @@ def _filter_tags_for_students(payload: bytes) -> bytes:
     return _json.dumps(data).encode()
 
 
+# Fields in an Ollama /api/show response that expose the tutor's SYSTEM/safety
+# prompt (and the template / sampling config that frame it). Stripped for
+# non-admins so a child cannot read — and then attempt to evade — the safety
+# instructions embedded in the model's Modelfile.
+_SHOW_SENSITIVE_FIELDS = ("modelfile", "system", "template", "parameters")
+
+
+def _filter_show_for_students(payload: bytes) -> bytes:
+    """Drop the prompt-bearing fields from an Ollama ``/api/show`` response body.
+
+    Keeps non-sensitive metadata (details, model_info, capabilities) that Open
+    WebUI needs for the model dropdown. Returns the payload unchanged if it can't
+    be parsed, so a malformed upstream response never breaks the model-info call.
+    """
+    try:
+        data = _json.loads(payload)
+    except (ValueError, _json.JSONDecodeError):
+        return payload
+    if not isinstance(data, dict):
+        return payload
+    for field in _SHOW_SENSITIVE_FIELDS:
+        data.pop(field, None)
+    return _json.dumps(data).encode()
+
+
 async def _get_profile_for_user(user_id: Optional[str]) -> str:
     """Look up the first child profile linked to *user_id*.
 
@@ -716,8 +741,26 @@ async def proxy_tags(
 
 
 @router.post("/show")
-async def proxy_show(request: Request) -> Response:
-    return await _proxy_to_ollama(request, "/api/show")
+async def proxy_show(
+    request: Request, session: AuthSession = Depends(get_current_session)
+) -> Response:
+    """POST /api/show — model details. Ollama echoes the full Modelfile here,
+    including the tutor's SYSTEM / safety prompt, TEMPLATE, and PARAMETERs.
+
+    A genuine admin *session* gets the response verbatim; everyone else — every
+    Open WebUI relay (``internal_service``) and thus every student — gets the
+    prompt-bearing fields stripped, keeping only non-sensitive metadata for the
+    model dropdown. Mirrors ``proxy_tags``; fails closed (only a genuine admin
+    session unlocks the full body, never a forwarded admin header).
+    """
+    response = await _proxy_to_ollama(request, "/api/show")
+    if is_genuine_admin(session) or response.status_code != 200:
+        return response
+    return Response(
+        content=_filter_show_for_students(response.body),
+        status_code=response.status_code,
+        media_type=response.media_type or "application/json",
+    )
 
 
 @router.post("/generate")

@@ -1,7 +1,11 @@
-# Pre-commit hooks for snflwr.ai — catch lint/format/type issues locally,
-# before CI. Install once with:  pre-commit install
+# Pre-commit hooks for snflwr.ai — catch the formatting/lint drift that has
+# reddened CI, locally before commit. Install once with:  pre-commit install
 #
-# Mirrors the CI gates (black, ruff, mypy) so a clean commit is a green build.
+# Covers the black + ruff CI gates (they run cleanly in pre-commit's isolated
+# envs). mypy is intentionally NOT here: CI runs it in the full project venv
+# (`mypy ... --ignore-missing-imports`), but pre-commit's isolated mypy env
+# lacks the runtime deps (e.g. redis) and so reports import-untyped errors that
+# CI does not — making it stricter than the real gate. mypy stays enforced in CI.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.20
@@ -15,11 +19,3 @@ repos:
     hooks:
       - id: black
         files: ^(api|core|safety|storage|utils)/
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.0
-    hooks:
-      - id: mypy
-        args: [--ignore-missing-imports, --no-strict-optional]
-        files: ^(api|core|safety|storage|utils)/
-        additional_dependencies: []

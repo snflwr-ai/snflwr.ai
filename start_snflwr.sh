@@ -287,13 +287,14 @@ else
     # smaller model beats an OOM). Keep this aligned with deploy.sh.
     #
     # OPT-IN high-end tier: a box with an ~18-20GB+ VRAM GPU can run gemma4:31b.
-    # Kept OPT-IN (not default) deliberately. Bake-off 2026-06-26 (24-case, judge
-    # gemma4:e4b): 31b wins the OVERALL composite (+2.3) and is clearly better at
-    # reading/science/writing — but it REGRESSES on **math** (-8.4) and on several
-    # **homework-integrity** "don't just give the answer" cases, which are core
-    # tutoring behaviours. It's also slower (dense ~19GB). So it's a trade, not a
-    # clear win; promote to default only after a stronger-judge / larger-dataset
-    # re-run that clears the math + integrity regressions.
+    # Kept OPT-IN (not default) for OPERATIONAL reasons (slower, dense ~19GB VRAM)
+    # — NOT quality. Two bake-offs: the first (judge gemma4:e4b, 24 cases) flagged
+    # a math + homework-integrity regression, but the stronger-judge re-run
+    # (claude-opus-4-8, 34 cases) OVERTURNED that — both models are near-tied on
+    # the quality rubric (31b 99.3 vs e4b 98.5), with 31b marginally BETTER at math
+    # (99.3 vs 97.8) and homework-integrity (96.9 vs 93.8; e4b handed over the
+    # answer twice as often). So there's no quality reason to avoid 31b on a
+    # capable GPU; it stays opt-in purely for the latency/VRAM cost.
     if [ "${SNFLWR_ENABLE_GEMMA_31B:-false}" = "true" ] && [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 18 ]; then
         CHAT_MODEL="gemma4:31b"
     elif [ "$RAM_GB" -ge 16 ]; then

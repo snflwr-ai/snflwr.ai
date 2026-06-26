@@ -75,3 +75,9 @@ CREDENTIALS*.md
 
 # Local Claude Code working-instructions file (not application docs — keep local)
 CLAUDE.md
+
+# Local bake-off judge-path artifacts (process output, not app docs)
+judge_tasks.jsonl
+judge_verdicts.json
+judge_rerun_report.md
+judge_rerun_report.json

@@ -54,6 +54,9 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_PROXY_TARGET=http://ollama:11434
       - OLLAMA_DEFAULT_MODEL=${OLLAMA_MODEL:-snflwr.ai}
+      # Hold-back streaming (better TTFT; ~+1 output-classifier call/turn). Safe
+      # to enable on a GPU box with headroom; default off keeps the buffered path.
+      - CHAT_STREAMING_ENABLED=${CHAT_STREAMING_ENABLED:-false}
       # Database - SQLite, no external dependency
       - DB_TYPE=sqlite
       - SNFLWR_DATA_DIR=/app/data

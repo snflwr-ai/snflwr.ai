@@ -210,6 +210,15 @@ if [ "$HAS_GPU" = true ] || [ "$RAM_GB" -ge 16 ]; then
 else
     export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"
 fi
+# Hold-back streaming (much better TTFT) costs ~1 extra output-classifier call
+# per turn, so enable it only where the GPU has headroom for the extra check; a
+# CPU-only box keeps the cheaper buffered path. Safety is identical either way.
+# Read by the API (config.CHAT_STREAMING_ENABLED). Overridable via env.
+if [ "$HAS_GPU" = true ]; then
+    export CHAT_STREAMING_ENABLED="${CHAT_STREAMING_ENABLED:-true}"
+else
+    export CHAT_STREAMING_ENABLED="${CHAT_STREAMING_ENABLED:-false}"
+fi
 
 # Check if Ollama is running, start if not
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then

@@ -1672,3 +1672,89 @@ class TestChatAdmissionControl:
             resp = client.post("/api/chat", json=_chat_body())
         assert resp.status_code == 200
         rl.assert_not_called()  # admin returns before admission control runs
+
+
+class TestHoldbackStreaming:
+    """CHAT_STREAMING_ENABLED: stream the answer as each part is vetted by
+    check_output. The guarantee: no token is flushed until a check_output has
+    deemed the text-so-far safe (so a child never receives un-vetted content)."""
+
+    SENT1 = b'{"message":{"role":"assistant","content":"Photosynthesis is how plants make food."},"done":false}\n'
+    SENT2 = (
+        b'{"message":{"role":"assistant","content":" It uses sunlight."},"done":true}\n'
+    )
+
+    def _run(self, check_output_side, chunks, *, enabled=True):
+        from fastapi.testclient import TestClient
+        import api.routes.ollama_proxy as proxy_mod
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = _safe_result()
+        if isinstance(check_output_side, list):
+            mock_pipeline.check_output.side_effect = check_output_side
+        else:
+            mock_pipeline.check_output.return_value = check_output_side
+        mock_pipeline.get_safe_response.return_value = ""
+
+        client = TestClient(_make_app())
+        with (
+            patch.object(
+                proxy_mod, "_get_user_from_headers", return_value=("uid-hb", "user")
+            ),
+            patch.object(
+                proxy_mod,
+                "_get_profile_for_user",
+                new=AsyncMock(return_value="profile-hb"),
+            ),
+            patch.object(
+                proxy_mod, "_stream_chunks_from_ollama", new=_async_iter(chunks)
+            ),
+            patch.object(proxy_mod.system_config, "CHAT_STREAMING_ENABLED", enabled),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(stream=True),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-hb",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        return resp, mock_pipeline
+
+    def test_safe_response_streams_through(self):
+        resp, mp = self._run(_safe_result(), [self.SENT1, self.SENT2])
+        assert resp.status_code == 200
+        assert b"Photosynthesis is how plants make food" in resp.content
+        assert b"It uses sunlight" in resp.content
+        assert mp.check_output.call_count == 2  # first-sentence checkpoint + final
+
+    def test_unsafe_at_first_checkpoint_blocks_everything(self):
+        unsafe = _block_result("Let's talk about something else.")
+        resp, mp = self._run([unsafe], [self.SENT1, self.SENT2])
+        assert resp.status_code == 200
+        body = resp.content
+        assert (
+            b"Photosynthesis is how plants make food" not in body
+        )  # nothing un-vetted leaked
+        assert b"It uses sunlight" not in body
+        assert b"something else" in body  # safe fallback
+
+    def test_safe_first_then_unsafe_full_withholds_remainder(self):
+        # The safety guarantee: first sentence vetted-safe → flushed; full text
+        # then flags → the un-vetted remainder must NOT reach the child.
+        resp, mp = self._run(
+            [_safe_result(), _block_result("Let's try a different question.")],
+            [self.SENT1, self.SENT2],
+        )
+        body = resp.content
+        assert b"Photosynthesis is how plants make food" in body  # vetted-safe, flushed
+        assert b"It uses sunlight" not in body  # un-vetted, withheld
+        assert b"different question" in body  # fallback for the rest
+        assert mp.check_output.call_count == 2
+
+    def test_flag_off_uses_buffered_path(self):
+        resp, mp = self._run(_safe_result(), [self.SENT1, self.SENT2], enabled=False)
+        assert resp.status_code == 200
+        assert b"Photosynthesis is how plants make food" in resp.content
+        mp.check_output.assert_called_once()  # buffered path = single full-text check

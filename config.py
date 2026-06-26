@@ -119,6 +119,17 @@ class _SystemConfig:
     # per minute. Each turn is several inferences on one GPU, so this is the
     # backpressure that stops a single child flooding the backend. 0 disables it.
     CHAT_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("CHAT_RATE_LIMIT_PER_MINUTE", "20"))
+    # Hold-back streaming for the student /api/chat path: stream the answer as
+    # soon as each part is vetted by check_output, instead of buffering the whole
+    # message first. Much better TTFT, but it adds ~1 extra output-classifier call
+    # per turn (the first sentence is vetted on its own), so it costs GPU. OFF by
+    # default (the buffered path is safe + cheap on a single GPU); enable only
+    # where the GPU has headroom (start_snflwr.sh sets it on capable boxes). The
+    # child-safety guarantee is identical: no token is flushed until a check_output
+    # has deemed the text-so-far safe.
+    CHAT_STREAMING_ENABLED: bool = os.getenv(
+        "CHAT_STREAMING_ENABLED", "false"
+    ).lower() in ("1", "true", "yes")
 
     APPLICATION_NAME: str = "snflwr.ai"
     VERSION: str = os.getenv("SNFLWR_VERSION", "1.0.0")

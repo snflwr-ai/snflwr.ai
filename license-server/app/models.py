@@ -1,5 +1,6 @@
-from sqlalchemy import String, Integer, ForeignKey
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db import Base
 
 
@@ -18,6 +19,10 @@ class Subscription(Base):
     status: Mapped[str] = mapped_column(String)
     current_period_end: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[int] = mapped_column(Integer)
+    # Monotonic per-subscription version from the provider event (Lemon Squeezy
+    # attributes.updated_at, epoch). Rejects stale/out-of-order webhook
+    # deliveries and makes re-deliveries idempotent. 0 = no event applied yet.
+    last_event_ts: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class AuthCode(Base):

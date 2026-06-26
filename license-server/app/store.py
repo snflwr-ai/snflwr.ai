@@ -1,5 +1,7 @@
 import hashlib
-from sqlalchemy import select, delete
+
+from sqlalchemy import delete, select
+
 from app import models
 
 
@@ -21,7 +23,16 @@ async def get_subscription(s, account_id: str):
 
 
 async def upsert_subscription(s, *, email, ls_subscription_id, plan, status,
-                              current_period_end, now):
+                              current_period_end, now, event_ts=None):
+    """Apply a subscription state change.
+
+    event_ts (the provider event's own monotonic timestamp) guards against
+    stale/out-of-order webhook deliveries: if it is OLDER than the last event
+    already applied to this subscription, the event is ignored (the account row
+    is still ensured to exist). A re-delivered event with the same ts re-applies
+    the same state (idempotent). event_ts=None disables the guard (always apply)
+    for non-webhook callers.
+    """
     email = email.strip().lower()
     account = await get_account_by_email(s, email)
     if account is None:
@@ -29,6 +40,14 @@ async def upsert_subscription(s, *, email, ls_subscription_id, plan, status,
             account_id=account_id_for_email(email), email=email, created_at=now)
         s.add(account)
     sub = await get_subscription(s, account.account_id)
+    if (
+        sub is not None
+        and event_ts is not None
+        and sub.last_event_ts
+        and event_ts < sub.last_event_ts
+    ):
+        # Stale / out-of-order delivery — a newer event already won. Ignore.
+        return account
     if sub is None:
         sub = models.Subscription(account_id=account.account_id)
         s.add(sub)
@@ -37,6 +56,8 @@ async def upsert_subscription(s, *, email, ls_subscription_id, plan, status,
     sub.status = status
     sub.current_period_end = current_period_end
     sub.updated_at = now
+    if event_ts is not None:
+        sub.last_event_ts = event_ts
     return account
 
 

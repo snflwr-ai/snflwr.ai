@@ -2,11 +2,28 @@ import hashlib
 import hmac
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request, Header, HTTPException
-from app.config import settings
+
+from fastapi import APIRouter, Header, HTTPException, Request
+
 from app import db, store
+from app.config import settings
 
 router = APIRouter()
+
+
+def _event_ts(attributes) -> int | None:
+    """Provider event's own timestamp (Lemon Squeezy attributes.updated_at, ISO)
+    as epoch seconds — the monotonic version used for ordering/idempotency.
+    Returns None if absent/unparseable (guard disabled for that event)."""
+    raw = attributes.get("updated_at")
+    if not raw:
+        return None
+    try:
+        return int(
+            datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+        )
+    except (ValueError, TypeError):
+        return None
 
 _STATUS_MAP = {
     "active": "active",
@@ -72,6 +89,7 @@ async def receive_webhook(request: Request, x_signature: str = Header(default=""
     async with _Session() as s:
         await store.upsert_subscription(
             s, email=email, ls_subscription_id=ls_sub_id, plan=mapped["plan"],
-            status=mapped["status"], current_period_end=mapped["current_period_end"], now=now)
+            status=mapped["status"], current_period_end=mapped["current_period_end"],
+            now=now, event_ts=_event_ts(attributes))
         await s.commit()
     return {"ok": True}

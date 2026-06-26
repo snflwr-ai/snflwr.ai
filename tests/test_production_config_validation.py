@@ -74,6 +74,20 @@ class TestDatabaseEncryptionValidation:
             cfg.validate_production_security()
 
     @patch.dict(os.environ, {"ENVIRONMENT": "production"})
+    def test_production_without_smtp_blocked(self):
+        """Production with email OFF must fail — parental crisis alerts and COPPA
+        consent both depend on it (a children's product can't run blind)."""
+        cfg = _make_config(
+            DB_TYPE="sqlite",
+            DB_ENCRYPTION_ENABLED=True,
+            DB_ENCRYPTION_KEY="x" * 40,
+            REDIS_ENABLED=True,
+            SMTP_ENABLED=False,
+        )
+        with pytest.raises(RuntimeError, match="SMTP"):
+            cfg.validate_production_security()
+
+    @patch.dict(os.environ, {"ENVIRONMENT": "production"})
     def test_production_encryption_without_key_blocked(self):
         """Encryption enabled but no key = error."""
         cfg = _make_config(

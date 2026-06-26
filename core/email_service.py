@@ -612,6 +612,18 @@ class EmailService:
         Returns:
             True if email sent successfully
         """
+        # COPPA: verifiable consent CANNOT proceed without email. Fail fast and
+        # loud (rather than a slow live-SMTP connect error) so the caller blocks
+        # the under-13 activation with a clear reason. Unlike best-effort alerts,
+        # this must return False — never a silent success.
+        if not self.enabled:
+            logger.error(
+                "Parental consent email to %s NOT sent: email (SMTP) is disabled. "
+                "Under-13 consent cannot proceed — set SMTP_ENABLED=true.",
+                to_email,
+            )
+            return False
+
         try:
             subject = f"Parental Consent Required for {child_name}'s Profile"
 

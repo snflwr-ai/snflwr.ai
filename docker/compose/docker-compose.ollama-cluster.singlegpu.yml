@@ -1,0 +1,65 @@
+# Single-GPU fan-out PLUMBING test for the enterprise ollama cluster.
+#
+# This box has ONE GPU, so a true multi-GPU THROUGHPUT test is impossible here.
+# What this DOES validate (the part that was never run): the nginx load balancer
+# correctly round-robins requests across multiple Ollama replicas and fails over
+# when one dies. Both replicas share GPU 0, so throughput does NOT scale — that
+# still requires real, separate GPUs. This proves the routing/failover layer only.
+#
+# Models are shared READ-ONLY from the live volume (compose_ollama-data) via
+# OLLAMA_MODELS, so there's no 10GB re-pull per replica and the live model store
+# cannot be mutated by the test. Runtime state goes to each replica's own
+# ephemeral /root/.ollama.
+#
+#   docker compose -f docker-compose.ollama-cluster.singlegpu.yml up -d
+#   (LB on host :21434 — deliberately NOT the live :11434)
+
+name: snflwr-cluster-test
+
+x-replica: &replica
+  image: ollama/ollama:0.30.10        # pinned stock image (matches the live tutor)
+  restart: "no"
+  environment:
+    - OLLAMA_HOST=0.0.0.0:11434
+    - OLLAMA_MODELS=/models-ro/models  # serve the shared models read-only
+    - OLLAMA_KEEP_ALIVE=30s            # unload fast so the test can't starve the live tutor
+    - OLLAMA_NUM_PARALLEL=2
+  volumes:
+    - compose_ollama-data:/models-ro:ro
+  networks: [cluster-test-net]
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ['0']          # both replicas share the single card
+            capabilities: [gpu]
+
+services:
+  ollama-1:
+    <<: *replica
+    container_name: cluster-test-ollama-1
+    ports: ["21435:11434"]             # direct access for debugging
+
+  ollama-2:
+    <<: *replica
+    container_name: cluster-test-ollama-2
+    ports: ["21436:11434"]
+
+  ollama-lb:
+    image: nginx:alpine
+    container_name: cluster-test-lb
+    restart: "no"
+    ports: ["21434:11434"]
+    volumes:
+      - ./ollama/nginx.cluster-test.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [ollama-1, ollama-2]
+    networks: [cluster-test-net]
+
+volumes:
+  compose_ollama-data:
+    external: true                     # the live model store, mounted read-only
+
+networks:
+  cluster-test-net:
+    driver: bridge

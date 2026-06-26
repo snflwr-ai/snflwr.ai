@@ -1,6 +1,12 @@
 # Ollama Load Balanced Cluster
 # Multiple Ollama instances with Nginx load balancer
 # Run with: docker-compose -f docker-compose.ollama-cluster.yml up -d
+#
+# Assumes a MULTI-GPU host: the three replicas pin to device_ids 0/1/2, which is
+# what makes throughput scale (one model per card, no contention). On a host with
+# fewer GPUs, drop the extra replicas or point them at the cards you have.
+# To validate the LB routing/failover on a single-GPU box first (no throughput
+# scaling, just the plumbing), see docker-compose.ollama-cluster.singlegpu.yml.
 
 services:
   # Nginx Load Balancer for Ollama
@@ -27,7 +33,7 @@ services:
 
   # Ollama Instance 1 (Primary)
   ollama-1:
-    image: snflwr-ollama:latest
+    image: ollama/ollama:0.30.10  # pinned, matches the live tutor (snflwr-ollama:latest was never built)
     container_name: ollama-instance-1
     restart: unless-stopped
     ports:
@@ -50,7 +56,7 @@ services:
 
   # Ollama Instance 2 (Secondary)
   ollama-2:
-    image: snflwr-ollama:latest
+    image: ollama/ollama:0.30.10  # pinned, matches the live tutor (snflwr-ollama:latest was never built)
     container_name: ollama-instance-2
     restart: unless-stopped
     ports:
@@ -73,7 +79,7 @@ services:
 
   # Ollama Instance 3 (Tertiary)
   ollama-3:
-    image: snflwr-ollama:latest
+    image: ollama/ollama:0.30.10  # pinned, matches the live tutor (snflwr-ollama:latest was never built)
     container_name: ollama-instance-3
     restart: unless-stopped
     ports:

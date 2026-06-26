@@ -112,13 +112,24 @@ docker-compose -f docker-compose.yml up -d --scale snflwr-api=3
 
 ---
 
-### Tier 3: Large (10,000-100,000 users)
+### Tier 3: Large (10,000+ users)
+
+> **GPU reality — read before sizing.** The LLM tier, not the web tier, is the
+> real ceiling. Each Ollama instance pins **one dedicated GPU** and every tutor
+> turn runs **~3 inferences** (2× llama-guard + 1 answer), so capacity scales
+> with **GPU count**, not user count — "N Ollama instances" means **N physical
+> GPUs**. There is no GPU-aware autoscaling out of the box (the Ollama HPA on
+> CPU/memory was removed — it never reflects GPU saturation); scale GPUs
+> manually or wire a DCGM/Prometheus-Adapter HPA (see
+> `enterprise/k8s/ollama-deployment.yaml`). Stateless tiers (API/Celery/web)
+> autoscale freely; the GPU fleet is a capacity-planning decision. Treat the
+> user numbers below as *web-tier* capacity, gated by your GPU budget.
 
 **Infrastructure:**
 - 10-20 API servers (auto-scaling)
 - PostgreSQL cluster (1 primary + 2 replicas)
 - Redis cluster (6 nodes, HA)
-- 10 Ollama instances (load balanced)
+- Ollama instances = one per available GPU (manually scaled; load balanced)
 - 10 Celery workers
 
 **Specs:**
@@ -574,7 +585,7 @@ kubectl scale deployment ollama --replicas=10 -n snflwr-ai
 kubectl describe node | grep nvidia.com/gpu
 
 # Preload models (reduce cold start)
-docker exec ollama-1 ollama pull qwen3.5:9b
+docker exec ollama-1 ollama pull gemma4:e4b
 ```
 
 ### Issue: Redis Out of Memory

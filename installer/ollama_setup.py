@@ -213,13 +213,13 @@ def pull_default_model(model="gemma4:e4b"):
 
 
 def build_snflwr_wrapper(base_model: str) -> bool:
-    """Build the user-facing 'snflwr.ai' model on top of a qwen3.5 base.
+    """Build the user-facing 'snflwr.ai' model on top of a base model.
 
     Reads models/Snflwr_AI_Kids.modelfile, substitutes the FROM line with
     the chosen base, and runs `ollama create snflwr.ai -f <tmpfile>`.
 
     The user-facing chat model is always 'snflwr.ai' — kids never see the
-    raw qwen3.5 tag in the Open WebUI dropdown. The wrapper bundles the
+    raw base-model tag in the Open WebUI dropdown. The wrapper bundles the
     K-12 STEM tutor system prompt + sampling parameters (incl. repeat_penalty
     to prevent reasoning loops) + safety stop sequences from the modelfile.
 
@@ -416,7 +416,7 @@ This ensures all data stays on your device - nothing is sent to the cloud.
             print_info(f"Keeping existing model: {existing_model}")
             return existing_model
         print_info("Skipping model download. You can pull one later:")
-        print_info("  ollama pull qwen3.5:9b")
+        print_info("  ollama pull gemma4:e4b")
         print_success("Ollama setup complete (no model pulled)")
         return ""
 

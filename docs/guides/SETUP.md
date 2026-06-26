@@ -41,12 +41,10 @@ This creates:
 
 ```bash
 # Choose a base model based on your hardware (RAM):
-#   4 GB  → qwen3.5:2b       (fallback)
-#   6 GB  → qwen3.5:4b       (fallback)
-#   8 GB  → qwen3.5:9b       (fallback)
-#  16 GB+ → gemma4:e4b       (recommended for most systems)
-#  24 GB  → qwen3.5:27b
-#  32 GB+ → qwen3.5:35b
+#  16 GB+ → gemma4:e4b       (default — recommended backbone)
+#   8 GB  → qwen3.5:4b       (fallback — gemma too large)
+#   6 GB  → qwen3.5:2b       (fallback — older laptops)
+#   2 GB  → qwen3.5:0.8b     (fallback — low-resource)
 ollama pull gemma4:e4b
 ```
 

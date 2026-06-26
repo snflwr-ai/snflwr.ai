@@ -353,11 +353,9 @@ REM ==========================================
 echo Detecting hardware...
 if "%OLLAMA_DEFAULT_MODEL%"=="" (
     for /f %%G in ('powershell -NoProfile -Command "[math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)"') do set "RAM_GB=%%G"
-    if !RAM_GB! GEQ 32 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:35b
-    ) else if !RAM_GB! GEQ 24 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:27b
-    ) else if !RAM_GB! GEQ 8 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:9b
-    ) else if !RAM_GB! GEQ 6 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:4b
-    ) else if !RAM_GB! GEQ 4 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:2b
+    if !RAM_GB! GEQ 16 ( set OLLAMA_DEFAULT_MODEL=gemma4:e4b
+    ) else if !RAM_GB! GEQ 8 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:4b
+    ) else if !RAM_GB! GEQ 6 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:2b
     ) else ( set OLLAMA_DEFAULT_MODEL=qwen3.5:0.8b )
     echo Detected !RAM_GB! GB RAM -- using !OLLAMA_DEFAULT_MODEL!
 )
@@ -564,11 +562,9 @@ if [ -z "$OLLAMA_DEFAULT_MODEL" ]; then
     else
         ram_gb=8
     fi
-    if [ "$ram_gb" -ge 32 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:35b"
-    elif [ "$ram_gb" -ge 24 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:27b"
-    elif [ "$ram_gb" -ge 8 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:9b"
-    elif [ "$ram_gb" -ge 6 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:4b"
-    elif [ "$ram_gb" -ge 4 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:2b"
+    if [ "$ram_gb" -ge 16 ]; then OLLAMA_DEFAULT_MODEL="gemma4:e4b"
+    elif [ "$ram_gb" -ge 8 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:4b"
+    elif [ "$ram_gb" -ge 6 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:2b"
     else OLLAMA_DEFAULT_MODEL="qwen3.5:0.8b"; fi
     echo "  Detected ${ram_gb} GB RAM -> using ${OLLAMA_DEFAULT_MODEL}"
 fi

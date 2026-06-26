@@ -298,7 +298,7 @@ else                                   RECOMMENDED_MODEL="qwen3.5:0.8b"; fi
 info "RAM: ${TOTAL_RAM_GB}GB -- recommended base model: $RECOMMENDED_MODEL"
 
 # --- Resolve final base model ------------------------------------------------
-# RESOLVED_MODEL holds the BASE qwen3.5 tag we'll pull. The user-facing
+# RESOLVED_MODEL holds the BASE model tag we'll pull. The user-facing
 # wrapper is always called snflwr.ai (see "AI model" section below).
 if [[ -n "$OLLAMA_MODEL_ARG" ]]; then
     RESOLVED_MODEL="$OLLAMA_MODEL_ARG"
@@ -334,7 +334,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
 # with the K-12 STEM tutor system prompt in models/Snflwr_AI_Kids.modelfile.
 OLLAMA_MODEL=snflwr.ai
 
-# Base model — the actual qwen3.5 weights snflwr.ai is built on top of.
+# Base model — the actual base-model weights snflwr.ai is built on top of.
 # Auto-selected based on RAM; override with: ./deploy.sh --model <tag>
 BASE_MODEL=${RESOLVED_MODEL}
 
@@ -483,7 +483,7 @@ echo ""
 # --- Pull base model + build snflwr.ai wrapper -------------------------------
 section "AI model"
 
-# BASE_MODEL is the actual qwen3.5 weight file. WRAPPED_MODEL is the
+# BASE_MODEL is the actual base-model weight file. WRAPPED_MODEL is the
 # user-facing chat model — built locally as a wrapper around the base.
 BASE_MODEL="${BASE_MODEL:-${RESOLVED_MODEL}}"
 WRAPPED_MODEL="snflwr.ai"

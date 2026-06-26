@@ -164,12 +164,27 @@ if ! command -v ollama &>/dev/null; then
     fi
 fi
 
-# Detect NVIDIA GPU (Ollama auto-uses GPU when running natively; this is informational)
+# Detect hardware capability — drives base-model tiering, the safety-model
+# choice, and Ollama parallelism below. (Ollama auto-uses the GPU natively.)
+HAS_GPU=false
+VRAM_GB=0
 if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+    HAS_GPU=true
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "NVIDIA GPU")
-    echo -e "${GREEN}GPU detected: ${GPU_NAME} — Ollama will use GPU acceleration automatically.${NC}"
+    VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -dc '0-9')
+    [ -n "$VRAM_MB" ] && VRAM_GB=$(( VRAM_MB / 1024 ))
+    echo -e "${GREEN}GPU detected: ${GPU_NAME} (${VRAM_GB} GB VRAM) — Ollama will use GPU acceleration.${NC}"
 else
     echo -e "${YELLOW}No NVIDIA GPU detected — Ollama will use CPU inference.${NC}"
+fi
+
+# System RAM (GB) — single source of truth reused by model + safety selection.
+if [ -f /proc/meminfo ]; then
+    RAM_GB=$(( ( $(awk '/^MemTotal:/ {print $2}' /proc/meminfo) + 524288 ) / 1024 / 1024 ))
+elif command -v sysctl >/dev/null 2>&1; then
+    RAM_GB=$(( ( $(sysctl -n hw.memsize 2>/dev/null || echo 0) + 536870912 ) / 1024 / 1024 / 1024 ))
+else
+    RAM_GB=0
 fi
 
 # Bind Ollama to all interfaces so Docker containers can reach it
@@ -177,6 +192,24 @@ export OLLAMA_HOST=0.0.0.0
 # Explicit client URL so the snflwr API uses the correct scheme+port
 # (OLLAMA_HOST above is the bind address; OLLAMA_BASE_URL is the client URL)
 export OLLAMA_BASE_URL=http://localhost:11434
+# Keep the answer model AND the llama-guard safety model resident together.
+# Every tutor turn is 2x llama-guard (input+output) + 1x gemma answer; with the
+# Ollama default Ollama may evict one to load the other, paying a model-swap
+# (re-load from disk) on every turn — the single biggest home latency sink. On
+# the recommended 16GB+ tier gemma4:e4b (~10GB) + llama-guard3:1b (~1GB) fit
+# together, so co-residence removes the thrash. Overridable via env.
+# NOTE: only takes effect when THIS script launches Ollama below; an
+# already-running ollama serve keeps its own env.
+export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-2}"
+export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-30m}"
+# Concurrency: how many requests Ollama serves at once. A GPU box (or a big-RAM
+# CPU box) can use the headroom for more concurrent students; a small box must
+# not oversubscribe. Overridable via env.
+if [ "$HAS_GPU" = true ] || [ "$RAM_GB" -ge 16 ]; then
+    export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-4}"
+else
+    export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"
+fi
 
 # Check if Ollama is running, start if not
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
@@ -227,42 +260,43 @@ if [ "$LOADED_MODELS" = "0" ]; then
 fi
 
 # Determine the BASE model — prefer env var (BASE_MODEL or legacy
-# OLLAMA_DEFAULT_MODEL pointing at a qwen3.5 tag), otherwise detect from
+# OLLAMA_DEFAULT_MODEL pointing at a base-model tag), otherwise detect from
 # hardware. The user-facing chat model is always 'snflwr.ai', built locally
 # below as a wrapper around this base.
 if [ -n "$BASE_MODEL" ]; then
     CHAT_MODEL="$BASE_MODEL"
 elif [ -n "$OLLAMA_DEFAULT_MODEL" ] && [ "$OLLAMA_DEFAULT_MODEL" != "snflwr.ai" ]; then
-    # Legacy: env held a qwen3.5 tag directly
+    # Legacy: env held a base-model tag directly
     CHAT_MODEL="$OLLAMA_DEFAULT_MODEL"
 else
-    # Detect RAM and recommend a base model
-    if [ -f /proc/meminfo ]; then
-        ram_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-        ram_gb=$(( (ram_kb + 524288) / 1024 / 1024 ))
-    elif command -v sysctl >/dev/null 2>&1; then
-        ram_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
-        ram_gb=$(( (ram_bytes + 536870912) / 1024 / 1024 / 1024 ))
-    else
-        ram_gb=0
-    fi
-
-    if [ "$ram_gb" -ge 32 ]; then
-        CHAT_MODEL="qwen3.5:35b"
-    elif [ "$ram_gb" -ge 24 ]; then
-        CHAT_MODEL="qwen3.5:27b"
-    elif [ "$ram_gb" -ge 8 ]; then
-        CHAT_MODEL="qwen3.5:9b"
-    elif [ "$ram_gb" -ge 6 ]; then
+    # Recommend a base model from detected hardware (RAM_GB/HAS_GPU/VRAM_GB set above).
+    #
+    # gemma4:e4b (~10GB) is the default backbone as of 2026-06-17 — it won the
+    # tutoring-quality bake-off outright (see evals/tutoring/backbone_bakeoff.py)
+    # and is what deploy.sh, .env.example, and the modelfile use. Boxes too small
+    # for gemma fall back to the small qwen3.5 tiers (no tiny gemma exists, and a
+    # smaller model beats an OOM). Keep this aligned with deploy.sh.
+    #
+    # OPT-IN high-end tier: a box with a 16-20GB+ VRAM GPU can run the much
+    # stronger gemma4:31b (top open-weight benchmarks). It is OFF by default and
+    # NOT yet validated for *tutoring* quality (benchmarks != tutoring; e4b beat
+    # bigger models on the actual bake-off), and it is slower per token. Enable
+    # explicitly only after confirming it on your own tutoring eval.
+    # TODO(tutoring-eval): bake off gemma4:31b vs gemma4:e4b before promoting it.
+    if [ "${SNFLWR_ENABLE_GEMMA_31B:-false}" = "true" ] && [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 18 ]; then
+        CHAT_MODEL="gemma4:31b"
+    elif [ "$RAM_GB" -ge 16 ]; then
+        CHAT_MODEL="gemma4:e4b"
+    elif [ "$RAM_GB" -ge 8 ]; then
         CHAT_MODEL="qwen3.5:4b"
-    elif [ "$ram_gb" -ge 4 ]; then
+    elif [ "$RAM_GB" -ge 6 ]; then
         CHAT_MODEL="qwen3.5:2b"
     else
         CHAT_MODEL="qwen3.5:0.8b"
     fi
 
-    if [ "$ram_gb" -gt 0 ]; then
-        echo -e "${GREEN}Detected ${ram_gb} GB RAM → base model ${CHAT_MODEL}${NC}"
+    if [ "$RAM_GB" -gt 0 ]; then
+        echo -e "${GREEN}Detected ${RAM_GB} GB RAM / ${VRAM_GB} GB VRAM → base model ${CHAT_MODEL}${NC}"
     else
         echo -e "${YELLOW}Could not detect RAM → base model ${CHAT_MODEL}${NC}"
     fi
@@ -307,13 +341,24 @@ else
     export OLLAMA_DEFAULT_MODEL="$CHAT_MODEL"
 fi
 
-# Pull child-safety model if enabled
+# Pull child-safety model if enabled. Use the higher-accuracy llama-guard3:8b
+# (~5GB) when there's headroom — the API already prefers it (config SAFETY_MODEL
+# defaults to :8b, falling back to :1b) — else the fast :1b. Export SAFETY_MODEL
+# so the classifier uses exactly what we pulled (no slow 8b-miss → 1b fallback).
+# It co-resides with the answer model via OLLAMA_MAX_LOADED_MODELS set above.
 if [ "${ENABLE_SAFETY_MODEL:-false}" = "true" ]; then
-    SAFETY_MODEL="llama-guard3:1b"
+    if [ -z "${SAFETY_MODEL:-}" ]; then
+        if { [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 16 ]; } || [ "$RAM_GB" -ge 24 ]; then
+            SAFETY_MODEL="llama-guard3:8b"
+        else
+            SAFETY_MODEL="llama-guard3:1b"
+        fi
+    fi
+    export SAFETY_MODEL
     if ! ollama list | awk '{print $1}' | grep -qxF "$SAFETY_MODEL"; then
-        echo -e "${YELLOW}Pulling child-safety model $SAFETY_MODEL (~1 GB)...${NC}"
+        echo -e "${YELLOW}Pulling child-safety model $SAFETY_MODEL...${NC}"
         if ollama pull "$SAFETY_MODEL"; then
-            echo -e "${GREEN}Safety model ready.${NC}"
+            echo -e "${GREEN}Safety model ready (${SAFETY_MODEL}).${NC}"
         else
             echo -e "${YELLOW}WARNING: Failed to pull safety model. Content filtering will use pattern-matching only.${NC}"
         fi

@@ -97,6 +97,20 @@ class TestAccountCreation:
         # Argon2 hashes start with $argon2
         assert password_hash.startswith('$argon2')
     
+    def test_suspended_account_cannot_login(self, auth_manager):
+        """A suspended (is_active=0) account must be rejected even with the
+        correct password — so an operator can actually cut off a delinquent or
+        abusive customer."""
+        success, parent_id = auth_manager.create_parent_account(
+            "suspendme", "SecurePass123!"
+        )
+        assert success
+        auth_manager.db.execute_write(
+            "UPDATE accounts SET is_active = 0 WHERE parent_id = ?", (parent_id,)
+        )
+        ok, _ = auth_manager.authenticate_parent("suspendme", "SecurePass123!")
+        assert ok is False
+
     def test_create_account_with_email(self, auth_manager):
         """Test account creation with optional email"""
         success, parent_id = auth_manager.create_parent_account(

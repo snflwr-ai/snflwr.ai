@@ -188,7 +188,7 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin, _Password
         self, username: str, password: str
     ) -> Tuple[bool, Optional[Any]]:
         rows = self.db.execute_query(
-            "SELECT parent_id, password_hash, failed_login_attempts, account_locked_until FROM accounts WHERE username = ?",
+            "SELECT parent_id, password_hash, failed_login_attempts, account_locked_until, is_active FROM accounts WHERE username = ?",
             (username,),
         )
         if not rows:
@@ -271,6 +271,18 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin, _Password
                 # Don't return credentials error - return system error to prevent bypass
                 return False, "Authentication system error. Please try again later."
             return False, "Invalid username or password"
+
+        # Reject suspended/deactivated accounts (checked AFTER password verify so
+        # we never leak which accounts are suspended to an unauthenticated caller).
+        # is_active is the operator's lever to cut off a delinquent/abusive
+        # customer; None (legacy/missing) is treated as active to avoid locking
+        # out legitimate users.
+        is_active = rget(4, "is_active")
+        if is_active is not None and not is_active:
+            logger.warning(
+                "Login blocked: account %s is deactivated (is_active=0)", parent_id
+            )
+            return False, "This account has been deactivated. Please contact support."
 
         # Successful login: reset counters
         try:

@@ -35,14 +35,12 @@ from utils.input_validation import (
 )
 from utils.logger import get_logger, sanitize_log_value
 from utils.ollama_client import OllamaError, ollama_client
-from utils.rate_limiter import RateLimiter
+from utils.rate_limiter import rate_limiter
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
-# Initialize rate limiter
-rate_limiter = RateLimiter()
 
 
 def _age_band(age: int) -> str:

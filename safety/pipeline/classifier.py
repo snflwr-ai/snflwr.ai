@@ -221,9 +221,12 @@ class _SemanticClassifier:
             try:
                 from config import system_config
 
-                require = getattr(system_config, "SAFETY_CLASSIFIER_REQUIRED", False)
+                # Fail CLOSED if the attr is missing: the default must match the
+                # config default (True), not diverge to open. A malformed config
+                # must not silently degrade teen/unknown-age safety.
+                require = getattr(system_config, "SAFETY_CLASSIFIER_REQUIRED", True)
             except Exception:
-                require = False  # config unavailable -> still fail closed for <13
+                require = True  # config unavailable -> fail closed for ALL ages
             if require or (age is not None and age < 13):
                 logger.warning(
                     "Safety classifier unavailable — failing closed (age=%s, "

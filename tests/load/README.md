@@ -25,6 +25,19 @@ docker pull grafana/k6
 
 ## Running Load Tests
 
+### GPU saturation test (find the single-GPU ceiling)
+`gpu_load_test.py` is purpose-built to measure the GPU-bound `/api/chat` path —
+TTFT, tokens/sec, p50/p95 latency, and turns/min as concurrency ramps — so you
+can see where one GPU saturates (each tutor turn is ~3 inferences). Run it on or
+near the target box with Ollama + the models loaded:
+```bash
+python tests/load/gpu_load_test.py \
+  --url http://localhost:39150 --token "$SF_TOKEN" \
+  --model snflwr.ai --concurrency 1,2,4,8 --requests 16 --stream
+```
+Use a **student** token (exercises the full safety pipeline; admins bypass it).
+The ceiling is where tok/s plateaus and p95 latency climbs with concurrency.
+
 ### Basic Test (Default Configuration)
 ```bash
 k6 run tests/load/snflwr_load_test.js

@@ -295,7 +295,16 @@ else
     # (99.3 vs 97.8) and homework-integrity (96.9 vs 93.8; e4b handed over the
     # answer twice as often). So there's no quality reason to avoid 31b on a
     # capable GPU; it stays opt-in purely for the latency/VRAM cost.
-    if [ "${SNFLWR_ENABLE_GEMMA_31B:-false}" = "true" ] && [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 18 ]; then
+    #
+    # VRAM gate is 26GB, NOT 18: 31b (~19GB) must co-reside with the llama-guard3:8b
+    # safety classifier (~5GB) — every turn runs input+output through the guard, so
+    # both stay resident (19+5+KV ≈ 26GB). At 18-24GB they can't both fit, and Ollama
+    # would either thrash (reload a 19GB model per turn) or silently evict the 8b guard
+    # down to :1b — a child-safety-classifier downgrade we will NOT do by default.
+    # So 31b auto-enables only on a card with room for 31b + the full guard (≥~26GB,
+    # or multi-GPU). On a single ≤24GB card, keep e4b (which leaves comfortable guard
+    # headroom). Verified on the 23GB 3090 Ti: 31b + 8b guard do not co-reside.
+    if [ "${SNFLWR_ENABLE_GEMMA_31B:-false}" = "true" ] && [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 26 ]; then
         CHAT_MODEL="gemma4:31b"
     elif [ "$RAM_GB" -ge 16 ]; then
         CHAT_MODEL="gemma4:e4b"

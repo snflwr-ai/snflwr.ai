@@ -97,7 +97,7 @@ python -m uvicorn api.server:app --host 0.0.0.0
 ## Prerequisites
 
 ### Required
-- **Python 3.8+** (check: `python --version`)
+- **Python 3.10+** (check: `python --version`)
 - **pip** (check: `pip --version`)
 
 ### Optional (Installer handles these)

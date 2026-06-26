@@ -7,7 +7,7 @@
 
 snflwr.ai provides a RESTful API for managing K-12 safe AI learning platform. This API enforces backend safety monitoring that cannot be bypassed by students.
 
-**Base URL:** `http://localhost:8000` (development) / `https://your-domain.com` (production)
+**Base URL:** `http://localhost:39150` (local/home deploy) · `http://localhost:8000` (enterprise compose) · `https://your-domain.com` (production behind nginx)
 
 **API Version:** 0.1.0
 

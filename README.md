@@ -285,12 +285,13 @@ with 16 GB+ RAM the default is **`gemma4:e4b`** (it won the June 2026 tutoring
 bake-off); smaller systems fall back to the Qwen3.5 tiers. Kids never see the
 raw base-model tag.
 
-| Base model | Size | RAM | Use Case |
+| Base model | Size | RAM / VRAM | Use Case |
 |-------|------|-----|----------|
-| `gemma4:e4b` | ~10 GB | 16 GB+ | **Default — recommended backbone** |
-| `qwen3.5:4b` | ~2.5 GB | 8 GB+ | Fallback (gemma too large) |
-| `qwen3.5:2b` | ~1.3 GB | 6 GB+ | Fallback (older laptops) |
-| `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ | Fallback (low-resource) |
+| `gemma4:e4b` | ~10 GB | 16 GB+ RAM | **Default — recommended backbone** |
+| `gemma4:31b` | ~19 GB | GPU ≥26 GB VRAM | Opt-in high-end (`SNFLWR_ENABLE_GEMMA_31B`) — quality ≈ e4b, for big-GPU headroom; must co-reside with the 8 GB safety classifier |
+| `qwen3.5:4b` | ~2.5 GB | 8 GB+ RAM | Fallback (gemma too large) |
+| `qwen3.5:2b` | ~1.3 GB | 6 GB+ RAM | Fallback (older laptops) |
+| `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ RAM | Fallback (low-resource) |
 
 The wrapper bundles the K-12 STEM tutor system prompt, sampling parameters
 (including `repeat_penalty` to prevent reasoning loops), and safety stop
@@ -299,6 +300,11 @@ sequences from [`models/Snflwr_AI_Kids.modelfile`](models/Snflwr_AI_Kids.modelfi
 To switch the underlying base, re-run `./deploy.sh --model gemma4:e4b`
 (or set `BASE_MODEL` in `.env.home` and re-run `./deploy.sh`). The
 `snflwr.ai` wrapper will be rebuilt automatically on top of the new base.
+
+**Streaming (optional):** set `CHAT_STREAMING_ENABLED=true` for hold-back
+streaming — the tutor's reply is streamed once the safety pipeline has vetted it,
+so the first vetted text appears in ~1–2 s instead of after the full response,
+without weakening output checking.
 
 <br>
 

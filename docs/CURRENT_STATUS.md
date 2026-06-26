@@ -52,5 +52,9 @@ pre-publication blockers + 12 counsel-review items).
 
 Backbone → `gemma4:e4b`; guarded upgrade framework; semantic safety classifier
 enabled; crisis escalation wired into the proxy; database actually encrypted at
-rest (was silently plaintext). See `CHANGELOG.md` and
-`docs/architecture/REQUEST_FLOW_AND_SAFETY.md`.
+rest (was silently plaintext). Opt-in `gemma4:31b` high-end tier
+(`SNFLWR_ENABLE_GEMMA_31B`, GPU ≥26GB — quality ≈ e4b, for big-GPU headroom);
+hold-back streaming (`CHAT_STREAMING_ENABLED`) for ~1–2s first-token latency
+without weakening output vetting; self-healing GPU watchdog; cluster LB
+routing/failover validated (multi-GPU throughput still unproven). See
+`CHANGELOG.md` and `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`.

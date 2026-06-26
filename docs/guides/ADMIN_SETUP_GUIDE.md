@@ -58,7 +58,7 @@ Create a new docker-compose file for students only:
 ```yaml
 services:
   open-webui-k12:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:v0.9.6  # pin a reviewed tag (avoid :main)
     container_name: snflwr-k12
     ports:
       - "3001:8080"  # Different port for students

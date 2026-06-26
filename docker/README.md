@@ -29,8 +29,8 @@ docker build -f docker/Dockerfile -t snflwr-api:latest .
 
 # Build Ollama (both build args required — choose based on hardware)
 docker build -f docker/Dockerfile.ollama \
-  --build-arg CHAT_MODEL=qwen3.5:9b \
-  --build-arg SAFETY_MODEL=llama-guard3:1b \
+  --build-arg CHAT_MODEL=gemma4:e4b \
+  --build-arg SAFETY_MODEL=llama-guard3:8b \
   -t snflwr-ollama:latest .
 
 # Or use the enterprise build script for interactive hardware detection:

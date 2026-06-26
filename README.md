@@ -28,7 +28,7 @@
   <!-- Static -->
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue" alt="Python 3.10 | 3.11 | 3.12" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0" />
-  <img src="https://img.shields.io/badge/tests-3080%2B-brightgreen" alt="3080+ Tests" />
+  <img src="https://img.shields.io/badge/tests-3500%2B-brightgreen" alt="3500+ Tests" />
   <img src="https://img.shields.io/badge/coverage-88%25-brightgreen" alt="88% Coverage" />
   <img src="https://img.shields.io/badge/COPPA%2FFERPA-designed-green" alt="COPPA/FERPA" />
 </p>
@@ -330,7 +330,7 @@ See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
 pytest tests/ -v -m "not integration"
 ```
 
-**3,080+ tests** across 73 test files at **88% coverage** — authentication, profiles, safety pipeline, encryption, database, API routes, middleware, WebSockets, caching, and model management.
+**3,500+ tests** across 100+ test files at **88% coverage** — authentication, profiles, safety pipeline, encryption, database, API routes, middleware, WebSockets, caching, and model management.
 
 <br>
 
@@ -383,7 +383,9 @@ Commercial licensing: licensing@snflwr.ai
 
 - [Open WebUI](https://github.com/open-webui/open-webui) — Open-source AI interface
 - [Ollama](https://ollama.com) — Local LLM inference
-- [Qwen Team (Alibaba Cloud)](https://github.com/QwenLM) — Qwen3.5 model family
+- [Google DeepMind](https://deepmind.google/) — Gemma model family (gemma4:e4b, the default tutor backbone)
+- [Meta](https://ai.meta.com/) — Llama Guard safety classifier
+- [Qwen Team (Alibaba Cloud)](https://github.com/QwenLM) — Qwen3.5 model family (small-hardware fallback tier)
 - K-12 educators who provided feedback and testing
 
 ---

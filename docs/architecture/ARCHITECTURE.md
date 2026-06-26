@@ -11,8 +11,8 @@ snflwr.ai is built as a layered, modular Python application designed for both of
 ┌─────────────────────────────────────────────────────────────┐
 │                     Presentation Layer                       │
 │  ┌──────────────────┐        ┌──────────────────────────┐  │
-│  │  FastAPI REST    │        │  Gradio Web UI           │  │
-│  │  API Server      │        │  (Parent Dashboard)      │  │
+│  │  FastAPI REST    │        │  Open WebUI              │  │
+│  │  API Server      │        │  (Tutor chat UI)         │  │
 │  └──────────────────┘        └──────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -456,11 +456,12 @@ docker-compose up -d  # Start all services
 
 ### AI/ML
 - **LLM Provider:** Ollama
-- **Chat Model:** Qwen3 family (size chosen by hardware detection, offline-capable)
+- **Chat Model:** `snflwr.ai` — a local Ollama wrapper (`models/Snflwr_AI_Kids.modelfile`) over **gemma4:e4b** by default; small-RAM boxes fall back to a qwen3.5 tier, and a ≥26GB GPU can opt into gemma4:31b (`SNFLWR_ENABLE_GEMMA_31B`)
+- **Safety classifier:** llama-guard3:8b (fallback :1b)
 - **Inference:** HTTP API client
 
 ### Frontend
-- **Framework:** Gradio 4.0+ (Parent Dashboard)
+- **Framework:** Open WebUI (v0.9.6) + FastAPI safety proxy
 - **API Client:** FastAPI auto-generated OpenAPI
 
 ### DevOps

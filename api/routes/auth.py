@@ -19,14 +19,12 @@ from core.email_crypto import get_email_crypto
 from core.email_service import email_service
 from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger
-from utils.rate_limiter import RateLimiter
+from utils.rate_limiter import rate_limiter
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
-# Initialize rate limiter
-rate_limiter = RateLimiter()
 
 
 def check_auth_rate_limit(request: Request):

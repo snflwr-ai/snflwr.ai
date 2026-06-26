@@ -33,12 +33,10 @@ from storage.database import DatabaseManager
 from storage.db_adapters import DB_ERRORS
 from storage.encryption import encryption_manager
 from utils.logger import get_logger, sanitize_log_value
-from utils.rate_limiter import RateLimiter
+from utils.rate_limiter import RateLimiter, rate_limiter
 
 logger = get_logger(__name__)
 
-# Initialize rate limiter for admin auth endpoints
-rate_limiter = RateLimiter()
 
 
 def _pkg():

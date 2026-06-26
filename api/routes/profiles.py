@@ -49,14 +49,12 @@ from utils.input_validation import (
     validate_parent_id,
 )
 from utils.logger import get_logger, sanitize_log_value
-from utils.rate_limiter import RateLimiter
+from utils.rate_limiter import rate_limiter
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
-# Initialize rate limiter
-rate_limiter = RateLimiter()
 
 
 def check_profile_rate_limit(request: Request):

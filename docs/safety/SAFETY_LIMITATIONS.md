@@ -14,8 +14,11 @@ rationale and planned follow-up work.
 
 Stage 4 (semantic classifier) was added to `check_output()` in March 2026.
 AI responses now go through Llama Guard screening in addition to pattern matching.
-If Ollama is unavailable, the classifier degrades gracefully (skipped, not fail-closed)
-to avoid blocking all responses during an outage.
+If the classifier is unavailable, the pipeline **fails closed**: `SAFETY_CLASSIFIER_REQUIRED`
+defaults to `true`, so under-13 is always blocked and teens/unknown-age are blocked too. The
+deterministic pattern matcher and crisis detection still run regardless. Operators who prefer
+teens to degrade to deterministic-only during an outage can set `SAFETY_CLASSIFIER_REQUIRED=false`
+(under-13 still fails closed).
 
 ---
 
@@ -96,7 +99,7 @@ been blocked) without actually blocking, for audit purposes.
 
 | Limitation | Risk | Status |
 |---|---|---|
-| No semantic classifier on AI output | Medium | Planned — needs perf design |
+| ~~No semantic classifier on AI output~~ | — | **Resolved** — Llama Guard runs on `check_output()` (see §1) |
 | Self-reported age, no verification | Medium | Planned — needs UX design |
 | Educational exemption abusable | Low–Medium | ✅ Resolved — subject-specific indicators required; false positive reporting added |
 | Civics/politics false positives | Low | Planned improvement |

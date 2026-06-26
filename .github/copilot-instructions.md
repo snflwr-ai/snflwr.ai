@@ -5,7 +5,7 @@ Purpose: concise repo-specific guidance so an AI coding agent can be productive 
 **Big Picture**:
 - **Backend (API)**: FastAPI app lives at [api/server.py](api/server.py#L1-L120). Start the server with `python -m api.server` or `uvicorn api.server:app --reload` for development. Configuration comes from `config.py` (env vars: `API_HOST`, `API_PORT`, `API_RELOAD`, `DB_TYPE`, etc.).
 - **Safety pipeline**: 5-stage fail-closed pipeline in [safety/pipeline.py](safety/pipeline.py). Stages: input validation → normalization → pattern matching → semantic classification → age gate. All stages fail closed — any unhandled error blocks content. Logging via `safety/incident_logger.py` and `utils/logger.py`.
-- **Models & LLM runtime**: Ollama integration is in [utils/ollama_client.py](utils/ollama_client.py#L1-L40); default host is from `config.py` (`OLLAMA_HOST`). Chat model is qwen3.5 (size chosen at install based on hardware detection). Tests and tools assume Ollama can be mocked.
+- **Models & LLM runtime**: Ollama integration is in [utils/ollama_client.py](utils/ollama_client.py#L1-L40); default host is from `config.py` (`OLLAMA_HOST`). Chat model is `snflwr.ai`, a local wrapper (`models/Snflwr_AI_Kids.modelfile`) over `gemma4:e4b` by default; small-RAM boxes fall back to a qwen3.5 tier, and ≥26GB GPUs can opt into gemma4:31b (`SNFLWR_ENABLE_GEMMA_31B`). The safety classifier is `llama-guard3:8b` (fallback `:1b`). Tests and tools assume Ollama can be mocked.
 - **Frontend**: Open WebUI fork at `frontend/open-webui/`. Snflwr-specific glue belongs under `frontend/snflwr-bridge/` or `api/` middleware — do NOT modify Open WebUI core files directly.
 
 **Developer Workflows (explicit commands)**:

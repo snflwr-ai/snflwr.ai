@@ -60,14 +60,14 @@ enterprise/build.sh
 ```
 
 The build script detects your server hardware and prompts you to select:
-- **Chat model** (Qwen3 family) — sized to your server RAM
-- **Safety classifier** (Meta Llama Guard) — `llama-guard3:1b` or `llama-guard3:8b`
+- **Chat model** — `gemma4:e4b` default backbone (small servers fall back to a qwen3.5 tier; ≥26GB GPUs can opt into gemma4:31b)
+- **Safety classifier** (Meta Llama Guard) — `llama-guard3:8b` default, `llama-guard3:1b` small-hardware fallback
 
 The LLM safety classifier is **mandatory** for enterprise deployments and cannot be disabled. It runs on every message alongside the deterministic pattern-matching pipeline.
 
 For non-interactive builds (CI/CD):
 ```bash
-enterprise/build.sh --model qwen3.5:27b --safety llama-guard3:8b
+enterprise/build.sh --model gemma4:e4b --safety llama-guard3:8b
 enterprise/build.sh --auto    # auto-select based on server RAM
 ```
 

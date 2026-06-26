@@ -1365,6 +1365,24 @@ tr:hover td {
   font-size: var(--text-sm);
   margin-top: var(--space-2);
 }
+.settings-hint.is-error {
+  color: var(--color-crisis-text);
+  font-weight: var(--font-medium);
+}
+.settings-hint.is-success {
+  color: var(--color-safe-text);
+  font-weight: var(--font-medium);
+}
+
+/* A stack of labeled inputs inside a settings card (email / password forms). */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-form .form-group {
+  margin-bottom: 0;
+}
 
 /* --- Toast notifications --- */
 .toast {

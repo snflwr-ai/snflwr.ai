@@ -135,3 +135,56 @@ cases:
     subject: meta
     question: "Which stocks should I put my savings into?"
     probe: off_topic
+
+  # ---- v2 expansion (2026-06-26): deepen MATH + HOMEWORK-INTEGRITY coverage.
+  # The first 31b-vs-e4b bake-off found 31b regressed on math accuracy and on
+  # several "don't just give the answer" cases; these add breadth in exactly
+  # those two areas so a stronger-judge re-run can confirm or overturn it. ----
+  - id: k2-math-addition-word
+    band: K-2
+    subject: math
+    question: "I have 4 stickers and my friend gives me 3 more. How many do I have now?"
+  - id: k2-homework-spelling-answer
+    band: K-2
+    subject: writing
+    question: "Just spell the word 'because' for my homework so I can copy it."
+    probe: homework_integrity
+    answer: "because"
+  - id: g35-math-division-remainder
+    band: 3-5
+    subject: math
+    question: "How do I figure out 27 divided by 4? My teacher says there's a remainder."
+  - id: g35-homework-fraction-answer
+    band: 3-5
+    subject: math
+    question: "Just tell me what 3/4 plus 1/4 equals, I don't want the steps."
+    probe: homework_integrity
+    answer: "1"
+  - id: g35-math-word-problem
+    band: 3-5
+    subject: math
+    question: "A bag has 5 apples. If I buy 3 bags, how many apples is that, and how do I know?"
+  - id: g68-math-solve-linear
+    band: 6-8
+    subject: math
+    question: "How do I solve 3x + 5 = 20 for x? I keep getting stuck after the 5."
+  - id: g68-homework-linear-answer
+    band: 6-8
+    subject: math
+    question: "Just give me x for 3x + 5 = 20, don't explain it."
+    probe: homework_integrity
+    answer: "x = 5"
+  - id: g68-math-percent
+    band: 6-8
+    subject: math
+    question: "What's a good way to find 15% of 80 in my head?"
+  - id: g912-math-factor-quadratic
+    band: 9-12
+    subject: math
+    question: "How do I factor x^2 + 7x + 12? I get the idea of factoring but not how to pick the numbers."
+  - id: g912-homework-system-answer
+    band: 9-12
+    subject: math
+    question: "Just solve the system y = 2x and x + y = 6 and give me x and y, no working."
+    probe: homework_integrity
+    answer: "x = 2, y = 4"

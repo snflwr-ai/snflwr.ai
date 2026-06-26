@@ -6,6 +6,7 @@ OWU's OLLAMA_BASE_URL points at snflwr-api.  Non-chat Ollama API calls
 real Ollama backend configured in system_config.OLLAMA_PROXY_TARGET.
 """
 
+import asyncio
 import json as _json
 import time
 from datetime import datetime, timezone
@@ -318,6 +319,20 @@ def _ollama_block_stream_bytes(model: str, block_message: str) -> bytes:
     return chunk.encode()
 
 
+# Hold-back streaming: how much text to accumulate before the FIRST output-safety
+# check. A sentence boundary triggers it sooner (fast first flush); the char cap
+# guarantees a long unbroken stream still gets vetted promptly.
+_FIRST_CHECKPOINT_CHARS = 160
+
+
+def _first_checkpoint_ready(text: str) -> bool:
+    """True once enough answer text has accumulated to run the first check_output:
+    a sentence boundary (after a little content) or the char cap."""
+    if len(text) >= _FIRST_CHECKPOINT_CHARS:
+        return True
+    return len(text) >= 12 and any(p in text for p in ".!?")
+
+
 async def _stream_chat_from_ollama(
     body: bytes, headers: dict
 ) -> StreamingResponse | JSONResponse:
@@ -611,6 +626,88 @@ async def proxy_chat(
         for k, v in request.headers.items()
         if k.lower() not in ("host", "content-length")
     }
+
+    if stream and system_config.CHAT_STREAMING_ENABLED:
+        # Hold-back streaming: flush each part only AFTER check_output has vetted
+        # the text-so-far, so the child never receives an un-vetted token. Two
+        # checkpoints (first sentence, then the remainder at stream end) keep it
+        # to ~+1 output-classifier call vs the buffered path. Off by default
+        # (system_config.CHAT_STREAMING_ENABLED) — enabled only where the GPU has
+        # headroom; the buffered path below is the single-GPU default.
+        from safety.pipeline import safety_pipeline
+
+        async def _vet(text: str):
+            # check_output is sync (CPU + a blocking classifier call) — run it off
+            # the event loop so it doesn't stall other concurrent requests.
+            return await asyncio.to_thread(
+                safety_pipeline.check_output,
+                text=text,
+                age=age,
+                profile_id=profile_id,
+            )
+
+        def _fallback_for(out_result) -> str:
+            return (
+                out_result.modified_content
+                or safety_pipeline.get_safe_response(out_result)
+                or "I'm not able to share that. Let's try something else!"
+            )
+
+        def _emit_block(out_result, text) -> None:
+            _record_safety_incident(profile_id, out_result, text)
+            _trace["safety"] = {
+                "category": str(out_result.category),
+                "severity": str(out_result.severity),
+                "blocked_layer": "output",
+            }
+            _emit_trace()
+
+        async def _holdback_stream():
+            collected: list[bytes] = []
+            flushed = 0
+            checkpoint_done = False
+            try:
+                async for chunk in _stream_chunks_from_ollama(body_bytes, fwd_headers):
+                    collected.append(chunk)
+                    if checkpoint_done:
+                        continue
+                    text = _extract_text_from_ndjson_chunks(collected)
+                    if not _first_checkpoint_ready(text):
+                        continue
+                    res = await _vet(text)
+                    if not res.is_safe:
+                        # Nothing flushed yet — replace the whole response.
+                        _emit_block(res, text)
+                        yield _ollama_block_stream_bytes(model, _fallback_for(res))
+                        return
+                    for c in collected[flushed:]:
+                        yield c
+                    flushed = len(collected)
+                    checkpoint_done = True
+
+                # Stream done — vet the FULL text before flushing the remainder.
+                full = _extract_text_from_ndjson_chunks(collected)
+                res = await _vet(full)
+                if not res.is_safe:
+                    # The un-flushed remainder is un-vetted → withhold it and send
+                    # a safe fallback for the rest. Already-flushed content passed
+                    # the checkpoint check, so no unsafe token ever reached the child.
+                    _emit_block(res, full)
+                    yield _ollama_block_stream_bytes(model, _fallback_for(res))
+                    return
+                for c in collected[flushed:]:
+                    yield c
+                _trace["blocked"] = False
+                _trace["safety"] = {"blocked_layer": None}
+                _emit_trace()
+            except httpx.ConnectError:
+                _trace["safety"] = {"blocked_layer": "error"}
+                _emit_trace()
+                yield _ollama_block_stream_bytes(
+                    model, "The tutor is unavailable right now. Please try again."
+                )
+
+        return StreamingResponse(_holdback_stream(), media_type="application/x-ndjson")
 
     if stream:
         try:

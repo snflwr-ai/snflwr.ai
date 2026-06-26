@@ -105,10 +105,17 @@ def mock_enc():
     return enc
 
 
+# After the god-file split, read/query methods (e.g. search_conversations) live
+# in the queries submodule and resolve safety_config from THAT namespace, so the
+# store fixtures patch it in both the facade and queries.
+_cs_queries = sys.modules["storage.conversation_store.queries"]
+
+
 @pytest.fixture
 def store(mock_db, mock_enc):
     """ConversationStore with mock DB and encryption, encryption disabled."""
-    with patch.object(_cs_module, "safety_config") as mock_cfg:
+    with patch.object(_cs_module, "safety_config") as mock_cfg, \
+         patch.object(_cs_queries, "safety_config", new=mock_cfg):
         mock_cfg.ENCRYPT_CONVERSATIONS = False
         s = ConversationStore(db=mock_db, encryption=mock_enc)
         yield s, mock_db, mock_enc, mock_cfg
@@ -117,7 +124,8 @@ def store(mock_db, mock_enc):
 @pytest.fixture
 def store_enc(mock_db, mock_enc):
     """ConversationStore with mock DB and encryption, encryption enabled."""
-    with patch.object(_cs_module, "safety_config") as mock_cfg:
+    with patch.object(_cs_module, "safety_config") as mock_cfg, \
+         patch.object(_cs_queries, "safety_config", new=mock_cfg):
         mock_cfg.ENCRYPT_CONVERSATIONS = True
         s = ConversationStore(db=mock_db, encryption=mock_enc)
         yield s, mock_db, mock_enc, mock_cfg

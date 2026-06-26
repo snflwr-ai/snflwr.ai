@@ -3,8 +3,8 @@
 
 # Production Readiness Assessment: Local Deployment
 
-**Date**: 2026-03-02
-**Scope**: Local deployment (bare-metal, single-node, Docker Compose)
+**Date**: 2026-03-02 (§1–10) · **Updated**: 2026-06-26 (§11 — GPU/model runtime & deployment methods)
+**Scope**: Local deployment (bare-metal, single-node, Docker Compose) + GPU runtime & home/enterprise deployment methods
 **Overall Grade**: **B+ (85/100)** -- Strong foundations, actionable gaps remain
 
 ---
@@ -14,6 +14,8 @@
 snflwr.ai demonstrates mature production engineering in its security architecture, COPPA/FERPA compliance controls, and fail-closed safety pipeline. The codebase is well-structured with clear separation of concerns across `api/`, `core/`, `safety/`, `storage/`, and `utils/`.
 
 **Ready for deployment** with the caveats documented below. The issues found are fixable in a focused sprint -- none are architectural dead-ends.
+
+For the GPU/model runtime and the home-vs-enterprise deployment methods (not covered in the original 2026-03-02 review), see **§11**. In short: **home deployment is finalized** (one-command install, guarded auto-rollback upgrades, self-healing GPU, hold-back streaming); **enterprise** is method-complete with the load-balancer routing/failover validated, but **multi-GPU throughput scaling remains unproven** (it requires real multi-GPU hardware).
 
 ---
 
@@ -239,6 +241,38 @@ Interactive wizard generating `.env.production`. Good secure token generation. *
 
 ---
 
+## 11. Deployment Methods, GPU & Scalability (added 2026-06-26)
+
+> The 2026-03-02 review (§1–10) covered the API/DB/security layers of a single-node deploy. This section covers the GPU/model runtime and the home-vs-enterprise deployment methods, validated on the reference box (1× RTX 3090 Ti, 23 GB).
+
+### Home deployment — FINALIZED (A)
+- One-command install (`install.py`, hardware-aware) + `docker/compose/docker-compose.home.yml` (+ `docker-compose.gpu.yml`).
+- **Hardware-aware model sizing** (`start_snflwr.sh`): the answer model and the llama-guard safety classifier are sized to detected VRAM/RAM so **both stay resident** — every tutor turn runs input+output through the guard, so co-residency avoids per-turn reload thrash.
+- **Guarded upgrades** (`deploy.sh --upgrade <owui|ollama|model>`, `scripts/guarded_upgrade.sh`): pull → snapshot → swap → smoke-test (tutoring + safety canary) → **auto-rollback** on failure. Ollama pinned off `:latest`.
+- **Self-healing GPU** (`scripts/gpu_watchdog.sh`): after a host `daemon-reload`/driver update the NVIDIA Container Toolkit can silently drop the Ollama container's GPU, making the tutor run ~20× slower on CPU **undetected**. The watchdog detects host-has-GPU-but-container-can't-see-it and auto-restarts (cooldown-guarded). Single biggest real-world reliability fix.
+- **Hold-back streaming** (`CHAT_STREAMING_ENABLED`): first vetted token at ~3.5 s vs ~11.5 s buffered, with the safety pipeline still vetting the held-back text before flush.
+
+### GPU / model topology (reference box: 1× 3090 Ti, 23 GB)
+- Live tutor = `snflwr.ai` (Modelfile-wrapped **gemma4:e4b**, ~10 GB) + **llama-guard3:8b** classifier (~5 GB), both resident — comfortable on a single ≤24 GB card with concurrency headroom.
+- **Opt-in `gemma4:31b` tier** (`SNFLWR_ENABLE_GEMMA_31B`): a stronger-judge bake-off (claude-opus-4-8, 34 cases) found 31b and e4b **near-tied on quality** (99.3 vs 98.5), so 31b is not a quality requirement. Gated at **VRAM ≥ 26 GB**: 31b (~19 GB) cannot co-reside with the full 8b guard (~5 GB) on a ≤24 GB card, and below 26 GB the GPU would thrash or silently downgrade the safety classifier to `llama-guard3:1b`. On a single ≤24 GB card, keep e4b.
+- **Single-GPU throughput ceiling**: ~13–15 tutor turns/min, and it **plateaus** — concurrency raises per-turn latency, not throughput. Scaling is horizontal (more GPUs), not a bigger model or more concurrency per card.
+
+### Enterprise deployment — METHOD COMPLETE, throughput scaling UNPROVEN (B+)
+- Full k8s manifest set (`enterprise/k8s/`: api/ollama/postgres/redis/celery/ingress + Prometheus/Grafana/Alertmanager). GPU autoscaling corrected to DCGM GPU-util (not CPU/mem HPA); images pinned.
+- **Horizontal scale-out** = nginx LB → N Ollama replicas (`docker-compose.ollama-cluster.yml`), one model per GPU.
+- **Routing layer VALIDATED** on the single-GPU box (`docker-compose.ollama-cluster.singlegpu.yml`, 2 replicas sharing GPU 0, models mounted read-only from the live volume):
+  - Fan-out: 40 requests round-robined **21/20** across two replicas.
+  - Failover: one replica down → **20/20 requests still 200** (LB routed to the survivor, zero dropped).
+  - End-to-end `/api/chat` traverses the LB on both replicas.
+- **Still unproven**: actual throughput **scaling** — both test replicas shared one GPU, so turns/min did not increase. Confirming ~linear scaling with GPU count requires a genuine multi-GPU host.
+- Fixed a latent deploy-blocker: the cluster compose referenced an unbuilt `snflwr-ollama:latest` image (now pinned `ollama/ollama:0.30.10`).
+
+### Remaining for enterprise sign-off
+- [ ] **Multi-GPU throughput load test** (2–3 real GPUs) confirming turns/min scales with cards. The single-GPU harness is ready — point `device_ids` at the cards and rerun against the LB endpoint.
+- [ ] **License enforcement go-live** (`LICENSE_ENFORCED` currently `false`; offline Ed25519-token gate built, Phases 1–2).
+
+---
+
 ## Scorecard
 
 | Area | Grade | Notes |
@@ -253,6 +287,8 @@ Interactive wizard generating `.env.production`. Good secure token generation. *
 | Test Suite | B+ | 98% pass rate, 59% coverage, test-only failures |
 | Safety Pipeline | A | Fail-closed, 95% coverage |
 | Compliance | A- | Strong COPPA/FERPA controls |
+| GPU/Model Runtime | A- | Self-healing GPU, guarded upgrades, streaming; e4b+8b-guard validated on 1 card (§11) |
+| Deployment Methods | B+ | Home finalized; enterprise routing/failover validated, multi-GPU throughput unproven (§11) |
 | **Overall** | **B+ (85/100)** | |
 
 ---

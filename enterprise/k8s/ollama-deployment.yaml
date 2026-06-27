@@ -60,7 +60,25 @@ spec:
           periodSeconds: 5
       volumes:
       - name: ollama-data
-        emptyDir: {}  # Use persistent volume in production
+        # Persist the model store so a pod restart does NOT re-pull ~10-20GB of
+        # models (and re-warm cold). NOTE: this is a Deployment with replicas: 1,
+        # so a single RWO PVC is correct. When you scale to multiple GPU nodes,
+        # convert this to a StatefulSet with volumeClaimTemplates so each GPU pod
+        # gets its OWN model cache (an RWO PVC cannot be shared across nodes).
+        persistentVolumeClaim:
+          claimName: ollama-models
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: snflwr-ai
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi   # room for gemma4:e4b (~10GB) + llama-guard + headroom
 ---
 apiVersion: v1
 kind: Service

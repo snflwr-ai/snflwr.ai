@@ -62,11 +62,28 @@ WantedBy=timers.target
 
 `systemctl enable --now snflwr-backup.timer`
 
-**Enterprise (cron)**
+**Enterprise — bare-metal (cron)**
 
 ```
 */15 * * * * /opt/snflwr/.venv/bin/python /opt/snflwr/scripts/backup_database.py backup >> /var/log/snflwr-backup.log 2>&1
 ```
+
+**Enterprise — Kubernetes (CronJob)**
+
+The k8s stack ships a daily backup CronJob (`enterprise/k8s/backup-cronjob.yaml`)
+that runs `backup_database.py backup` in the API image against the shared
+ConfigMap/Secret, writing to a `snflwr-backups` PVC (off-host-capable via the
+rclone env). Apply it with the rest of `enterprise/k8s/` and tighten the schedule
+to your RPO:
+
+```
+kubectl apply -f enterprise/k8s/backup-cronjob.yaml
+kubectl -n snflwr-ai get cronjob snflwr-db-backup
+kubectl -n snflwr-ai create job --from=cronjob/snflwr-db-backup backup-manual   # ad-hoc run
+```
+
+> The home stack schedules backups with a compose sidecar (`backup-cron`); the
+> heartbeat + operator-alert-on-failure described below apply to all three.
 
 ### Off-host destination
 

@@ -375,9 +375,18 @@ class _SystemConfig:
         return generated
 
     def is_production(self) -> bool:
-        """Check if running in production environment"""
-        environment = os.getenv("ENVIRONMENT", "development").lower()
-        return environment in ("production", "prod", "staging")
+        """Check if running in production environment.
+
+        Honors BOTH ``ENVIRONMENT`` and ``SNFLWR_ENV`` — historically the active
+        gate read only ``ENVIRONMENT`` while a separate validator read only
+        ``SNFLWR_ENV``, so an operator who set just ``SNFLWR_ENV=production`` could
+        silently skip the production security gate. Treat it as production if
+        EITHER var says so (fail-safe)."""
+        envs = (
+            os.getenv("ENVIRONMENT", "development").lower(),
+            os.getenv("SNFLWR_ENV", "").lower(),
+        )
+        return any(e in ("production", "prod", "staging") for e in envs)
 
     def is_production_like(self) -> bool:
         """Check if configuration suggests production-like deployment"""
@@ -621,9 +630,14 @@ class ProductionConfigValidator:
         errors: List[str] = []
         warnings_list: List[str] = []
 
-        snflwr_env = os.getenv("SNFLWR_ENV", "").lower()
-        is_prod = snflwr_env == "production"
-        is_prod_like = snflwr_env in {"staging", "production"}
+        # Honor BOTH ENVIRONMENT and SNFLWR_ENV (see is_production) so neither var
+        # can silently skip these checks.
+        envs = (
+            os.getenv("ENVIRONMENT", "").lower(),
+            os.getenv("SNFLWR_ENV", "").lower(),
+        )
+        is_prod = any(e in {"production", "prod"} for e in envs)
+        is_prod_like = any(e in {"staging", "production", "prod"} for e in envs)
 
         # Internal API Key
         internal_key = os.getenv("INTERNAL_API_KEY", "snflwr-internal-dev-key")

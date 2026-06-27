@@ -297,6 +297,29 @@ kubectl delete namespace snflwr-ai
 - [ ] Configure HPA based on load testing
 - [ ] Test disaster recovery procedures
 
+## Known limitations (before a large production rollout)
+
+Recently hardened (✅): the Ollama model store is now a PersistentVolumeClaim (no
+~10–20GB re-pull on pod restart — see `ollama-deployment.yaml`); scheduled
+in-cluster backups via `backup-cronjob.yaml` (daily, off-host-capable,
+fail-closed); the production Ollama LB (`docker/compose/ollama/nginx.conf`) now
+has passive ejection + active failover.
+
+Still open — decide before scaling beyond a pilot:
+
+- **Stateful tier is single-replica.** `postgres-deployment.yaml` and
+  `redis-deployment.yaml` are `replicas: 1` with no PITR/replication. For real HA
+  use a Postgres operator (e.g. CloudNativePG) and Redis Sentinel/cluster; a
+  PodDisruptionBudget only helps once these run >1 replica.
+- **Multi-GPU Ollama needs a StatefulSet.** The Deployment + RWO PVC is correct
+  for one GPU; per-GPU model caches require a StatefulSet with
+  `volumeClaimTemplates` (an RWO PVC can't be shared across nodes).
+- **GPU-utilization autoscaling is documented, not bundled.** The DCGM-exporter +
+  Prometheus Adapter recipe in `ollama-deployment.yaml` must be installed
+  separately; Ollama scaling is otherwise manual (`kubectl scale`).
+- **Image version drift.** Manifests pin `snflwr-ai/api:v0.1.0` while the home
+  build uses a rolling tag — keep them in sync from one source of truth.
+
 ## Additional Resources
 
 - [Kubernetes Documentation](https://kubernetes.io/docs/)

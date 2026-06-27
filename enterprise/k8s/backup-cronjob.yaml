@@ -1,0 +1,59 @@
+# Scheduled database backup for the enterprise (k8s) stack.
+#
+# The home stack schedules backups with a compose sidecar; the enterprise stack
+# previously had no in-cluster backup schedule (celery-beat exists but nothing
+# wired the backup task to it, and its schedule lives on emptyDir). This CronJob
+# runs `backup_database.py backup` daily, reusing the API image (which has the
+# script + deps) and the same DB config via the shared ConfigMap/Secret.
+#
+# Set OFFHOST_BACKUP_ENABLED + the rclone env in the ConfigMap/Secret to also push
+# backups off-cluster (fail-closed). The backup script's `verify` action and
+# operator-alert-on-failure apply here too.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: snflwr-db-backup
+  namespace: snflwr-ai
+spec:
+  schedule: "0 3 * * *"            # daily 03:00 UTC
+  concurrencyPolicy: Forbid        # never overlap two backups
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+          containers:
+          - name: backup
+            image: snflwr-ai/api:v0.1.0
+            command: ["python", "scripts/backup_database.py", "backup"]
+            envFrom:
+            - configMapRef:
+                name: snflwr-config
+            - secretRef:
+                name: snflwr-secrets
+            volumeMounts:
+            - name: backups
+              mountPath: /app/data/backups
+          volumes:
+          - name: backups
+            persistentVolumeClaim:
+              claimName: snflwr-backups
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: snflwr-backups
+  namespace: snflwr-ai
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi

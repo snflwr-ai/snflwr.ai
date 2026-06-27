@@ -1023,56 +1023,98 @@ class TestSemanticClassifier:
         assert result.category == Category.VIOLENCE
         assert "S1" in result.triggered_keywords
 
-    def test_llama_guard_unsafe_s2_format(self):
-        """Llama Guard 'unsafe\\nS2' format -> SEXUAL."""
-        from safety.pipeline import _SemanticClassifier, Category
+    # ------------------------------------------------------------------ #
+    # Llama Guard 3 S-code mapping — MUST match the REAL llama-guard3
+    # taxonomy (MLCommons hazard categories), not an invented ordering.
+    # Reference: S1 Violent Crimes, S2 Non-Violent Crimes, S3 Sex-Related
+    # Crimes, S4 Child Sexual Exploitation, S5 Defamation, S6 Specialized
+    # Advice, S7 Privacy, S8 Intellectual Property, S9 Indiscriminate
+    # Weapons, S10 Hate, S11 Suicide & Self-Harm, S12 Sexual Content,
+    # S13 Elections.
+    # ------------------------------------------------------------------ #
+
+    def _make_classifier(self, guard_response):
+        from safety.pipeline import _SemanticClassifier
 
         classifier = _SemanticClassifier.__new__(_SemanticClassifier)
         classifier._available = True
         classifier._model = "llama-guard3:8b"
-
         mock_client = MagicMock()
-        mock_client.generate.return_value = (True, "unsafe\nS2", {})
+        mock_client.generate.return_value = (True, guard_response, {})
         classifier._client = mock_client
         classifier._OllamaError = Exception
+        return classifier
 
-        result = classifier.classify("bad content")
-        assert result is not None
-        assert result.category == Category.SEXUAL
+    def test_guard_s2_non_violent_crime_blocks(self):
+        """S2 (Non-Violent Crimes) blocks (not SEXUAL — the old mapping was wrong)."""
+        from safety.pipeline import Category
 
-    def test_llama_guard_unsafe_s5_self_harm(self):
-        """Llama Guard S5 -> SELF_HARM."""
-        from safety.pipeline import _SemanticClassifier, Category
+        result = self._make_classifier("unsafe\nS2").classify("how do I shoplift")
+        assert result is not None and result.is_safe is False
+        assert result.category != Category.SEXUAL
 
-        classifier = _SemanticClassifier.__new__(_SemanticClassifier)
-        classifier._available = True
-        classifier._model = "llama-guard3:8b"
+    def test_guard_s3_maps_to_sexual(self):
+        """S3 = Sex-Related Crimes -> SEXUAL."""
+        from safety.pipeline import Category
 
-        mock_client = MagicMock()
-        mock_client.generate.return_value = (True, "unsafe\nS5", {})
-        classifier._client = mock_client
-        classifier._OllamaError = Exception
+        result = self._make_classifier("unsafe\nS3").classify("x")
+        assert result is not None and result.category == Category.SEXUAL
 
-        result = classifier.classify("self harm text")
-        assert result is not None
-        assert result.category == Category.SELF_HARM
+    def test_guard_s4_maps_to_exploitation(self):
+        """S4 = Child Sexual Exploitation -> EXPLOITATION (most critical category)."""
+        from safety.pipeline import Category
 
-    def test_llama_guard_unsafe_s10_drugs(self):
-        """Llama Guard S10 -> DRUGS."""
-        from safety.pipeline import _SemanticClassifier, Category
+        result = self._make_classifier("unsafe\nS4").classify("x")
+        assert result is not None and result.category == Category.EXPLOITATION
 
-        classifier = _SemanticClassifier.__new__(_SemanticClassifier)
-        classifier._available = True
-        classifier._model = "llama-guard3:8b"
+    def test_guard_s5_defamation_is_exempt(self):
+        """S5 = Defamation — NOT a child-safety hazard; classifier must not block."""
+        result = self._make_classifier("unsafe\nS5").classify("x")
+        assert result is None
 
-        mock_client = MagicMock()
-        mock_client.generate.return_value = (True, "unsafe\nS10", {})
-        classifier._client = mock_client
-        classifier._OllamaError = Exception
+    def test_guard_s6_specialized_advice_is_exempt(self):
+        """S6 = Specialized Advice (medical/legal/financial). For a K-12 *tutor*,
+        learning about such topics is the core use case, not a hazard. This is the
+        regression for the AVRT/AVNRT cardiology false-positive: llama-guard3
+        flagged advanced medical content S6, which must NOT block."""
+        result = self._make_classifier("unsafe\nS6").classify(
+            "teach me about AVRT and AVNRT during an EP study"
+        )
+        assert result is None
 
-        result = classifier.classify("drug text")
-        assert result is not None
-        assert result.category == Category.DRUGS
+    def test_guard_s9_maps_to_weapons(self):
+        """S9 = Indiscriminate Weapons -> WEAPONS."""
+        from safety.pipeline import Category
+
+        result = self._make_classifier("unsafe\nS9").classify("x")
+        assert result is not None and result.category == Category.WEAPONS
+
+    def test_guard_s10_maps_to_bullying_hate(self):
+        """S10 = Hate -> BULLYING (the old mapping wrongly said DRUGS)."""
+        from safety.pipeline import Category
+
+        result = self._make_classifier("unsafe\nS10").classify("x")
+        assert result is not None and result.category == Category.BULLYING
+
+    def test_guard_s11_maps_to_self_harm(self):
+        """S11 = Suicide & Self-Harm -> SELF_HARM (the old mapping wrongly said
+        BULLYING — this is what mislabeled the cardiology FP as 'bullying')."""
+        from safety.pipeline import Category
+
+        result = self._make_classifier("unsafe\nS11").classify("x")
+        assert result is not None and result.category == Category.SELF_HARM
+
+    def test_guard_s12_maps_to_sexual(self):
+        """S12 = Sexual Content -> SEXUAL."""
+        from safety.pipeline import Category
+
+        result = self._make_classifier("unsafe\nS12").classify("x")
+        assert result is not None and result.category == Category.SEXUAL
+
+    def test_guard_s13_elections_is_exempt(self):
+        """S13 = Elections — not a child-safety hazard; must not block."""
+        result = self._make_classifier("unsafe\nS13").classify("x")
+        assert result is None
 
     def test_llama_guard_unsafe_no_code(self):
         """Llama Guard 'unsafe' with no category code -> defaults to VIOLENCE."""
@@ -1230,21 +1272,28 @@ class TestSemanticClassifier:
         result = classifier.classify("What is math?")
         assert result is None
 
-    def test_build_prompt_with_age(self):
-        """Prompt should include student age when provided."""
+    def test_build_prompt_is_bare_message_native_format(self):
+        """llama-guard3 is a specialized classifier that responds in its OWN native
+        format from its built-in template. Wrapping the message in a custom JSON /
+        age-framed prompt (the old behavior) takes the model out of distribution and
+        causes erratic false positives (the AVRT/AVNRT cardiology FP). The prompt we
+        send MUST be just the bare student message so ollama applies the model's
+        native Llama-Guard template."""
         from safety.pipeline import _SemanticClassifier
 
-        prompt = _SemanticClassifier._build_prompt("hello", age=10)
-        assert "Student age: 10" in prompt
-        assert "K-12" in prompt
-        assert "hello" in prompt
+        prompt = _SemanticClassifier._build_prompt("teach me about AVRT", age=9)
+        assert prompt.strip() == "teach me about AVRT"
+        # No custom-prompt scaffolding that would confuse llama-guard3:
+        for forbidden in ("JSON", "Categories", "Student age", "K-12", "classifier"):
+            assert forbidden not in prompt
 
-    def test_build_prompt_without_age(self):
-        """Prompt should say 'Age unknown' when age is None."""
+    def test_build_prompt_ignores_age(self):
+        """Age must not be injected into the guard prompt (age-appropriateness is the
+        deterministic age-gate's job; age-framing here caused FPs for young ages)."""
         from safety.pipeline import _SemanticClassifier
 
-        prompt = _SemanticClassifier._build_prompt("hello", age=None)
-        assert "Age unknown" in prompt
+        assert _SemanticClassifier._build_prompt("hello", age=7) == "hello"
+        assert _SemanticClassifier._build_prompt("hello", age=None) == "hello"
 
     def test_init_no_ollama_import(self):
         """When ollama_client is not importable, classifier marks itself unavailable."""

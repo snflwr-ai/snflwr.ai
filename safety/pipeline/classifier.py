@@ -278,35 +278,44 @@ class _SemanticClassifier:
 
     @staticmethod
     def _build_prompt(text: str, age: Optional[int]) -> str:
-        age_ctx = f"Student age: {age}" if age else "Age unknown"
-        return (
-            "You are a content safety classifier for a K-12 educational platform "
-            "(COPPA/FERPA compliant). Classify the following student message.\n\n"
-            f"{age_ctx}\n\n"
-            f'Message: "{text}"\n\n'
-            "Categories: violence, self_harm, exploitation, sexual, drugs, weapons, "
-            "pii, bullying, bypass_attempt, age_inappropriate, acceptable\n\n"
-            "Respond ONLY with valid JSON (no markdown, no extra text):\n"
-            '{"safe": true/false, "category": "...", "confidence": 0.0-1.0, '
-            '"reason": "brief explanation"}'
-        )
+        """Return the bare student message for the Llama Guard model.
 
-    # Llama Guard 3 category mapping (S1-S13 codes)
+        llama-guard3 is a *specialized* safety classifier: it has its own chat
+        template baked into the Modelfile and responds in its native
+        ``safe`` / ``unsafe\\nS<n>`` format using the MLCommons hazard taxonomy.
+        Wrapping the message in a custom JSON / age-framed instruction prompt
+        takes the model out of distribution and produces erratic false positives
+        (e.g. advanced K-12 medical/cardiology questions wrongly flagged) — so we
+        pass only the bare message and let ollama apply the model's own template.
+        Age is intentionally ignored here; age-appropriateness is enforced by the
+        deterministic age-gate stage, and age-framing here caused the FPs.
+        """
+        return text
+
+    # Llama Guard 3 S-code -> internal Category mapping.
+    # These S-codes are the REAL llama-guard3 (MLCommons) hazard taxonomy:
+    #   S1 Violent Crimes, S2 Non-Violent Crimes, S3 Sex-Related Crimes,
+    #   S4 Child Sexual Exploitation, S5 Defamation, S6 Specialized Advice,
+    #   S7 Privacy, S8 Intellectual Property, S9 Indiscriminate Weapons,
+    #   S10 Hate, S11 Suicide & Self-Harm, S12 Sexual Content, S13 Elections.
     _GUARD_CATEGORIES = {
         "S1": Category.VIOLENCE,
-        "S2": Category.SEXUAL,
-        "S3": Category.WEAPONS,
-        "S4": Category.WEAPONS,
-        "S5": Category.SELF_HARM,
-        "S6": Category.EXPLOITATION,
-        "S7": Category.EXPLOITATION,
-        "S8": Category.PII,
-        "S9": Category.BYPASS_ATTEMPT,
-        "S10": Category.DRUGS,
-        "S11": Category.BULLYING,
-        "S12": Category.VIOLENCE,
-        "S13": Category.AGE_INAPPROPRIATE,
+        "S2": Category.VIOLENCE,  # non-violent crimes: block (no dedicated crime cat)
+        "S3": Category.SEXUAL,
+        "S4": Category.EXPLOITATION,  # child sexual exploitation — most critical
+        "S7": Category.PII,  # privacy
+        "S9": Category.WEAPONS,
+        "S10": Category.BULLYING,  # hate / harassment
+        "S11": Category.SELF_HARM,  # suicide & self-harm
+        "S12": Category.SEXUAL,
     }
+
+    # llama-guard3 categories that are NOT child-safety hazards for an
+    # *educational* tutor. Blocking these produced false positives (e.g. S6
+    # flagged students LEARNING about medical/legal/financial topics — the
+    # core educational use case). The deterministic stages + the tutor's own
+    # guardrails handle genuinely dangerous specifics. A code here -> allow.
+    _GUARD_EXEMPT = frozenset({"S5", "S6", "S8", "S13"})
 
     def _parse_response(self, raw: str) -> Optional[SafetyResult]:
         """Parse the LLM response. Handles both JSON and Llama Guard plain text format."""
@@ -319,12 +328,26 @@ class _SemanticClassifier:
                 return None  # pass
             if text_lower.startswith("unsafe"):
                 lines = text.split("\n")
-                guard_code = lines[1].strip() if len(lines) > 1 else ""
+                # The second line may list one or more comma-separated S-codes.
+                codes = [
+                    c.strip().upper()
+                    for c in (lines[1].split(",") if len(lines) > 1 else [])
+                    if c.strip()
+                ]
+                # Block on the first genuine-hazard code. If EVERY reported code
+                # is education-exempt (e.g. only S6 Specialized Advice), allow —
+                # learning about medical/legal/financial topics is not a hazard
+                # for a K-12 tutor.
+                hazard_codes = [c for c in codes if c not in self._GUARD_EXEMPT]
+                if codes and not hazard_codes:
+                    return None  # pass — only non-child-safety categories flagged
+                guard_code = hazard_codes[0] if hazard_codes else ""
+                # Unknown / missing code fails CLOSED (default VIOLENCE block).
                 category = self._GUARD_CATEGORIES.get(guard_code, Category.VIOLENCE)
                 return _block(
                     Severity.MAJOR,
                     category,
-                    f"Llama Guard classified as unsafe ({guard_code})",
+                    f"Llama Guard classified as unsafe ({guard_code or 'unspecified'})",
                     stage="classifier",
                     keywords=(guard_code,) if guard_code else (),
                 )

@@ -5,9 +5,26 @@ All notable changes to snflwr.ai will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-06-18
+## [Unreleased] - 2026-06-27
 
 ### Added
+- **Opt-in `gemma4:31b` high-end tutor tier** (`SNFLWR_ENABLE_GEMMA_31B`, GPU
+  ≥26GB so it co-resides with the 8B safety classifier). A stronger-judge bake-off
+  found it ~tied with `gemma4:e4b` on tutoring quality, so it's for big-GPU
+  headroom, not better quality.
+- **Hold-back streaming** (`CHAT_STREAMING_ENABLED`) — streams the tutor reply
+  once the safety pipeline has vetted it (~1–2s first token vs buffered), without
+  weakening output checking.
+- **Self-healing GPU watchdog** (`scripts/gpu_watchdog.sh`) — auto-recovers the
+  silent GPU→CPU fallback that made the tutor run ~20× slower undetected.
+- **Scheduled, verified, alerting backups** — a daily compose `backup-cron`
+  sidecar (home) and a k8s `backup-cronjob.yaml` (enterprise); a `verify`
+  integrity action and operator-alert-on-failure; opt-in fail-closed off-host
+  (rclone) copy.
+- **Required disclosures surfaced in the dashboard** (AI-content + crisis/988
+  footer; Settings "Safety & Disclosures") — `components/disclosures.js`.
+- **Enterprise k8s hardening** — Ollama model `PersistentVolumeClaim` (no
+  ~10–20GB re-pull on restart), daily backup CronJob, and load-balancer failover.
 - **Tutor backbone switched to `gemma4:e4b`** (won the June 2026 tutoring
   bake-off); qwen3.5 tiers remain as the low-RAM fallback.
 - **Guarded upgrade framework** — `./deploy.sh --upgrade <owui|ollama|model>`
@@ -32,8 +49,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open WebUI ↔ proxy authentication (model list was empty); student model
   visibility (students no longer see backbone/backup model variants);
   `deploy.sh` API wait-loop abort; safety-incident log file permissions.
+- **Per-child COPPA consent gate now enforced on the native chat route too** —
+  it previously lived only in the Ollama proxy, so an under-13 profile without
+  verified consent could reach the tutor via `/api/chat/send`. Shared, fail-closed
+  logic in `core/coppa_gate.py`; both paths use it.
 
 ### Security
+- **Production security gate no longer skippable via env-var inconsistency** —
+  `is_production()` (which drives the prod hardening checks) now honors both
+  `ENVIRONMENT` and `SNFLWR_ENV`; setting only `SNFLWR_ENV=production` previously
+  bypassed the entire gate.
+- **Raw Ollama endpoints locked down** — `/api/generate`, `/api/embed*` (raw,
+  unfiltered completion) and `/api/pull|delete|copy` (model management) are now
+  genuine-admin-only; students can only reach the safety-gated `/api/chat`.
+- **Safety classifier fails closed** when unavailable (`SAFETY_CLASSIFIER_REQUIRED`
+  defaults true; under-13 always blocked).
+- **SMTP/`ADMIN_EMAIL` hard-required in production** — a blank destination/
+  credentials now fails startup instead of silently dropping child-safety and
+  operator alerts.
 - Note: the `[1.0.0]` "AES-256 encryption for data at rest" entry was
   aspirational — at-rest encryption is actually enforced as of this release.
 

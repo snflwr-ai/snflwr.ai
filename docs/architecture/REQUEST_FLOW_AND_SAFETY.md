@@ -32,9 +32,13 @@ snflwr-api  /api/chat  (ollama_proxy.py)   ← THE enforcement point
 Key facts:
 - **Tutoring answers come only from the gemma4 model** (`snflwr.ai` wrapper).
   `llama-guard` is a classifier — it never generates anything the child sees.
-- Students reach the model **only through the proxy** (`ollama_proxy.py`), so
-  enforcement lives there — not in an Open WebUI function the student could
-  toggle.
+- **Both model-reaching paths enforce safety.** Students normally reach the model
+  through the proxy (`ollama_proxy.py`), but the native `/api/chat/send` route
+  (`chat.py`) runs the same safety pipeline **and** the per-child COPPA consent
+  gate, so neither can be skipped by routing. The consent gate is shared between
+  the two paths in `core/coppa_gate.py` (an under-13 profile tutors only once
+  parental consent is verified; fail-closed). Enforcement is in the API — not in
+  an Open WebUI function the student could toggle.
 - **Fail-closed:** a missing/forged role header is treated as a *student*, so
   safety filtering can only increase, never decrease.
 - **Admins bypass** the safety pipeline (for testing/administration). Keep admin

@@ -56,5 +56,14 @@ rest (was silently plaintext). Opt-in `gemma4:31b` high-end tier
 (`SNFLWR_ENABLE_GEMMA_31B`, GPU ≥26GB — quality ≈ e4b, for big-GPU headroom);
 hold-back streaming (`CHAT_STREAMING_ENABLED`) for ~1–2s first-token latency
 without weakening output vetting; self-healing GPU watchdog; cluster LB
-routing/failover validated (multi-GPU throughput still unproven). See
-`CHANGELOG.md` and `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`.
+routing/failover validated (multi-GPU throughput still unproven).
+
+Report-card hardening pass (2026-06-27): per-child COPPA consent gate now enforced
+on **both** the proxy and the native chat route (shared `core/coppa_gate.py`); the
+production security gate honors both `ENVIRONMENT` and `SNFLWR_ENV` (no silent
+bypass); enterprise k8s gains a persistent Ollama model volume, a daily backup
+CronJob, and load-balancer failover; required disclosures surfaced in the
+dashboard; SMTP/ADMIN_EMAIL hard-required in production so safety alerts can't be
+silently dropped.
+
+See `CHANGELOG.md` and `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`.

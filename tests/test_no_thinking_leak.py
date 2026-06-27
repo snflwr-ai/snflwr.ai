@@ -41,7 +41,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODELFILE_PATH = REPO_ROOT / "models" / "Snflwr_AI_Kids.modelfile"
 
@@ -86,26 +85,40 @@ class TestSnflwrBackendDisablesThinking:
         profile = self._make_profile(parent_id=auth_session.user_id)
 
         safe_in = SafetyResult(
-            is_safe=True, severity=Severity.NONE, category=Category.VALID,
-            reason="", triggered_keywords=(), stage="none",
+            is_safe=True,
+            severity=Severity.NONE,
+            category=Category.VALID,
+            reason="",
+            triggered_keywords=(),
+            stage="none",
         )
         safe_out = SafetyResult(
-            is_safe=True, severity=Severity.NONE, category=Category.VALID,
-            reason="", triggered_keywords=(), stage="none",
+            is_safe=True,
+            severity=Severity.NONE,
+            category=Category.VALID,
+            reason="",
+            triggered_keywords=(),
+            stage="none",
         )
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline") as mock_sp, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client") as mock_oc, \
-             patch("api.routes.chat.conversation_store"), \
-             patch(
-                 "api.routes.chat._get_or_create_conversation_id",
-                 return_value="conv-1",
-             ):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.coppa_consent_block_reason", return_value=None
+        ), patch("api.routes.chat.safety_pipeline") as mock_sp, patch(
+            "api.routes.chat.session_manager"
+        ) as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ) as mock_oc, patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id",
+            return_value="conv-1",
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
             mock_sp.check_input.return_value = safe_in
@@ -139,9 +152,9 @@ class TestSnflwrBackendDisablesThinking:
                 "the response includes a `thinking` field that leaks reasoning "
                 "to the UI."
             )
-            assert kwargs["think"] is False, (
-                f"think kwarg must be False, got {kwargs['think']!r}"
-            )
+            assert (
+                kwargs["think"] is False
+            ), f"think kwarg must be False, got {kwargs['think']!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -161,9 +174,7 @@ class TestProxyAdminBypassDisablesThinking:
 
     @pytest.fixture(scope="class")
     def proxy_source(self) -> str:
-        assert PROXY_PATH.is_file(), (
-            f"Ollama proxy not found at {PROXY_PATH}"
-        )
+        assert PROXY_PATH.is_file(), f"Ollama proxy not found at {PROXY_PATH}"
         return PROXY_PATH.read_text()
 
     def test_admin_bypass_sets_think_false(self, proxy_source: str):
@@ -176,9 +187,9 @@ class TestProxyAdminBypassDisablesThinking:
         # The admin bypass is now gated on a genuine admin session
         # (is_genuine_admin) rather than a forwarded role header, but the
         # bypass branch (which sets think=false) must still exist.
-        assert "is_genuine_admin(session)" in proxy_source, (
-            "The admin-bypass branch is missing from the Ollama proxy."
-        )
+        assert (
+            "is_genuine_admin(session)" in proxy_source
+        ), "The admin-bypass branch is missing from the Ollama proxy."
 
 
 # ---------------------------------------------------------------------------
@@ -201,9 +212,7 @@ class TestModelfileObsoleteThinkingStopsRemoved:
 
     @pytest.fixture(scope="class")
     def modelfile_source(self) -> str:
-        assert MODELFILE_PATH.is_file(), (
-            f"Modelfile not found at {MODELFILE_PATH}"
-        )
+        assert MODELFILE_PATH.is_file(), f"Modelfile not found at {MODELFILE_PATH}"
         return MODELFILE_PATH.read_text()
 
     @pytest.mark.parametrize(

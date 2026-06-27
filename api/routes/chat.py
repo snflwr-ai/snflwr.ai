@@ -19,6 +19,7 @@ from config import system_config
 _resources = _get_resource_profile()
 from api.middleware.auth import VerifySessionAccess, audit_log, get_current_session
 from core.authentication import AuthSession, auth_manager
+from core.coppa_gate import coppa_consent_block_reason
 from core.profile_manager import ProfileManager
 from core.session_manager import SessionError, SessionLimitError, session_manager
 from safety.incident_logger import incident_logger
@@ -320,6 +321,25 @@ async def send_chat_message(
         parent_id = profile.parent_id
         if not skip_safety:
             safety_monitor.start_monitoring(request.profile_id, parent_id)
+
+        # Per-child COPPA consent gate — an under-13 profile may only tutor once
+        # parental consent is verified. Enforced here (not only on the Ollama
+        # proxy) so consent can't be skipped by routing to this native path
+        # (finding C1). Shared, fail-closed logic lives in core.coppa_gate.
+        if not skip_safety:
+            coppa_msg = coppa_consent_block_reason(
+                request.profile_id, fallback_age=profile.age
+            )
+            if coppa_msg is not None:
+                return ChatResponse(
+                    message=coppa_msg,
+                    blocked=True,
+                    block_reason="parental_consent_required",
+                    block_category="coppa",
+                    model=request.model,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    session_id=session.session_id,
+                )
 
         # Unified safety pipeline (pattern matching + semantic classification + age gate)
         if not skip_safety:

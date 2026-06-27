@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from api.middleware.auth import get_current_session, is_genuine_admin
 from config import system_config
 from core.authentication import AuthSession
+from core.coppa_gate import coppa_consent_block_reason
 from utils import observability
 from utils.circuit_breaker import ollama_circuit
 from utils.logger import get_logger
@@ -535,56 +536,14 @@ async def proxy_chat(
         return {"input": pin or 0, "output": out or 0}
 
     # COPPA gate — an under-13 profile may only tutor once per-child parental
-    # consent has been verified (coppa_verified=1). Consent is set per-profile
-    # by /api/parental-consent/verify; it is never granted at profile creation
-    # (finding C1). Only block on a positively-resolved unverified under-13
-    # profile; unknown/synthetic profiles fall through to the safety pipeline.
-    # Fail CLOSED: an under-13 profile tutors only when consent is POSITIVELY
-    # confirmed (coppa_verified=1 from a successful lookup). coppa_verified stays
-    # False on any error/missing row, so a known under-13 profile is blocked when
-    # we cannot confirm consent — a COPPA-lookup failure must not let a child
-    # through. Age comes from the gate row when present, else the best-effort
-    # `age` resolved above; an unknown age (None) still falls through to the
-    # safety pipeline (itself fail-closed on content).
-    gate_age = age
-    coppa_verified = False
-    try:
-        from core.authentication import auth_manager as _am
-
-        rows = _am.db.execute_query(
-            "SELECT age, coppa_verified FROM child_profiles WHERE profile_id = ?",
-            (profile_id,),
-        )
-        if rows:
-            r0 = rows[0]
-            row_age = r0["age"] if isinstance(r0, dict) else r0[0]
-            if row_age is not None:
-                gate_age = row_age
-            coppa_verified = bool(
-                r0["coppa_verified"] if isinstance(r0, dict) else r0[1]
-            )
-    except Exception as exc:  # fail closed for under-13 (see gate_age check below)
-        logger.warning(
-            "COPPA gate lookup failed for %s — failing closed if under-13: %s",
-            profile_id,
-            exc,
-        )
-
-    # isinstance guard: a non-int age (malformed row) is treated as unknown and
-    # falls through to the safety pipeline, rather than raising on the comparison.
-    if isinstance(gate_age, int) and gate_age < 13 and not coppa_verified:
-        logger.info(
-            "COPPA gate blocked under-13 profile %s (consent not verified)",
-            profile_id,
-        )
-        msg = (
-            "A parent needs to confirm permission before this account can "
-            "chat. Please ask a parent to complete the consent step in "
-            "Settings."
-        )
+    # consent has been verified. Shared with the native chat route via
+    # core.coppa_gate so the two model-reaching paths can't drift (finding C1);
+    # fail-closed semantics live in the helper.
+    coppa_msg = coppa_consent_block_reason(profile_id, fallback_age=age)
+    if coppa_msg is not None:
         _trace["safety"] = {"blocked_layer": "coppa"}
         _emit_trace()
-        return JSONResponse(content=_ollama_block_response(model, msg))
+        return JSONResponse(content=_ollama_block_response(model, coppa_msg))
 
     text = _extract_last_user_message(messages)
 

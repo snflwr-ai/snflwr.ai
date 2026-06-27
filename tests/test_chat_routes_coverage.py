@@ -1,43 +1,62 @@
 """
 Tests for api/routes/chat.py — validators, rate limiting, session helpers.
 """
+
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from pydantic import ValidationError
 
-
 VALID_PROFILE = "no_profile_test"  # accepted sentinel
+
+
+@pytest.fixture(autouse=True)
+def _assume_coppa_consent():
+    """These tests exercise the chat route's success / error / model-resolution
+    paths, not the per-child COPPA gate (covered in test_coppa_gate.py and
+    test_coppa_chat_gate.py). The shared `_make_profile()` is an under-13 profile,
+    so without this the gate would correctly block before the path under test —
+    assume consent is granted here."""
+    with patch("api.routes.chat.coppa_consent_block_reason", return_value=None):
+        yield
 
 
 class TestChatRequestValidation:
     def test_valid_message(self):
         from api.routes.chat import ChatRequest
-        req = ChatRequest(message="Hello, can you help me with math?", profile_id=VALID_PROFILE)
+
+        req = ChatRequest(
+            message="Hello, can you help me with math?", profile_id=VALID_PROFILE
+        )
         assert "Hello" in req.message
 
     def test_empty_message_rejected(self):
         from api.routes.chat import ChatRequest
+
         with pytest.raises(ValidationError):
             ChatRequest(message="", profile_id=VALID_PROFILE)
 
     def test_message_too_long_rejected(self):
         from api.routes.chat import ChatRequest
+
         with pytest.raises(ValidationError):
             ChatRequest(message="x" * 10001, profile_id=VALID_PROFILE)
 
     def test_invalid_profile_id_rejected(self):
         from api.routes.chat import ChatRequest
+
         with pytest.raises(ValidationError):
             ChatRequest(message="Hello", profile_id="invalid id with spaces!")
 
     def test_valid_profile_id_sentinels(self):
         from api.routes.chat import ChatRequest
+
         for pid in ["no_profile_test", "safety_required_x", "no_profile_"]:
             req = ChatRequest(message="Hello", profile_id=pid)
             assert req.profile_id == pid
 
     def test_invalid_session_id_rejected(self):
         from api.routes.chat import ChatRequest
+
         with pytest.raises(ValidationError):
             ChatRequest(
                 message="Hello",
@@ -48,6 +67,7 @@ class TestChatRequestValidation:
     def test_valid_session_id_accepted(self):
         import uuid
         from api.routes.chat import ChatRequest
+
         sid = str(uuid.uuid4())
         req = ChatRequest(
             message="Hello",
@@ -58,11 +78,13 @@ class TestChatRequestValidation:
 
     def test_none_session_id_accepted(self):
         from api.routes.chat import ChatRequest
+
         req = ChatRequest(message="Hello", profile_id=VALID_PROFILE, session_id=None)
         assert req.session_id is None
 
     def test_invalid_model_name_rejected(self):
         from api.routes.chat import ChatRequest
+
         with pytest.raises(ValidationError):
             ChatRequest(
                 message="Hello",
@@ -72,6 +94,7 @@ class TestChatRequestValidation:
 
     def test_valid_model_name_accepted(self):
         from api.routes.chat import ChatRequest
+
         req = ChatRequest(
             message="Hello",
             profile_id=VALID_PROFILE,
@@ -84,6 +107,7 @@ class TestChatResponseModel:
     def _make_response(self, **kwargs):
         from api.routes.chat import ChatResponse
         from datetime import datetime, timezone
+
         defaults = {
             "message": "test",
             "blocked": False,
@@ -113,10 +137,13 @@ class TestConversationIdHelper:
     def _run_helper(self, session_id, profile_id):
         from api.routes.chat import _get_or_create_conversation_id
         from unittest.mock import patch, MagicMock
+
         with patch("api.routes.chat.conversation_store") as mock_cs:
             # Simulate no existing conversation → create new one
             mock_cs.db.execute_query.return_value = []
-            mock_cs.create_conversation.return_value = MagicMock(conversation_id="conv-1")
+            mock_cs.create_conversation.return_value = MagicMock(
+                conversation_id="conv-1"
+            )
             try:
                 return _get_or_create_conversation_id(session_id, profile_id)
             except Exception:
@@ -140,6 +167,7 @@ class TestConversationIdHelper:
 class TestChatRateLimit:
     def test_rate_limit_dependency_exists(self):
         from api.routes.chat import check_chat_rate_limit
+
         assert callable(check_chat_rate_limit)
 
 
@@ -149,6 +177,7 @@ class TestChatResponsePossibleFalsePositive:
     def test_chat_response_has_possible_false_positive_field(self):
         """ChatResponse model includes possible_false_positive field."""
         from api.routes.chat import ChatResponse
+
         r = ChatResponse(
             message="blocked",
             blocked=True,
@@ -164,6 +193,7 @@ class TestChatResponsePossibleFalsePositive:
     def test_chat_response_possible_false_positive_true(self):
         """ChatResponse accepts possible_false_positive=True."""
         from api.routes.chat import ChatResponse
+
         r = ChatResponse(
             message="blocked",
             blocked=True,
@@ -179,6 +209,7 @@ class TestChatResponsePossibleFalsePositive:
     def test_blocked_response_passes_pfp_flag_true(self):
         """ChatResponse serialization: possible_false_positive=True is included in JSON output."""
         from api.routes.chat import ChatResponse
+
         r = ChatResponse(
             message="I can help with something else!",
             blocked=True,
@@ -196,6 +227,7 @@ class TestChatResponsePossibleFalsePositive:
     def test_blocked_response_pfp_false_when_not_flagged(self):
         """ChatResponse serialization: possible_false_positive defaults to False."""
         from api.routes.chat import ChatResponse
+
         r = ChatResponse(
             message="I can help with something else!",
             blocked=True,
@@ -223,6 +255,7 @@ class TestPossibleFalsePositiveHandlerWiring:
     def _make_blocked_filter_result(self, possible_false_positive: bool):
         """Build a SafetyResult that represents a blocked message."""
         from safety.pipeline import SafetyResult, Severity, Category
+
         return SafetyResult(
             is_safe=False,
             severity=Severity.MAJOR,
@@ -262,16 +295,21 @@ class TestPossibleFalsePositiveHandlerWiring:
         auth_session = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm_cls, \
-             patch("api.routes.chat.safety_pipeline") as mock_pipeline, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm_cls, patch(
+            "api.routes.chat.safety_pipeline"
+        ) as mock_pipeline, patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ):
 
             mock_pm_cls.return_value.get_profile.return_value = profile
             mock_pipeline.check_input.return_value = filter_result
-            mock_pipeline.get_safe_response.return_value = "I can help with something else!"
+            mock_pipeline.get_safe_response.return_value = (
+                "I can help with something else!"
+            )
 
             mock_session = MagicMock()
             mock_session.session_id = "sess-abc-123"
@@ -306,16 +344,21 @@ class TestPossibleFalsePositiveHandlerWiring:
         auth_session = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm_cls, \
-             patch("api.routes.chat.safety_pipeline") as mock_pipeline, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm_cls, patch(
+            "api.routes.chat.safety_pipeline"
+        ) as mock_pipeline, patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ):
 
             mock_pm_cls.return_value.get_profile.return_value = profile
             mock_pipeline.check_input.return_value = filter_result
-            mock_pipeline.get_safe_response.return_value = "I can help with something else!"
+            mock_pipeline.get_safe_response.return_value = (
+                "I can help with something else!"
+            )
 
             mock_session = MagicMock()
             mock_session.session_id = "sess-abc-123"
@@ -343,6 +386,7 @@ class TestPossibleFalsePositiveHandlerWiring:
 # Helper mixin for handler-level tests that exercise the Ollama response path
 # ---------------------------------------------------------------------------
 
+
 class _HandlerTestBase:
     """Shared helpers for tests that call send_chat_message directly."""
 
@@ -362,12 +406,23 @@ class _HandlerTestBase:
         p.learning_level = "adaptive"
         return p
 
-    def _run_handler(self, *, message="What is 2+2?", profile_id=None,
-                     model="test-model", auth_role="parent",
-                     ollama_success=True, ollama_text="Four!",
-                     ollama_meta=None, profile=None, safety_input_safe=True,
-                     safety_output_safe=True, conversation_store_raises=False,
-                     session_error=None, ollama_error=None):
+    def _run_handler(
+        self,
+        *,
+        message="What is 2+2?",
+        profile_id=None,
+        model="test-model",
+        auth_role="parent",
+        ollama_success=True,
+        ollama_text="Four!",
+        ollama_meta=None,
+        profile=None,
+        safety_input_safe=True,
+        safety_output_safe=True,
+        conversation_store_raises=False,
+        session_error=None,
+        ollama_error=None,
+    ):
         """Call the async handler with mocked dependencies and return the result."""
         import asyncio
         from api.routes.chat import send_chat_message, ChatRequest
@@ -393,31 +448,47 @@ class _HandlerTestBase:
             ),
         }
 
-        with patches["ProfileManager"] as mock_pm, \
-             patches["safety_pipeline"] as mock_sp, \
-             patches["session_manager"] as mock_sm, \
-             patches["safety_monitor"], \
-             patches["incident_logger"], \
-             patches["audit_log"], \
-             patches["ollama_client"] as mock_oc, \
-             patches["conversation_store"] as mock_cs, \
-             patches["_get_or_create_conversation_id"]:
+        with patches["ProfileManager"] as mock_pm, patches[
+            "safety_pipeline"
+        ] as mock_sp, patches["session_manager"] as mock_sm, patches[
+            "safety_monitor"
+        ], patches[
+            "incident_logger"
+        ], patches[
+            "audit_log"
+        ], patches[
+            "ollama_client"
+        ] as mock_oc, patches[
+            "conversation_store"
+        ] as mock_cs, patches[
+            "_get_or_create_conversation_id"
+        ]:
 
             mock_pm.return_value.get_profile.return_value = profile_obj
 
             # Safety pipeline: input check
             if safety_input_safe:
                 from safety.pipeline import SafetyResult, Severity, Category
+
                 safe_result = SafetyResult(
-                    is_safe=True, severity=Severity.NONE, category=Category.VALID,
-                    reason="", triggered_keywords=(), stage="none",
+                    is_safe=True,
+                    severity=Severity.NONE,
+                    category=Category.VALID,
+                    reason="",
+                    triggered_keywords=(),
+                    stage="none",
                 )
                 mock_sp.check_input.return_value = safe_result
             else:
                 from safety.pipeline import SafetyResult, Severity, Category
+
                 unsafe_result = SafetyResult(
-                    is_safe=False, severity=Severity.MAJOR, category=Category.VIOLENCE,
-                    reason="blocked", triggered_keywords=("bad",), stage="keyword",
+                    is_safe=False,
+                    severity=Severity.MAJOR,
+                    category=Category.VIOLENCE,
+                    reason="blocked",
+                    triggered_keywords=("bad",),
+                    stage="keyword",
                 )
                 mock_sp.check_input.return_value = unsafe_result
                 mock_sp.get_safe_response.return_value = "I can't help with that."
@@ -425,9 +496,14 @@ class _HandlerTestBase:
             # Safety pipeline: output check
             if safety_output_safe:
                 from safety.pipeline import SafetyResult, Severity, Category
+
                 safe_out = SafetyResult(
-                    is_safe=True, severity=Severity.NONE, category=Category.VALID,
-                    reason="", triggered_keywords=(), stage="none",
+                    is_safe=True,
+                    severity=Severity.NONE,
+                    category=Category.VALID,
+                    reason="",
+                    triggered_keywords=(),
+                    stage="none",
                 )
                 mock_sp.check_output.return_value = safe_out
 
@@ -436,6 +512,7 @@ class _HandlerTestBase:
             mock_session.session_id = "sess-test-001"
             if session_error:
                 from core.session_manager import SessionError
+
                 mock_sm.get_session.side_effect = SessionError(session_error)
                 mock_sm.get_active_session.side_effect = SessionError(session_error)
             else:
@@ -445,25 +522,38 @@ class _HandlerTestBase:
             # Ollama
             if ollama_error:
                 from utils.ollama_client import OllamaError
+
                 mock_oc.chat.side_effect = OllamaError(ollama_error)
             else:
-                mock_oc.chat.return_value = (ollama_success, ollama_text, ollama_meta or {})
-                mock_oc.list_models.return_value = (True, [{"name": "fallback-model"}], None)
+                mock_oc.chat.return_value = (
+                    ollama_success,
+                    ollama_text,
+                    ollama_meta or {},
+                )
+                mock_oc.list_models.return_value = (
+                    True,
+                    [{"name": "fallback-model"}],
+                    None,
+                )
 
             # Conversation store errors
             if conversation_store_raises:
                 import sqlite3
+
                 mock_cs.add_message.side_effect = sqlite3.Error("db write failed")
 
             request = ChatRequest(message=message, profile_id=profile_id, model=model)
             return asyncio.run(
-                send_chat_message(request=request, auth_session=auth_session, rate_limit_info={})
+                send_chat_message(
+                    request=request, auth_session=auth_session, rate_limit_info={}
+                )
             )
 
 
 # ---------------------------------------------------------------------------
 # Think tag stripping (lines 401-417)
 # ---------------------------------------------------------------------------
+
 
 class TestThinkTagStripping(_HandlerTestBase):
     """Tests for <think>...</think> removal from Ollama responses."""
@@ -508,6 +598,7 @@ class TestThinkTagStripping(_HandlerTestBase):
     def test_empty_after_stripping_returns_503(self):
         """Response that becomes empty after stripping think tags raises 503."""
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc_info:
             self._run_handler(
                 ollama_text="<think>only thinking, no real content</think>",
@@ -518,6 +609,7 @@ class TestThinkTagStripping(_HandlerTestBase):
     def test_whitespace_only_after_stripping_returns_503(self):
         """Response that is only whitespace after stripping think tags raises 503."""
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc_info:
             self._run_handler(
                 ollama_text="<think>thinking</think>   \n\t  ",
@@ -536,12 +628,14 @@ class TestThinkTagStripping(_HandlerTestBase):
 # Error handling (lines 389-392, 505-515)
 # ---------------------------------------------------------------------------
 
+
 class TestErrorHandling(_HandlerTestBase):
     """Tests for error paths in send_chat_message."""
 
     def test_ollama_chat_failure_returns_503(self):
         """When ollama_client.chat returns success=False, return 503."""
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc_info:
             self._run_handler(
                 ollama_success=False,
@@ -554,6 +648,7 @@ class TestErrorHandling(_HandlerTestBase):
     def test_ollama_chat_failure_none_metadata(self):
         """When metadata is None on failure, error message says 'unknown error'."""
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc_info:
             self._run_handler(
                 ollama_success=False,
@@ -566,6 +661,7 @@ class TestErrorHandling(_HandlerTestBase):
     def test_session_error_returns_400(self):
         """SessionError raised during session lookup returns 400."""
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc_info:
             self._run_handler(session_error="session is corrupted")
         assert exc_info.value.status_code == 400
@@ -574,6 +670,7 @@ class TestErrorHandling(_HandlerTestBase):
     def test_ollama_error_returns_503(self):
         """OllamaError exception during chat returns 503."""
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc_info:
             self._run_handler(ollama_error="connection refused")
         assert exc_info.value.status_code == 503
@@ -592,6 +689,7 @@ class TestErrorHandling(_HandlerTestBase):
 # Empty/invalid model handling (lines 128, 336-339)
 # ---------------------------------------------------------------------------
 
+
 class TestModelResolution(_HandlerTestBase):
     """Tests for model name resolution when no model is specified."""
 
@@ -603,21 +701,34 @@ class TestModelResolution(_HandlerTestBase):
         auth = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline") as mock_sp, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client") as mock_oc, \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="conv-1"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ) as mock_sp, patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ) as mock_oc, patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="conv-1"
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
 
             from safety.pipeline import SafetyResult, Severity, Category
-            safe = SafetyResult(is_safe=True, severity=Severity.NONE, category=Category.VALID,
-                                reason="", triggered_keywords=(), stage="none")
+
+            safe = SafetyResult(
+                is_safe=True,
+                severity=Severity.NONE,
+                category=Category.VALID,
+                reason="",
+                triggered_keywords=(),
+                stage="none",
+            )
             mock_sp.check_input.return_value = safe
             mock_sp.check_output.return_value = safe
 
@@ -627,7 +738,11 @@ class TestModelResolution(_HandlerTestBase):
             mock_sm.get_active_session.return_value = mock_session
 
             # list_models returns a model; chat succeeds
-            mock_oc.list_models.return_value = (True, [{"name": "discovered-model"}], None)
+            mock_oc.list_models.return_value = (
+                True,
+                [{"name": "discovered-model"}],
+                None,
+            )
             mock_oc.chat.return_value = (True, "Discovered!", {})
 
             req = ChatRequest(message="Hello there", profile_id="a" * 32, model="")
@@ -647,21 +762,34 @@ class TestModelResolution(_HandlerTestBase):
         auth = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline") as mock_sp, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client") as mock_oc, \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="conv-1"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ) as mock_sp, patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ) as mock_oc, patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="conv-1"
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
 
             from safety.pipeline import SafetyResult, Severity, Category
-            safe = SafetyResult(is_safe=True, severity=Severity.NONE, category=Category.VALID,
-                                reason="", triggered_keywords=(), stage="none")
+
+            safe = SafetyResult(
+                is_safe=True,
+                severity=Severity.NONE,
+                category=Category.VALID,
+                reason="",
+                triggered_keywords=(),
+                stage="none",
+            )
             mock_sp.check_input.return_value = safe
 
             mock_session = MagicMock()
@@ -675,7 +803,9 @@ class TestModelResolution(_HandlerTestBase):
             req = ChatRequest(message="Hello", profile_id="a" * 32, model="")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(
-                    send_chat_message(request=req, auth_session=auth, rate_limit_info={})
+                    send_chat_message(
+                        request=req, auth_session=auth, rate_limit_info={}
+                    )
                 )
 
         assert exc_info.value.status_code == 503
@@ -690,21 +820,34 @@ class TestModelResolution(_HandlerTestBase):
         auth = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline") as mock_sp, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client") as mock_oc, \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="conv-1"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ) as mock_sp, patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ) as mock_oc, patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="conv-1"
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
 
             from safety.pipeline import SafetyResult, Severity, Category
-            safe = SafetyResult(is_safe=True, severity=Severity.NONE, category=Category.VALID,
-                                reason="", triggered_keywords=(), stage="none")
+
+            safe = SafetyResult(
+                is_safe=True,
+                severity=Severity.NONE,
+                category=Category.VALID,
+                reason="",
+                triggered_keywords=(),
+                stage="none",
+            )
             mock_sp.check_input.return_value = safe
 
             mock_session = MagicMock()
@@ -718,7 +861,9 @@ class TestModelResolution(_HandlerTestBase):
             req = ChatRequest(message="Hello", profile_id="a" * 32, model="")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(
-                    send_chat_message(request=req, auth_session=auth, rate_limit_info={})
+                    send_chat_message(
+                        request=req, auth_session=auth, rate_limit_info={}
+                    )
                 )
 
         assert exc_info.value.status_code == 503
@@ -728,6 +873,7 @@ class TestModelResolution(_HandlerTestBase):
 # ---------------------------------------------------------------------------
 # Successful response path (lines 328-500) — exercises the happy path fully
 # ---------------------------------------------------------------------------
+
 
 class TestSuccessfulResponsePath(_HandlerTestBase):
     """Cover the normal success flow including conversation storage and monitoring."""
@@ -755,11 +901,13 @@ class TestSuccessfulResponsePath(_HandlerTestBase):
 # Rate limiter dependency (line 64-80)
 # ---------------------------------------------------------------------------
 
+
 class TestRateLimitDependency:
     """Test the check_chat_rate_limit function."""
 
     def test_rate_limit_allows_request(self):
         from api.routes.chat import check_chat_rate_limit
+
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
         with patch("api.routes.chat.rate_limiter") as mock_rl:
@@ -770,6 +918,7 @@ class TestRateLimitDependency:
     def test_rate_limit_blocks_request(self):
         from api.routes.chat import check_chat_rate_limit
         from fastapi import HTTPException
+
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
         with patch("api.routes.chat.rate_limiter") as mock_rl:
@@ -781,19 +930,24 @@ class TestRateLimitDependency:
     def test_rate_limit_no_client_ip(self):
         """When request.client is None, uses 'unknown' as identifier."""
         from api.routes.chat import check_chat_rate_limit
+
         mock_request = MagicMock()
         mock_request.client = None
         with patch("api.routes.chat.rate_limiter") as mock_rl:
             mock_rl.check_rate_limit.return_value = (True, {})
             check_chat_rate_limit(mock_request)
         mock_rl.check_rate_limit.assert_called_once_with(
-            identifier="unknown", max_requests=100, window_seconds=60, limit_type="chat",
+            identifier="unknown",
+            max_requests=100,
+            window_seconds=60,
+            limit_type="chat",
         )
 
     def test_rate_limit_non_dict_info(self):
         """When info is not a dict, retry_after defaults to 60."""
         from api.routes.chat import check_chat_rate_limit
         from fastapi import HTTPException
+
         mock_request = MagicMock()
         mock_request.client.host = "10.0.0.1"
         with patch("api.routes.chat.rate_limiter") as mock_rl:
@@ -807,20 +961,25 @@ class TestRateLimitDependency:
 # Conversation ID helper — existing-row path (line 55-56)
 # ---------------------------------------------------------------------------
 
+
 class TestConversationIdHelperExistingRow:
     """Cover the branch where an existing conversation row is found."""
 
     def test_existing_row_dict(self):
         """When DB returns a dict row, extract conversation_id by key."""
         from api.routes.chat import _get_or_create_conversation_id
+
         with patch("api.routes.chat.conversation_store") as mock_cs:
-            mock_cs.db.execute_query.return_value = [{"conversation_id": "conv-existing"}]
+            mock_cs.db.execute_query.return_value = [
+                {"conversation_id": "conv-existing"}
+            ]
             result = _get_or_create_conversation_id("sess-1", "prof-1")
         assert result == "conv-existing"
 
     def test_existing_row_tuple(self):
         """When DB returns a tuple row, extract conversation_id by index."""
         from api.routes.chat import _get_or_create_conversation_id
+
         with patch("api.routes.chat.conversation_store") as mock_cs:
             mock_cs.db.execute_query.return_value = [("conv-tuple-123",)]
             result = _get_or_create_conversation_id("sess-2", "prof-2")
@@ -830,6 +989,7 @@ class TestConversationIdHelperExistingRow:
 # ---------------------------------------------------------------------------
 # Authorization / profile edge cases (lines 178-206)
 # ---------------------------------------------------------------------------
+
 
 class TestAuthorizationEdgeCases(_HandlerTestBase):
     """Test profile-not-found, wrong parent, and inactive profile paths."""
@@ -841,21 +1001,29 @@ class TestAuthorizationEdgeCases(_HandlerTestBase):
 
         auth = self._make_auth_session(role="admin")
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline"), \
-             patch("api.routes.chat.session_manager"), \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client") as mock_oc, \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ), patch("api.routes.chat.session_manager"), patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ) as mock_oc, patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
             # get_profile returns None → triggers synthetic ChildProfile creation
             mock_pm.return_value.get_profile.return_value = None
             mock_oc.chat.return_value = (True, "Admin test response", {})
 
-            req = ChatRequest(message="Hello", profile_id="no_profile_testing", model="m")
+            req = ChatRequest(
+                message="Hello", profile_id="no_profile_testing", model="m"
+            )
             result = asyncio.run(
                 send_chat_message(request=req, auth_session=auth, rate_limit_info={})
             )
@@ -871,15 +1039,21 @@ class TestAuthorizationEdgeCases(_HandlerTestBase):
             profile_id = "a" * 32
         auth = self._make_auth_session(role=role)
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline"), \
-             patch("api.routes.chat.session_manager"), \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client"), \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ), patch("api.routes.chat.session_manager"), patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ), patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
             mock_pm.return_value.get_profile.return_value = None
 
@@ -891,6 +1065,7 @@ class TestAuthorizationEdgeCases(_HandlerTestBase):
     def test_profile_not_found_parent_returns_404(self):
         """Non-admin user with unknown profile gets 404."""
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc_info:
             self._run_with_profile_none(role="parent")
         assert exc_info.value.status_code == 404
@@ -898,6 +1073,7 @@ class TestAuthorizationEdgeCases(_HandlerTestBase):
     def test_wrong_parent_returns_403(self):
         """Parent trying to chat for another parent's child gets 403."""
         from fastapi import HTTPException
+
         profile = self._make_profile(parent_id="other-parent")
 
         with pytest.raises(HTTPException) as exc_info:
@@ -908,6 +1084,7 @@ class TestAuthorizationEdgeCases(_HandlerTestBase):
     def test_inactive_profile_returns_403(self):
         """Inactive profile returns 403."""
         from fastapi import HTTPException
+
         profile = self._make_profile()
         profile.is_active = False
 
@@ -921,6 +1098,7 @@ class TestAuthorizationEdgeCases(_HandlerTestBase):
 # Session creation paths (lines 235-252)
 # ---------------------------------------------------------------------------
 
+
 class TestSessionCreation(_HandlerTestBase):
     """Test session creation when no active session exists."""
 
@@ -932,21 +1110,34 @@ class TestSessionCreation(_HandlerTestBase):
         auth = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline") as mock_sp, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client") as mock_oc, \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ) as mock_sp, patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ) as mock_oc, patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
 
             from safety.pipeline import SafetyResult, Severity, Category
-            safe = SafetyResult(is_safe=True, severity=Severity.NONE, category=Category.VALID,
-                                reason="", triggered_keywords=(), stage="none")
+
+            safe = SafetyResult(
+                is_safe=True,
+                severity=Severity.NONE,
+                category=Category.VALID,
+                reason="",
+                triggered_keywords=(),
+                stage="none",
+            )
             mock_sp.check_input.return_value = safe
             mock_sp.check_output.return_value = safe
 
@@ -977,15 +1168,21 @@ class TestSessionCreation(_HandlerTestBase):
         auth = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline"), \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client"), \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ), patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ), patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
             mock_sm.get_session.return_value = None
@@ -995,7 +1192,9 @@ class TestSessionCreation(_HandlerTestBase):
             req = ChatRequest(message="Hello", profile_id="a" * 32, model="m")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(
-                    send_chat_message(request=req, auth_session=auth, rate_limit_info={})
+                    send_chat_message(
+                        request=req, auth_session=auth, rate_limit_info={}
+                    )
                 )
 
         assert exc_info.value.status_code == 429
@@ -1010,15 +1209,21 @@ class TestSessionCreation(_HandlerTestBase):
         auth = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline"), \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client"), \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ), patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ), patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
             mock_sm.get_session.return_value = None
@@ -1028,7 +1233,9 @@ class TestSessionCreation(_HandlerTestBase):
             req = ChatRequest(message="Hello", profile_id="a" * 32, model="m")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(
-                    send_chat_message(request=req, auth_session=auth, rate_limit_info={})
+                    send_chat_message(
+                        request=req, auth_session=auth, rate_limit_info={}
+                    )
                 )
 
         assert exc_info.value.status_code == 500
@@ -1037,6 +1244,7 @@ class TestSessionCreation(_HandlerTestBase):
 # ---------------------------------------------------------------------------
 # Unsafe AI output (lines 431-447)
 # ---------------------------------------------------------------------------
+
 
 class TestUnsafeAIOutput(_HandlerTestBase):
     """Test response validation catching unsafe AI output."""
@@ -1049,27 +1257,44 @@ class TestUnsafeAIOutput(_HandlerTestBase):
         auth = self._make_auth_session()
         profile = self._make_profile()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline") as mock_sp, \
-             patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger") as mock_il, \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client") as mock_oc, \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ) as mock_sp, patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ) as mock_il, patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ) as mock_oc, patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
             mock_pm.return_value.get_profile.return_value = profile
 
             from safety.pipeline import SafetyResult, Severity, Category
-            safe_in = SafetyResult(is_safe=True, severity=Severity.NONE, category=Category.VALID,
-                                   reason="", triggered_keywords=(), stage="none")
+
+            safe_in = SafetyResult(
+                is_safe=True,
+                severity=Severity.NONE,
+                category=Category.VALID,
+                reason="",
+                triggered_keywords=(),
+                stage="none",
+            )
             mock_sp.check_input.return_value = safe_in
 
             unsafe_out = SafetyResult(
-                is_safe=False, severity=Severity.MAJOR, category=Category.VIOLENCE,
-                reason="AI generated harmful content", triggered_keywords=("harm",),
-                stage="response_validation", modified_content="Here is a safe alternative.",
+                is_safe=False,
+                severity=Severity.MAJOR,
+                category=Category.VIOLENCE,
+                reason="AI generated harmful content",
+                triggered_keywords=("harm",),
+                stage="response_validation",
+                modified_content="Here is a safe alternative.",
             )
             mock_sp.check_output.return_value = unsafe_out
 
@@ -1080,7 +1305,9 @@ class TestUnsafeAIOutput(_HandlerTestBase):
 
             mock_oc.chat.return_value = (True, "Harmful AI output here", {})
 
-            req = ChatRequest(message="Tell me about history", profile_id="a" * 32, model="m")
+            req = ChatRequest(
+                message="Tell me about history", profile_id="a" * 32, model="m"
+            )
             result = asyncio.run(
                 send_chat_message(request=req, auth_session=auth, rate_limit_info={})
             )
@@ -1095,6 +1322,7 @@ class TestUnsafeAIOutput(_HandlerTestBase):
 # DB_ERRORS and generic Exception outer catch (lines 510-515)
 # ---------------------------------------------------------------------------
 
+
 class TestOuterExceptionHandlers(_HandlerTestBase):
     """Test the outer except blocks that catch DB_ERRORS and Exception."""
 
@@ -1106,22 +1334,32 @@ class TestOuterExceptionHandlers(_HandlerTestBase):
 
         auth = self._make_auth_session()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline"), \
-             patch("api.routes.chat.session_manager"), \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client"), \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ), patch("api.routes.chat.session_manager"), patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ), patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
-            mock_pm.return_value.get_profile.side_effect = sqlite3.Error("db corruption")
+            mock_pm.return_value.get_profile.side_effect = sqlite3.Error(
+                "db corruption"
+            )
 
             req = ChatRequest(message="Hello", profile_id="a" * 32, model="m")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(
-                    send_chat_message(request=req, auth_session=auth, rate_limit_info={})
+                    send_chat_message(
+                        request=req, auth_session=auth, rate_limit_info={}
+                    )
                 )
 
         assert exc_info.value.status_code == 503
@@ -1134,22 +1372,32 @@ class TestOuterExceptionHandlers(_HandlerTestBase):
 
         auth = self._make_auth_session()
 
-        with patch("api.routes.chat.ProfileManager") as mock_pm, \
-             patch("api.routes.chat.safety_pipeline"), \
-             patch("api.routes.chat.session_manager"), \
-             patch("api.routes.chat.safety_monitor"), \
-             patch("api.routes.chat.incident_logger"), \
-             patch("api.routes.chat.audit_log"), \
-             patch("api.routes.chat.ollama_client"), \
-             patch("api.routes.chat.conversation_store"), \
-             patch("api.routes.chat._get_or_create_conversation_id", return_value="c"):
+        with patch("api.routes.chat.ProfileManager") as mock_pm, patch(
+            "api.routes.chat.safety_pipeline"
+        ), patch("api.routes.chat.session_manager"), patch(
+            "api.routes.chat.safety_monitor"
+        ), patch(
+            "api.routes.chat.incident_logger"
+        ), patch(
+            "api.routes.chat.audit_log"
+        ), patch(
+            "api.routes.chat.ollama_client"
+        ), patch(
+            "api.routes.chat.conversation_store"
+        ), patch(
+            "api.routes.chat._get_or_create_conversation_id", return_value="c"
+        ):
 
-            mock_pm.return_value.get_profile.side_effect = RuntimeError("totally unexpected")
+            mock_pm.return_value.get_profile.side_effect = RuntimeError(
+                "totally unexpected"
+            )
 
             req = ChatRequest(message="Hello", profile_id="a" * 32, model="m")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(
-                    send_chat_message(request=req, auth_session=auth, rate_limit_info={})
+                    send_chat_message(
+                        request=req, auth_session=auth, rate_limit_info={}
+                    )
                 )
 
         assert exc_info.value.status_code == 500
@@ -1159,6 +1407,7 @@ class TestOuterExceptionHandlers(_HandlerTestBase):
 # ---------------------------------------------------------------------------
 # end_session endpoint (lines 518-549)
 # ---------------------------------------------------------------------------
+
 
 class TestEndSession:
     """Tests for the /end-session endpoint."""
@@ -1171,10 +1420,13 @@ class TestEndSession:
         auth.role = "parent"
         auth.user_id = "user-1"
 
-        with patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.audit_log"):
+        with patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.audit_log"
+        ):
             mock_sm.end_session.return_value = True
-            result = asyncio.run(end_session(session_id="sess-end-1", auth_session=auth))
+            result = asyncio.run(
+                end_session(session_id="sess-end-1", auth_session=auth)
+            )
 
         assert result["status"] == "success"
 
@@ -1186,8 +1438,9 @@ class TestEndSession:
         auth = MagicMock()
         auth.role = "parent"
 
-        with patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.audit_log"):
+        with patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.audit_log"
+        ):
             mock_sm.end_session.return_value = False
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(end_session(session_id="sess-end-2", auth_session=auth))
@@ -1203,8 +1456,9 @@ class TestEndSession:
         auth = MagicMock()
         auth.role = "parent"
 
-        with patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.audit_log"):
+        with patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.audit_log"
+        ):
             mock_sm.end_session.side_effect = SessionError("not found")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(end_session(session_id="sess-end-3", auth_session=auth))
@@ -1219,8 +1473,9 @@ class TestEndSession:
         auth = MagicMock()
         auth.role = "parent"
 
-        with patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.audit_log"):
+        with patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.audit_log"
+        ):
             mock_sm.end_session.side_effect = sqlite3.Error("db fail")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(end_session(session_id="sess-end-4", auth_session=auth))
@@ -1235,8 +1490,9 @@ class TestEndSession:
         auth = MagicMock()
         auth.role = "parent"
 
-        with patch("api.routes.chat.session_manager") as mock_sm, \
-             patch("api.routes.chat.audit_log"):
+        with patch("api.routes.chat.session_manager") as mock_sm, patch(
+            "api.routes.chat.audit_log"
+        ):
             mock_sm.end_session.side_effect = RuntimeError("unexpected")
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(end_session(session_id="sess-end-5", auth_session=auth))

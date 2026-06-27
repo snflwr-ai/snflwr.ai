@@ -45,17 +45,17 @@ safety pipeline — see `safety/pipeline.py` `get_safe_response`.)*
 
 > We collect limited information to operate the tutor. Children under 13 require
 > verifiable parental consent before use, and parents can review or delete their
-> child's data at any time. See our **[Privacy Policy](../../legal/PRIVACY_POLICY.md)**
+> child's data at any time. See our **Privacy Policy** (kept local until published)
 > and **[parental consent process](./COPPA_CONSENT_MECHANISM.md)**.
 
 ## 5. No warranty / limitation of liability  *(covered in ToS — link only)*
 
-> The service is provided "as is." See the **[Terms of Service](../../legal/TERMS_OF_SERVICE.md)**.
+> The service is provided "as is." See the **Terms of Service** (kept local until published).
 
 ## 6. Terms acceptance  *(ready — onboarding)*
 
-> By creating an account you agree to the **[Terms of Service](../../legal/TERMS_OF_SERVICE.md)**
-> and **[Privacy Policy](../../legal/PRIVACY_POLICY.md)**.
+> By creating an account you agree to the **Terms of Service** (kept local until published)
+> and **Privacy Policy** (kept local until published).
 
 ---
 

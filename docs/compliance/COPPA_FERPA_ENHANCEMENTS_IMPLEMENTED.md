@@ -8,7 +8,7 @@
 > § 312.4(d)(1) operator disclosures cannot be published). Read any "complies" /
 > "production-ready" language below as *features implemented*, not *legally
 > certified*. See [`../CURRENT_STATUS.md`](../CURRENT_STATUS.md) and
-> [`../../legal/LAWYER_REVIEW_CHECKLIST.md`](../../legal/LAWYER_REVIEW_CHECKLIST.md).
+> `legal/LAWYER_REVIEW_CHECKLIST.md` (kept local, not in the public repo).
 
 # COPPA/FERPA Compliance Enhancements - Implementation Summary
 **Date:** December 27, 2025

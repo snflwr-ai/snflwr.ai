@@ -81,3 +81,7 @@ judge_tasks.jsonl
 judge_verdicts.json
 judge_rerun_report.md
 judge_rerun_report.json
+
+# Legal documents are kept LOCAL ONLY (DRAFT / not in effect / pre-counsel-review).
+# The whole legal/ tree stays out of the public repo until finalized.
+legal/

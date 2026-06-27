@@ -18,6 +18,7 @@ from safety.patterns import (
 from safety.patterns import (
     SUBSTR_CHECKS as _SHARED_SUBSTR,
 )
+from safety.patterns import normalize_text as _normalize_text
 from safety.pipeline.models import Category, SafetyResult, Severity, _block
 from utils.logger import get_logger
 
@@ -64,6 +65,59 @@ class _PatternMatcher:
             "grooming",
         }
     )
+
+    # Common leet / homoglyph substitutions, so the obfuscation matcher below
+    # also catches "m3th", "k1ll", "dru9", etc.
+    _LEET_VARIANTS = {
+        "a": "a@4",
+        "b": "b8",
+        "e": "e3",
+        "g": "g69",
+        "i": "i1!|",
+        "l": "l1|",
+        "o": "o0",
+        "s": "s5$",
+        "t": "t7",
+        "z": "z2",
+    }
+    _OBF_CACHE: dict = {}
+
+    @classmethod
+    def _obfuscation_pattern(cls, keyword: str):
+        """Boundary-anchored, obfuscation-tolerant pattern for ``keyword``.
+
+        Matches the keyword's letters in order, tolerating non-word separators
+        between them ("m-e-t-h", "m e t h", zero-width chars) and common leet
+        substitutions ("m3th"), but ANCHORED so the keyword must be a whole
+        token — never a substring of an innocent word. This fixes the
+        "Scunthorpe problem": 'meth' must not match 'method', 'kill' must not
+        match 'skill', 'coon' must not match 'raccoon'.
+        """
+        cached = cls._OBF_CACHE.get(keyword)
+        if cached is not None:
+            return cached
+        letters = keyword.replace(" ", "").replace("-", "").lower()
+        if len(letters) < 3:
+            # Too short to obfuscation-match without risking FPs; the plain
+            # word-boundary regex (\bkw\b) already covers the literal form.
+            pattern = re.compile(r"(?!x)x")  # never matches
+        else:
+            classes = []
+            for ch in letters:
+                variants = cls._LEET_VARIANTS.get(ch, ch)
+                classes.append(
+                    "[" + re.escape(variants) + "]"
+                    if len(variants) > 1
+                    else re.escape(ch)
+                )
+            body = r"[\W_]*".join(classes)
+            # Lookarounds (not \b) so a leading/trailing separator in the
+            # obfuscated form doesn't defeat the boundary.
+            pattern = re.compile(
+                r"(?<![a-z0-9])" + body + r"(?![a-z0-9])", re.IGNORECASE
+            )
+        cls._OBF_CACHE[keyword] = pattern
+        return pattern
 
     # Subject-specific indicators sufficient on their own to grant exemption
     _STRONG_EDUCATIONAL_INDICATORS = (
@@ -481,13 +535,24 @@ class _PatternMatcher:
 
             # 2. Prohibited keywords (MAJOR, with educational exemption)
             original_lower = original.lower()
+            # Structure-preserving normalized form: folds homoglyphs/leet and
+            # collapses separator obfuscation ("m-e-t-h" -> "meth") while KEEPING
+            # word boundaries (unlike the letters-only `normalized`). Boundary-
+            # aware keyword matching runs on this so obfuscation is still caught
+            # but 'meth' no longer matches inside 'method'.
+            try:
+                folded_lower = _normalize_text(original)[0].lower()
+            except Exception:
+                folded_lower = original_lower
             for pat, kw, category in self._prohibited_patterns:
                 matched = False
                 # Check original text (word boundary)
                 if pat.search(original):
                     matched = True
-                # Check normalized text (obfuscation defeat)
-                if not matched and kw.replace(" ", "").replace("-", "") in normalized:
+                # Check obfuscated form (separator/leet/homoglyph evasion),
+                # boundary-aware so the keyword matches only as a whole token,
+                # never as a substring of an innocent word ('meth' in 'method').
+                if not matched and self._obfuscation_pattern(kw).search(folded_lower):
                     matched = True
 
                 if matched:

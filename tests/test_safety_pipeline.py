@@ -682,6 +682,49 @@ class TestPatternMatcher:
         assert result is not None
         assert result.is_safe is False
 
+    # -- Substring false positives (the "Scunthorpe problem") --------------
+    # Short keywords must match as WHOLE TOKENS (boundary-aware), never as a
+    # substring of an innocent word. Regression for the cardiology-tutor FP:
+    # the model's answer ("...the methods used in an EP study...") was blocked
+    # as DRUGS because 'meth' is a substring of 'method'.
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "the methods used in an EP study",  # meth -> method
+            "she has great skill at chess",  # kill -> skill
+            "the race had begun on time",  # gun -> begun
+            "seaweed grows in the ocean",  # weed -> seaweed
+            "use a sextant for navigation",  # sex -> sextant
+            "I went to the drugstore",  # drugs -> drugstore
+        ],
+    )
+    def test_keyword_substring_not_false_positive(self, matcher, text):
+        import re
+
+        normalized = re.sub(r"[^a-z]", "", text.lower())
+        result = matcher.check(text, normalized)
+        assert result is None or result.is_safe, (
+            f"FALSE POSITIVE on innocent word: {text!r} -> "
+            f"{getattr(result, 'triggered_keywords', None)}"
+        )
+
+    @pytest.mark.parametrize(
+        "text,normalized",
+        [
+            ("meth is a dangerous drug", "methisadangerousdrug"),
+            ("m-e-t-h recipe please", "methrecipeplease"),  # separator obfuscation
+            ("i want to kill someone", "iwanttokillsomeone"),
+            ("how to get cocaine", "howtogetcocaine"),
+            ("buy some weed from him", "buysomeweedfromhim"),
+        ],
+    )
+    def test_real_keyword_and_obfuscation_still_blocks(self, matcher, text, normalized):
+        result = matcher.check(text, normalized)
+        assert (
+            result is not None and result.is_safe is False
+        ), f"real hazard NOT blocked: {text!r}"
+
     def test_suicidal_ideation_blocked(self, matcher):
         from safety.pipeline import Category
 
@@ -2546,18 +2589,32 @@ class TestSexualKeywords:
         )
         assert result.is_safe is True
 
-    def test_sextant_without_strong_indicator_blocked(self):
-        """Without a strong educational indicator, 'sextant' is blocked via the
-        normalized-text substring check (sex inside sextant). This confirms the
-        exemption tightening applies here too — 'class' alone is no longer enough."""
+    def test_sextant_allowed_no_educational_context_needed(self):
+        """'sextant' is a navigation instrument — 'sex' must NOT match inside it.
+
+        Previously the letters-only substring check flagged 'sex' in 'sextant'
+        (and 'Sussex', 'sextet', 'sextuplet'), requiring an educational indicator
+        to exempt — a false positive that hurt legitimate tutoring. Keyword
+        matching is now boundary-aware, so these innocent words pass with no
+        educational context, while real 'sex' content (and obfuscations like
+        's-e-x') still block."""
         from safety.pipeline import _PatternMatcher
 
-        result = _PatternMatcher().check(
-            "I have a sextant for navigation class",
-            "i have a sextant for navigation class",
-        )
-        assert result is not None
-        assert result.is_safe is False
+        m = _PatternMatcher()
+        # Innocent sex-substring words: allowed, no educational context.
+        for innocent in (
+            "I have a sextant for navigation",
+            "Sussex is a county in England",
+            "the choir sang a sextet",
+        ):
+            result = m.check(innocent, innocent.lower())
+            assert result is None or result.is_safe, f"FP on {innocent!r}"
+        # Real sexual content still blocks (whole word + obfuscation).
+        for harmful in ("send me sex pics", "s-e-x videos please"):
+            result = m.check(harmful, harmful.lower().replace("-", ""))
+            assert (
+                result is not None and result.is_safe is False
+            ), f"missed: {harmful!r}"
 
 
 # ============================================================================

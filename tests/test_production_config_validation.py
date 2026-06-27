@@ -400,6 +400,14 @@ class TestProductionDetection:
         cfg = _make_config()
         assert cfg.is_production() is False
 
+    @patch.dict(os.environ, {"ENVIRONMENT": "development", "SNFLWR_ENV": "production"})
+    def test_is_production_honors_snflwr_env_alias(self):
+        """Setting only SNFLWR_ENV=production must still be detected as production
+        — historically is_production() read only ENVIRONMENT, so an operator using
+        the SNFLWR_ENV var would silently skip the production security gate."""
+        cfg = _make_config()
+        assert cfg.is_production() is True
+
     def test_postgresql_is_production_like(self):
         cfg = _make_config(DB_TYPE="postgresql")
         assert cfg.is_production_like() is True

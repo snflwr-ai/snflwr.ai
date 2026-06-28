@@ -58,6 +58,12 @@ class SafetyResult:
     stage: Optional[str] = None
     modified_content: Optional[str] = None
     possible_false_positive: bool = False
+    # True when this deterministic block is a PLAIN-TEXT match on an
+    # educational-topic keyword (violence/weapons/drugs) that should be
+    # adjudicated by the semantic classifier rather than hard-blocked. Set ONLY
+    # for non-obfuscated matches — an obfuscated keyword ("b0mb", "k i l l") is
+    # treated as evasion and never deferred.
+    deferrable: bool = False
 
 
 def _block(
@@ -70,6 +76,7 @@ def _block(
     redirection: Optional[str] = None,
     modified_content: Optional[str] = None,
     possible_false_positive: bool = False,
+    deferrable: bool = False,
 ) -> SafetyResult:
     """Convenience constructor for a BLOCK result."""
     return SafetyResult(
@@ -82,6 +89,7 @@ def _block(
         stage=stage,
         modified_content=modified_content,
         possible_false_positive=possible_false_positive,
+        deferrable=deferrable,
     )
 
 

@@ -82,6 +82,10 @@ class _PatternMatcher:
     }
     _OBF_CACHE: dict = {}
 
+    # Categories whose PLAIN-TEXT matches are educational-topic (war/violence,
+    # weapons, drugs) and may be deferred to the semantic classifier.
+    _DEFERRABLE_CATS = frozenset({Category.VIOLENCE, Category.WEAPONS, Category.DRUGS})
+
     @classmethod
     def _obfuscation_pattern(cls, keyword: str):
         """Boundary-anchored, obfuscation-tolerant pattern for ``keyword``.
@@ -159,7 +163,12 @@ class _PatternMatcher:
         r"shi+take|"  # shitake / shiitake (mushroom)  vs 'shit'
         r"retardants?|retardation|"  # fire retardant / growth retardation vs 'retard'
         r"spic(?:e|es|y|ily|ier|iest|a)|"  # spice/spicy/spica (NOT 'spics') vs 'spic'
-        r"van\s*dyke|vandyke"  # Van Dyke (name / beard style) vs 'dyke'
+        r"van\s*dyke|vandyke|"  # Van Dyke (name / beard style) vs 'dyke'
+        r"niger(?:ia|ian|ien)?|"  # Niger / Nigeria / Nigerian (country) vs slur
+        # 'Dick' as a proper noun (Cheney, Moby Dick, Van Dyke, spotted dick…) —
+        # bare vulgar 'dick' is NOT listed and still blocks.
+        r"dick\s+(?:cheney|clark|tracy|grayson|smith|van\s*dyke)|"
+        r"moby\s*dick|spotted\s+dick|philip\s+k\.?\s*dick"
         r")(?![a-z0-9])",
         re.IGNORECASE,
     )
@@ -628,9 +637,11 @@ class _PatternMatcher:
                 folded_lower = original_lower
             for pat, kw, category in self._prohibited_patterns:
                 matched = False
-                # Check original text (word boundary)
+                matched_plain = False
+                # Check original text (word boundary) — a PLAIN-TEXT match.
                 if pat.search(original):
                     matched = True
+                    matched_plain = True
                 # Check obfuscated form (separator/leet/homoglyph evasion),
                 # boundary-aware so the keyword matches only as a whole token,
                 # never as a substring of an innocent word ('meth' in 'method').
@@ -656,6 +667,10 @@ class _PatternMatcher:
                         stage="pattern",
                         keywords=(kw,),
                         possible_false_positive=pfp,
+                        # Plain-text educational-topic keyword (kill/bomb/gun/drug
+                        # in history/literature/science) → let the classifier
+                        # adjudicate. Obfuscated matches are evasion, never deferred.
+                        deferrable=matched_plain and category in self._DEFERRABLE_CATS,
                     )
 
             # 2b. Shared bilingual regex patterns (MAJOR)
@@ -711,6 +726,11 @@ class _PatternMatcher:
                             f"Shared pattern matched: {desc}",
                             stage="pattern",
                             keywords=(desc,),
+                            # Plain-text (hit_orig) educational-topic term →
+                            # defer to classifier. Separator-obfuscated (hit_pre
+                            # only) matches are evasion, never deferred.
+                            deferrable=bool(hit_orig)
+                            and category_enum in self._DEFERRABLE_CATS,
                         )
 
             # 2c. Substring evasion checks (leading-boundary prefix match on the
@@ -729,12 +749,20 @@ class _PatternMatcher:
                     for substr, desc in substr_list:
                         m = self._substr_prefix_pattern(substr).search(folded_lower)
                         if m and not any(s <= m.start() < e for s, e in allow_spans):
+                            # Plain-text (matches the un-folded original) violence
+                            # topic word (genocide/massacre/murder) → defer to
+                            # classifier. Obfuscated matches are never deferred.
+                            plain = self._substr_prefix_pattern(substr).search(
+                                original_lower
+                            )
                             return _block(
                                 Severity.MAJOR,
                                 category_enum,
                                 f"Substring evasion detected: {desc}",
                                 stage="pattern",
                                 keywords=(substr,),
+                                deferrable=bool(plain)
+                                and category_enum in self._DEFERRABLE_CATS,
                             )
 
             # 3. PII patterns (MAJOR, checked on original text)

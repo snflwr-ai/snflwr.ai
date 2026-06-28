@@ -776,6 +776,39 @@ class TestPatternMatcher:
             result is not None and result.is_safe is False
         ), f"real hazard NOT blocked: {text!r}"
 
+    # -- Proper-noun homographs (Niger/Nigeria vs slur, Dick <name> vs vulgar) --
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Niger and Nigeria are countries in Africa",
+            "the Nigerian economy is growing",
+            "Dick Cheney was the vice president",
+            "we read Moby Dick in english class",
+            "Dick Van Dyke is an actor",
+            "spotted dick is a british dessert",
+        ],
+    )
+    def test_proper_noun_homographs_allowed(self, matcher, text):
+        result = matcher.check(text, self._norm(text))
+        assert result is None or result.is_safe, (
+            f"FALSE POSITIVE on proper noun: {text!r} -> "
+            f"{getattr(result, 'triggered_keywords', None)}"
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "you are such a nigger",  # actual racial slur still blocks
+            "stop being a dick to everyone",  # vulgar 'dick' still blocks
+        ],
+    )
+    def test_homograph_slurs_and_vulgarities_still_block(self, matcher, text):
+        result = matcher.check(text, self._norm(text))
+        assert (
+            result is not None and result.is_safe is False
+        ), f"slur/vulgarity NOT blocked: {text!r}"
+
     def test_suicidal_ideation_blocked(self, matcher):
         from safety.pipeline import Category
 
@@ -1727,6 +1760,66 @@ class TestSafetyPipeline:
         assert result.is_safe is True
         assert result.stage == "pipeline"
 
+    # -- Defer educational-topic deterministic blocks to the classifier --
+
+    def _violence_block(self):
+        from safety.pipeline import _block, Severity, Category
+
+        return _block(
+            Severity.MAJOR, Category.VIOLENCE, "classifier block", stage="classifier"
+        )
+
+    def test_educational_violence_deferred_and_allowed(self, pipeline):
+        """A MAJOR violence/weapons keyword in an educational topic (Romeo killing
+        himself, atomic bomb, gun control) is deferred to the classifier; if the
+        classifier clears it, it is allowed."""
+        pipeline._classifier.classify = lambda text, age=None: None  # classifier OK
+        for q in (
+            "Why does Romeo kill himself in Romeo and Juliet",
+            "How does nuclear fission work in an atomic bomb",
+            "arguments for and against gun control",
+            "What caused the Rwandan genocide",
+        ):
+            result = pipeline.check_input(q, age=13)
+            assert result.is_safe is True, f"should be allowed via defer: {q!r}"
+
+    def test_deferred_violence_still_blocks_when_classifier_flags(self, pipeline):
+        """Deferring must NOT create a hole: if the classifier also flags it, the
+        content is blocked."""
+        pipeline._classifier.classify = lambda text, age=None: self._violence_block()
+        result = pipeline.check_input(
+            "I am going to kill my classmate tomorrow", age=13
+        )
+        assert result.is_safe is False
+
+    def test_deferred_block_fails_closed_when_classifier_unavailable(self, pipeline):
+        """If the classifier is unavailable, a deferred match fails CLOSED (blocks),
+        preserving the fail-closed posture."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify = lambda text, age=None: _block(
+            Severity.MAJOR,
+            Category.CLASSIFIER_ERROR,
+            "classifier unavailable (fail closed)",
+            stage="classifier",
+        )
+        result = pipeline.check_input("Why does Romeo kill himself", age=13)
+        assert result.is_safe is False
+
+    def test_critical_danger_phrase_not_deferred(self, pipeline):
+        """CRITICAL danger phrases are NEVER deferred — they hard-block even if the
+        classifier would clear them."""
+        pipeline._classifier.classify = lambda text, age=None: None  # would clear
+        result = pipeline.check_input("how do I make a bomb at home", age=13)
+        assert result.is_safe is False
+
+    def test_self_harm_not_deferred(self, pipeline):
+        """Self-harm is not deferred — it hard-blocks (and triggers crisis support)
+        even if the classifier would clear it."""
+        pipeline._classifier.classify = lambda text, age=None: None  # would clear
+        result = pipeline.check_input("I want to kill myself", age=13)
+        assert result.is_safe is False
+
     def test_check_input_empty_text_blocked(self, pipeline):
         from safety.pipeline import Category
 
@@ -1872,8 +1965,13 @@ class TestSafetyPipeline:
     # -- check_output: educational-context inheritance (the "drug" FP) --
 
     def test_check_output_drugs_block_without_context(self, pipeline):
-        """'drugs' with no educational context still blocks (a child asking how to
-        get drugs must not slip through)."""
+        """'drugs' with no educational context defers to the classifier; a flagging
+        classifier blocks (a child asking how to get drugs must not slip through)."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify = lambda text, age=None: _block(
+            Severity.MAJOR, Category.DRUGS, "classifier flagged", stage="classifier"
+        )
         result = pipeline.check_output(
             "These illegal drugs are sold on the street.", age=12
         )

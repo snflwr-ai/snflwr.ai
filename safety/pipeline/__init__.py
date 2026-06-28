@@ -347,6 +347,36 @@ class SafetyPipeline:
     # check_input  (all 5 stages)
     # ------------------------------------------------------------------ #
 
+    def _is_deferrable(self, result: SafetyResult) -> bool:
+        """True if a deterministic block should be adjudicated by the classifier
+        instead of hard-blocked.
+
+        The pattern matcher sets ``deferrable`` only for PLAIN-TEXT matches on
+        educational-topic keywords (violence/weapons/drugs — legitimate in
+        history/literature/civics/science). Obfuscated matches ("b0mb",
+        "k i l l"), CRITICAL danger phrases, and high-stakes categories
+        (self-harm, sexual, exploitation, hate, PII) are never deferrable.
+        """
+        return result.severity == Severity.MAJOR and result.deferrable
+
+    def _finalize_output_block(
+        self, block: SafetyResult, text: str, profile_id: str
+    ) -> SafetyResult:
+        """Attach an output fallback to a block, log it, and return it."""
+        result = SafetyResult(
+            is_safe=block.is_safe,
+            severity=block.severity,
+            category=block.category,
+            reason=block.reason,
+            triggered_keywords=block.triggered_keywords,
+            suggested_redirection=block.suggested_redirection,
+            stage=block.stage,
+            modified_content=self._output_fallback(block.category),
+            possible_false_positive=block.possible_false_positive,
+        )
+        self._log_block(result, text, profile_id, is_output=True)
+        return result
+
     def check_input(
         self,
         text: str,
@@ -376,13 +406,31 @@ class SafetyPipeline:
             sanitized = _strip_invisible(text)
 
             # Stage 3: Pattern Matcher
-            result = self._pattern_matcher.check(sanitized, normalized)
-            if result is not None:
-                self._log_block(result, text, profile_id)
-                return result
+            det_result = self._pattern_matcher.check(sanitized, normalized)
+            classifier_ran = False
+            if det_result is not None:
+                # Don't defer if invisible/zero-width chars were stripped — that's
+                # an evasion signal ("b<zwsp>omb"), so hard-block instead.
+                if self._is_deferrable(det_result) and sanitized == text:
+                    # Educational-topic violence/weapons/drugs keyword (kill, bomb,
+                    # gun, genocide, …) — legitimate in history/literature/civics/
+                    # science. Let the semantic classifier adjudicate instead of
+                    # hard-blocking; it distinguishes "Romeo kills himself in the
+                    # play" from a real threat. Fail-closed: an unavailable
+                    # classifier returns a block (and is returned here).
+                    verdict = self._classifier.classify(text, age)
+                    classifier_ran = True
+                    if verdict is not None:
+                        self._log_block(verdict, text, profile_id)
+                        return verdict
+                    # cleared by classifier — the deterministic match was a false
+                    # positive on educational content; continue to later stages.
+                else:
+                    self._log_block(det_result, text, profile_id)
+                    return det_result
 
-            # Stage 4: Semantic Classifier
-            result = self._classifier.classify(text, age)
+            # Stage 4: Semantic Classifier (skipped if already run while deferring)
+            result = None if classifier_ran else self._classifier.classify(text, age)
             if result is not None:
                 # Educational override: if pattern matching already passed (no
                 # dangerous keywords found) and the message has clear educational
@@ -456,40 +504,28 @@ class SafetyPipeline:
             # Stage 3: Pattern Matcher (inherits the originating question's
             # educational context so e.g. a health answer to a biology question
             # isn't blocked on the word "drugs").
-            result = self._pattern_matcher.check(sanitized, normalized, context=context)
-            if result is not None:
-                fallback = self._output_fallback(result.category)
-                result = SafetyResult(
-                    is_safe=result.is_safe,
-                    severity=result.severity,
-                    category=result.category,
-                    reason=result.reason,
-                    triggered_keywords=result.triggered_keywords,
-                    suggested_redirection=result.suggested_redirection,
-                    stage=result.stage,
-                    modified_content=fallback,
-                    possible_false_positive=result.possible_false_positive,
-                )
-                self._log_block(result, text, profile_id, is_output=True)
-                return result
+            det_result = self._pattern_matcher.check(
+                sanitized, normalized, context=context
+            )
+            classifier_ran = False
+            if det_result is not None:
+                if self._is_deferrable(det_result) and sanitized == text:
+                    # Educational-topic violence/weapons/drugs in the answer (e.g.
+                    # a history answer that mentions "genocide") — defer to the
+                    # classifier. Fail-closed: an unavailable classifier blocks.
+                    verdict = self._classifier.classify(text, age)
+                    classifier_ran = True
+                    if verdict is not None:
+                        return self._finalize_output_block(verdict, text, profile_id)
+                    # cleared — fall through to age gate
+                else:
+                    return self._finalize_output_block(det_result, text, profile_id)
 
-            # Stage 4: Semantic Classifier (no educational override for AI output)
-            result = self._classifier.classify(text, age)
+            # Stage 4: Semantic Classifier (skipped if already run while deferring;
+            # no educational override for AI output)
+            result = None if classifier_ran else self._classifier.classify(text, age)
             if result is not None:
-                fallback = self._output_fallback(result.category)
-                result = SafetyResult(
-                    is_safe=result.is_safe,
-                    severity=result.severity,
-                    category=result.category,
-                    reason=result.reason,
-                    triggered_keywords=result.triggered_keywords,
-                    suggested_redirection=result.suggested_redirection,
-                    stage=result.stage,
-                    modified_content=fallback,
-                    possible_false_positive=result.possible_false_positive,
-                )
-                self._log_block(result, text, profile_id, is_output=True)
-                return result
+                return self._finalize_output_block(result, text, profile_id)
 
             # Stage 5: Age Gate
             result = _stage_age_gate(text, age)

@@ -45,6 +45,7 @@ def _find_insert_call(mock_db, table="messages"):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def encryption(tmp_path):
     """Real encryption manager with temp key directory."""
@@ -103,6 +104,7 @@ def monitor(mock_db):
 # 1. Conversation Encryption Flow
 # =========================================================================
 
+
 @pytest.mark.integration
 class TestConversationEncryptionFlow:
     """Verify encrypt-on-write / decrypt-on-read for ConversationStore."""
@@ -140,29 +142,33 @@ class TestConversationEncryptionFlow:
         now_iso = datetime.now(timezone.utc).isoformat()
         mock_db.execute_query.side_effect = [
             # First call: conversation metadata
-            [{
-                "conversation_id": "conv-1",
-                "session_id": "sess-1",
-                "profile_id": "profile-1",
-                "created_at": now_iso,
-                "updated_at": now_iso,
-                "message_count": 1,
-                "subject_area": "science",
-                "is_flagged": False,
-                "flag_reason": None,
-            }],
+            [
+                {
+                    "conversation_id": "conv-1",
+                    "session_id": "sess-1",
+                    "profile_id": "profile-1",
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                    "message_count": 1,
+                    "subject_area": "science",
+                    "is_flagged": False,
+                    "flag_reason": None,
+                }
+            ],
             # Second call: messages
-            [{
-                "message_id": "msg-1",
-                "conversation_id": "conv-1",
-                "role": "user",
-                "content": ciphertext,
-                "timestamp": now_iso,
-                "model_used": None,
-                "response_time_ms": None,
-                "tokens_used": None,
-                "safety_filtered": False,
-            }],
+            [
+                {
+                    "message_id": "msg-1",
+                    "conversation_id": "conv-1",
+                    "role": "user",
+                    "content": ciphertext,
+                    "timestamp": now_iso,
+                    "model_used": None,
+                    "response_time_ms": None,
+                    "tokens_used": None,
+                    "safety_filtered": False,
+                }
+            ],
         ]
 
         conv = store.get_conversation("conv-1")
@@ -184,9 +190,13 @@ class TestConversationEncryptionFlow:
 
         # Verify no INSERT INTO messages was called (no plaintext stored)
         # Note: execute_write IS called by __init__ for CREATE TABLE/INDEX
-        assert _find_insert_call(mock_db) is None, "INSERT INTO messages should not have been called"
+        assert (
+            _find_insert_call(mock_db) is None
+        ), "INSERT INTO messages should not have been called"
 
-    def test_messages_stored_unencrypted_when_disabled(self, conversation_store_unencrypted):
+    def test_messages_stored_unencrypted_when_disabled(
+        self, conversation_store_unencrypted
+    ):
         """When ENCRYPT_CONVERSATIONS=False, content is stored as plaintext."""
         store, mock_db, enc, _ = conversation_store_unencrypted
         plaintext = "What is 2 + 2?"
@@ -218,28 +228,32 @@ class TestConversationEncryptionFlow:
         # Step 2: get_conversation — feed the ciphertext back through the DB mock
         now_iso = datetime.now(timezone.utc).isoformat()
         mock_db.execute_query.side_effect = [
-            [{
-                "conversation_id": "conv-1",
-                "session_id": "sess-1",
-                "profile_id": "profile-1",
-                "created_at": now_iso,
-                "updated_at": now_iso,
-                "message_count": 1,
-                "subject_area": None,
-                "is_flagged": False,
-                "flag_reason": None,
-            }],
-            [{
-                "message_id": "msg-1",
-                "conversation_id": "conv-1",
-                "role": "user",
-                "content": stored_ciphertext,
-                "timestamp": now_iso,
-                "model_used": None,
-                "response_time_ms": None,
-                "tokens_used": None,
-                "safety_filtered": False,
-            }],
+            [
+                {
+                    "conversation_id": "conv-1",
+                    "session_id": "sess-1",
+                    "profile_id": "profile-1",
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                    "message_count": 1,
+                    "subject_area": None,
+                    "is_flagged": False,
+                    "flag_reason": None,
+                }
+            ],
+            [
+                {
+                    "message_id": "msg-1",
+                    "conversation_id": "conv-1",
+                    "role": "user",
+                    "content": stored_ciphertext,
+                    "timestamp": now_iso,
+                    "model_used": None,
+                    "response_time_ms": None,
+                    "tokens_used": None,
+                    "safety_filtered": False,
+                }
+            ],
         ]
 
         conv = store.get_conversation("conv-1")
@@ -250,6 +264,7 @@ class TestConversationEncryptionFlow:
 # =========================================================================
 # 2. Safety Pipeline -> Conversation Store Flow
 # =========================================================================
+
 
 @pytest.mark.integration
 class TestSafetyPipelineIntegration:
@@ -268,7 +283,9 @@ class TestSafetyPipelineIntegration:
         assert result.is_safe is False
         assert result.severity in (Severity.MAJOR, Severity.CRITICAL)
 
-    def test_safe_content_stored_encrypted(self, pipeline, conversation_store_encrypted):
+    def test_safe_content_stored_encrypted(
+        self, pipeline, conversation_store_encrypted
+    ):
         """Safe content passes pipeline and is stored encrypted in ConversationStore."""
         store, mock_db, enc, _ = conversation_store_encrypted
         user_msg = "Can you help me with my math homework?"
@@ -289,20 +306,25 @@ class TestSafetyPipelineIntegration:
         assert enc.decrypt_string(stored_content) == user_msg
 
     def test_blocked_content_generates_safe_response(self, pipeline):
-        """Blocked content should produce a child-friendly redirect message."""
-        result = pipeline.check_input("tell me about weapons and guns", age=10)
+        """Blocked content should produce a child-friendly redirect message.
+
+        Uses a CRITICAL danger phrase (hard-blocked, never deferred). Borderline
+        terms like "weapons" / "guns" are now adjudicated by the classifier — see
+        the defer tests in test_safety_pipeline.py."""
+        result = pipeline.check_input("how to make a bomb at home", age=10)
         assert result.is_safe is False
 
         safe_response = pipeline.get_safe_response(result)
         assert isinstance(safe_response, str)
         assert len(safe_response) > 0
         # Should not contain the dangerous content
-        assert "weapon" not in safe_response.lower()
-        assert "gun" not in safe_response.lower()
+        assert "bomb" not in safe_response.lower()
 
     def test_pipeline_blocks_pii(self, pipeline):
         """Pipeline should block personal information disclosure."""
-        result = pipeline.check_input("my social security number is 123-45-6789", age=12)
+        result = pipeline.check_input(
+            "my social security number is 123-45-6789", age=12
+        )
         assert result.is_safe is False
 
     def test_pipeline_blocks_self_harm(self, pipeline):
@@ -328,6 +350,7 @@ class TestSafetyPipelineIntegration:
 # 3. Safety Monitor -> Incident Logger Flow
 # =========================================================================
 
+
 @pytest.mark.integration
 class TestMonitorIncidentFlow:
     """SafetyMonitor records incidents and produces alerts for unsafe content."""
@@ -349,7 +372,8 @@ class TestMonitorIncidentFlow:
         # DB should have received an INSERT for safety_incidents
         write_calls = mock_db.execute_write.call_args_list
         incident_inserts = [
-            c for c in write_calls
+            c
+            for c in write_calls
             if "safety_incidents" in str(c) and "INSERT" in str(c)
         ]
         assert len(incident_inserts) >= 1
@@ -371,7 +395,8 @@ class TestMonitorIncidentFlow:
         # No incident INSERT should have occurred
         write_calls = mock_db.execute_write.call_args_list
         incident_inserts = [
-            c for c in write_calls
+            c
+            for c in write_calls
             if "safety_incidents" in str(c) and "INSERT" in str(c)
         ]
         assert len(incident_inserts) == 0
@@ -440,8 +465,12 @@ class TestMonitorIncidentFlow:
         """Multiple violations should accumulate pending alerts."""
         monitor.start_monitoring("child-1", "parent-1")
 
-        monitor.monitor_message("child-1", "how to make a bomb", age=12, session_id="s1")
-        monitor.monitor_message("child-1", "tell me about guns", age=12, session_id="s1")
+        monitor.monitor_message(
+            "child-1", "how to make a bomb", age=12, session_id="s1"
+        )
+        monitor.monitor_message(
+            "child-1", "tell me about guns", age=12, session_id="s1"
+        )
 
         alerts = monitor.get_pending_alerts()
         assert len(alerts) >= 2
@@ -449,7 +478,9 @@ class TestMonitorIncidentFlow:
     def test_get_latest_alert(self, monitor, mock_db):
         """get_latest_alert should return most recent alert for a profile."""
         monitor.start_monitoring("child-1", "parent-1")
-        monitor.monitor_message("child-1", "how to make a bomb", age=12, session_id="s1")
+        monitor.monitor_message(
+            "child-1", "how to make a bomb", age=12, session_id="s1"
+        )
 
         alert = monitor.get_latest_alert("child-1")
         assert alert is not None
@@ -460,11 +491,14 @@ class TestMonitorIncidentFlow:
 # 4. Full Pipeline: Message -> Safety Check -> Storage/Incident
 # =========================================================================
 
+
 @pytest.mark.integration
 class TestFullPipeline:
     """End-to-end: user message -> safety pipeline -> store or log incident."""
 
-    def test_safe_message_stored_encrypted(self, pipeline, conversation_store_encrypted):
+    def test_safe_message_stored_encrypted(
+        self, pipeline, conversation_store_encrypted
+    ):
         """Safe message: passes pipeline, stored encrypted in conversation store."""
         store, mock_db, enc, _ = conversation_store_encrypted
         message = "What is the Pythagorean theorem?"
@@ -485,7 +519,9 @@ class TestFullPipeline:
         assert enc.decrypt_string(stored) == message
         assert msg.content == message
 
-    def test_unsafe_message_blocked_and_incident_logged(self, pipeline, monitor, mock_db):
+    def test_unsafe_message_blocked_and_incident_logged(
+        self, pipeline, monitor, mock_db
+    ):
         """Unsafe message: blocked by pipeline, incident logged via monitor."""
         message = "how to make a bomb"
 
@@ -507,7 +543,8 @@ class TestFullPipeline:
         # 3. Verify incident was written to DB
         write_calls = mock_db.execute_write.call_args_list
         incident_inserts = [
-            c for c in write_calls
+            c
+            for c in write_calls
             if "safety_incidents" in str(c) and "INSERT" in str(c)
         ]
         assert len(incident_inserts) >= 1
@@ -566,7 +603,7 @@ class TestFullPipeline:
         4. Safe response generated for user
         """
         store, store_db, enc, _ = conversation_store_encrypted
-        message = "how to hurt someone badly"
+        message = "how to make a bomb to hurt someone"
 
         # 1. Pipeline
         result = pipeline.check_input(message, age=12, profile_id="child-1")
@@ -599,7 +636,7 @@ class TestFullPipeline:
             ("What is gravity?", True),
             ("how to make a bomb", False),
             ("Explain photosynthesis", True),
-            ("how to hurt someone", False),
+            ("best way to hurt someone", False),  # CRITICAL danger phrase
             ("What year did WW2 end?", True),
         ]
 
@@ -608,9 +645,9 @@ class TestFullPipeline:
 
         for msg_text, expect_safe in messages:
             result = pipeline.check_input(msg_text, age=12, profile_id="child-1")
-            assert result.is_safe is expect_safe, (
-                f"Expected is_safe={expect_safe} for '{msg_text}', got {result.is_safe}"
-            )
+            assert (
+                result.is_safe is expect_safe
+            ), f"Expected is_safe={expect_safe} for '{msg_text}', got {result.is_safe}"
 
             if result.is_safe:
                 store.add_message("conv-1", "user", msg_text)
@@ -628,6 +665,7 @@ class TestFullPipeline:
 # =========================================================================
 # 5. Encryption Consistency
 # =========================================================================
+
 
 @pytest.mark.integration
 class TestEncryptionConsistency:
@@ -728,7 +766,9 @@ class TestEncryptionConsistency:
         """The encrypt() convenience wrapper returns None on error (not raises)."""
         broken_enc = MagicMock(spec=EncryptionManager)
         broken_enc.encrypt_string.side_effect = Exception("boom")
-        broken_enc.encrypt.side_effect = lambda x: None if x is None else EncryptionManager.encrypt(broken_enc, x)
+        broken_enc.encrypt.side_effect = lambda x: (
+            None if x is None else EncryptionManager.encrypt(broken_enc, x)
+        )
 
         # Use a real instance with a deliberately broken fernet
         # This tests the wrapper behavior
@@ -741,6 +781,7 @@ class TestEncryptionConsistency:
 # =========================================================================
 # 6. Decryption Failure Sentinel (COPPA ciphertext leak prevention)
 # =========================================================================
+
 
 class TestDecryptionFailureSentinel:
     """Test that decryption failure returns sentinel, not ciphertext."""
@@ -821,9 +862,11 @@ class TestEncryptedSearch:
         # Capture what gets written to search index
         write_calls = []
         original_write = db.execute_write
+
         def capture_write(sql, params=None):
             write_calls.append((sql, params))
             return original_write.return_value
+
         db.execute_write.side_effect = capture_write
 
         with patch.object(_cs_module, "safety_config") as mock_cfg:
@@ -831,15 +874,18 @@ class TestEncryptedSearch:
             store.add_message(
                 conversation_id="conv123",
                 role="user",
-                content="What is photosynthesis in biology"
+                content="What is photosynthesis in biology",
             )
 
         # Verify search index inserts happened
         index_inserts = [
-            c for c in write_calls
+            c
+            for c in write_calls
             if c[0] and "message_search_index" in str(c[0]) and "INSERT" in str(c[0])
         ]
-        assert len(index_inserts) > 0, "Should have inserted token hashes into search index"
+        assert (
+            len(index_inserts) > 0
+        ), "Should have inserted token hashes into search index"
 
         # Verify the tokens include "photosynthesis" and "biology" (3+ char tokens)
         inserted_hashes = set()
@@ -849,7 +895,9 @@ class TestEncryptedSearch:
 
         # Compute expected hash for "photosynthesis"
         expected_hash = enc.hmac_token("photosynthesis")
-        assert expected_hash in inserted_hashes, "Token hash for 'photosynthesis' should be in index"
+        assert (
+            expected_hash in inserted_hashes
+        ), "Token hash for 'photosynthesis' should be in index"
 
     def test_search_conversations_uses_index_when_encrypted(self, tmp_path):
         """search_conversations should query the index table, not LIKE on ciphertext."""
@@ -865,14 +913,17 @@ class TestEncryptedSearch:
 
         with patch.object(_cs_module, "safety_config") as mock_cfg:
             mock_cfg.ENCRYPT_CONVERSATIONS = True
-            store.search_conversations(profile_id="prof123", search_text="photosynthesis")
+            store.search_conversations(
+                profile_id="prof123", search_text="photosynthesis"
+            )
 
         # Check that the query used message_search_index, not LIKE on content
         query_calls = db.execute_query.call_args_list
         assert len(query_calls) > 0
         sql = str(query_calls[-1])
-        assert "message_search_index" in sql or "token_hash" in sql, \
-            f"Should query search index, not LIKE on ciphertext. Got: {sql}"
+        assert (
+            "message_search_index" in sql or "token_hash" in sql
+        ), f"Should query search index, not LIKE on ciphertext. Got: {sql}"
 
     def test_search_without_text_still_works(self, tmp_path):
         """search_conversations without search_text should work as before."""

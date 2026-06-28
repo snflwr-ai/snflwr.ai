@@ -1869,6 +1869,38 @@ class TestSafetyPipeline:
         assert result.is_safe is False
         assert result.modified_content is not None
 
+    # -- check_output: educational-context inheritance (the "drug" FP) --
+
+    def test_check_output_drugs_block_without_context(self, pipeline):
+        """'drugs' with no educational context still blocks (a child asking how to
+        get drugs must not slip through)."""
+        result = pipeline.check_output(
+            "These illegal drugs are sold on the street.", age=12
+        )
+        assert result.is_safe is False
+
+    def test_check_output_drugs_allowed_with_inherited_input_context(self, pipeline):
+        """When the ORIGINAL question was clearly educational, the answer inherits
+        that context — so 'drugs' used legitimately in a health answer is allowed.
+        Regression for the aspirin/biology-homework false positive."""
+        result = pipeline.check_output(
+            "Some drugs, like aspirin, reduce pain by blocking signals.",
+            age=12,
+            context="how do drugs like aspirin work for my biology homework",
+        )
+        assert result.is_safe is True
+
+    def test_check_output_drugs_allowed_with_medical_indicator_in_answer(
+        self, pipeline
+    ):
+        """A health/medical educational indicator in the answer itself also exempts
+        the contextual 'drugs' keyword."""
+        result = pipeline.check_output(
+            "In human anatomy, drugs like aspirin affect the nervous system.",
+            age=12,
+        )
+        assert result.is_safe is True
+
     def test_check_output_age_gate_block(self, pipeline):
         """Output with age-inappropriate content should be blocked."""
         from safety.pipeline import Category
@@ -2813,7 +2845,9 @@ class TestPossibleFalsePositiveFlag:
             stage="pattern",
             possible_false_positive=True,
         )
-        pipeline._pattern_matcher.check = lambda sanitized, normalized: block_with_pfp
+        pipeline._pattern_matcher.check = (
+            lambda sanitized, normalized, context="": block_with_pfp
+        )
         pipeline._classifier.classify = lambda text, age: None  # don't interfere
         result = pipeline.check_output("some text", age=12)
         assert result is not None

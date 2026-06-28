@@ -546,6 +546,10 @@ async def proxy_chat(
         return JSONResponse(content=_ollama_block_response(model, coppa_msg))
 
     text = _extract_last_user_message(messages)
+    # Captured separately because `text` is shadowed inside the streaming _vet()
+    # closure; passed as `context` to check_output so the answer inherits the
+    # question's educational context (e.g. a biology question about "drugs").
+    user_question = text
 
     try:
         from safety.pipeline import safety_pipeline
@@ -603,6 +607,7 @@ async def proxy_chat(
                 text=text,
                 age=age,
                 profile_id=profile_id,
+                context=user_question,
             )
 
         def _fallback_for(out_result) -> str:
@@ -689,7 +694,10 @@ async def proxy_chat(
             from safety.pipeline import safety_pipeline
 
             out_result = safety_pipeline.check_output(
-                text=assistant_text, age=age, profile_id=profile_id
+                text=assistant_text,
+                age=age,
+                profile_id=profile_id,
+                context=user_question,
             )
         except Exception as exc:
             logger.error(
@@ -762,7 +770,10 @@ async def proxy_chat(
             from safety.pipeline import safety_pipeline
 
             out_result = safety_pipeline.check_output(
-                text=assistant_text, age=age, profile_id=profile_id
+                text=assistant_text,
+                age=age,
+                profile_id=profile_id,
+                context=user_question,
             )
         except Exception as exc:
             logger.error(

@@ -432,6 +432,7 @@ class SafetyPipeline:
         text: str,
         age: Optional[int] = None,
         profile_id: str = "",
+        context: str = "",
     ) -> SafetyResult:
         """
         Run output validation (stages 3, 4, + 5) on AI-generated text.
@@ -452,8 +453,10 @@ class SafetyPipeline:
             normalized = _stage_normalize(text)
             sanitized = _strip_invisible(text)
 
-            # Stage 3: Pattern Matcher
-            result = self._pattern_matcher.check(sanitized, normalized)
+            # Stage 3: Pattern Matcher (inherits the originating question's
+            # educational context so e.g. a health answer to a biology question
+            # isn't blocked on the word "drugs").
+            result = self._pattern_matcher.check(sanitized, normalized, context=context)
             if result is not None:
                 fallback = self._output_fallback(result.category)
                 result = SafetyResult(

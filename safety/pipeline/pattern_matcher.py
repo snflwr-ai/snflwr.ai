@@ -223,6 +223,29 @@ class _PatternMatcher:
         "novel",
         "health class",
         "health education",
+        # Health / medical / life-science subjects — legitimate contexts for
+        # words like "drug(s)", "die", "blood". These are academic subject terms
+        # that are very unlikely in a genuine drug-seeking / harmful request.
+        "anatomy",
+        "physiology",
+        "human body",
+        "the body",
+        "nervous system",
+        "immune system",
+        "circulatory system",
+        "respiratory system",
+        "bloodstream",
+        "medicine",
+        "medication",
+        "pharmacology",
+        "nutrition",
+        "first aid",
+        "vaccine",
+        "disease",
+        "infection",
+        "bacteria and viruses",
+        "how medicines work",
+        "how medicine works",
     )
 
     # Generic words that are not sufficient alone to grant exemption;
@@ -546,13 +569,22 @@ class _PatternMatcher:
 
     # -- Public check method --------------------------------------------------
 
-    def check(self, original: str, normalized: str) -> Optional[SafetyResult]:
+    def check(
+        self, original: str, normalized: str, context: str = ""
+    ) -> Optional[SafetyResult]:
         """
         Run all pattern checks.
 
         Args:
             original: the user's original text (for word-boundary matches)
             normalized: letters-only normalized form (for obfuscation defeat)
+            context: optional extra text whose educational context is INHERITED
+                for the contextual-keyword exemption. Used when checking model
+                OUTPUT so that an answer to an educational question (e.g. "...for
+                my biology homework") keeps the exemption even if the answer text
+                alone lacks an indicator. Only affects MAJOR contextual keywords
+                and the violence-term educational exemption — never CRITICAL
+                danger phrases or the semantic classifier.
 
         Returns:
             SafetyResult on block, or None to continue.
@@ -580,6 +612,11 @@ class _PatternMatcher:
 
             # 2. Prohibited keywords (MAJOR, with educational exemption)
             original_lower = original.lower()
+            # Educational context: present in this text OR inherited from the
+            # originating question (passed as `context` when vetting OUTPUT).
+            has_edu_context = self._has_educational_context(original_lower) or (
+                bool(context) and self._has_educational_context(context.lower())
+            )
             # Structure-preserving normalized form: folds homoglyphs/leet and
             # collapses separator obfuscation ("m-e-t-h" -> "meth") while KEEPING
             # word boundaries (unlike the letters-only `normalized`). Boundary-
@@ -603,8 +640,8 @@ class _PatternMatcher:
                 if matched:
                     # Educational exemption for contextual keywords
                     if kw in self._CONTEXTUAL_KEYWORDS:
-                        if self._has_educational_context(original_lower):
-                            continue  # strong indicator → exempt
+                        if has_edu_context:
+                            continue  # strong indicator (incl. inherited) → exempt
                         # Check weak indicator → possible false positive
                         pfp = any(
                             ind in original_lower
@@ -666,7 +703,7 @@ class _PatternMatcher:
                         if shared_cat == "VIOLENCE" and desc.startswith(
                             "violence term"
                         ):
-                            if self._has_educational_context(original_lower):
+                            if has_edu_context:
                                 continue
                         return _block(
                             Severity.MAJOR,

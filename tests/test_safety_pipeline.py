@@ -725,6 +725,57 @@ class TestPatternMatcher:
             result is not None and result.is_safe is False
         ), f"real hazard NOT blocked: {text!r}"
 
+    # -- SUBSTR_CHECKS substring false positives -------------------------
+    # The SUBSTR_CHECKS list mixes intentional STEMS (murder->murderer,
+    # porn->pornography, masturbat->masturbating) with whole-word slurs/profanity
+    # that wrongly matched inside innocent words. Matching is now a leading-
+    # boundary prefix match (+ a small allowlist for prefix collisions), so stems
+    # still match while innocent words pass.
+
+    @staticmethod
+    def _norm(text):
+        from safety.patterns import normalize_text
+
+        return normalize_text(text)[1].split("|")[0]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "a raccoon and a cocoon and a tycoon",  # coon (suffix)
+            "I took a painkiller for my headache",  # killer (suffix)
+            "I ate a grape and used a scraper",  # rape (suffix)
+            "that looks suspicious and conspicuous",  # spic (suffix)
+            "it was a despicable act",  # spic (suffix)
+            "shitake mushrooms are tasty",  # shit (prefix, allowlist)
+            "fire retardant material is safe",  # retard (prefix, allowlist)
+            "I like spicy food with lots of spice",  # spic (prefix, allowlist)
+        ],
+    )
+    def test_substr_checks_not_false_positive(self, matcher, text):
+        result = matcher.check(text, self._norm(text))
+        assert result is None or result.is_safe, (
+            f"FALSE POSITIVE: {text!r} -> "
+            f"{getattr(result, 'triggered_keywords', None)}"
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "he is a murderer",  # murder -> murderer (stem)
+            "watching pornography online",  # porn -> pornography (stem)
+            "stop masturbating",  # masturbat -> masturbating (stem)
+            "that is so retarded",  # ableist slur
+            "i want to kill myself",  # killmyself
+            "you are a stupid shithead",  # shit (not allowlisted)
+            "dont be a coon",  # standalone racial slur
+        ],
+    )
+    def test_substr_checks_stems_and_words_still_block(self, matcher, text):
+        result = matcher.check(text, self._norm(text))
+        assert (
+            result is not None and result.is_safe is False
+        ), f"real hazard NOT blocked: {text!r}"
+
     def test_suicidal_ideation_blocked(self, matcher):
         from safety.pipeline import Category
 

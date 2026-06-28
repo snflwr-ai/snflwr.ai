@@ -19,16 +19,17 @@ from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _patch_logger():
     """Patch logger and log_safety_incident for all tests."""
-    with patch("safety.pipeline.get_logger") as mock_get_logger, \
-         patch("safety.pipeline.log_safety_incident"):
+    with patch("safety.pipeline.get_logger") as mock_get_logger, patch(
+        "safety.pipeline.log_safety_incident"
+    ):
         mock_get_logger.return_value = MagicMock()
         yield
 
@@ -37,9 +38,11 @@ def _patch_logger():
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_classifier():
     """Create a bare _SemanticClassifier without running __init__."""
     from safety.pipeline import _SemanticClassifier
+
     obj = _SemanticClassifier.__new__(_SemanticClassifier)
     obj._available = False
     obj._model = None
@@ -54,6 +57,7 @@ def _make_classifier():
 # ============================================================================
 # _strip_invisible error fallback (lines 223-224)
 # ============================================================================
+
 
 class TestStripInvisibleErrorFallback:
     """Cover the except branch in _strip_invisible."""
@@ -75,6 +79,7 @@ class TestStripInvisibleErrorFallback:
 # ============================================================================
 # Keyword pattern regex compilation failure (lines 599, 604-605)
 # ============================================================================
+
 
 class TestKeywordPatternCompilationFailure:
     """Cover the re.error branch when compiling keyword patterns."""
@@ -127,6 +132,7 @@ class TestKeywordPatternCompilationFailure:
 # Shared pattern allowlist skip (line 738)
 # ============================================================================
 
+
 class TestSharedPatternAllowlistSkip:
     """Cover the allowlist skip path in shared bilingual pattern matching."""
 
@@ -148,10 +154,15 @@ class TestSharedPatternAllowlistSkip:
         fake_allowlist = frozenset({"foobarx"})
         fake_pattern = re.compile(r"foobar", re.IGNORECASE)
 
-        with patch.object(pipeline_mod, "_SHARED_COMPILED", {
-            "HATE_SPEECH": [(fake_pattern, "fake slur")],
-        }), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}), \
-             patch.object(pipeline_mod, "_SHARED_ALLOWLIST", fake_allowlist):
+        with patch.object(
+            pipeline_mod,
+            "_SHARED_COMPILED",
+            {
+                "HATE_SPEECH": [(fake_pattern, "fake slur")],
+            },
+        ), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}), patch.object(
+            pipeline_mod, "_SHARED_ALLOWLIST", fake_allowlist
+        ):
             # input_words = {"foobarx"}, allowlisted_words = {"foobarx"}
             # regex matches "foobar" from "foobarx", "foobar" in "foobarx" -> True
             result = matcher.check("foobarx", "foobarx")
@@ -161,6 +172,7 @@ class TestSharedPatternAllowlistSkip:
 # ============================================================================
 # Shared pattern educational exemption for VIOLENCE (lines 740-744)
 # ============================================================================
+
 
 class TestSharedPatternEducationalExemption:
     """Cover the educational exemption branch in shared pattern matching."""
@@ -176,9 +188,13 @@ class TestSharedPatternEducationalExemption:
         # Patch _SHARED_COMPILED to have a VIOLENCE category pattern with
         # desc starting "violence term" that matches our input
         fake_pattern = re.compile(r"\bkill\b", re.IGNORECASE)
-        with patch.object(pipeline_mod, "_SHARED_COMPILED", {
-            "VIOLENCE": [(fake_pattern, "violence term: kill")],
-        }), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}):
+        with patch.object(
+            pipeline_mod,
+            "_SHARED_COMPILED",
+            {
+                "VIOLENCE": [(fake_pattern, "violence term: kill")],
+            },
+        ), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}):
             # With educational context ("biology"), should be exempt
             result = matcher.check(
                 "in biology class, animals kill for food",
@@ -195,9 +211,13 @@ class TestSharedPatternEducationalExemption:
         matcher = _PatternMatcher()
 
         fake_pattern = re.compile(r"\bkill\b", re.IGNORECASE)
-        with patch.object(pipeline_mod, "_SHARED_COMPILED", {
-            "VIOLENCE": [(fake_pattern, "violence term: kill")],
-        }), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}):
+        with patch.object(
+            pipeline_mod,
+            "_SHARED_COMPILED",
+            {
+                "VIOLENCE": [(fake_pattern, "violence term: kill")],
+            },
+        ), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}):
             # Without educational context, should block
             # But "kill" will first be caught by prohibited keywords.
             # Use a word not in the prohibited list.
@@ -205,9 +225,13 @@ class TestSharedPatternEducationalExemption:
 
         # Use a direct approach: patch to bypass prohibited keywords
         fake_pattern2 = re.compile(r"\bstomp\b", re.IGNORECASE)
-        with patch.object(pipeline_mod, "_SHARED_COMPILED", {
-            "VIOLENCE": [(fake_pattern2, "violence term: stomp")],
-        }), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}):
+        with patch.object(
+            pipeline_mod,
+            "_SHARED_COMPILED",
+            {
+                "VIOLENCE": [(fake_pattern2, "violence term: stomp")],
+            },
+        ), patch.object(pipeline_mod, "_SHARED_SUBSTR", {}):
             result = matcher.check("stomp on things", "stomponthings")
             assert result is not None
             assert result.is_safe is False
@@ -218,33 +242,48 @@ class TestSharedPatternEducationalExemption:
 # Substring evasion detection (line 760-761)
 # ============================================================================
 
+
 class TestSubstringEvasionDetection:
     """Cover the substring evasion check path (lines 753-767)."""
 
     def test_substring_evasion_detected(self):
-        """When a prohibited substring is found in normalized text, block."""
+        """A boundary-aligned prohibited substring (incl. separator obfuscation)
+        is blocked. Note: matching is now a leading-boundary prefix on the
+        structure-preserving folded form, so the payload must begin at a word
+        boundary — an entry buried mid-word inside an innocent token is NOT a
+        match (that is the substring-FP fix, covered separately)."""
         from safety.pipeline import _PatternMatcher, Category
         import safety.pipeline.pattern_matcher as pipeline_mod
 
         matcher = _PatternMatcher()
 
         # Patch _SHARED_SUBSTR to have a known substring
-        with patch.object(pipeline_mod, "_SHARED_SUBSTR", {
-            "HATE_SPEECH": [("xyzevil", "test evasion phrase")],
-        }), patch.object(pipeline_mod, "_SHARED_COMPILED", {}):
+        with patch.object(
+            pipeline_mod,
+            "_SHARED_SUBSTR",
+            {
+                "HATE_SPEECH": [("xyzevil", "test evasion phrase")],
+            },
+        ), patch.object(pipeline_mod, "_SHARED_COMPILED", {}):
+            # Separator-obfuscated, at a word boundary -> still caught.
             result = matcher.check(
-                "some random text",
-                "containsxyzevilevasion",
+                "look at this x-y-z-e-v-i-l thing",
+                "lookatthisxyzevilthing",
             )
             assert result is not None
             assert result.is_safe is False
             assert "Substring evasion" in result.reason
             assert result.category == Category.HATE_SPEECH
 
+            # Buried mid-word inside an innocent token -> NOT a false positive.
+            clean = matcher.check("containsxyzevilevasion", "containsxyzevilevasion")
+            assert clean is None or clean.is_safe
+
 
 # ============================================================================
 # Semantic classifier __init__ paths (lines 851-856, 861)
 # ============================================================================
+
 
 class TestSemanticClassifierInit:
     """Cover init branches: model found, model not found, ImportError."""
@@ -265,12 +304,15 @@ class TestSemanticClassifierInit:
 
         mock_error_cls = type("OllamaError", (Exception,), {})
 
-        with patch.dict("sys.modules", {
-            "utils.ollama_client": MagicMock(
-                OllamaClient=mock_client_cls,
-                OllamaError=mock_error_cls,
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "utils.ollama_client": MagicMock(
+                    OllamaClient=mock_client_cls,
+                    OllamaError=mock_error_cls,
+                ),
+            },
+        ):
             cls = _SemanticClassifier()
             assert cls._available is True
             assert cls._state == "available"
@@ -288,12 +330,15 @@ class TestSemanticClassifierInit:
 
         mock_error_cls = type("OllamaError", (Exception,), {})
 
-        with patch.dict("sys.modules", {
-            "utils.ollama_client": MagicMock(
-                OllamaClient=mock_client_cls,
-                OllamaError=mock_error_cls,
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "utils.ollama_client": MagicMock(
+                    OllamaClient=mock_client_cls,
+                    OllamaError=mock_error_cls,
+                ),
+            },
+        ):
             cls = _SemanticClassifier()
             assert cls._available is False
             assert cls._model is None
@@ -316,12 +361,15 @@ class TestSemanticClassifierInit:
         )
         mock_error_cls = type("OllamaError", (Exception,), {})
 
-        with patch.dict("sys.modules", {
-            "utils.ollama_client": MagicMock(
-                OllamaClient=mock_client_cls,
-                OllamaError=mock_error_cls,
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "utils.ollama_client": MagicMock(
+                    OllamaClient=mock_client_cls,
+                    OllamaError=mock_error_cls,
+                ),
+            },
+        ):
             cls = _SemanticClassifier()
             assert cls._available is False
             assert cls._state == "disabled"
@@ -330,6 +378,7 @@ class TestSemanticClassifierInit:
 # ============================================================================
 # _find_model fallback selection (lines 878-881)
 # ============================================================================
+
 
 class TestFindModelFallback:
     """Cover fallback model selection in _find_model."""
@@ -391,6 +440,7 @@ class TestFindModelFallback:
 # _transition_state email alert error handling (lines 905-906, 922-923)
 # ============================================================================
 
+
 class TestTransitionStateAlerts:
     """Cover email alert exception handling in _transition_state."""
 
@@ -400,16 +450,19 @@ class TestTransitionStateAlerts:
         cls._state = "degraded"
         cls._model = "test-model"
 
-        with patch.dict("sys.modules", {
-            "core": MagicMock(),
-            "core.email_service": MagicMock(
-                email_service=MagicMock(
-                    send_operator_alert=MagicMock(
-                        side_effect=RuntimeError("SMTP down")
+        with patch.dict(
+            "sys.modules",
+            {
+                "core": MagicMock(),
+                "core.email_service": MagicMock(
+                    email_service=MagicMock(
+                        send_operator_alert=MagicMock(
+                            side_effect=RuntimeError("SMTP down")
+                        )
                     )
-                )
-            ),
-        }):
+                ),
+            },
+        ):
             # Should not raise despite the email error
             cls._transition_state("available")
             assert cls._state == "available"
@@ -421,16 +474,19 @@ class TestTransitionStateAlerts:
         cls._state = "available"
         cls._available = True
 
-        with patch.dict("sys.modules", {
-            "core": MagicMock(),
-            "core.email_service": MagicMock(
-                email_service=MagicMock(
-                    send_operator_alert=MagicMock(
-                        side_effect=RuntimeError("SMTP down")
+        with patch.dict(
+            "sys.modules",
+            {
+                "core": MagicMock(),
+                "core.email_service": MagicMock(
+                    email_service=MagicMock(
+                        send_operator_alert=MagicMock(
+                            side_effect=RuntimeError("SMTP down")
+                        )
                     )
-                )
-            ),
-        }):
+                ),
+            },
+        ):
             cls._transition_state("degraded")
             assert cls._state == "degraded"
             assert cls._available is False
@@ -448,6 +504,7 @@ class TestTransitionStateAlerts:
 # ============================================================================
 # _probe_ollama (lines 928, 937-939)
 # ============================================================================
+
 
 class TestProbeOllama:
     """Cover _probe_ollama branches."""
@@ -506,6 +563,7 @@ class TestProbeOllama:
 # run_health_probe async loop (lines 943-961)
 # ============================================================================
 
+
 class TestRunHealthProbe:
     """Cover the async health probe loop."""
 
@@ -532,8 +590,10 @@ class TestRunHealthProbe:
         )
         cls._client = mock_client
 
-        with patch("asyncio.sleep", side_effect=mock_sleep), \
-             patch("asyncio.get_event_loop") as mock_loop:
+        with patch("asyncio.sleep", side_effect=mock_sleep), patch(
+            "asyncio.get_event_loop"
+        ) as mock_loop:
+
             async def fake_executor(executor, fn):
                 return fn()
 
@@ -560,8 +620,10 @@ class TestRunHealthProbe:
 
         cls._client = None  # _probe_ollama returns False when client is None
 
-        with patch("asyncio.sleep", side_effect=mock_sleep), \
-             patch("asyncio.get_event_loop") as mock_loop:
+        with patch("asyncio.sleep", side_effect=mock_sleep), patch(
+            "asyncio.get_event_loop"
+        ) as mock_loop:
+
             async def fake_executor(executor, fn):
                 return fn()
 
@@ -586,8 +648,10 @@ class TestRunHealthProbe:
             if call_count >= 2:
                 raise asyncio.CancelledError()
 
-        with patch("asyncio.sleep", side_effect=mock_sleep), \
-             patch("asyncio.get_event_loop") as mock_loop:
+        with patch("asyncio.sleep", side_effect=mock_sleep), patch(
+            "asyncio.get_event_loop"
+        ) as mock_loop:
+
             async def fake_executor(executor, fn):
                 return fn()
 
@@ -611,8 +675,10 @@ class TestRunHealthProbe:
             if call_count >= 2:
                 raise asyncio.CancelledError()
 
-        with patch("asyncio.sleep", side_effect=mock_sleep), \
-             patch("asyncio.get_event_loop") as mock_loop:
+        with patch("asyncio.sleep", side_effect=mock_sleep), patch(
+            "asyncio.get_event_loop"
+        ) as mock_loop:
+
             async def fake_executor(executor, fn):
                 raise RuntimeError("executor boom")
 
@@ -638,6 +704,7 @@ class TestRunHealthProbe:
 # ============================================================================
 # Pattern matcher fail-closed exception handler
 # ============================================================================
+
 
 class TestPatternMatcherFailClosed:
     """Cover the broad except at the end of _PatternMatcher.check (line 782)."""

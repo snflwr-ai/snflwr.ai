@@ -119,6 +119,51 @@ class _PatternMatcher:
         cls._OBF_CACHE[keyword] = pattern
         return pattern
 
+    _SUBSTR_PREFIX_CACHE: dict = {}
+
+    @classmethod
+    def _substr_prefix_pattern(cls, substr: str):
+        """Leading-boundary, separator/leet-tolerant PREFIX matcher for a
+        SUBSTR_CHECKS entry.
+
+        Unlike ``_obfuscation_pattern`` there is NO trailing boundary, so the
+        intentional stems in SUBSTR_CHECKS still match their suffixes
+        (``murder``->murderer, ``porn``->pornography, ``masturbat``->
+        masturbating). But the entry must START at a word boundary, so it no
+        longer matches as a suffix inside an innocent word (``coon`` in
+        'raccoon', ``killer`` in 'painkiller', ``rape`` in 'grape',
+        ``spic`` in 'suspicious').
+        """
+        cached = cls._SUBSTR_PREFIX_CACHE.get(substr)
+        if cached is not None:
+            return cached
+        letters = substr.replace(" ", "").replace("-", "").lower()
+        classes = []
+        for ch in letters:
+            variants = cls._LEET_VARIANTS.get(ch, ch)
+            classes.append(
+                "[" + re.escape(variants) + "]" if len(variants) > 1 else re.escape(ch)
+            )
+        body = r"[\W_]*".join(classes)
+        pattern = re.compile(r"(?<![a-z0-9])" + body, re.IGNORECASE)
+        cls._SUBSTR_PREFIX_CACHE[substr] = pattern
+        return pattern
+
+    # Innocent words that share a PREFIX with a SUBSTR_CHECKS entry (so the
+    # leading-boundary prefix match would still flag them). A keyword match that
+    # falls inside one of these spans is suppressed. Whole-word/suffix collisions
+    # (raccoon, painkiller, grape, suspicious) are already handled by the leading
+    # boundary and don't need listing here.
+    _SUBSTR_ALLOWLIST_RE = re.compile(
+        r"(?<![a-z0-9])(?:"
+        r"shi+take|"  # shitake / shiitake (mushroom)  vs 'shit'
+        r"retardants?|retardation|"  # fire retardant / growth retardation vs 'retard'
+        r"spic(?:e|es|y|ily|ier|iest|a)|"  # spice/spicy/spica (NOT 'spics') vs 'spic'
+        r"van\s*dyke|vandyke"  # Van Dyke (name / beard style) vs 'dyke'
+        r")(?![a-z0-9])",
+        re.IGNORECASE,
+    )
+
     # Subject-specific indicators sufficient on their own to grant exemption
     _STRONG_EDUCATIONAL_INDICATORS = (
         "stars die",
@@ -583,6 +628,14 @@ class _PatternMatcher:
             pre_norm = re.sub(r"[_\-.]", " ", original_lower)
             input_words = set(re.sub(r"[_\-.~\s]+", " ", original_lower).split())
             allowlisted_words = input_words & _SHARED_ALLOWLIST
+            # Innocent homograph/prefix spans (e.g. "Van Dyke" surname vs the
+            # 'dyke' slur, "spice" vs 'spic') — a regex hit inside one is an FP.
+            allow_spans_orig = [
+                mm.span() for mm in self._SUBSTR_ALLOWLIST_RE.finditer(original_lower)
+            ]
+            allow_spans_pre = [
+                mm.span() for mm in self._SUBSTR_ALLOWLIST_RE.finditer(pre_norm)
+            ]
 
             for shared_cat, patterns in _SHARED_COMPILED.items():
                 category_enum = self._SHARED_CAT_MAP.get(shared_cat, Category.VIOLENCE)
@@ -590,6 +643,19 @@ class _PatternMatcher:
                     hit_orig = regex.search(original_lower)
                     hit_pre = regex.search(pre_norm)
                     if hit_orig or hit_pre:
+                        # Skip innocent homographs (Van Dyke, spice, …)
+                        if hit_orig and any(
+                            s <= hit_orig.start() < e for s, e in allow_spans_orig
+                        ):
+                            continue
+                        if (
+                            hit_pre
+                            and not hit_orig
+                            and any(
+                                s <= hit_pre.start() < e for s, e in allow_spans_pre
+                            )
+                        ):
+                            continue
                         # Skip false positives from allowlisted words
                         if allowlisted_words:
                             hit = hit_orig or hit_pre
@@ -610,14 +676,22 @@ class _PatternMatcher:
                             keywords=(desc,),
                         )
 
-            # 2c. Substring evasion checks (letters-only normalised form)
+            # 2c. Substring evasion checks (leading-boundary prefix match on the
+            # structure-preserving folded form). Stems still match their
+            # suffixes (murder->murderer), but whole-word entries no longer match
+            # inside innocent words (coon in raccoon). A small allowlist covers
+            # innocent words that share a prefix with an entry (shitake, spice).
             if original_lower not in _SHARED_ALLOWLIST:
+                allow_spans = [
+                    mm.span() for mm in self._SUBSTR_ALLOWLIST_RE.finditer(folded_lower)
+                ]
                 for shared_cat, substr_list in _SHARED_SUBSTR.items():
                     category_enum = self._SHARED_CAT_MAP.get(
                         shared_cat, Category.VIOLENCE
                     )
                     for substr, desc in substr_list:
-                        if substr in normalized:
+                        m = self._substr_prefix_pattern(substr).search(folded_lower)
+                        if m and not any(s <= m.start() < e for s, e in allow_spans):
                             return _block(
                                 Severity.MAJOR,
                                 category_enum,

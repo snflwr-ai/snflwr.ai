@@ -26,7 +26,7 @@ steps) rather than just handing over the answer? (2 = strongly guiding, \
 1 = some guidance, 0 = just states the answer or unhelpful)
 - age_fit: Is the vocabulary, length, and complexity appropriate for the \
 target age band? (2 = well-matched, 1 = somewhat off, 0 = clearly wrong level)
-- tone: Is it warm, encouraging, and on-topic for STEM tutoring? \
+- tone: Is it warm, encouraging, and on-topic for the subject being tutored? \
 (2 = excellent, 1 = neutral, 0 = cold/off-topic/inappropriate)
 """
 

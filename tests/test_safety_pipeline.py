@@ -1814,10 +1814,54 @@ class TestSafetyPipeline:
         assert result.is_safe is False
 
     def test_self_harm_not_deferred(self, pipeline):
-        """Self-harm is not deferred — it hard-blocks (and triggers crisis support)
-        even if the classifier would clear it."""
+        """Self-harm on STUDENT INPUT is never deferred — it hard-blocks (and
+        triggers crisis support) even if the classifier would clear it. Crisis
+        detection on what a student types stays fully strict."""
         pipeline._classifier.classify = lambda text, age=None: None  # would clear
         result = pipeline.check_input("I want to kill myself", age=13)
+        assert result.is_safe is False
+
+    # -- Self-harm: input stays strict, output defers academic references --
+
+    def test_check_input_selfharm_reference_still_blocks(self, pipeline):
+        """Even an academic-sounding self-harm INPUT is hard-blocked + 988 — we do
+        not risk under-reacting to a student's own words."""
+        pipeline._classifier.classify = lambda text, age=None: None  # would clear
+        result = pipeline.check_input("what is suicide", age=13)
+        assert result.is_safe is False
+
+    def test_check_output_academic_suicide_reference_allowed(self, pipeline):
+        """A MODEL OUTPUT that references suicide academically (a literature answer)
+        defers to the classifier; if it clears, it is allowed — no crisis redirect
+        for a homework answer."""
+        pipeline._classifier.classify = lambda text, age=None: None  # classifier OK
+        result = pipeline.check_output(
+            "Romeo dies by suicide because he believes Juliet is already dead.",
+            age=14,
+        )
+        assert result.is_safe is True
+
+    def test_check_output_harmful_selfharm_still_blocks(self, pipeline):
+        """If the classifier flags genuinely harmful self-harm OUTPUT (e.g. methods),
+        it is still blocked."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify = lambda text, age=None: _block(
+            Severity.CRITICAL, Category.SELF_HARM, "classifier", stage="classifier"
+        )
+        result = pipeline.check_output(
+            "Here is a detailed method to end your life.", age=14
+        )
+        assert result.is_safe is False
+
+    def test_check_output_selfharm_fails_closed_when_classifier_down(self, pipeline):
+        """Deferred self-harm OUTPUT fails CLOSED if the classifier is unavailable."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify = lambda text, age=None: _block(
+            Severity.MAJOR, Category.CLASSIFIER_ERROR, "down", stage="classifier"
+        )
+        result = pipeline.check_output("a passage mentioning suicide", age=14)
         assert result.is_safe is False
 
     def test_check_input_empty_text_blocked(self, pipeline):

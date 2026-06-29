@@ -509,7 +509,17 @@ class SafetyPipeline:
             )
             classifier_ran = False
             if det_result is not None:
-                if self._is_deferrable(det_result) and sanitized == text:
+                # In the MODEL's OUTPUT (not student input), also defer self-harm
+                # REFERENCES to the classifier: a literature answer about Romeo's
+                # suicide or a health lesson on suicide prevention should pass,
+                # while genuinely harmful output (methods) is still blocked by the
+                # classifier. Student INPUT crisis detection stays strict —
+                # check_input never defers self-harm.
+                output_deferrable = (
+                    self._is_deferrable(det_result)
+                    or det_result.category == Category.SELF_HARM
+                )
+                if output_deferrable and sanitized == text:
                     # Educational-topic violence/weapons/drugs in the answer (e.g.
                     # a history answer that mentions "genocide") — defer to the
                     # classifier. Fail-closed: an unavailable classifier blocks.

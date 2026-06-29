@@ -10,8 +10,9 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from storage.database import db_manager
 from config import system_config
+from storage.database import db_manager
+
 
 def migrate_sqlite():
     """Add auth_tokens table to SQLite database"""
@@ -45,10 +46,15 @@ def migrate_sqlite():
     db_manager.execute_write("CREATE INDEX idx_tokens_user ON auth_tokens(user_id)")
     db_manager.execute_write("CREATE INDEX idx_tokens_hash ON auth_tokens(token_hash)")
     db_manager.execute_write("CREATE INDEX idx_tokens_type ON auth_tokens(token_type)")
-    db_manager.execute_write("CREATE INDEX idx_tokens_expires ON auth_tokens(expires_at)")
-    db_manager.execute_write("CREATE INDEX idx_tokens_valid ON auth_tokens(is_valid) WHERE is_valid = 1")
+    db_manager.execute_write(
+        "CREATE INDEX idx_tokens_expires ON auth_tokens(expires_at)"
+    )
+    db_manager.execute_write(
+        "CREATE INDEX idx_tokens_valid ON auth_tokens(is_valid) WHERE is_valid = 1"
+    )
 
     print("[OK] auth_tokens table created successfully")
+
 
 def migrate_postgresql():
     """Add auth_tokens table to PostgreSQL database"""
@@ -82,10 +88,15 @@ def migrate_postgresql():
     db_manager.execute_write("CREATE INDEX idx_tokens_user ON auth_tokens(user_id)")
     db_manager.execute_write("CREATE INDEX idx_tokens_hash ON auth_tokens(token_hash)")
     db_manager.execute_write("CREATE INDEX idx_tokens_type ON auth_tokens(token_type)")
-    db_manager.execute_write("CREATE INDEX idx_tokens_expires ON auth_tokens(expires_at)")
-    db_manager.execute_write("CREATE INDEX idx_tokens_valid ON auth_tokens(is_valid) WHERE is_valid = TRUE")
+    db_manager.execute_write(
+        "CREATE INDEX idx_tokens_expires ON auth_tokens(expires_at)"
+    )
+    db_manager.execute_write(
+        "CREATE INDEX idx_tokens_valid ON auth_tokens(is_valid) WHERE is_valid = TRUE"
+    )
 
     print("[OK] auth_tokens table created successfully")
+
 
 def main():
     print("=" * 60)
@@ -96,7 +107,7 @@ def main():
     print(f"\nDatabase type: {db_type}")
 
     try:
-        if db_type == 'postgresql':
+        if db_type == "postgresql":
             migrate_postgresql()
         else:
             migrate_sqlite()
@@ -112,5 +123,6 @@ def main():
         print(f"\nError: {e}")
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

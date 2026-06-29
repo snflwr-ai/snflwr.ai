@@ -40,25 +40,21 @@ def discover():
 
 def ensure_version_table(cursor, dialect):
     if dialect == "postgresql":
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 version    TEXT PRIMARY KEY,
                 name       TEXT,
                 applied_at TIMESTAMP
             )
-            """
-        )
+            """)
     else:
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 version    TEXT PRIMARY KEY,
                 name       TEXT,
                 applied_at TEXT
             )
-            """
-        )
+            """)
 
 
 def applied_versions(cursor):
@@ -113,6 +109,7 @@ def _insert_version(cursor, dialect, rev, name):
 
 def stamp(rev, *, manager=None):
     from storage.database import db_manager as _default
+
     manager = manager or _default
     dialect = dialect_for(manager.db_type)
     conn = manager.adapter.connect()
@@ -125,6 +122,7 @@ def stamp(rev, *, manager=None):
 
 def upgrade(target="head", *, manager=None, migrations=None):
     from storage.database import db_manager as _default
+
     manager = manager or _default
     migrations = migrations if migrations is not None else discover()
     dialect = dialect_for(manager.db_type)
@@ -170,6 +168,7 @@ def upgrade(target="head", *, manager=None, migrations=None):
 
 def downgrade(target, *, manager=None, migrations=None):
     from storage.database import db_manager as _default
+
     manager = manager or _default
     migrations = migrations if migrations is not None else discover()
     dialect = dialect_for(manager.db_type)
@@ -210,6 +209,7 @@ def downgrade(target, *, manager=None, migrations=None):
 
 def status(*, manager=None, migrations=None):
     from storage.database import db_manager as _default
+
     manager = manager or _default
     migrations = migrations if migrations is not None else discover()
     dialect = dialect_for(manager.db_type)

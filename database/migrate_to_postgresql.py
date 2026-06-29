@@ -5,10 +5,9 @@ Migrates all data from SQLite to PostgreSQL
 """
 
 import os
-import sys
 import sqlite3
+import sys
 from pathlib import Path
-from datetime import datetime
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,7 +27,7 @@ def _mask_secret(value: str, visible: int = 4) -> str:
     """Show only last N chars of a secret for verification."""
     s = str(value)
     if len(s) <= visible:
-        return '***'
+        return "***"
     return f"***{s[-visible:]}"
 
 
@@ -43,21 +42,21 @@ class DatabaseMigrator:
 
         # Tables to migrate in order (respecting foreign keys)
         self.tables = [
-            'accounts',
-            'auth_tokens',
-            'child_profiles',
-            'sessions',
-            'messages',
-            'safety_incidents',
-            'parent_alerts',
-            'usage_quotas',
-            'parental_controls',
-            'activity_log',
-            'safety_filter_cache',
-            'model_usage',
-            'system_settings',
-            'error_tracking',
-            'audit_log'
+            "accounts",
+            "auth_tokens",
+            "child_profiles",
+            "sessions",
+            "messages",
+            "safety_incidents",
+            "parent_alerts",
+            "usage_quotas",
+            "parental_controls",
+            "activity_log",
+            "safety_filter_cache",
+            "model_usage",
+            "system_settings",
+            "error_tracking",
+            "audit_log",
         ]
 
     def connect_databases(self):
@@ -74,7 +73,9 @@ class DatabaseMigrator:
 
         # Connect to PostgreSQL
         self.pg_conn = psycopg2.connect(**self.pg_config)
-        print(f"[OK] Connected to PostgreSQL: {os.environ.get('POSTGRES_HOST', '?')}:{os.environ.get('POSTGRES_PORT', '?')}/{os.environ.get('POSTGRES_DB', '?')}")
+        print(
+            f"[OK] Connected to PostgreSQL: {os.environ.get('POSTGRES_HOST', '?')}:{os.environ.get('POSTGRES_PORT', '?')}/{os.environ.get('POSTGRES_DB', '?')}"
+        )
 
     def convert_value(self, value, column_name: str):
         """Convert SQLite values to PostgreSQL format"""
@@ -82,19 +83,43 @@ class DatabaseMigrator:
             return None
 
         # Convert SQLite integers (0/1) to PostgreSQL booleans
-        if column_name in ['is_active', 'email_verified', 'parent_notified',
-                           'acknowledged', 'requires_action', 'require_approval',
-                           'enable_web_search', 'enable_file_upload',
-                           'enable_code_execution', 'is_safe', 'success',
-                           'resolved', 'filtered', 'email_notifications_enabled']:
+        if column_name in [
+            "is_active",
+            "email_verified",
+            "parent_notified",
+            "acknowledged",
+            "requires_action",
+            "require_approval",
+            "enable_web_search",
+            "enable_file_upload",
+            "enable_code_execution",
+            "is_safe",
+            "success",
+            "resolved",
+            "filtered",
+            "email_notifications_enabled",
+        ]:
             return bool(value)
 
         # Keep timestamps as strings (PostgreSQL will convert)
-        if column_name in ['created_at', 'last_login', 'expires_at', 'started_at',
-                           'ended_at', 'timestamp', 'cached_at', 'last_used',
-                           'updated_at', 'first_seen', 'last_seen', 'resolved_at',
-                           'acknowledged_at', 'parent_notified_at', 'sent_at',
-                           'reset_at']:
+        if column_name in [
+            "created_at",
+            "last_login",
+            "expires_at",
+            "started_at",
+            "ended_at",
+            "timestamp",
+            "cached_at",
+            "last_used",
+            "updated_at",
+            "first_seen",
+            "last_seen",
+            "resolved_at",
+            "acknowledged_at",
+            "parent_notified_at",
+            "sent_at",
+            "reset_at",
+        ]:
             return value
 
         return value
@@ -103,7 +128,9 @@ class DatabaseMigrator:
         """Migrate a single table"""
         # Validate table name against whitelist to prevent SQL injection
         if table_name not in self.tables:
-            raise ValueError(f"Invalid table name: {table_name}. Must be one of {self.tables}")
+            raise ValueError(
+                f"Invalid table name: {table_name}. Must be one of {self.tables}"
+            )
 
         print(f"\nMigrating table: {table_name}")
 
@@ -113,8 +140,8 @@ class DatabaseMigrator:
         try:
             # Check if table exists in SQLite
             sqlite_cursor.execute(
-                f"SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                (table_name,)
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,),
             )
             if not sqlite_cursor.fetchone():
                 print(f"  ⊘ Table {table_name} does not exist in SQLite, skipping")
@@ -139,7 +166,7 @@ class DatabaseMigrator:
             rows = sqlite_cursor.fetchall()
 
             # Prepare INSERT statement for PostgreSQL
-            placeholders = ', '.join(['%s'] * len(columns))
+            placeholders = ", ".join(["%s"] * len(columns))
             insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
 
             # Convert and insert data
@@ -177,8 +204,8 @@ class DatabaseMigrator:
             try:
                 # Count in SQLite
                 sqlite_cursor.execute(
-                    f"SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                    (table,)
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
                 )
                 if not sqlite_cursor.fetchone():
                     continue
@@ -195,13 +222,15 @@ class DatabaseMigrator:
                     all_match = False
 
                 status = "[OK]" if match else "[FAIL]"
-                results.append({
-                    'table': table,
-                    'sqlite': sqlite_count,
-                    'postgresql': pg_count,
-                    'match': match,
-                    'status': status
-                })
+                results.append(
+                    {
+                        "table": table,
+                        "sqlite": sqlite_count,
+                        "postgresql": pg_count,
+                        "match": match,
+                        "status": status,
+                    }
+                )
 
             except Exception as e:
                 print(f"  Error verifying {table}: {e}")
@@ -210,7 +239,9 @@ class DatabaseMigrator:
         print(f"\n{'Table':<25} {'SQLite':<10} {'PostgreSQL':<12} {'Status'}")
         print("-" * 70)
         for r in results:
-            print(f"{r['table']:<25} {r['sqlite']:<10} {r['postgresql']:<12} {r['status']}")
+            print(
+                f"{r['table']:<25} {r['sqlite']:<10} {r['postgresql']:<12} {r['status']}"
+            )
 
         return all_match
 
@@ -233,23 +264,25 @@ def main():
     # Get configuration
     sqlite_path = system_config.DB_PATH
     pg_config = {
-        'host': system_config.POSTGRES_HOST,
-        'port': system_config.POSTGRES_PORT,
-        'database': system_config.POSTGRES_DB,
-        'user': system_config.POSTGRES_USER,
-        'password': system_config.POSTGRES_PASSWORD
+        "host": system_config.POSTGRES_HOST,
+        "port": system_config.POSTGRES_PORT,
+        "database": system_config.POSTGRES_DB,
+        "user": system_config.POSTGRES_USER,
+        "password": system_config.POSTGRES_PASSWORD,
     }
 
-    print(f"\nSource (SQLite):")
+    print("\nSource (SQLite):")
     print(f"  Path: {sqlite_path}")
 
-    print(f"\nDestination (PostgreSQL):")
-    print(f"  Host: {os.environ.get('POSTGRES_HOST', '?')}:{os.environ.get('POSTGRES_PORT', '?')}")
+    print("\nDestination (PostgreSQL):")
+    print(
+        f"  Host: {os.environ.get('POSTGRES_HOST', '?')}:{os.environ.get('POSTGRES_PORT', '?')}"
+    )
     print(f"  Database: {os.environ.get('POSTGRES_DB', '?')}")
-    print(f"  User: (see .env)")
+    print("  User: (see .env)")
 
     # Validate
-    if not pg_config['password']:
+    if not pg_config["password"]:
         print("\n[FAIL] Error: POSTGRES_PASSWORD not set")
         print("Set it in .env.production or export POSTGRES_PASSWORD=your_password")
         sys.exit(1)
@@ -259,7 +292,7 @@ def main():
     print("[WARN]  WARNING: This will DELETE all existing data in PostgreSQL")
     print("=" * 70)
     response = input("\nContinue with migration? (yes/no): ")
-    if response.lower() != 'yes':
+    if response.lower() != "yes":
         print("Migration cancelled")
         sys.exit(0)
 
@@ -310,5 +343,5 @@ def main():
         migrator.close_connections()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

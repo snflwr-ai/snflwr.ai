@@ -5,7 +5,6 @@ Creates the snflwr.ai database schema in PostgreSQL
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add parent directory to path
@@ -23,11 +22,7 @@ from config import system_config
 
 
 def create_database_if_not_exists(
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str
+    host: str, port: int, user: str, password: str, database: str
 ):
     """Create database if it doesn't exist"""
 
@@ -37,24 +32,21 @@ def create_database_if_not_exists(
         port=port,
         user=user,
         password=password,
-        database='postgres'  # Connect to default database
+        database="postgres",  # Connect to default database
     )
     conn.autocommit = True
     cursor = conn.cursor()
 
     try:
         # Check if database exists
-        cursor.execute(
-            "SELECT 1 FROM pg_database WHERE datname = %s",
-            (database,)
-        )
+        cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (database,))
         exists = cursor.fetchone()
 
         if not exists:
             print(f"Creating database: {database}")
-            cursor.execute(sql.SQL("CREATE DATABASE {}").format(
-                sql.Identifier(database)
-            ))
+            cursor.execute(
+                sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database))
+            )
             print(f"[OK] Database '{database}' created successfully")
         else:
             print(f"[OK] Database '{database}' already exists")
@@ -67,32 +59,22 @@ def create_database_if_not_exists(
         conn.close()
 
 
-def initialize_schema(
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str
-):
+def initialize_schema(host: str, port: int, user: str, password: str, database: str):
     """Initialize database schema"""
 
     # Read schema file
-    schema_file = Path(__file__).parent / 'schema_postgresql.sql'
+    schema_file = Path(__file__).parent / "schema_postgresql.sql"
 
     if not schema_file.exists():
         print(f"Error: Schema file not found: {schema_file}")
         sys.exit(1)
 
-    with open(schema_file, 'r') as f:
+    with open(schema_file, "r") as f:
         schema_sql = f.read()
 
     # Connect to the database
     conn = psycopg2.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database
+        host=host, port=port, user=user, password=password, database=database
     )
 
     try:
@@ -141,7 +123,7 @@ def main():
     password = system_config.POSTGRES_PASSWORD
     database = system_config.POSTGRES_DB
 
-    print(f"\nConnection Details:")
+    print("\nConnection Details:")
     print(f"  Host: {host}:{port}")
     print(f"  User: {user}")
     print(f"  Database: {database}")
@@ -170,7 +152,9 @@ def main():
         print("[OK] PostgreSQL Database Initialization Complete!")
         print("=" * 70)
         print("\nNext steps:")
-        print("  1. If migrating from SQLite, run: python database/migrate_to_postgresql.py")
+        print(
+            "  1. If migrating from SQLite, run: python database/migrate_to_postgresql.py"
+        )
         print("  2. Create first admin account: python scripts/bootstrap_admin.py")
         print("  3. Start the application with DB_TYPE=postgresql")
         print("\n" + "=" * 70)
@@ -188,5 +172,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

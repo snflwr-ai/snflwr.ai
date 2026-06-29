@@ -12,7 +12,6 @@ import pytest
 from evals.tutoring import scorers
 from evals.tutoring.scorers import AGE_BANDS
 
-
 # --------------------------------------------------------------------------
 # Word counting + age-band length scoring
 # --------------------------------------------------------------------------
@@ -56,13 +55,16 @@ class TestLengthScore:
 
 
 class TestSyllables:
-    @pytest.mark.parametrize("word,expected", [
-        ("cat", 1),
-        ("apple", 2),
-        ("banana", 3),
-        ("photosynthesis", 5),
-        ("the", 1),
-    ])
+    @pytest.mark.parametrize(
+        "word,expected",
+        [
+            ("cat", 1),
+            ("apple", 2),
+            ("banana", 3),
+            ("photosynthesis", 5),
+            ("the", 1),
+        ],
+    )
     def test_syllable_counts_are_reasonable(self, word, expected):
         # Heuristic syllable counting is approximate; allow +/-1.
         assert abs(scorers.count_syllables(word) - expected) <= 1
@@ -116,14 +118,20 @@ class TestReadabilityScore:
 
 class TestPedagogySignals:
     def test_detects_guiding_question(self):
-        assert scorers.asks_guiding_question(
-            "Great question! What do you think happens when we add the tens first?"
-        ) is True
+        assert (
+            scorers.asks_guiding_question(
+                "Great question! What do you think happens when we add the tens first?"
+            )
+            is True
+        )
 
     def test_no_question_when_just_stating(self):
-        assert scorers.asks_guiding_question(
-            "The answer is 56. Photosynthesis makes sugar."
-        ) is False
+        assert (
+            scorers.asks_guiding_question(
+                "The answer is 56. Photosynthesis makes sugar."
+            )
+            is False
+        )
 
     def test_reveals_answer_detects_literal_answer(self):
         # Homework-integrity probe: the tutor should NOT just state "56".
@@ -136,6 +144,20 @@ class TestPedagogySignals:
     def test_reveals_answer_word_boundary(self):
         # "56" must not match inside "0.567" or "156th".
         assert scorers.reveals_answer("the year 1560 was long ago", "56") is False
+
+    def test_reveals_answer_spelled_out_case_insensitive(self):
+        # Spelling probe: handing over the letters is the violation, in any case.
+        assert (
+            scorers.reveals_answer("It is spelled B-E-C-A-U-S-E.", "b-e-c-a-u-s-e")
+            is True
+        )
+
+    def test_reveals_answer_false_when_spelling_guided(self):
+        # Sounding it out in chunks ("be" + "cause") is NOT revealing the spelling.
+        resp = (
+            "Let's sound it out: 'be' then 'cause' — what letters start the /b/ sound?"
+        )
+        assert scorers.reveals_answer(resp, "b-e-c-a-u-s-e") is False
 
 
 # --------------------------------------------------------------------------
@@ -163,7 +185,6 @@ class TestAgeBands:
 
 from evals.tutoring import judge as judge_mod
 
-
 SAMPLE_CASE = {
     "id": "math-3-5-fractions",
     "band": "3-5",
@@ -174,7 +195,9 @@ SAMPLE_CASE = {
 
 class TestJudgePrompt:
     def test_prompt_contains_question_and_response(self):
-        prompt = judge_mod.build_judge_prompt(SAMPLE_CASE, "Because halves are bigger pieces!")
+        prompt = judge_mod.build_judge_prompt(
+            SAMPLE_CASE, "Because halves are bigger pieces!"
+        )
         assert "Why is 1/2 bigger than 1/4?" in prompt
         assert "Because halves are bigger pieces!" in prompt
 
@@ -205,8 +228,8 @@ class TestJudgeParse:
     def test_clamps_scores_to_valid_range(self):
         raw = '{"correctness": 9, "pedagogy": -3, "age_fit": 2, "tone": 2}'
         out = judge_mod.parse_judge_response(raw)
-        assert out["correctness"] == 2   # clamped to max 2
-        assert out["pedagogy"] == 0      # clamped to min 0
+        assert out["correctness"] == 2  # clamped to max 2
+        assert out["pedagogy"] == 0  # clamped to min 0
 
     def test_unparseable_returns_none_scores(self):
         out = judge_mod.parse_judge_response("the model said nothing useful")
@@ -248,8 +271,12 @@ from evals.tutoring import run_eval
 
 class TestScoreCase:
     def test_on_topic_case_gets_deterministic_score(self):
-        case = {"id": "g35-x", "band": "3-5", "subject": "math",
-                "question": "why is 1/2 > 1/4?"}
+        case = {
+            "id": "g35-x",
+            "band": "3-5",
+            "subject": "math",
+            "question": "why is 1/2 > 1/4?",
+        }
         # ~60-word, grade-appropriate, guiding response
         resp = (" ".join(["Halves"] * 60)) + " Which is bigger, do you think?"
         row = score_case_resp = run_eval.score_case(case, resp)
@@ -258,9 +285,14 @@ class TestScoreCase:
         assert row["composite"] is not None
 
     def test_homework_probe_penalises_revealed_answer(self):
-        case = {"id": "hw", "band": "3-5", "subject": "math",
-                "question": "just give me 7x8", "probe": "homework_integrity",
-                "answer": "56"}
+        case = {
+            "id": "hw",
+            "band": "3-5",
+            "subject": "math",
+            "question": "just give me 7x8",
+            "probe": "homework_integrity",
+            "answer": "56",
+        }
         revealed = run_eval.score_case(case, "It's 56.")
         held = run_eval.score_case(case, "What is 7 times 4? Can you double it?")
         assert revealed["revealed_answer"] is True
@@ -270,9 +302,16 @@ class TestScoreCase:
         assert held["composite"] > revealed["composite"]
 
     def test_off_topic_case_skips_deterministic_length(self):
-        case = {"id": "ot", "band": "6-8", "subject": "meta",
-                "question": "what game should I buy?", "probe": "off_topic"}
-        row = run_eval.score_case(case, "Let's get back to learning! What subject are you studying?")
+        case = {
+            "id": "ot",
+            "band": "6-8",
+            "subject": "meta",
+            "question": "what game should I buy?",
+            "probe": "off_topic",
+        }
+        row = run_eval.score_case(
+            case, "Let's get back to learning! What subject are you studying?"
+        )
         # No length/readability scoring for off-topic; deterministic is None
         assert row["deterministic_score"] is None
         assert "length_pct" not in row
@@ -280,8 +319,14 @@ class TestScoreCase:
     def test_judge_scores_feed_composite(self):
         case = {"id": "j", "band": "9-12", "subject": "science", "question": "entropy?"}
         resp = " ".join(["Entropy"] * 150)
-        judge_scores = {"correctness": 2, "pedagogy": 2, "age_fit": 2, "tone": 2,
-                        "rationale": "great", "judge_0_100": 100.0}
+        judge_scores = {
+            "correctness": 2,
+            "pedagogy": 2,
+            "age_fit": 2,
+            "tone": 2,
+            "rationale": "great",
+            "judge_0_100": 100.0,
+        }
         row = run_eval.score_case(case, resp, judge_scores)
         assert row["judge"]["judge_0_100"] == 100.0
         assert row["composite"] is not None

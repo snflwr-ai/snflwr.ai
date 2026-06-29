@@ -293,7 +293,8 @@ raw base-model tag.
 | `qwen3.5:2b` | ~1.3 GB | 6 GB+ RAM | Fallback (older laptops) |
 | `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ RAM | Fallback (low-resource) |
 
-The wrapper bundles the K-12 STEM tutor system prompt, sampling parameters
+The wrapper bundles the K-12 tutor system prompt (all school subjects — STEM
+plus reading, writing, history, civics, and the arts), sampling parameters
 (including `repeat_penalty` to prevent reasoning loops), and safety stop
 sequences from [`models/Snflwr_AI_Kids.modelfile`](models/Snflwr_AI_Kids.modelfile).
 

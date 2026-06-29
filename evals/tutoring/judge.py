@@ -35,8 +35,10 @@ def build_judge_prompt(case: dict, response: str) -> str:
     """Build the judge prompt for one (case, response) pair."""
     band = case.get("band", "?")
     ages = {
-        "K-2": "ages 5-7", "3-5": "ages 8-10",
-        "6-8": "ages 11-13", "9-12": "ages 14-18",
+        "K-2": "ages 5-7",
+        "3-5": "ages 8-10",
+        "6-8": "ages 11-13",
+        "9-12": "ages 14-18",
     }.get(band, band)
     return f"""\
 You are an expert K-12 education evaluator grading an AI tutor's response.
@@ -87,7 +89,9 @@ def judge_score_0_100(scores: dict):
     """Aggregate the present rubric dimensions into a 0..100 score.
 
     Ignores None dimensions; returns None if no dimension was scored."""
-    present = [scores.get(dim) for dim in RUBRIC_DIMENSIONS if isinstance(scores.get(dim), int)]
+    present = [
+        scores.get(dim) for dim in RUBRIC_DIMENSIONS if isinstance(scores.get(dim), int)
+    ]
     if not present:
         return None
     return round(100.0 * sum(present) / (_MAX_PER_DIM * len(present)), 1)

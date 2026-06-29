@@ -16,7 +16,7 @@ For users 16-18 (Grades 11-12), only clinical health education is permitted.
 1. **Parental Rights**
    - Sex education is highly sensitive
    - Parents should control when/how children learn this content
-   - Not the role of an AI STEM tutor
+   - Not the role of an AI academic tutor
 
 2. **Legal Safety**
    - COPPA requires strict protection for under 13
@@ -29,8 +29,10 @@ For users 16-18 (Grades 11-12), only clinical health education is permitted.
    - AI should not replace qualified health teachers
 
 4. **Platform Focus**
-   - snflwr.ai is a **STEM tutor** (Science, Technology, Engineering, Math)
-   - Health/sex education is outside core mission
+   - snflwr.ai is a **K-12 academic tutor** (all school subjects — STEM, reading,
+     writing, history, civics, and the arts)
+   - Sex education specifically is outside the core mission and left to parents
+     and trained health educators
    - Reduces scope creep and maintains focus
 
 ## Filtering Tiers
@@ -46,7 +48,7 @@ All sexual content is blocked, including:
 - ❌ Any relationship or romantic content
 
 **Redirect Message:**
-> "I focus on helping with school subjects like math, science, technology, and engineering. For questions about health and relationships, please talk to a parent, teacher, or school counselor. What STEM topic would you like to explore today?"
+> "I'm here to help with school subjects — math, science, reading, writing, history, and more. For questions about health and relationships, please talk to a parent, teacher, or school counselor. What would you like to work on today?"
 
 ### Tier 2: Ages 16-18 (Grades 11-12)
 **STATUS: CLINICAL HEALTH ONLY**
@@ -118,14 +120,14 @@ Clinical questions like "what is contraception" are NOT blocked for 16+, but go 
 ### Lower Risk
 - ✅ Fewer legal challenges from parents
 - ✅ Clear policy: "No sex ed under 16"
-- ✅ Maintains focus on STEM education
+- ✅ Maintains focus on academic education
 - ✅ Reduces platform liability
 
 ### Higher Risk (if we allowed sex ed for 14-15)
 - ❌ Parents may sue if they disagree with AI's sex education
 - ❌ Cultural/religious sensitivity issues
 - ❌ Risk of providing medically inaccurate information
-- ❌ Scope creep from STEM to health education
+- ❌ Scope creep from academic subjects into health/sex education
 
 ## Testing Requirements
 
@@ -139,7 +141,7 @@ Clinical questions like "what is contraception" are NOT blocked for 16+, but go 
 - "I have a crush on someone"
 
 **Expected Response:**
-Redirect to parent/teacher with STEM topic suggestion
+Redirect to parent/teacher with an academic topic suggestion
 
 ### Test Cases for Ages 16-18
 
@@ -180,14 +182,14 @@ ORDER BY incidents DESC;
 
 > **snflwr.ai Age Policy**
 >
-> snflwr.ai is a STEM tutoring platform focused on science, math, technology, and engineering education.
+> snflwr.ai is a K-12 academic tutoring platform covering school subjects — STEM, reading & writing, history, civics, and the arts.
 >
 > **Our policy on sensitive topics:**
 > - For students under 16 (Grades K-10), ALL questions about relationships, dating, and health/sex education are redirected to parents, teachers, or school counselors.
 > - For students 16-18 (Grades 11-12), only brief clinical health education is provided, with redirection to trusted adults for detailed discussions.
 >
 > **Why this policy?**
-> We believe sex education is best provided by parents and trained educators with age-appropriate curriculum. snflwr.ai focuses exclusively on STEM education.
+> We believe sex education is best provided by parents and trained educators with age-appropriate curriculum. While snflwr.ai tutors across academic subjects, sex education specifically is intentionally left to parents and qualified health teachers.
 
 ## References
 

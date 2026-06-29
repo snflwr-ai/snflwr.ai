@@ -58,12 +58,27 @@ def test_postgres_fresh_upgrade_to_head():
         conn.commit()
 
         applied = runner.upgrade("head", manager=mgr)
-        assert "0001" in applied  # baseline actually ran on the clean DB
 
+        # Gather full state for a diagnostic failure message.
         conn = mgr.adapter.connect()
         cur = conn.cursor()
-        cur.execute("SELECT to_regclass('public.accounts')")
-        assert cur.fetchone()[0] is not None
-        assert "0001" in runner.applied_versions(cur)
+        cur.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' ORDER BY table_name"
+        )
+        public_tables = [r[0] for r in cur.fetchall()]
+        sm_rows = []
+        if "schema_migrations" in public_tables:
+            cur.execute("SELECT version FROM schema_migrations ORDER BY version")
+            sm_rows = [r[0] for r in cur.fetchall()]
+        discovered = [m.revision for m in runner.discover()]
+        diag = (
+            f"applied={applied} discovered={discovered} "
+            f"schema_migrations={sm_rows} public_tables={public_tables}"
+        )
+
+        assert "accounts" in public_tables, diag
+        assert "0001" in sm_rows, diag
+        assert "0001" in applied, diag
     finally:
         mgr.adapter.close()

@@ -168,6 +168,46 @@ def upgrade(target="head", *, manager=None, migrations=None):
     return newly_applied
 
 
+def downgrade(target, *, manager=None, migrations=None):
+    from storage.database import db_manager as _default
+    manager = manager or _default
+    migrations = migrations if migrations is not None else discover()
+    dialect = dialect_for(manager.db_type)
+    placeholder = "%s" if dialect == "postgresql" else "?"
+
+    conn = manager.adapter.connect()
+    cur = conn.cursor()
+    reverted = []
+    try:
+        _acquire_lock(conn, cur, dialect)
+        ensure_version_table(cur, dialect)
+        already = applied_versions(cur)
+        # Highest revision first.
+        for mod in sorted(migrations, key=lambda m: m.revision, reverse=True):
+            if mod.revision not in already:
+                continue
+            if mod.revision <= target:
+                break
+            logger.info("Reverting migration %s (%s)", mod.revision, mod.name)
+            mod.down(cur, dialect)  # may raise IrreversibleMigration
+            cur.execute(
+                f"DELETE FROM schema_migrations WHERE version = {placeholder}",
+                (mod.revision,),
+            )
+            conn.commit()
+            reverted.append(mod.revision)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        try:
+            _release_lock(conn, cur, dialect)
+            conn.commit()
+        except Exception:
+            pass
+    return reverted
+
+
 def status(*, manager=None, migrations=None):
     from storage.database import db_manager as _default
     manager = manager or _default

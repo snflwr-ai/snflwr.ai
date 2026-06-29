@@ -86,7 +86,6 @@ def status(*, manager=None, migrations=None):
     ensure_version_table(cur, dialect)
     conn.commit()
     applied = applied_versions(cur)
-    manager.adapter.close()
     all_revs = [m.revision for m in migrations]
     return {
         "current": max(applied) if applied else None,

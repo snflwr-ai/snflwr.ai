@@ -60,50 +60,31 @@ def create_database_if_not_exists(
 
 
 def initialize_schema(host: str, port: int, user: str, password: str, database: str):
-    """Initialize database schema"""
+    """Initialize the database schema via the migration runner (single source of truth)."""
+    from database.migrations import runner
+    from storage.database import DatabaseManager
 
-    # Read schema file
-    schema_file = Path(__file__).parent / "schema_postgresql.sql"
+    print(f"\nInitializing schema in database: {database}")
+    mgr = DatabaseManager(db_type="postgresql")
+    runner.upgrade("head", manager=mgr)
+    print("[OK] Schema initialized successfully (migrations at head)")
 
-    if not schema_file.exists():
-        print(f"Error: Schema file not found: {schema_file}")
-        sys.exit(1)
-
-    with open(schema_file, "r") as f:
-        schema_sql = f.read()
-
-    # Connect to the database
+    # Verify tables were created.
     conn = psycopg2.connect(
         host=host, port=port, user=user, password=password, database=database
     )
-
     try:
         cursor = conn.cursor()
-        print(f"\nInitializing schema in database: {database}")
-
-        # Execute schema SQL
-        cursor.execute(schema_sql)
-        conn.commit()
-
-        print("[OK] Schema initialized successfully")
-
-        # Verify tables were created
         cursor.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = 'public'
             ORDER BY table_name
-        """)
-
+            """)
         tables = cursor.fetchall()
         print(f"\n[OK] Created {len(tables)} tables:")
         for table in tables:
             print(f"  - {table[0]}")
-
-    except Exception as e:
-        conn.rollback()
-        print(f"\nError initializing schema: {e}")
-        raise
     finally:
         cursor.close()
         conn.close()

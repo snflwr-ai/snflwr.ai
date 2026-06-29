@@ -19,6 +19,7 @@ except Exception:  # pragma: no cover - import order safety before runner exists
 from storage.schema import (
     ACCOUNT_MIGRATION_COLUMNS,
     PROFILE_MIGRATION_COLUMNS,
+    create_indexes,
     create_postgres_tables,
     create_sqlite_tables,
 )
@@ -68,6 +69,8 @@ def up(cursor, dialect):
                 cursor.execute("RELEASE SAVEPOINT add_col")
             except Exception:
                 cursor.execute("ROLLBACK TO SAVEPOINT add_col")
+
+    create_indexes(cursor, dialect)
 
 
 def down(cursor, dialect):

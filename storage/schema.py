@@ -6,6 +6,10 @@ separate because SQLite and PostgreSQL differ in type/constraint syntax; the
 shared idempotent migration column lists below are deduplicated across dialects.
 """
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 # Idempotent ADD COLUMN migrations for existing databases. Identical column set
 # for both dialects (the per-dialect ALTER wrapping stays in database.py).
 ACCOUNT_MIGRATION_COLUMNS = [
@@ -786,3 +790,56 @@ def create_postgres_tables(cursor):
                         FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
                     )
                 """)
+
+
+def create_indexes(cursor, dialect):
+    """Create all performance indexes (idempotent). dialect in {"sqlite","postgresql"}."""
+    indexes = [
+        # Accounts
+        "CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username)",
+        "CREATE INDEX IF NOT EXISTS idx_accounts_device ON accounts(device_id)",
+        "CREATE INDEX IF NOT EXISTS idx_accounts_email_hash ON accounts(email_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role)",
+        # Profiles
+        "CREATE INDEX IF NOT EXISTS idx_profiles_parent ON child_profiles(parent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_profiles_active ON child_profiles(is_active)",
+        # Sessions
+        "CREATE INDEX IF NOT EXISTS idx_sessions_profile ON sessions(profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at)",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id)",
+        # Conversations
+        "CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_conversations_profile ON conversations(profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_conversations_flagged ON conversations(is_flagged)",
+        # Messages
+        "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)",
+        # Safety incidents
+        "CREATE INDEX IF NOT EXISTS idx_incidents_profile ON safety_incidents(profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON safety_incidents(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_severity ON safety_incidents(severity)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_unresolved ON safety_incidents(resolved) WHERE NOT resolved",
+        # Analytics
+        "CREATE INDEX IF NOT EXISTS idx_analytics_profile_date ON learning_analytics(profile_id, date)",
+        "CREATE INDEX IF NOT EXISTS idx_analytics_date ON learning_analytics(date)",
+        # Audit
+        "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_type)",
+        # Error tracking
+        "CREATE INDEX IF NOT EXISTS idx_errors_hash ON error_tracking(error_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_errors_severity ON error_tracking(severity)",
+        "CREATE INDEX IF NOT EXISTS idx_errors_first_seen ON error_tracking(first_seen)",
+        "CREATE INDEX IF NOT EXISTS idx_errors_unresolved ON error_tracking(resolved) WHERE resolved = 0",  # INTEGER col, not BOOLEAN
+    ]
+    for index_sql in indexes:
+        try:
+            if dialect == "postgresql":
+                cursor.execute("SAVEPOINT idx_sp")
+            cursor.execute(index_sql)
+            if dialect == "postgresql":
+                cursor.execute("RELEASE SAVEPOINT idx_sp")
+        except Exception as e:
+            if dialect == "postgresql":
+                cursor.execute("ROLLBACK TO SAVEPOINT idx_sp")
+            logger.warning(f"Index creation warning: {e}")

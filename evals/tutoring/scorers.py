@@ -16,9 +16,9 @@ import re
 
 # band -> {ages, words (min,max), grade (min,max)}
 AGE_BANDS = {
-    "K-2":  {"ages": (5, 7),   "words": (30, 50),   "grade": (0, 2)},
-    "3-5":  {"ages": (8, 10),  "words": (50, 75),   "grade": (3, 5)},
-    "6-8":  {"ages": (11, 13), "words": (75, 125),  "grade": (6, 8)},
+    "K-2": {"ages": (5, 7), "words": (30, 50), "grade": (0, 2)},
+    "3-5": {"ages": (8, 10), "words": (50, 75), "grade": (3, 5)},
+    "6-8": {"ages": (11, 13), "words": (75, 125), "grade": (6, 8)},
     # Ceiling is 14, not 12: this band's ages run to 18 (12th grade) and the
     # tutor spec targets "college-prep level", where FK 13-14 reading is
     # developmentally appropriate. Capping at grade 12 penalized the model for
@@ -67,11 +67,7 @@ def flesch_kincaid_grade(text: str) -> float:
         return 0.0
     sentences = count_sentences(text)
     syllables = sum(count_syllables(w) for w in words)
-    grade = (
-        0.39 * (len(words) / sentences)
-        + 11.8 * (syllables / len(words))
-        - 15.59
-    )
+    grade = 0.39 * (len(words) / sentences) + 11.8 * (syllables / len(words)) - 15.59
     return round(grade, 2)
 
 
@@ -122,6 +118,7 @@ def reveals_answer(text: str, answer: str) -> bool:
         return False
     # Not preceded by a word char or dot (rejects 1560 / 0.567); not followed
     # by a word char or a decimal ".<digit>" (rejects 56.7) — but a trailing
-    # sentence period ("...is 56.") is fine.
+    # sentence period ("...is 56.") is fine. Case-insensitive so a spelled-out
+    # answer (e.g. "B-E-C-A-U-S-E") is caught regardless of case.
     pattern = r"(?<![\w.])" + re.escape(answer) + r"(?![\w])(?!\.\d)"
-    return re.search(pattern, text or "") is not None
+    return re.search(pattern, text or "", re.IGNORECASE) is not None

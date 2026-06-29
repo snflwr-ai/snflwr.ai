@@ -9,7 +9,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import system_config, get_database_url
+from config import system_config
 from storage.database import db_manager
 from utils.logger import get_logger
 
@@ -17,102 +17,25 @@ logger = get_logger(__name__)
 
 
 def init_database():
-    """Initialize database with schema (supports both SQLite and PostgreSQL)"""
+    """Initialize the database schema by running migrations to head."""
     try:
         logger.info("Initializing snflwr.ai database...")
         logger.info(f"Database type: {system_config.DB_TYPE}")
 
-        # Read schema file
-        schema_file = Path(__file__).parent / "schema.sql"
-        if not schema_file.exists():
-            logger.error(f"Schema file not found: {schema_file}")
-            return False
+        from storage.database import DatabaseManager
+        from database.migrations import runner
 
-        with open(schema_file, 'r') as f:
-            schema_sql = f.read()
-
-        if system_config.DB_TYPE == 'postgresql':
-            return _init_postgresql(schema_sql)
+        if system_config.DB_TYPE == "postgresql":
+            mgr = DatabaseManager(db_type="postgresql")
         else:
-            return _init_sqlite(schema_sql)
+            mgr = DatabaseManager(db_path=Path(system_config.DB_PATH), db_type="sqlite")
 
+        runner.upgrade("head", manager=mgr)
+        logger.info("Database schema initialized successfully (migrations at head)")
+        return True
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         return False
-
-
-def _init_sqlite(schema_sql):
-    """Initialize SQLite database."""
-    from storage.db_adapters import create_adapter
-
-    db_path = Path(system_config.DB_PATH)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"SQLite database path: {db_path}")
-
-    # Run column-diffing migration first so that existing tables gain any
-    # new columns before executescript tries to create indexes on them.
-    # This avoids "no such column" errors when indexes reference columns
-    # that exist in the schema but not yet in the live database.
-    try:
-        from database.migrate import run_schema_migration
-        run_schema_migration()
-    except Exception as mig_err:
-        logger.warning(f"Pre-init migration step encountered an issue: {mig_err}")
-
-    # Open through the encryption-aware adapter so an encrypted (SQLCipher)
-    # database is created/opened with its key applied. A plain sqlite3.connect()
-    # fails with "file is not a database" against an encrypted file.
-    adapter = create_adapter("sqlite", db_path=str(db_path))
-    conn = adapter.connect()
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        conn.executescript(schema_sql)
-        conn.commit()
-        logger.info("SQLite database schema initialized successfully")
-        return True
-    finally:
-        adapter.close()
-
-
-def _init_postgresql(schema_sql):
-    """Initialize PostgreSQL database."""
-    try:
-        import psycopg2
-    except ImportError:
-        logger.error(
-            "psycopg2 is required for PostgreSQL. "
-            "Install it with: pip install psycopg2-binary"
-        )
-        return False
-
-    logger.info(
-        f"PostgreSQL: {system_config.POSTGRES_HOST}:{system_config.POSTGRES_PORT}"
-        f"/{system_config.POSTGRES_DB}"
-    )
-
-    conn = psycopg2.connect(
-        host=system_config.POSTGRES_HOST,
-        port=system_config.POSTGRES_PORT,
-        dbname=system_config.POSTGRES_DB,
-        user=system_config.POSTGRES_USER,
-        password=system_config.POSTGRES_PASSWORD,
-        sslmode=system_config.POSTGRES_SSLMODE,
-    )
-    conn.autocommit = True
-    try:
-        with conn.cursor() as cur:
-            # Split and execute statements individually (PostgreSQL
-            # does not support executescript).
-            statements = [s.strip() for s in schema_sql.split(";") if s.strip()]
-            for stmt in statements:
-                # Skip SQLite-specific PRAGMAs
-                if stmt.upper().startswith("PRAGMA"):
-                    continue
-                cur.execute(stmt)
-        logger.info("PostgreSQL database schema initialized successfully")
-        return True
-    finally:
-        conn.close()
 
 
 def verify_tables():

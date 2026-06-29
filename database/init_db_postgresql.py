@@ -5,7 +5,6 @@ Creates the snflwr.ai database schema in PostgreSQL
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add parent directory to path
@@ -23,11 +22,7 @@ from config import system_config
 
 
 def create_database_if_not_exists(
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str
+    host: str, port: int, user: str, password: str, database: str
 ):
     """Create database if it doesn't exist"""
 
@@ -37,24 +32,21 @@ def create_database_if_not_exists(
         port=port,
         user=user,
         password=password,
-        database='postgres'  # Connect to default database
+        database="postgres",  # Connect to default database
     )
     conn.autocommit = True
     cursor = conn.cursor()
 
     try:
         # Check if database exists
-        cursor.execute(
-            "SELECT 1 FROM pg_database WHERE datname = %s",
-            (database,)
-        )
+        cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (database,))
         exists = cursor.fetchone()
 
         if not exists:
             print(f"Creating database: {database}")
-            cursor.execute(sql.SQL("CREATE DATABASE {}").format(
-                sql.Identifier(database)
-            ))
+            cursor.execute(
+                sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database))
+            )
             print(f"[OK] Database '{database}' created successfully")
         else:
             print(f"[OK] Database '{database}' already exists")
@@ -67,61 +59,32 @@ def create_database_if_not_exists(
         conn.close()
 
 
-def initialize_schema(
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str
-):
-    """Initialize database schema"""
+def initialize_schema(host: str, port: int, user: str, password: str, database: str):
+    """Initialize the database schema via the migration runner (single source of truth)."""
+    from database.migrations import runner
+    from storage.database import DatabaseManager
 
-    # Read schema file
-    schema_file = Path(__file__).parent / 'schema_postgresql.sql'
+    print(f"\nInitializing schema in database: {database}")
+    mgr = DatabaseManager(db_type="postgresql")
+    runner.upgrade("head", manager=mgr)
+    print("[OK] Schema initialized successfully (migrations at head)")
 
-    if not schema_file.exists():
-        print(f"Error: Schema file not found: {schema_file}")
-        sys.exit(1)
-
-    with open(schema_file, 'r') as f:
-        schema_sql = f.read()
-
-    # Connect to the database
+    # Verify tables were created.
     conn = psycopg2.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database
+        host=host, port=port, user=user, password=password, database=database
     )
-
     try:
         cursor = conn.cursor()
-        print(f"\nInitializing schema in database: {database}")
-
-        # Execute schema SQL
-        cursor.execute(schema_sql)
-        conn.commit()
-
-        print("[OK] Schema initialized successfully")
-
-        # Verify tables were created
         cursor.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = 'public'
             ORDER BY table_name
-        """)
-
+            """)
         tables = cursor.fetchall()
         print(f"\n[OK] Created {len(tables)} tables:")
         for table in tables:
             print(f"  - {table[0]}")
-
-    except Exception as e:
-        conn.rollback()
-        print(f"\nError initializing schema: {e}")
-        raise
     finally:
         cursor.close()
         conn.close()
@@ -141,7 +104,7 @@ def main():
     password = system_config.POSTGRES_PASSWORD
     database = system_config.POSTGRES_DB
 
-    print(f"\nConnection Details:")
+    print("\nConnection Details:")
     print(f"  Host: {host}:{port}")
     print(f"  User: {user}")
     print(f"  Database: {database}")
@@ -170,7 +133,9 @@ def main():
         print("[OK] PostgreSQL Database Initialization Complete!")
         print("=" * 70)
         print("\nNext steps:")
-        print("  1. If migrating from SQLite, run: python database/migrate_to_postgresql.py")
+        print(
+            "  1. If migrating from SQLite, run: python database/migrate_to_postgresql.py"
+        )
         print("  2. Create first admin account: python scripts/bootstrap_admin.py")
         print("  3. Start the application with DB_TYPE=postgresql")
         print("\n" + "=" * 70)
@@ -188,5 +153,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -9,110 +9,32 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import system_config, get_database_url
-from storage.database import db_manager
+from config import system_config
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 def init_database():
-    """Initialize database with schema (supports both SQLite and PostgreSQL)"""
+    """Initialize the database schema by running migrations to head."""
     try:
         logger.info("Initializing snflwr.ai database...")
         logger.info(f"Database type: {system_config.DB_TYPE}")
 
-        # Read schema file
-        schema_file = Path(__file__).parent / "schema.sql"
-        if not schema_file.exists():
-            logger.error(f"Schema file not found: {schema_file}")
-            return False
+        from database.migrations import runner
+        from storage.database import DatabaseManager
 
-        with open(schema_file, 'r') as f:
-            schema_sql = f.read()
-
-        if system_config.DB_TYPE == 'postgresql':
-            return _init_postgresql(schema_sql)
+        if system_config.DB_TYPE == "postgresql":
+            mgr = DatabaseManager(db_type="postgresql")
         else:
-            return _init_sqlite(schema_sql)
+            mgr = DatabaseManager(db_path=Path(system_config.DB_PATH), db_type="sqlite")
 
+        runner.upgrade("head", manager=mgr)
+        logger.info("Database schema initialized successfully (migrations at head)")
+        return True
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         return False
-
-
-def _init_sqlite(schema_sql):
-    """Initialize SQLite database."""
-    from storage.db_adapters import create_adapter
-
-    db_path = Path(system_config.DB_PATH)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"SQLite database path: {db_path}")
-
-    # Run column-diffing migration first so that existing tables gain any
-    # new columns before executescript tries to create indexes on them.
-    # This avoids "no such column" errors when indexes reference columns
-    # that exist in the schema but not yet in the live database.
-    try:
-        from database.migrate import run_schema_migration
-        run_schema_migration()
-    except Exception as mig_err:
-        logger.warning(f"Pre-init migration step encountered an issue: {mig_err}")
-
-    # Open through the encryption-aware adapter so an encrypted (SQLCipher)
-    # database is created/opened with its key applied. A plain sqlite3.connect()
-    # fails with "file is not a database" against an encrypted file.
-    adapter = create_adapter("sqlite", db_path=str(db_path))
-    conn = adapter.connect()
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        conn.executescript(schema_sql)
-        conn.commit()
-        logger.info("SQLite database schema initialized successfully")
-        return True
-    finally:
-        adapter.close()
-
-
-def _init_postgresql(schema_sql):
-    """Initialize PostgreSQL database."""
-    try:
-        import psycopg2
-    except ImportError:
-        logger.error(
-            "psycopg2 is required for PostgreSQL. "
-            "Install it with: pip install psycopg2-binary"
-        )
-        return False
-
-    logger.info(
-        f"PostgreSQL: {system_config.POSTGRES_HOST}:{system_config.POSTGRES_PORT}"
-        f"/{system_config.POSTGRES_DB}"
-    )
-
-    conn = psycopg2.connect(
-        host=system_config.POSTGRES_HOST,
-        port=system_config.POSTGRES_PORT,
-        dbname=system_config.POSTGRES_DB,
-        user=system_config.POSTGRES_USER,
-        password=system_config.POSTGRES_PASSWORD,
-        sslmode=system_config.POSTGRES_SSLMODE,
-    )
-    conn.autocommit = True
-    try:
-        with conn.cursor() as cur:
-            # Split and execute statements individually (PostgreSQL
-            # does not support executescript).
-            statements = [s.strip() for s in schema_sql.split(";") if s.strip()]
-            for stmt in statements:
-                # Skip SQLite-specific PRAGMAs
-                if stmt.upper().startswith("PRAGMA"):
-                    continue
-                cur.execute(stmt)
-        logger.info("PostgreSQL database schema initialized successfully")
-        return True
-    finally:
-        conn.close()
 
 
 def verify_tables():
@@ -121,21 +43,21 @@ def verify_tables():
         logger.info("Verifying database tables...")
 
         expected_tables = [
-            'accounts',
-            'child_profiles',
-            'profile_subjects',
-            'sessions',
-            'conversations',
-            'messages',
-            'safety_incidents',
-            'parent_alerts',
-            'auth_tokens',
-            'audit_log',
-            'learning_analytics',
-            'parental_consent_log',
+            "accounts",
+            "child_profiles",
+            "profile_subjects",
+            "sessions",
+            "conversations",
+            "messages",
+            "safety_incidents",
+            "parent_alerts",
+            "auth_tokens",
+            "audit_log",
+            "learning_analytics",
+            "parental_consent_log",
         ]
 
-        if system_config.DB_TYPE == 'postgresql':
+        if system_config.DB_TYPE == "postgresql":
             existing_tables = _list_tables_postgresql()
         else:
             existing_tables = _list_tables_sqlite()
@@ -158,6 +80,7 @@ def _list_tables_sqlite():
     # Use the encryption-aware adapter; a plain sqlite3.connect() fails with
     # "file is not a database" against an encrypted (SQLCipher) file.
     from storage.db_adapters import create_adapter
+
     adapter = create_adapter("sqlite", db_path=str(system_config.DB_PATH))
     conn = adapter.connect()
     try:
@@ -170,6 +93,7 @@ def _list_tables_sqlite():
 
 def _list_tables_postgresql():
     import psycopg2
+
     conn = psycopg2.connect(
         host=system_config.POSTGRES_HOST,
         port=system_config.POSTGRES_PORT,
@@ -180,9 +104,7 @@ def _list_tables_postgresql():
     )
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-            )
+            cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
             return [row[0] for row in cur.fetchall()]
     finally:
         conn.close()
@@ -193,6 +115,7 @@ def add_default_data():
     try:
         logger.info("Adding default system data...")
         from datetime import datetime, timezone
+
         from storage.database import db_manager
 
         # Check if admin user exists
@@ -207,23 +130,33 @@ def add_default_data():
 
         # Add default system settings
         default_settings = [
-            ('safety_monitoring_enabled', 'true', 'boolean', 'Enable safety monitoring'),
-            ('parent_alerts_enabled', 'true', 'boolean', 'Enable parent email alerts'),
-            ('max_daily_messages_default', '100', 'integer', 'Default daily message limit'),
-            ('session_timeout_minutes', '60', 'integer', 'Session timeout in minutes'),
+            (
+                "safety_monitoring_enabled",
+                "true",
+                "boolean",
+                "Enable safety monitoring",
+            ),
+            ("parent_alerts_enabled", "true", "boolean", "Enable parent email alerts"),
+            (
+                "max_daily_messages_default",
+                "100",
+                "integer",
+                "Default daily message limit",
+            ),
+            ("session_timeout_minutes", "60", "integer", "Session timeout in minutes"),
         ]
 
         for key, value, stype, desc in default_settings:
             rows = db_manager.execute_query(
                 "SELECT COUNT(*) as count FROM system_settings WHERE setting_key = ?",
-                (key,)
+                (key,),
             )
             if rows and list(rows[0].values())[0] == 0:
                 db_manager.execute_write(
                     "INSERT INTO system_settings "
                     "(setting_key, setting_value, setting_type, description, updated_at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    (key, value, stype, desc, datetime.now(timezone.utc).isoformat())
+                    (key, value, stype, desc, datetime.now(timezone.utc).isoformat()),
                 )
                 logger.debug(f"Added setting: {key}")
 

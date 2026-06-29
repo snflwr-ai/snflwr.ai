@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (0.30.10); `ENABLE_INITIAL_ADMIN_SIGNUP` for first-admin creation.
 - `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`, `docs/compliance/REQUIRED_DISCLOSURES.md`.
 
+### Changed
+- **Versioned database migrations** — replaced the ad-hoc schema mechanisms
+  (inline CREATE+ALTER on startup, the `schema.sql` differ, and loose `*.sql`
+  files) with a single lightweight runner (`database/migrations/`). Migrations
+  are ordered, dialect-aware (SQLite + Postgres), reversible to an explicit
+  target, and tracked in a `schema_migrations` table. Existing databases are
+  auto-detected and stamped at the baseline on first run; fresh installs run
+  `0001 → head`. Startup, `database/init_db.py`, and `python -m database.migrate`
+  all apply migrations through the runner; `storage/schema.py` is the single
+  source of schema truth.
+
 ### Fixed
 - **Database now actually encrypted at rest** — the image lacked a SQLCipher
   driver, so encryption silently fell back to plaintext. Ship `sqlcipher3-binary`;

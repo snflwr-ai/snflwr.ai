@@ -178,6 +178,9 @@ class USBImageBuilder:
         conn = sqlite3.connect(str(db_path))
         try:
             cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA foreign_keys=ON")
             create_sqlite_tables(cursor)
             create_indexes(cursor, "sqlite")
             conn.commit()

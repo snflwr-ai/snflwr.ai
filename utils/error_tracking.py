@@ -248,7 +248,7 @@ class ErrorTracker:
             """,
             (error_hash,),
         )
-        return results[0] if results else None
+        return dict(results[0]) if results else None
 
     def _create_error_record(
         self,

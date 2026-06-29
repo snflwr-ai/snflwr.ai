@@ -7,7 +7,7 @@ Automated cleanup of old data according to retention policies
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import schedule
 
@@ -89,7 +89,10 @@ class DataRetentionManager:
 
         logger.info("Starting automated data retention cleanup")
 
-        results = {"timestamp": datetime.now(timezone.utc).isoformat(), "tasks": {}}
+        results: Dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "tasks": {},
+        }
 
         # 1. Cleanup safety incidents
         try:

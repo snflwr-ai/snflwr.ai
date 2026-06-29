@@ -518,9 +518,9 @@ class _PatternMatcher:
 
         compiled = []
         seen: set = set()
-        for cat, kws in all_keywords.items():
+        for cat, kw_set in all_keywords.items():
             category_enum = _cat_map.get(cat, Category.VIOLENCE)
-            for kw in sorted(kws):
+            for kw in sorted(kw_set):
                 if kw in seen or not kw:
                     continue
                 seen.add(kw)

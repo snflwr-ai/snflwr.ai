@@ -11,7 +11,7 @@ and relies on instance attributes set in that class's ``__init__``:
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from utils.logger import get_logger
 
@@ -25,6 +25,11 @@ logger = get_logger(__name__)
 
 class SessionCacheMixin:
     """Distributed (Redis) session cache with an in-memory fallback."""
+
+    # Declared here so the attribute always exists (and is typed) even when
+    # ``_initialize_redis`` takes the fallback/except path and never assigns a
+    # client — otherwise ``if self._redis`` would raise AttributeError.
+    _redis: Optional[Any] = None
 
     def _initialize_redis(self):
         """Initialize Redis for distributed session caching"""

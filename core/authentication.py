@@ -238,6 +238,7 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin, _Password
                 logger.warning(f"Failed to check account lock status: {e}")
 
         # Verify password
+        verified: bool
         try:
             verified = self.ph.verify(password_hash, password)
         except (ValueError, TypeError) as e:

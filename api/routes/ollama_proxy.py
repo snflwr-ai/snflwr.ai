@@ -10,7 +10,7 @@ import asyncio
 import json as _json
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Request, Response
@@ -509,7 +509,7 @@ async def proxy_chat(
     # Observation-only tracing context. Metadata only — never any chat content.
     # Fail-safe: a tracing error must never change the response.
     _t0 = time.perf_counter()
-    _trace = {
+    _trace: Dict[str, Any] = {
         "model": model,
         "age_band": observability.age_band(age),
         "profile_hash": observability.hash_profile(profile_id),

@@ -44,7 +44,7 @@ jobs:
 
     - name: Run Pylint
       run: |
-        pylint api/ core/ safety/ storage/ utils/ --output-format=colorized --fail-under=5.0
+        pylint api/ core/ safety/ storage/ utils/ --output-format=colorized --fail-under=8.0
 
     - name: Run MyPy type checking
       run: |
@@ -78,8 +78,11 @@ jobs:
 
     - name: Run Bandit security linter
       run: |
+        # Generate the full JSON report for the uploaded artifact (non-blocking).
         bandit -r api/ core/ safety/ storage/ utils/ -f json -o bandit-report.json --severity-level medium --confidence-level medium || true
-        bandit -r api/ core/ safety/ storage/ utils/ --severity-level high --confidence-level high
+        # Enforce: fail the build on any medium+ severity / medium+ confidence
+        # finding (subsumes the previous high/high gate).
+        bandit -r api/ core/ safety/ storage/ utils/ --severity-level medium --confidence-level medium
 
     - name: Upload Bandit report
       uses: actions/upload-artifact@v4

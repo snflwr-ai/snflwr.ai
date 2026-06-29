@@ -28,10 +28,22 @@ wraps and the **safety classifier** size.
 | **High-end (opt-in)** | GPU **≥26GB** VRAM | **gemma4:31b** (~19GB), via `SNFLWR_ENABLE_GEMMA_31B=true` | `llama-guard3:8b` | big single-GPU / multi-GPU servers |
 
 Notes:
-- **gemma4:e4b is the recommended default** anywhere with ≥16GB RAM or a GPU. A
-  stronger-judge bake-off found **gemma4:31b ≈ gemma4:e4b on tutoring quality**
-  (near-tied), so the high-end tier is about headroom on big hardware, **not** a
-  quality requirement — and it roughly halves per-GPU throughput.
+- **gemma4:e4b is the recommended default** anywhere with ≥16GB RAM or a GPU.
+  Judged tutoring quality is strong (a Claude-judged 48-case bake-off scored e4b
+  ~89/100, humanities as well as STEM). On **average** quality, e4b ≈ 31b — but
+  the difference shows up in the **reliability tail**: the small e4b backbone
+  occasionally slips on multi-step mental math (e.g. botching "15% of 80"), a
+  stochastic small-model limit that prompting reduces but can't fully remove. So
+  the high-end tier buys **more reliable multi-step reasoning/math**, not a higher
+  average score — and it roughly halves per-GPU throughput. Think of it as the
+  natural accuracy difference between hardware classes, not a bug on e4b.
+- **VRAM floor for the high-end tier:** `gemma4:31b` (~19GB) + the `llama-guard3:8b`
+  classifier (~5GB) + KV/context must fit together → **≥26GB co-resident (28GB+
+  comfortable)**. On a single 24GB card it silently falls back / OOMs against the
+  guard. Alternative: put the guard on a **second GPU**, which frees the 31b to
+  ~22–24GB on its own card. This applies to **any** capable box — a high-end home
+  rig opts up the same way an enterprise node does; it's hardware capability, not
+  a "home vs enterprise" label.
 - The qwen tiers exist **only** as a low-RAM fallback for boxes that can't run
   gemma4:e4b. They are not the primary backbone.
 

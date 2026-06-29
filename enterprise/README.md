@@ -60,8 +60,16 @@ enterprise/build.sh
 ```
 
 The build script detects your server hardware and prompts you to select:
-- **Chat model** — `gemma4:e4b` default backbone (small servers fall back to a qwen3.5 tier; ≥26GB GPUs can opt into gemma4:31b)
+- **Chat model** — `gemma4:e4b` default backbone (small servers fall back to a qwen3.5 tier; `gemma4:31b` is an opt-in for stronger multi-step reasoning/math reliability)
 - **Safety classifier** (Meta Llama Guard) — `llama-guard3:8b` default, `llama-guard3:1b` small-hardware fallback
+
+> **VRAM sizing:** the chat model and the safety classifier are **co-resident**.
+> `gemma4:e4b` (~10 GB) + `llama-guard3:8b` (~5 GB) fits comfortably on a single
+> 16 GB+ GPU. `gemma4:31b` (~19 GB) + the guard needs **≥26 GB co-resident
+> (28 GB+ comfortable)** — on a single 24 GB card it silently falls back / OOMs
+> against the guard. On multi-GPU nodes you can instead place the guard on a
+> separate GPU, freeing the 31b to ~22–24 GB on its own card. See
+> [`docs/guides/HARDWARE_OPTIMIZATION_GUIDE.md`](../docs/guides/HARDWARE_OPTIMIZATION_GUIDE.md).
 
 The LLM safety classifier is **mandatory** for enterprise deployments and cannot be disabled. It runs on every message alongside the deterministic pattern-matching pipeline.
 

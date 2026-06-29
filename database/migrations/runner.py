@@ -76,6 +76,98 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+_LOCK_ID = 1  # matches the pg_advisory lock id used by the legacy startup path
+
+
+def core_tables_exist(cursor, dialect):
+    try:
+        if dialect == "postgresql":
+            cursor.execute("SELECT to_regclass('public.accounts')")
+            return cursor.fetchone()[0] is not None
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'"
+        )
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
+
+
+def _acquire_lock(conn, cursor, dialect):
+    if dialect == "postgresql":
+        cursor.execute("SELECT pg_advisory_lock(%s)", (_LOCK_ID,))
+
+
+def _release_lock(conn, cursor, dialect):
+    if dialect == "postgresql":
+        cursor.execute("SELECT pg_advisory_unlock(%s)", (_LOCK_ID,))
+
+
+def _insert_version(cursor, dialect, rev, name):
+    placeholder = "%s" if dialect == "postgresql" else "?"
+    cursor.execute(
+        f"INSERT INTO schema_migrations (version, name, applied_at) "
+        f"VALUES ({placeholder}, {placeholder}, {placeholder})",
+        (rev, name, _now()),
+    )
+
+
+def stamp(rev, *, manager=None):
+    from storage.database import db_manager as _default
+    manager = manager or _default
+    dialect = dialect_for(manager.db_type)
+    conn = manager.adapter.connect()
+    cur = conn.cursor()
+    ensure_version_table(cur, dialect)
+    name = next((m.name for m in discover() if m.revision == rev), "")
+    _insert_version(cur, dialect, rev, name)
+    conn.commit()
+
+
+def upgrade(target="head", *, manager=None, migrations=None):
+    from storage.database import db_manager as _default
+    manager = manager or _default
+    migrations = migrations if migrations is not None else discover()
+    dialect = dialect_for(manager.db_type)
+
+    conn = manager.adapter.connect()
+    cur = conn.cursor()
+    newly_applied = []
+    try:
+        _acquire_lock(conn, cur, dialect)
+        ensure_version_table(cur, dialect)
+        conn.commit()
+
+        already = applied_versions(cur)
+
+        # First-run baseline detection: existing pre-migration DB.
+        if not already and migrations and core_tables_exist(cur, dialect):
+            base = migrations[0]
+            _insert_version(cur, dialect, base.revision, base.name)
+            conn.commit()
+            already = {base.revision}
+
+        for mod in migrations:
+            if mod.revision in already:
+                continue
+            if target != "head" and mod.revision > target:
+                break
+            logger.info("Applying migration %s (%s)", mod.revision, mod.name)
+            mod.up(cur, dialect)
+            _insert_version(cur, dialect, mod.revision, mod.name)
+            conn.commit()
+            newly_applied.append(mod.revision)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        try:
+            _release_lock(conn, cur, dialect)
+            conn.commit()
+        except Exception:
+            pass
+    return newly_applied
+
+
 def status(*, manager=None, migrations=None):
     from storage.database import db_manager as _default
     manager = manager or _default

@@ -43,42 +43,46 @@ class _PgManager:
         )
 
 
+def _val(row):
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
+
+
 def test_postgres_fresh_upgrade_to_head():
     from database.migrations import runner
 
     mgr = _PgManager()
+    steps = {}
     try:
         # Self-isolate: the snflwr_test DB is shared with the DR-restore test, so
-        # reset to an empty public schema to guarantee a genuinely fresh upgrade
-        # (0001 RUNS rather than being baseline-stamped against leftover tables).
+        # reset to an empty public schema for a genuinely fresh upgrade.
         conn = mgr.adapter.connect()
         cur = conn.cursor()
+        steps["pid_initial"] = conn.get_backend_pid()
         cur.execute("DROP SCHEMA public CASCADE")
         cur.execute("CREATE SCHEMA public")
         conn.commit()
+        cur.execute("SELECT to_regclass('public.accounts')")
+        steps["accounts_after_reset"] = _val(cur.fetchone())
 
-        applied = runner.upgrade("head", manager=mgr)
+        steps["applied"] = runner.upgrade("head", manager=mgr)
 
-        # Gather full state for a diagnostic failure message.
-        conn = mgr.adapter.connect()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema = 'public' ORDER BY table_name"
-        )
-        public_tables = [r[0] for r in cur.fetchall()]
-        sm_rows = []
-        if "schema_migrations" in public_tables:
-            cur.execute("SELECT version FROM schema_migrations ORDER BY version")
-            sm_rows = [r[0] for r in cur.fetchall()]
-        discovered = [m.revision for m in runner.discover()]
-        diag = (
-            f"applied={applied} discovered={discovered} "
-            f"schema_migrations={sm_rows} public_tables={public_tables}"
-        )
+        conn2 = mgr.adapter.connect()
+        steps["pid_after_upgrade"] = conn2.get_backend_pid()
+        cur2 = conn2.cursor()
+        cur2.execute("SELECT to_regclass('public.accounts')")
+        steps["accounts_after_upgrade"] = _val(cur2.fetchone())
+        cur2.execute("SELECT to_regclass('public.schema_migrations')")
+        steps["sm_table"] = _val(cur2.fetchone())
+        if steps["sm_table"] is not None:
+            steps["sm_rows"] = sorted(runner.applied_versions(cur2))
+        else:
+            steps["sm_rows"] = None
 
-        assert "accounts" in public_tables, diag
-        assert "0001" in sm_rows, diag
-        assert "0001" in applied, diag
+        assert steps["accounts_after_upgrade"] is not None, steps
+        assert steps["sm_rows"] and "0001" in steps["sm_rows"], steps
     finally:
         mgr.adapter.close()

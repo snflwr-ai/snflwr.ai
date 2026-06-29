@@ -57,14 +57,26 @@ def ensure_version_table(cursor, dialect):
             """)
 
 
+def _first_value(row):
+    """Return the first selected column of a DBAPI row.
+
+    The PostgreSQL adapter uses ``RealDictCursor`` (rows are dict-like, keyed by
+    column name, so ``row[0]`` raises KeyError), while SQLite returns tuples /
+    ``sqlite3.Row``. Read the single selected column in a way that works for both.
+    """
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
+
+
 def applied_versions(cursor):
     cursor.execute("SELECT version FROM schema_migrations")
-    return {row[0] for row in cursor.fetchall()}
+    return {_first_value(row) for row in cursor.fetchall()}
 
 
 def current_version(cursor):
     cursor.execute("SELECT version FROM schema_migrations")
-    versions = [row[0] for row in cursor.fetchall()]
+    versions = [_first_value(row) for row in cursor.fetchall()]
     return max(versions) if versions else None
 
 
@@ -79,7 +91,7 @@ def core_tables_exist(cursor, dialect):
     try:
         if dialect == "postgresql":
             cursor.execute("SELECT to_regclass('public.accounts')")
-            return cursor.fetchone()[0] is not None
+            return _first_value(cursor.fetchone()) is not None
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'"
         )

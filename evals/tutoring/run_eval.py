@@ -35,10 +35,19 @@ from evals.tutoring import judge as judge_mod
 
 DATASET = Path(__file__).with_name("dataset.yaml")
 
-# Deterministic length/readability scoring is meaningful for on-topic tutoring
-# turns; for off-topic/meta cases the "right" answer is a short redirect, so we
-# score those via the judge only.
-_DETERMINISTIC_SUBJECTS = {"math", "science", "reading", "writing"}
+# Deterministic length/readability scoring is meaningful for any on-topic
+# tutoring turn (the age-band word/readability caps apply across subjects); for
+# off-topic/meta cases the "right" answer is a short redirect, so we score those
+# via the judge only.
+_DETERMINISTIC_SUBJECTS = {
+    "math",
+    "science",
+    "reading",
+    "writing",
+    "history",
+    "civics",
+    "arts",
+}
 
 PASS_THRESHOLD = 70.0  # overall composite >= this => PASS
 
@@ -91,8 +100,10 @@ def score_case(case: dict, response: str, judge_scores: dict | None = None) -> d
 
     judge_val = None
     if judge_scores is not None:
-        row["judge"] = {k: judge_scores.get(k) for k in
-                        (*judge_mod.RUBRIC_DIMENSIONS, "rationale", "judge_0_100")}
+        row["judge"] = {
+            k: judge_scores.get(k)
+            for k in (*judge_mod.RUBRIC_DIMENSIONS, "rationale", "judge_0_100")
+        }
         judge_val = judge_scores.get("judge_0_100")
 
     row["composite"] = _mean([row["deterministic_score"], judge_val])
@@ -117,13 +128,21 @@ def run_cases(cases: list, response_for, judge_gen=None) -> list:
         if response is None:
             print(f"  (skip {case['id']}: no response)", file=sys.stderr)
             continue
-        judge_scores = judge_mod.judge_case(case, response, judge_gen) if judge_gen else None
+        judge_scores = (
+            judge_mod.judge_case(case, response, judge_gen) if judge_gen else None
+        )
         rows.append(score_case(case, response, judge_scores))
     return rows
 
 
-def generate_via_ollama(question: str, ages: str, base_url: str, model: str,
-                        timeout: int = 120, retries: int = 2) -> str:
+def generate_via_ollama(
+    question: str,
+    ages: str,
+    base_url: str,
+    model: str,
+    timeout: int = 120,
+    retries: int = 2,
+) -> str:
     """Query an Ollama chat model. The age hint mirrors what the production
     proxy injects so age_fit is testable.
 
@@ -136,19 +155,22 @@ def generate_via_ollama(question: str, ages: str, base_url: str, model: str,
     import urllib.request
 
     user = f"[Student age range: {ages}]\n{question}"
-    payload = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": user}],
-        "stream": False,
-        "think": False,
-    }).encode()
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": user}],
+            "stream": False,
+            "think": False,
+        }
+    ).encode()
     last_err = None
     for attempt in range(retries + 1):
         try:
             req = urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url.rstrip('/')}/api/chat",
-                    data=payload, headers={"Content-Type": "application/json"},
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
                 ),
                 timeout=timeout,
             )
@@ -165,8 +187,14 @@ def generate_via_ollama(question: str, ages: str, base_url: str, model: str,
 
 def build_markdown_report(rows: list, summary: dict) -> str:
     lines = ["# Tutoring-Quality Eval Report", ""]
-    verdict = "✅ PASS" if summary["overall"] is not None and summary["overall"] >= PASS_THRESHOLD else "⚠️ BELOW THRESHOLD"
-    lines.append(f"**Overall composite: {summary['overall']} / 100** — {verdict} (threshold {PASS_THRESHOLD})")
+    verdict = (
+        "✅ PASS"
+        if summary["overall"] is not None and summary["overall"] >= PASS_THRESHOLD
+        else "⚠️ BELOW THRESHOLD"
+    )
+    lines.append(
+        f"**Overall composite: {summary['overall']} / 100** — {verdict} (threshold {PASS_THRESHOLD})"
+    )
     lines.append(f"Cases scored: {summary['n']}")
     lines.append("")
     lines.append("## By age band")
@@ -187,7 +215,9 @@ def build_markdown_report(rows: list, summary: dict) -> str:
     for r in rows:
         notes = []
         if r.get("probe") == "homework_integrity":
-            notes.append("⚠️ revealed answer" if r.get("revealed_answer") else "held answer")
+            notes.append(
+                "⚠️ revealed answer" if r.get("revealed_answer") else "held answer"
+            )
         if r.get("probe") == "off_topic":
             notes.append("off-topic probe")
         if r.get("guiding_question"):
@@ -238,21 +268,30 @@ def main():
 
     judge_gen = None
     if args.judge:
+
         def judge_gen(prompt):  # noqa: E306
-            return generate_via_ollama(prompt, "adult evaluator", args.base_url, args.judge)
+            return generate_via_ollama(
+                prompt, "adult evaluator", args.base_url, args.judge
+            )
 
     if recorded:
+
         def response_for(case):
             return recorded.get(case["id"])
+
     else:
+
         def response_for(case):
             return generate_via_ollama(
-                case["question"], BAND_AGES[case["band"]], args.base_url, args.model)
+                case["question"], BAND_AGES[case["band"]], args.base_url, args.model
+            )
 
     rows = run_cases(cases, response_for, judge_gen)
 
     summary = summarise(rows)
-    Path(args.json_out).write_text(json.dumps({"summary": summary, "rows": rows}, indent=2))
+    Path(args.json_out).write_text(
+        json.dumps({"summary": summary, "rows": rows}, indent=2)
+    )
     Path(args.out).write_text(build_markdown_report(rows, summary))
     print(f"Overall composite: {summary['overall']} / 100 ({summary['n']} cases)")
     print(f"Reports: {args.out}, {args.json_out}")

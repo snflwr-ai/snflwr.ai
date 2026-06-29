@@ -32,7 +32,7 @@ The filter converts grade level to approximate age:
 - ❌ Dating, relationships, crushes blocked
 - ❌ Sex education blocked (should come from parents/teachers)
 - ❌ Jailbreak attempts blocked
-- ✅ Age-appropriate STEM education only
+- ✅ Age-appropriate education across school subjects
 
 **Rationale:**
 - COPPA compliance for under 13

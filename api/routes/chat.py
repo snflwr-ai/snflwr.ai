@@ -415,7 +415,7 @@ async def send_chat_message(
 
         # Build messages for Ollama.
         #
-        # IMPORTANT: snflwr.ai has an authoritative K-12 STEM tutor SYSTEM
+        # IMPORTANT: snflwr.ai has an authoritative K-12 tutor SYSTEM
         # prompt baked into its Modelfile (models/Snflwr_AI_Kids.modelfile)
         # with age-adaptive response rules, anti-reasoning directives, and
         # safety protocols. Ollama's chat API treats any {"role":"system"}

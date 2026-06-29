@@ -10,7 +10,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import system_config
-from storage.database import db_manager
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,8 +21,8 @@ def init_database():
         logger.info("Initializing snflwr.ai database...")
         logger.info(f"Database type: {system_config.DB_TYPE}")
 
-        from storage.database import DatabaseManager
         from database.migrations import runner
+        from storage.database import DatabaseManager
 
         if system_config.DB_TYPE == "postgresql":
             mgr = DatabaseManager(db_type="postgresql")
@@ -44,21 +43,21 @@ def verify_tables():
         logger.info("Verifying database tables...")
 
         expected_tables = [
-            'accounts',
-            'child_profiles',
-            'profile_subjects',
-            'sessions',
-            'conversations',
-            'messages',
-            'safety_incidents',
-            'parent_alerts',
-            'auth_tokens',
-            'audit_log',
-            'learning_analytics',
-            'parental_consent_log',
+            "accounts",
+            "child_profiles",
+            "profile_subjects",
+            "sessions",
+            "conversations",
+            "messages",
+            "safety_incidents",
+            "parent_alerts",
+            "auth_tokens",
+            "audit_log",
+            "learning_analytics",
+            "parental_consent_log",
         ]
 
-        if system_config.DB_TYPE == 'postgresql':
+        if system_config.DB_TYPE == "postgresql":
             existing_tables = _list_tables_postgresql()
         else:
             existing_tables = _list_tables_sqlite()
@@ -81,6 +80,7 @@ def _list_tables_sqlite():
     # Use the encryption-aware adapter; a plain sqlite3.connect() fails with
     # "file is not a database" against an encrypted (SQLCipher) file.
     from storage.db_adapters import create_adapter
+
     adapter = create_adapter("sqlite", db_path=str(system_config.DB_PATH))
     conn = adapter.connect()
     try:
@@ -93,6 +93,7 @@ def _list_tables_sqlite():
 
 def _list_tables_postgresql():
     import psycopg2
+
     conn = psycopg2.connect(
         host=system_config.POSTGRES_HOST,
         port=system_config.POSTGRES_PORT,
@@ -103,9 +104,7 @@ def _list_tables_postgresql():
     )
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-            )
+            cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
             return [row[0] for row in cur.fetchall()]
     finally:
         conn.close()
@@ -116,6 +115,7 @@ def add_default_data():
     try:
         logger.info("Adding default system data...")
         from datetime import datetime, timezone
+
         from storage.database import db_manager
 
         # Check if admin user exists
@@ -130,23 +130,33 @@ def add_default_data():
 
         # Add default system settings
         default_settings = [
-            ('safety_monitoring_enabled', 'true', 'boolean', 'Enable safety monitoring'),
-            ('parent_alerts_enabled', 'true', 'boolean', 'Enable parent email alerts'),
-            ('max_daily_messages_default', '100', 'integer', 'Default daily message limit'),
-            ('session_timeout_minutes', '60', 'integer', 'Session timeout in minutes'),
+            (
+                "safety_monitoring_enabled",
+                "true",
+                "boolean",
+                "Enable safety monitoring",
+            ),
+            ("parent_alerts_enabled", "true", "boolean", "Enable parent email alerts"),
+            (
+                "max_daily_messages_default",
+                "100",
+                "integer",
+                "Default daily message limit",
+            ),
+            ("session_timeout_minutes", "60", "integer", "Session timeout in minutes"),
         ]
 
         for key, value, stype, desc in default_settings:
             rows = db_manager.execute_query(
                 "SELECT COUNT(*) as count FROM system_settings WHERE setting_key = ?",
-                (key,)
+                (key,),
             )
             if rows and list(rows[0].values())[0] == 0:
                 db_manager.execute_write(
                     "INSERT INTO system_settings "
                     "(setting_key, setting_value, setting_type, description, updated_at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    (key, value, stype, desc, datetime.now(timezone.utc).isoformat())
+                    (key, value, stype, desc, datetime.now(timezone.utc).isoformat()),
                 )
                 logger.debug(f"Added setting: {key}")
 

@@ -1,17 +1,15 @@
 """CLI over the versioned migration runner (database/migrations/runner.py).
 
-    python -m database.migrate up   [--to REV]
-    python -m database.migrate down  --to REV
-    python -m database.migrate status
-    python -m database.migrate stamp REV
-    python -m database.migrate new   <slug>
+python -m database.migrate up   [--to REV]
+python -m database.migrate down  --to REV
+python -m database.migrate status
+python -m database.migrate stamp REV
+python -m database.migrate new   <slug>
 """
 
 import argparse
 import sys
-from pathlib import Path
 
-import storage.database  # ensure db_manager is initialized before tests monkeypatch DB_PATH
 from database.migrations import runner
 
 _TEMPLATE = '''"""{slug} — describe the change here."""

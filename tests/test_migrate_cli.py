@@ -3,12 +3,16 @@ import database.migrate as cli
 
 def test_status_command_runs(capsys, tmp_path, monkeypatch):
     from config import system_config
+
     monkeypatch.setattr(system_config, "DB_TYPE", "sqlite")
     monkeypatch.setattr(system_config, "DB_PATH", str(tmp_path / "t.db"))
     monkeypatch.setattr(system_config, "DB_ENCRYPTION_ENABLED", False)
     # Force a fresh DatabaseManager bound to the temp path.
     import storage.database as dbmod
-    monkeypatch.setattr(dbmod, "db_manager", dbmod.DatabaseManager())
+
+    monkeypatch.setattr(
+        dbmod, "db_manager", dbmod.DatabaseManager(db_path=tmp_path / "t.db")
+    )
     rc = cli.main(["status"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -17,6 +21,7 @@ def test_status_command_runs(capsys, tmp_path, monkeypatch):
 
 def test_new_scaffolds_migration(tmp_path, monkeypatch):
     from database.migrations import runner
+
     created = runner._MIGRATIONS_DIR / "9999_example_change.py"
     if created.exists():
         created.unlink()

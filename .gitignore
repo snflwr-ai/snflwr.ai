@@ -1,7 +1,9 @@
-# Secrets — never commit
+# Secrets — never commit. Ignore ALL real env files (incl. .env.production, which
+# setup_production.py writes live secrets into); keep only the *.example templates.
 .env
-.env.local
-.env.home
+.env.*
+!.env.example
+!.env.*.example
 CREDENTIALS.md
 
 # Python

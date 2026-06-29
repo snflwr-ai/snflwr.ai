@@ -4,8 +4,20 @@
 # COPPA Parental Consent Mechanism
 ## snflwr.ai K-12 Safety Platform
 
+> ## ⚠️ Compliance status correction (2026-06-29)
+> This document describes COPPA-**supporting engineering**, not legal compliance.
+> snflwr.ai is **NOT** legally compliant or certified: the documents in `legal/`
+> are DRAFT and no business entity is registered (so COPPA § 312.4(d)(1) operator
+> disclosures cannot be published). Read the "COMPLIANT" / "production-ready"
+> language below as *the consent flow is implemented*, not *legally certified*.
+> Note also: the email-verification consent method below is COPPA "email-plus" —
+> valid only for **internal** use of a child's data, not for disclosure to third
+> parties; counsel must confirm the method against the actual data flows. See
+> [`../CURRENT_STATUS.md`](../CURRENT_STATUS.md) and `legal/LAWYER_REVIEW_CHECKLIST.md`
+> (kept local, not in the public repo).
+
 **Date:** 2025-12-21
-**Status:** COMPLIANT ✅
+**Status:** Engineering implemented — NOT legally certified (see banner above)
 **Regulatory Framework:** COPPA §312.5 (Verifiable Parental Consent)
 
 ---

@@ -48,7 +48,18 @@ def test_postgres_fresh_upgrade_to_head():
 
     mgr = _PgManager()
     try:
-        runner.upgrade("head", manager=mgr)
+        # Self-isolate: the snflwr_test DB is shared with the DR-restore test, so
+        # reset to an empty public schema to guarantee a genuinely fresh upgrade
+        # (0001 RUNS rather than being baseline-stamped against leftover tables).
+        conn = mgr.adapter.connect()
+        cur = conn.cursor()
+        cur.execute("DROP SCHEMA public CASCADE")
+        cur.execute("CREATE SCHEMA public")
+        conn.commit()
+
+        applied = runner.upgrade("head", manager=mgr)
+        assert "0001" in applied  # baseline actually ran on the clean DB
+
         conn = mgr.adapter.connect()
         cur = conn.cursor()
         cur.execute("SELECT to_regclass('public.accounts')")

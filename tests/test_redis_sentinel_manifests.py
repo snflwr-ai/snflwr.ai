@@ -42,3 +42,17 @@ def test_topology_counts_and_master_name():
 def test_does_not_modify_default_deployment():
     # The non-HA default must still exist untouched.
     assert (MANIFEST.parent / "redis-deployment.yaml").exists()
+
+
+def test_default_configmap_does_not_enable_sentinel():
+    # Regression guard: the shared ConfigMap is read by BOTH the default
+    # single-replica install and the HA overlay. Live REDIS_SENTINEL_ENABLED=true
+    # would make the default install try a non-existent sentinel service.
+    # Sentinel must be opt-in: commented keys are not parsed as data.
+    cm_path = MANIFEST.parent / "configmap.yaml"
+    docs = [d for d in yaml.safe_load_all(cm_path.read_text()) if d]
+    cm = next(d for d in docs if d.get("kind") == "ConfigMap")
+    data = cm.get("data", {})
+    # Sentinel env vars must not be present in the parsed ConfigMap data.
+    assert "REDIS_SENTINEL_ENABLED" not in data
+    assert data.get("REDIS_SENTINEL_ENABLED") != "true"

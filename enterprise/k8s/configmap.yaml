@@ -16,6 +16,10 @@ data:
   # Database
   DB_TYPE: "postgresql"
   POSTGRES_HOST: "postgres-service"
+  # Postgres HA (opt-in): when applying postgres-cnpg.yaml instead of
+  # postgres-deployment.yaml, UNCOMMENT the next line (CNPG primary service)
+  # and comment out the postgres-service line above.
+  # POSTGRES_HOST: "snflwr-pg-rw"
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "snflwr_db"
   POSTGRES_USER: "snflwr"

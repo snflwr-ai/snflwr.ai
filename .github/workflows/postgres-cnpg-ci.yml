@@ -1,0 +1,54 @@
+name: Postgres CNPG HA
+
+on:
+  push:
+    branches: [ main, develop, "claude/*" ]
+    paths:
+      - "enterprise/k8s/postgres-cnpg.yaml"
+      - "tests/ci/cnpg-cluster.yaml"
+      - "scripts/ci/cnpg_failover_smoke.sh"
+      - ".github/workflows/postgres-cnpg-ci.yml"
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postgres-cnpg-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  failover:
+    name: CNPG failover smoke (kind)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Create kind cluster
+      uses: helm/kind-action@v1.10.0
+    - name: Install CloudNativePG operator (pinned v1.25.0)
+      run: |
+        kubectl apply --server-side -f \
+          https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.0.yaml
+        kubectl -n cnpg-system rollout status deployment/cnpg-controller-manager --timeout=180s
+    - name: Install cnpg kubectl plugin
+      run: |
+        curl -sSLo /tmp/cnpg.tar.gz \
+          https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.25.0/kubectl-cnpg_1.25.0_linux_x86_64.tar.gz
+        tar -xzf /tmp/cnpg.tar.gz -C /tmp kubectl-cnpg
+        sudo install -m 0755 /tmp/kubectl-cnpg /usr/local/bin/kubectl-cnpg
+        kubectl cnpg version
+    - name: Run failover smoke
+      run: bash scripts/ci/cnpg_failover_smoke.sh
+
+  manifest-lint:
+    name: Validate CNPG manifest
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: kubeconform
+      run: |
+        curl -sSLo /tmp/kc.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+        tar -xzf /tmp/kc.tar.gz -C /tmp
+        /tmp/kubeconform -strict -ignore-missing-schemas enterprise/k8s/postgres-cnpg.yaml

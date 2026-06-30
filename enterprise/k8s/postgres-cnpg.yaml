@@ -1,0 +1,73 @@
+# Postgres HA via CloudNativePG — OPT-IN alternative to postgres-deployment.yaml.
+#
+# Prereq (once per cluster): install the CNPG operator (pinned v1.25.0):
+#   kubectl apply --server-side -f \
+#     https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.0.yaml
+#
+# Then:  kubectl apply -f postgres-cnpg.yaml   (do NOT also apply postgres-deployment.yaml)
+# and uncomment POSTGRES_HOST: "snflwr-pg-rw" in configmap.yaml, then redeploy the API.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: snflwr-pg-app
+  namespace: snflwr-ai
+  labels:
+    cnpg.io/reload: "true"
+type: kubernetes.io/basic-auth
+stringData:
+  # CNPG sets the 'snflwr' role's password from this secret. Keep in sync with
+  # snflwr-secrets POSTGRES_PASSWORD (the app reads that one).
+  username: snflwr
+  password: "CHANGE-THIS-SECURE-PASSWORD"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: snflwr-pg
+  namespace: snflwr-ai
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 10Gi
+  walStorage:
+    size: 5Gi
+  bootstrap:
+    initdb:
+      database: snflwr_db
+      owner: snflwr
+      secret:
+        name: snflwr-pg-app
+  # Continuous WAL archiving + base backups -> PITR. Fill in the bucket/endpoint
+  # and create the snflwr-pg-backup-creds secret (ACCESS_KEY_ID/SECRET_ACCESS_KEY).
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: "s3://CHANGE-ME-bucket/snflwr-pg"
+      endpointURL: "https://CHANGE-ME-s3-endpoint"
+      s3Credentials:
+        accessKeyId:
+          name: snflwr-pg-backup-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: snflwr-pg-backup-creds
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: snflwr-pg-daily
+  namespace: snflwr-ai
+spec:
+  # CNPG uses 6-field cron (sec min hour dom mon dow): daily at 03:00 UTC.
+  schedule: "0 0 3 * * *"
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: snflwr-pg

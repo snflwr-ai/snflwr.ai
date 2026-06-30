@@ -12,7 +12,8 @@ These are operator commitments per deployment tier. The DR test (`tests/test_dr_
 |---|---|---|---|---|
 | **Family / USB** | SQLite + SQLCipher, on the USB stick | 4 hours | 1 hour | Manual or one-shot — parent runs backup before unplugging |
 | **Home Server** | SQLite + SQLCipher in docker volume | 1 hour | 30 minutes | Systemd timer or cron every hour |
-| **Enterprise** | PostgreSQL | 15 minutes | 2 hours | `pg_dump` every 15 min via cron; WAL archiving on for point-in-time recovery |
+| **Enterprise (default)** | PostgreSQL (single) | 15 minutes | 2 hours | `pg_dump` via cron. No WAL/PITR; RPO bounded by the dump cadence. |
+| **Enterprise (HA, CloudNativePG)** | PostgreSQL (3-node) | seconds (RPO) | seconds (RTO) | Streaming replication + automatic failover (standby promoted, `-rw` repoints). Continuous WAL archiving to object storage → point-in-time recovery within the retention window. See `enterprise/k8s/postgres-cnpg.yaml`. |
 
 These numbers reflect "tutoring transcripts and learning analytics, not financial data" — they would be too loose for billing systems and are too tight for archive-grade compliance storage. Tighten the Enterprise tier in writing before you sign with a customer whose policy demands lower RPO.
 

@@ -67,6 +67,7 @@ metadata:
 spec:
   # CNPG uses 6-field cron (sec min hour dom mon dow): daily at 03:00 UTC.
   schedule: "0 0 3 * * *"
+  immediate: true
   backupOwnerReference: self
   cluster:
     name: snflwr-pg

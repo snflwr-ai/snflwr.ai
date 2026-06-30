@@ -250,6 +250,15 @@ class RedisCache:
             return True
         return False
 
+    def get_client(self):
+        """Return the live master Redis client (sentinel-aware or standalone).
+
+        Returns None when caching is disabled or in degraded mode. In Sentinel
+        mode this is ``sentinel.master_for(...)``, which transparently tracks
+        the promoted master across failovers.
+        """
+        return self._client
+
     def get_master_info(self) -> Optional[dict]:
         """Get current master information (Sentinel mode only)"""
         if not self._sentinel:

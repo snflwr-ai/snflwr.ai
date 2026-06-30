@@ -15,6 +15,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
+import redis
 from celery import Celery, signals
 from celery.exceptions import MaxRetriesExceededError
 from kombu import Exchange, Queue
@@ -29,15 +30,37 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+
+def get_redis_client():
+    """Redis client for direct use (e.g. the dead-letter queue).
+
+    Sentinel-aware: reuses the cache layer's live master client when Sentinel
+    is enabled (so the DLQ fails over too); standalone otherwise.
+    """
+    if system_config.REDIS_SENTINEL_ENABLED:
+        from utils.cache import cache
+
+        client = cache.get_client()
+        if client is not None:
+            return client
+    return redis.from_url(system_config.REDIS_URL)
+
+
 # Track failed tasks for alerting
 _failed_task_counts: Dict[str, int] = {}
 _ALERT_THRESHOLD = int(os.getenv("CELERY_FAILURE_ALERT_THRESHOLD", "3"))
 
 
 # Initialize Celery app
-celery_app = Celery(
-    "snflwr_tasks", broker=system_config.REDIS_URL, backend=system_config.REDIS_URL
-)
+_broker_cfg = system_config.celery_broker_config()
+if isinstance(_broker_cfg, tuple) and len(_broker_cfg) == 2:
+    _broker_url, _broker_transport_options = _broker_cfg
+else:
+    # system_config mocked in tests, or an unexpected return — fall back to the
+    # standalone URL (matches the pre-Sentinel behavior; never crash on import).
+    _broker_url, _broker_transport_options = system_config.REDIS_URL, {}
+
+celery_app = Celery("snflwr_tasks", broker=_broker_url, backend=_broker_url)
 
 
 # Celery Configuration
@@ -56,6 +79,8 @@ celery_app.conf.update(
     # Result backend settings
     result_expires=3600,  # Results expire after 1 hour
     result_persistent=True,  # Persist results to disk
+    broker_transport_options=_broker_transport_options,
+    result_backend_transport_options=_broker_transport_options,
     # Worker settings
     worker_prefetch_multiplier=4,  # Number of tasks to prefetch
     worker_max_tasks_per_child=1000,  # Recycle workers after N tasks
@@ -364,13 +389,11 @@ def store_failed_task(self, payload: dict):
 
     # Store in Redis for persistence if available
     try:
-        import redis
-
-        redis_url = system_config.REDIS_URL
-        if redis_url:
-            r = redis.from_url(redis_url)
-            key = f"dlq:{payload.get('task_name')}:{payload.get('task_id')}"
-            r.setex(key, timedelta(days=7), json.dumps(payload))
+        r = get_redis_client()
+        if r is None:
+            return payload
+        key = f"dlq:{payload.get('task_name')}:{payload.get('task_id')}"
+        r.setex(key, timedelta(days=7), json.dumps(payload))
     except (RedisError, ConnectionError, OSError) as e:
         logger.debug(f"Could not store in Redis (optional): {e}")
 
@@ -389,13 +412,9 @@ def get_dead_letter_tasks(task_name: Optional[str] = None, limit: int = 100) -> 
         List of failed task payloads
     """
     try:
-        import redis
-
-        redis_url = system_config.REDIS_URL
-        if not redis_url:
+        r = get_redis_client()
+        if r is None:
             return []
-
-        r = redis.from_url(redis_url)
         pattern = f"dlq:{task_name}:*" if task_name else "dlq:*"
 
         keys = r.keys(pattern)[:limit]
@@ -424,14 +443,10 @@ def replay_dead_letter_task(task_id: str) -> Optional[str]:
         New task ID if replayed successfully, None otherwise
     """
     try:
-        import redis
-
-        redis_url = system_config.REDIS_URL
-        if not redis_url:
+        r = get_redis_client()
+        if r is None:
             logger.error("Redis not configured for dead letter queue")
             return None
-
-        r = redis.from_url(redis_url)
 
         # Find the task in DLQ
         for key in r.keys("dlq:*"):
@@ -592,6 +607,7 @@ __all__ = [
     "celery_app",
     "check_celery_health",
     "get_queue_stats",
+    "get_redis_client",
     "purge_queue",
     "debug_task",
     "get_dead_letter_tasks",

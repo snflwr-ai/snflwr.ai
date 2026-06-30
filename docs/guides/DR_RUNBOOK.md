@@ -12,7 +12,8 @@ These are operator commitments per deployment tier. The DR test (`tests/test_dr_
 |---|---|---|---|---|
 | **Family / USB** | SQLite + SQLCipher, on the USB stick | 4 hours | 1 hour | Manual or one-shot — parent runs backup before unplugging |
 | **Home Server** | SQLite + SQLCipher in docker volume | 1 hour | 30 minutes | Systemd timer or cron every hour |
-| **Enterprise** | PostgreSQL | 15 minutes | 2 hours | `pg_dump` every 15 min via cron; WAL archiving on for point-in-time recovery |
+| **Enterprise** | PostgreSQL | 15 minutes | 2 hours | `pg_dump` every 15 min via cron. **WAL archiving / PITR is NOT yet configured** (tracked: Postgres-HA work); RPO is bounded by the 15-min dump cadence, not continuous archiving. |
+| **Enterprise** | Redis | n/a (cache) | seconds | HA via Sentinel (`redis-sentinel.yaml`): 3 Sentinels auto-promote a replica if the master fails; clients reconnect automatically. Single-replica default has no failover. |
 
 These numbers reflect "tutoring transcripts and learning analytics, not financial data" — they would be too loose for billing systems and are too tight for archive-grade compliance storage. Tighten the Enterprise tier in writing before you sign with a customer whose policy demands lower RPO.
 

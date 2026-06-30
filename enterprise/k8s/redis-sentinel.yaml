@@ -1,0 +1,158 @@
+# Redis HA via Sentinel — OPT-IN alternative to redis-deployment.yaml.
+# Apply with:  kubectl apply -f redis-sentinel.yaml   (do NOT also apply redis-deployment.yaml)
+# Topology: 1 master + 2 replicas (StatefulSet "redis") + 3 sentinels (StatefulSet "redis-sentinel").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-sentinel-config
+  namespace: snflwr-ai
+data:
+  start-redis.sh: |
+    #!/bin/sh
+    set -eu
+    ORD="${HOSTNAME##*-}"
+    # Ask a sentinel for the current master; fall back to redis-0 on first boot.
+    MASTER=$(redis-cli -h redis-sentinel -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning \
+      sentinel get-master-addr-by-name mymaster 2>/dev/null | head -1 || true)
+    if [ -z "$MASTER" ]; then MASTER="redis-0.redis.snflwr-ai.svc.cluster.local"; fi
+    if [ "$ORD" = "0" ] && [ "$MASTER" = "redis-0.redis.snflwr-ai.svc.cluster.local" ]; then
+      exec redis-server --appendonly yes \
+        --requirepass "$REDIS_PASSWORD" --masterauth "$REDIS_PASSWORD"
+    fi
+    exec redis-server --appendonly yes \
+      --requirepass "$REDIS_PASSWORD" --masterauth "$REDIS_PASSWORD" \
+      --replicaof "$MASTER" 6379
+  start-sentinel.sh: |
+    #!/bin/sh
+    set -eu
+    CONF=/tmp/sentinel.conf
+    {
+      echo "sentinel monitor mymaster redis-0.redis.snflwr-ai.svc.cluster.local 6379 2"
+      echo "sentinel auth-pass mymaster $REDIS_PASSWORD"
+      echo "sentinel down-after-milliseconds mymaster 5000"
+      echo "sentinel failover-timeout mymaster 60000"
+      echo "sentinel parallel-syncs mymaster 1"
+      echo "requirepass $REDIS_PASSWORD"
+    } > "$CONF"
+    exec redis-sentinel "$CONF"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: snflwr-ai
+spec:
+  clusterIP: None          # headless: stable per-pod DNS redis-0.redis, redis-1.redis, ...
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-sentinel
+  namespace: snflwr-ai
+spec:
+  selector:
+    app: redis-sentinel
+  ports:
+  - port: 26379
+    targetPort: 26379
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: snflwr-ai
+  labels:
+    app: redis
+spec:
+  serviceName: redis
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command: ["sh", "/conf/start-redis.sh"]
+        ports:
+        - containerPort: 6379
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: snflwr-secrets
+              key: REDIS_PASSWORD
+        volumeMounts:
+        - name: conf
+          mountPath: /conf
+        - name: data
+          mountPath: /data
+        livenessProbe:
+          exec:
+            command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: conf
+        configMap:
+          name: redis-sentinel-config
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-sentinel
+  namespace: snflwr-ai
+  labels:
+    app: redis-sentinel
+spec:
+  serviceName: redis-sentinel
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis-sentinel
+  template:
+    metadata:
+      labels:
+        app: redis-sentinel
+    spec:
+      containers:
+      - name: sentinel
+        image: redis:7-alpine
+        command: ["sh", "/conf/start-sentinel.sh"]
+        ports:
+        - containerPort: 26379
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: snflwr-secrets
+              key: REDIS_PASSWORD
+        volumeMounts:
+        - name: conf
+          mountPath: /conf
+      volumes:
+      - name: conf
+        configMap:
+          name: redis-sentinel-config

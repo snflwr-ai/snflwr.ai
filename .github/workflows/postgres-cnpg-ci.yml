@@ -32,6 +32,13 @@ jobs:
         kubectl apply --server-side -f \
           https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.0.yaml
         kubectl -n cnpg-system rollout status deployment/cnpg-controller-manager --timeout=180s
+    - name: Install cnpg kubectl plugin
+      run: |
+        curl -sSLo /tmp/cnpg.tar.gz \
+          https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.25.0/kubectl-cnpg_1.25.0_linux_x86_64.tar.gz
+        tar -xzf /tmp/cnpg.tar.gz -C /tmp kubectl-cnpg
+        sudo install -m 0755 /tmp/kubectl-cnpg /usr/local/bin/kubectl-cnpg
+        kubectl cnpg version
     - name: Run failover smoke
       run: bash scripts/ci/cnpg_failover_smoke.sh
 

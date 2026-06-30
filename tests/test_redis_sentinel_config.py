@@ -31,3 +31,15 @@ def test_celery_broker_config_sentinel_no_password(monkeypatch):
     url, opts = system_config.celery_broker_config()
     assert url == "sentinel://s1:26379"
     assert opts == {"master_name": "mymaster"}
+
+
+def test_cache_get_client_returns_underlying_client():
+    from utils.cache import RedisCache
+
+    c = RedisCache.__new__(RedisCache)  # bypass __init__/connection
+    sentinel_marker = object()
+    c._client = sentinel_marker
+    assert c.get_client() is sentinel_marker
+
+    c._client = None
+    assert c.get_client() is None

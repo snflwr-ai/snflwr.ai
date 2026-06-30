@@ -52,7 +52,13 @@ _ALERT_THRESHOLD = int(os.getenv("CELERY_FAILURE_ALERT_THRESHOLD", "3"))
 
 
 # Initialize Celery app
-_broker_url, _broker_transport_options = system_config.celery_broker_config()
+_broker_cfg = system_config.celery_broker_config()
+if isinstance(_broker_cfg, tuple) and len(_broker_cfg) == 2:
+    _broker_url, _broker_transport_options = _broker_cfg
+else:
+    # system_config mocked in tests, or an unexpected return — fall back to the
+    # standalone URL (matches the pre-Sentinel behavior; never crash on import).
+    _broker_url, _broker_transport_options = system_config.REDIS_URL, {}
 
 celery_app = Celery("snflwr_tasks", broker=_broker_url, backend=_broker_url)
 

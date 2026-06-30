@@ -27,6 +27,8 @@ data:
     set -eu
     CONF=/tmp/sentinel.conf
     {
+      echo "sentinel resolve-hostnames yes"
+      echo "sentinel announce-hostnames yes"
       echo "sentinel monitor mymaster redis-0.redis.snflwr-ai.svc.cluster.local 6379 2"
       echo "sentinel auth-pass mymaster $REDIS_PASSWORD"
       echo "sentinel down-after-milliseconds mymaster 5000"

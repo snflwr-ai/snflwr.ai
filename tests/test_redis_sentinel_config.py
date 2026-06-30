@@ -43,3 +43,29 @@ def test_cache_get_client_returns_underlying_client():
 
     c._client = None
     assert c.get_client() is None
+
+
+def test_get_redis_client_standalone(monkeypatch):
+    import utils.celery_config as cc
+
+    monkeypatch.setattr(cc.system_config, "REDIS_SENTINEL_ENABLED", False)
+    # REDIS_URL is a read-only property; patch it at the class level
+    monkeypatch.setattr(
+        type(cc.system_config),
+        "REDIS_URL",
+        property(lambda self: "redis://localhost:6379/0"),
+    )
+    sentinel_marker = object()
+    monkeypatch.setattr(cc.redis, "from_url", lambda url: (sentinel_marker, url))
+    client = cc.get_redis_client()
+    assert client == (sentinel_marker, "redis://localhost:6379/0")
+
+
+def test_get_redis_client_sentinel(monkeypatch):
+    import utils.celery_config as cc
+    from utils.cache import cache
+
+    monkeypatch.setattr(cc.system_config, "REDIS_SENTINEL_ENABLED", True)
+    marker = object()
+    monkeypatch.setattr(cache, "get_client", lambda: marker)
+    assert cc.get_redis_client() is marker

@@ -42,7 +42,7 @@ services:
              echo \"sentinel monitor mymaster $$MASTER_IP 6379 2\" >> /tmp/s.conf &&
              echo 'sentinel auth-pass mymaster ${REDIS_PASSWORD}' >> /tmp/s.conf &&
              echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/s.conf &&
-             echo 'sentinel failover-timeout mymaster 60000' >> /tmp/s.conf &&
+             echo 'sentinel failover-timeout mymaster 10000' >> /tmp/s.conf &&
              echo 'sentinel parallel-syncs mymaster 1' >> /tmp/s.conf &&
              echo 'requirepass ${REDIS_PASSWORD}' >> /tmp/s.conf &&
              redis-sentinel /tmp/s.conf"

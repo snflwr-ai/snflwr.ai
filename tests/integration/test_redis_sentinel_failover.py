@@ -23,6 +23,61 @@ COMPOSE = [
 PASSWORD = "ci_redis_pw"
 
 
+def _run(env, *args):
+    return subprocess.run([*COMPOSE, *args], capture_output=True, text=True, env=env)
+
+
+def _master_connected_slaves(env):
+    out = _run(
+        env,
+        "exec",
+        "-T",
+        "redis-master",
+        "redis-cli",
+        "-a",
+        PASSWORD,
+        "--no-auth-warning",
+        "info",
+        "replication",
+    )
+    for line in out.stdout.splitlines():
+        if line.strip().startswith("connected_slaves:"):
+            return int(line.split(":", 1)[1].strip())
+    return 0
+
+
+def _sentinel_num_slaves(env):
+    out = _run(
+        env,
+        "exec",
+        "-T",
+        "sentinel-1",
+        "redis-cli",
+        "-p",
+        "26379",
+        "-a",
+        PASSWORD,
+        "--no-auth-warning",
+        "sentinel",
+        "master",
+        "mymaster",
+    )
+    toks = out.stdout.split()
+    return int(toks[toks.index("num-slaves") + 1]) if "num-slaves" in toks else 0
+
+
+def _wait_until(fn, target, what, timeout=90):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if fn() >= target:
+                return
+        except Exception:  # noqa: BLE001 - containers still coming up
+            pass
+        time.sleep(3)
+    raise RuntimeError(f"timed out waiting for {what} (>= {target})")
+
+
 @pytest.fixture(scope="module")
 def sentinel_stack():
     env = {**os.environ, "REDIS_PASSWORD": PASSWORD}
@@ -56,6 +111,11 @@ def sentinel_stack():
             time.sleep(2)
         else:
             raise RuntimeError("Sentinels never reported a master")
+        # Wait until replicas have attached AND sentinels have discovered them.
+        # Without this gate, killing the master before replicas are known to
+        # Sentinel produces "No master found for 'mymaster'" with no recovery.
+        _wait_until(lambda: _master_connected_slaves(env), 2, "master connected_slaves")
+        _wait_until(lambda: _sentinel_num_slaves(env), 2, "sentinel-known slaves")
         yield env
     finally:
         subprocess.run([*COMPOSE, "down", "-v"], env=env)
@@ -98,7 +158,7 @@ def test_sentinel_failover_reconnects(sentinel_stack, monkeypatch):
     # Kill the master; Sentinel should promote a replica within ~5-10s.
     subprocess.run([*COMPOSE, "kill", "redis-master"], check=True, env=env)
 
-    deadline = time.time() + 60
+    deadline = time.time() + 90
     last_err = None
     while time.time() < deadline:
         try:

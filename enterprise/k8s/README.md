@@ -328,6 +328,8 @@ For high availability + point-in-time recovery, use CloudNativePG instead:
 
        kubectl apply -f postgres-cnpg.yaml
 
+   **Important:** the `snflwr-pg-app` Secret password (the `snflwr` role) MUST match `POSTGRES_PASSWORD` in `snflwr-secrets` (which the API uses to connect) — keep the two in sync or the app will fail to authenticate.
+
 3. In the ConfigMap, comment out `POSTGRES_HOST: "postgres-service"` and uncomment
    `POSTGRES_HOST: "snflwr-pg-rw"` (CNPG's primary service), then redeploy the API.
 
@@ -340,6 +342,7 @@ routes to the current primary, and WAL is continuously archived for PITR.
 3. Restore the dump into the new cluster (`psql`/`pg_restore` against `snflwr-pg-rw`).
 4. Repoint `POSTGRES_HOST` (step 3 above) and redeploy.
 5. Retire `postgres-deployment.yaml`.
+
 - **Multi-GPU Ollama needs a StatefulSet.** The Deployment + RWO PVC is correct
   for one GPU; per-GPU model caches require a StatefulSet with
   `volumeClaimTemplates` (an RWO PVC can't be shared across nodes).

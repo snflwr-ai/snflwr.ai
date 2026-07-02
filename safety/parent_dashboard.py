@@ -268,7 +268,7 @@ def get_unreviewed_incidents():
             FROM safety_incidents
             WHERE resolved = 0
         """
-        params = []
+        params: list = []  # mixed SQL bind params (str severity + int limit)
 
         if severity:
             query += " AND severity = ?"

@@ -7,7 +7,7 @@ Supports both standalone Redis and Redis Sentinel for high availability
 import json
 import os
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import redis
 from redis.exceptions import ConnectionError, RedisError
@@ -84,8 +84,12 @@ class RedisCache:
             logger.warning(
                 "Redis caching is disabled - authentication rate limiting will be unavailable"
             )
-            self._client = None
-            self._sentinel = None
+            # Typed as ``Any``: redis-py types its sync client methods as
+            # returning ``Awaitable[Any] | Any`` (to share stubs with the async
+            # client), so a concrete ``redis.Redis`` annotation would make every
+            # ``.get()``/``.incr()`` call look possibly-awaitable to the checker.
+            self._client: Optional[Any] = None
+            self._sentinel: Optional[Any] = None
             return
 
         # Sentinel configuration
@@ -105,8 +109,8 @@ class RedisCache:
         self.db = db
         self.password = password or os.getenv("REDIS_PASSWORD", None)
 
-        self._client: Optional[redis.Redis] = None  # type: ignore[no-redef]
-        self._sentinel: Optional[Sentinel] = None  # type: ignore[no-redef]
+        self._client: Optional[Any] = None  # type: ignore[no-redef]
+        self._sentinel: Optional[Any] = None  # type: ignore[no-redef]
         self._stats = {
             "hits": 0,
             "misses": 0,
@@ -624,7 +628,7 @@ class RedisCache:
 
     def health_check_detailed(self) -> dict:
         """Detailed health check with Sentinel and degraded-mode status"""
-        result = {
+        result: Dict[str, Any] = {
             "healthy": False,
             "mode": "sentinel" if self._sentinel else "standalone",
             "enabled": self.enabled,

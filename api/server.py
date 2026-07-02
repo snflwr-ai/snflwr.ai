@@ -879,11 +879,14 @@ def setup_signal_handlers():
     """Set up signal handlers for graceful shutdown"""
     loop = asyncio.get_event_loop()
 
+    def _make_shutdown_handler(s: signal.Signals):
+        # Factory closure captures ``s`` per signal (avoids late-binding) and
+        # keeps the handler a plain no-arg lambda the type checker can infer.
+        return lambda: asyncio.create_task(graceful_shutdown(s))
+
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
-            loop.add_signal_handler(
-                sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s))
-            )
+            loop.add_signal_handler(sig, _make_shutdown_handler(sig))
             logger.debug(f"Signal handler registered for {sig.name}")
         except NotImplementedError:
             # Windows doesn't support add_signal_handler

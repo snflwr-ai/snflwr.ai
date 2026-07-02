@@ -50,14 +50,6 @@ def _redact_sensitive_params(params: Tuple) -> str:
     return str(tuple(redacted))
 
 
-from storage.schema import (
-    ACCOUNT_MIGRATION_COLUMNS,
-    PROFILE_MIGRATION_COLUMNS,
-    create_postgres_tables,
-    create_sqlite_tables,
-)
-
-
 class DatabaseManager:
     """Thread-safe database manager supporting SQLite and PostgreSQL"""
 
@@ -178,117 +170,24 @@ class DatabaseManager:
         self._local.in_transaction = False
 
     def _initialize_database(self):
-        """Create all database tables and indexes"""
+        """Create/upgrade the schema by running migrations to head.
 
-        # Ensure parent directory exists (SQLite only — PostgreSQL doesn't use a file path)
+        Uses the configured adapter so an ENCRYPTED (SQLCipher) database is
+        opened with its key applied. Locking (pg advisory lock / sqlite file
+        lock) is handled inside the runner.
+        """
+        from database.migrations import runner
+
         if hasattr(self, "db_path") and self.db_path:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # For SQLite, run schema creation with a short-lived direct connection
-        # to avoid creating a long-lived adapter connection that can hold file
-        # handles on Windows. For other DBs, use the adapter transaction path.
-        if self.db_type == "sqlite":
-            # Use the configured adapter so an ENCRYPTED (SQLCipher) database is
-            # opened with its key applied. A plain sqlite3.connect() fails with
-            # "file is not a database" on an encrypted file. Released via
-            # self.adapter.close() below so no stale handle is kept.
-            conn = self.adapter.connect()
-            cursor = conn.cursor()
+        runner.upgrade("head", manager=self)
+        logger.info("Database schema initialized successfully (migrations at head)")
 
-            # Accounts table (renamed from parents — holds parents, admins, educators)
-            create_sqlite_tables(cursor)
-
-            # Migration: rename parents → accounts if needed (for existing DBs)
-            try:
-                cursor.execute("ALTER TABLE parents RENAME TO accounts")
-            except Exception:
-                pass  # Table already named accounts or doesn't exist
-
-            # Add new columns for admin/educator support (idempotent for existing DBs)
-            for col_def in ACCOUNT_MIGRATION_COLUMNS:
-                try:
-                    cursor.execute(f"ALTER TABLE accounts ADD COLUMN {col_def}")
-                except Exception:
-                    pass  # Column already exists
-
-            # Add owui_user_id to child_profiles (for direct student Open WebUI login)
-            # Add grade_level, tier, model_role (exist in schema.sql but not original CREATE TABLE)
-            for col_def in PROFILE_MIGRATION_COLUMNS:
-                try:
-                    cursor.execute(f"ALTER TABLE child_profiles ADD COLUMN {col_def}")
-                except Exception:
-                    pass  # Column already exists
-
-            # Create indexes for performance
-            self._create_indexes(cursor)
-
-            conn.commit()
-            try:
-                cursor.close()
-            except DB_ERRORS as e:
-                logger.debug(f"Failed to close cursor (non-critical): {e}")
-            try:
-                # Close via the adapter so it clears its connection handle
-                # (a bare conn.close() would leave the adapter holding a stale,
-                # closed connection that later calls would reuse).
-                self.adapter.close()
-            except DB_ERRORS as e:
-                logger.debug(f"Failed to close connection (non-critical): {e}")
-
-            logger.info("Database schema initialized successfully")
-        else:
-            with self.transaction() as conn:
-                cursor = conn.cursor()
-
-                # Acquire an advisory lock so only one worker runs schema creation
-                # at a time. Other workers block here until the lock is released.
-                # Lock ID 1 is reserved for schema initialization.
-                cursor.execute("SELECT pg_advisory_xact_lock(1)")
-
-                # Accounts table (renamed from parents — holds parents, admins, educators)
-                create_postgres_tables(cursor)
-
-                # Migration: rename parents → accounts if needed (for existing DBs)
-                # In PostgreSQL, a failed statement aborts the entire transaction.
-                # Use savepoints so failures don't poison the transaction.
-                try:
-                    cursor.execute("SAVEPOINT rename_parents")
-                    cursor.execute("ALTER TABLE parents RENAME TO accounts")
-                    cursor.execute("RELEASE SAVEPOINT rename_parents")
-                except Exception:
-                    cursor.execute("ROLLBACK TO SAVEPOINT rename_parents")
-
-                # Add new columns for admin/educator support (idempotent for existing DBs)
-                for col_def in ACCOUNT_MIGRATION_COLUMNS:
-                    try:
-                        cursor.execute("SAVEPOINT add_col")
-                        cursor.execute(
-                            f"ALTER TABLE accounts ADD COLUMN IF NOT EXISTS {col_def}"
-                        )
-                        cursor.execute("RELEASE SAVEPOINT add_col")
-                    except Exception:
-                        cursor.execute("ROLLBACK TO SAVEPOINT add_col")
-
-                # Add owui_user_id to child_profiles (for direct student Open WebUI login)
-                # Add grade_level, tier, model_role (exist in schema.sql but not original CREATE TABLE)
-                for col_def in PROFILE_MIGRATION_COLUMNS:
-                    try:
-                        cursor.execute("SAVEPOINT add_col")
-                        cursor.execute(
-                            f"ALTER TABLE child_profiles ADD COLUMN IF NOT EXISTS {col_def}"
-                        )
-                        cursor.execute("RELEASE SAVEPOINT add_col")
-                    except Exception:
-                        cursor.execute("ROLLBACK TO SAVEPOINT add_col")
-
-                # Create indexes for performance
-                self._create_indexes(cursor)
-
-                logger.info("Database schema initialized successfully")
-                try:
-                    cursor.close()
-                except DB_ERRORS as e:
-                    logger.debug(f"Failed to close cursor (non-critical): {e}")
+        try:
+            self.adapter.close()
+        except DB_ERRORS as e:
+            logger.debug(f"Failed to close connection (non-critical): {e}")
 
     # Public compatibility wrapper expected by some tests
     def initialize_database(self, db_path: Optional[Path] = None):
@@ -307,60 +206,10 @@ class DatabaseManager:
             logger.debug(f"Failed to close after initialization (non-critical): {e}")
 
     def _create_indexes(self, cursor):
-        """Create database indexes for query optimization"""
+        """Create database indexes for query optimization. Delegates to storage.schema."""
+        from storage.schema import create_indexes
 
-        indexes = [
-            # Accounts
-            "CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username)",
-            "CREATE INDEX IF NOT EXISTS idx_accounts_device ON accounts(device_id)",
-            "CREATE INDEX IF NOT EXISTS idx_accounts_email_hash ON accounts(email_hash)",
-            "CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role)",
-            # Profiles
-            "CREATE INDEX IF NOT EXISTS idx_profiles_parent ON child_profiles(parent_id)",
-            "CREATE INDEX IF NOT EXISTS idx_profiles_active ON child_profiles(is_active)",
-            # Sessions
-            "CREATE INDEX IF NOT EXISTS idx_sessions_profile ON sessions(profile_id)",
-            "CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at)",
-            "CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id)",
-            # Conversations
-            "CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id)",
-            "CREATE INDEX IF NOT EXISTS idx_conversations_profile ON conversations(profile_id)",
-            "CREATE INDEX IF NOT EXISTS idx_conversations_flagged ON conversations(is_flagged)",
-            # Messages
-            "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)",
-            "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)",
-            # Safety incidents
-            "CREATE INDEX IF NOT EXISTS idx_incidents_profile ON safety_incidents(profile_id)",
-            "CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON safety_incidents(timestamp)",
-            "CREATE INDEX IF NOT EXISTS idx_incidents_severity ON safety_incidents(severity)",
-            "CREATE INDEX IF NOT EXISTS idx_incidents_unresolved ON safety_incidents(resolved) WHERE NOT resolved",
-            # Analytics
-            "CREATE INDEX IF NOT EXISTS idx_analytics_profile_date ON learning_analytics(profile_id, date)",
-            "CREATE INDEX IF NOT EXISTS idx_analytics_date ON learning_analytics(date)",
-            # Audit
-            "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)",
-            "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_type)",
-            # Error tracking
-            "CREATE INDEX IF NOT EXISTS idx_errors_hash ON error_tracking(error_hash)",
-            "CREATE INDEX IF NOT EXISTS idx_errors_severity ON error_tracking(severity)",
-            "CREATE INDEX IF NOT EXISTS idx_errors_first_seen ON error_tracking(first_seen)",
-            "CREATE INDEX IF NOT EXISTS idx_errors_unresolved ON error_tracking(resolved) WHERE resolved = 0",  # INTEGER col, not BOOLEAN
-        ]
-
-        for index_sql in indexes:
-            try:
-                if self.db_type == "postgresql":
-                    # In PostgreSQL, a failed statement aborts the transaction.
-                    # Use savepoints so one bad index doesn't kill everything.
-                    cursor.execute("SAVEPOINT idx_sp")
-                cursor.execute(index_sql)
-                if self.db_type == "postgresql":
-                    cursor.execute("RELEASE SAVEPOINT idx_sp")
-            except DB_ERRORS as e:
-                if self.db_type == "postgresql":
-                    cursor.execute("ROLLBACK TO SAVEPOINT idx_sp")
-                logger.warning(f"Index creation warning: {e}")
+        create_indexes(cursor, self.db_type)
 
     def execute_query(self, query: str, params: Tuple = ()) -> List[sqlite3.Row]:
         """

@@ -500,7 +500,7 @@ class TestChatEndpoint:
 
 class TestDatabaseInit:
     def test_init_database_creates_schema_from_scratch(self, tmp_path):
-        """init_database() creates all required tables from schema.sql."""
+        """init_database() creates all required tables via the migration runner."""
         import sqlite3
         from unittest.mock import patch
 

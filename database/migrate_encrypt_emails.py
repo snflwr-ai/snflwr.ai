@@ -3,11 +3,11 @@ Email Encryption Migration Script
 Migrates plaintext emails to encrypted storage for COPPA compliance
 """
 
-import sys
-import sqlite3
 import hashlib
-from pathlib import Path
+import sqlite3
+import sys
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -41,14 +41,14 @@ def check_schema_version():
         cursor.execute("PRAGMA table_info(users)")
         columns = [row[1] for row in cursor.fetchall()]
 
-        has_plaintext_email = 'email' in columns
-        has_encrypted_email = 'encrypted_email' in columns
-        has_email_hash = 'email_hash' in columns
+        has_plaintext_email = "email" in columns
+        has_encrypted_email = "encrypted_email" in columns
+        has_email_hash = "email_hash" in columns
 
         return {
-            'needs_migration': has_plaintext_email and not has_encrypted_email,
-            'already_encrypted': has_encrypted_email and has_email_hash,
-            'columns': columns
+            "needs_migration": has_plaintext_email and not has_encrypted_email,
+            "already_encrypted": has_encrypted_email and has_email_hash,
+            "columns": columns,
         }
     finally:
         conn.close()
@@ -57,9 +57,13 @@ def check_schema_version():
 def backup_database():
     """Create backup before migration"""
     db_path = Path(system_config.DB_PATH)
-    backup_path = db_path.parent / f"{db_path.stem}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}{db_path.suffix}"
+    backup_path = (
+        db_path.parent
+        / f"{db_path.stem}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}{db_path.suffix}"
+    )
 
     import shutil
+
     shutil.copy2(db_path, backup_path)
 
     logger.info(f"Database backed up to: {backup_path}")
@@ -77,12 +81,12 @@ def migrate_emails():
     print("\n1. Checking schema version...")
     status = check_schema_version()
 
-    if status['already_encrypted']:
+    if status["already_encrypted"]:
         print("   [OK] Database already using encrypted emails!")
         print("   No migration needed.")
         return True
 
-    if not status['needs_migration']:
+    if not status["needs_migration"]:
         print("   [WARN]  Unable to determine schema state")
         print(f"   Columns found: {', '.join(status['columns'])}")
         return False
@@ -138,9 +142,9 @@ def migrate_emails():
 
         migrated_count = 0
         for user in users:
-            user_id = user['user_id']
-            plaintext_email = user['email']
-            role = user['role']
+            user_id = user["user_id"]
+            plaintext_email = user["email"]
+            role = user["role"]
 
             # Generate hash for lookup
             email_hash_value = hash_email(plaintext_email)
@@ -149,11 +153,14 @@ def migrate_emails():
             encrypted_email_value = encryption.encrypt_string(plaintext_email)
 
             # Update user record
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE users
                 SET email_hash = ?, encrypted_email = ?
                 WHERE user_id = ?
-            """, (email_hash_value, encrypted_email_value, user_id))
+            """,
+                (email_hash_value, encrypted_email_value, user_id),
+            )
 
             migrated_count += 1
             print(f"   → Migrated {role}: [email redacted]")
@@ -168,14 +175,14 @@ def migrate_emails():
 
         all_encrypted = True
         for row in verification:
-            if not row['encrypted_email']:
+            if not row["encrypted_email"]:
                 print(f"   [FAIL] User {row['user_id']} has no encrypted_email!")
                 all_encrypted = False
             else:
                 # Verify we can decrypt
                 try:
-                    decrypted = encryption.decrypt_string(row['encrypted_email'])
-                    if decrypted != row['email']:
+                    decrypted = encryption.decrypt_string(row["encrypted_email"])
+                    if decrypted != row["email"]:
                         print(f"   [FAIL] Decryption mismatch for {row['user_id']}")
                         all_encrypted = False
                 except Exception as e:
@@ -191,7 +198,9 @@ def migrate_emails():
         # Step 7: Create unique index on email_hash
         print("\n7. Creating index on email_hash...")
         try:
-            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_hash_new ON users(email_hash)")
+            cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_hash_new ON users(email_hash)"
+            )
             conn.commit()
             print("   [OK] Index created")
         except sqlite3.IntegrityError as e:
@@ -255,21 +264,21 @@ def verify_encryption():
             print("   No users in database to test")
             return
 
-        if not user['encrypted_email']:
+        if not user["encrypted_email"]:
             print("   [FAIL] User has no encrypted_email")
             return
 
         # Decrypt email
-        decrypted_email = encryption.decrypt_string(user['encrypted_email'])
+        decrypted_email = encryption.decrypt_string(user["encrypted_email"])
 
         print(f"   User ID: {user['user_id']}")
         print(f"   Email Hash: {user['email_hash'][:16]}...")
         print(f"   Encrypted: {user['encrypted_email'][:50]}...")
-        print(f"   Decrypted: [verified - content redacted]")
+        print("   Decrypted: [verified - content redacted]")
 
         # Verify hash matches
         calculated_hash = hash_email(decrypted_email)
-        if calculated_hash == user['email_hash']:
+        if calculated_hash == user["email_hash"]:
             print("\n   [OK] Hash verification passed!")
         else:
             print("\n   [FAIL] Hash verification failed!")
@@ -285,8 +294,10 @@ def main():
     """Main migration function"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Migrate emails to encrypted storage')
-    parser.add_argument('--verify-only', action='store_true', help='Only verify, don\'t migrate')
+    parser = argparse.ArgumentParser(description="Migrate emails to encrypted storage")
+    parser.add_argument(
+        "--verify-only", action="store_true", help="Only verify, don't migrate"
+    )
     args = parser.parse_args()
 
     if args.verify_only:

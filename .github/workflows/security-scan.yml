@@ -77,13 +77,15 @@ jobs:
 
     - name: Run Bandit security scan
       run: |
+        # Generate the JSON report artifact (non-blocking).
         bandit -r api/ core/ safety/ storage/ utils/ \
           -f json -o bandit-report.json \
           --severity-level medium \
           --confidence-level medium || true
+        # Enforce: fail on any medium+ severity / medium+ confidence finding.
         bandit -r api/ core/ safety/ storage/ utils/ \
           --severity-level medium \
-          --confidence-level medium || true
+          --confidence-level medium
 
     - name: Upload Bandit report
       uses: actions/upload-artifact@v4

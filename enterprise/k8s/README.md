@@ -307,10 +307,10 @@ has passive ejection + active failover.
 
 Still open — decide before scaling beyond a pilot:
 
-- **Stateful tier is single-replica.** `postgres-deployment.yaml` and
-  `redis-deployment.yaml` are `replicas: 1`. See below for the opt-in Postgres HA
-  path (CloudNativePG). Redis Sentinel/cluster is a separate workstream; a
-  PodDisruptionBudget only helps once these run >1 replica.
+- **Stateful tier is single-replica by default.** `postgres-deployment.yaml` and
+  `redis-deployment.yaml` are `replicas: 1`. See the opt-in HA paths below —
+  Postgres via CloudNativePG and Redis via Sentinel; a PodDisruptionBudget only
+  helps once these run >1 replica.
 
 ### Postgres HA (opt-in)
 
@@ -343,6 +343,20 @@ routes to the current primary, and WAL is continuously archived for PITR.
 4. Repoint `POSTGRES_HOST` (step 3 above) and redeploy.
 5. Retire `postgres-deployment.yaml`.
 
+### Redis HA (opt-in)
+
+`redis-deployment.yaml` is a single replica (fine for dev / low-stakes installs).
+For high availability, apply `redis-sentinel.yaml` INSTEAD (1 master + 2 replicas +
+3 Sentinels) and set in the ConfigMap:
+
+    REDIS_SENTINEL_ENABLED: "true"
+    REDIS_SENTINEL_MASTER:  "mymaster"
+    REDIS_SENTINEL_HOSTS:   "redis-sentinel:26379"
+
+    kubectl apply -f redis-sentinel.yaml   # do NOT also apply redis-deployment.yaml
+
+The app and Celery connect to Sentinel (`redis-sentinel:26379`) and follow the
+promoted master automatically.
 - **Multi-GPU Ollama needs a StatefulSet.** The Deployment + RWO PVC is correct
   for one GPU; per-GPU model caches require a StatefulSet with
   `volumeClaimTemplates` (an RWO PVC can't be shared across nodes).

@@ -9,7 +9,6 @@ real Ollama backend configured in system_config.OLLAMA_PROXY_TARGET.
 import asyncio
 import json as _json
 import time
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
@@ -17,6 +16,20 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.middleware.auth import get_current_session, is_genuine_admin
+from api.routes.ollama_proxy import access, blocks, profile, transport
+from api.routes.ollama_proxy.access import (
+    _filter_show_for_students,
+    _filter_tags_for_students,
+    _get_user_from_headers,
+)
+from api.routes.ollama_proxy.blocks import (
+    _extract_last_user_message,
+    _ollama_block_response,
+)
+from api.routes.ollama_proxy.profile import _get_profile_for_user
+
+# Re-exports for direct-import compat (proxy_mod.<attr> and from ... import X)
+from api.routes.ollama_proxy.transport import _forward_request, _stream_chat_from_ollama
 from config import system_config
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
@@ -33,341 +46,6 @@ logger = get_logger(__name__)
 # Without this gate, anyone able to reach the internal port can forge
 # X-OpenWebUI-User-Role: admin and bypass the safety pipeline (audit C2).
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_session)])
-
-_OLLAMA_READ_TIMEOUT = 300.0  # seconds — matches OLLAMA_TIMEOUT default
-
-
-async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
-    """Send *method* + *path* to the real Ollama backend and return the raw response."""
-    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}{path}"
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT)
-    ) as client:
-        return await client.request(method, url, **kwargs)
-
-
-async def _proxy_to_ollama(request: Request, path: str) -> Response:
-    """Generic handler: reads request body, forwards to Ollama, returns response.
-
-    Returns HTTP 503 when Ollama is unreachable.
-    """
-    body = await request.body()
-    try:
-        upstream = await _forward_request(
-            request.method,
-            path,
-            content=body,
-            headers={
-                k: v
-                for k, v in request.headers.items()
-                if k.lower() not in ("host", "content-length")
-            },
-        )
-    except httpx.ConnectError:
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Ollama backend unreachable"},
-        )
-
-    return Response(
-        content=upstream.content,
-        status_code=upstream.status_code,
-        media_type=upstream.headers.get("content-type", "application/json"),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Safety pipeline helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_user_from_headers(request: Request) -> tuple:
-    """Extract user identity from OWU forwarded headers.
-
-    Returns ``(user_id, role)``.  Fails closed: missing headers yield
-    ``(None, "user")`` so the request is treated as a student.
-    """
-    user_id: Optional[str] = request.headers.get("X-OpenWebUI-User-Id") or None
-    role: str = request.headers.get("X-OpenWebUI-User-Role") or "user"
-    return user_id, role
-
-
-def _admin_only(request: Request, session: AuthSession) -> Optional[Response]:
-    """Gate an endpoint to a genuine admin session. Returns 403 otherwise, else None.
-
-    Used for the raw inference (``/api/generate``, ``/api/embed*``) and
-    model-management (``/api/pull|delete|copy``) endpoints, which are NOT part of
-    the student flow — Open WebUI drives all user-facing generation through
-    ``/api/chat`` (which runs the safety pipeline). Authority requires a genuine
-    admin *session*: the internal service key (Open WebUI) is a relay, not an
-    admin, so it cannot reach these even by forwarding X-OpenWebUI-User-Role:
-    admin. Without this gate a leaked key could reach raw, unfiltered model
-    output or mutate the model set.
-    """
-    if not is_genuine_admin(session):
-        logger.info(
-            "Blocked non-admin access to %s %s", request.method, request.url.path
-        )
-        return JSONResponse(
-            status_code=403,
-            content={"detail": "This endpoint is restricted to administrators."},
-        )
-    return None
-
-
-def _student_visible_models() -> set:
-    """Model names a non-admin (student) may see in the chat dropdown.
-
-    Only the canonical tutor model and its ``:latest`` tag — never the
-    backbone, rollback, or backup variants that share the same Ollama
-    backend but must never be selectable by a child.
-    """
-    default = (system_config.OLLAMA_DEFAULT_MODEL or "snflwr.ai").strip()
-    base = default.split(":", 1)[0]
-    return {base, f"{base}:latest"}
-
-
-def _filter_tags_for_students(payload: bytes) -> bytes:
-    """Drop non-public models from an Ollama ``/api/tags`` response body.
-
-    Returns the payload unchanged if it can't be parsed or has no model
-    list, so a malformed upstream response never crashes the dropdown.
-    """
-    try:
-        data = _json.loads(payload)
-    except (ValueError, _json.JSONDecodeError):
-        return payload
-    models = data.get("models")
-    if not isinstance(models, list):
-        return payload
-    allowed = _student_visible_models()
-    data["models"] = [
-        m for m in models if isinstance(m, dict) and m.get("name") in allowed
-    ]
-    return _json.dumps(data).encode()
-
-
-# Fields in an Ollama /api/show response that expose the tutor's SYSTEM/safety
-# prompt (and the template / sampling config that frame it). Stripped for
-# non-admins so a child cannot read — and then attempt to evade — the safety
-# instructions embedded in the model's Modelfile.
-_SHOW_SENSITIVE_FIELDS = ("modelfile", "system", "template", "parameters")
-
-
-def _filter_show_for_students(payload: bytes) -> bytes:
-    """Drop the prompt-bearing fields from an Ollama ``/api/show`` response body.
-
-    Keeps non-sensitive metadata (details, model_info, capabilities) that Open
-    WebUI needs for the model dropdown. Returns the payload unchanged if it can't
-    be parsed, so a malformed upstream response never breaks the model-info call.
-    """
-    try:
-        data = _json.loads(payload)
-    except (ValueError, _json.JSONDecodeError):
-        return payload
-    if not isinstance(data, dict):
-        return payload
-    for field in _SHOW_SENSITIVE_FIELDS:
-        data.pop(field, None)
-    return _json.dumps(data).encode()
-
-
-async def _get_profile_for_user(user_id: Optional[str]) -> str:
-    """Look up the first child profile linked to *user_id*.
-
-    Returns the profile_id string.  Fails closed: any error yields
-    ``"safety_required_<user_id>"`` so the safety pipeline still runs.
-    """
-    if user_id is None:
-        return "safety_required_unknown"
-    try:
-        from core.authentication import auth_manager
-        from core.profile_manager import ProfileManager
-
-        pm = ProfileManager(auth_manager.db)
-        profiles = pm.get_profiles_by_parent(user_id)
-        if profiles:
-            return profiles[0].profile_id
-        # No profiles found — still run safety with a synthetic profile id
-        return f"safety_required_{user_id}"
-    except Exception as exc:
-        logger.warning(
-            "_get_profile_for_user failed for user %s (fail-closed): %s",
-            user_id,
-            exc,
-        )
-        return f"safety_required_{user_id}"
-
-
-def _extract_last_user_message(messages: list) -> str:
-    """Return the text of the last user-role message in *messages*.
-
-    Handles both plain-string content and multimodal parts (list of dicts
-    with ``type: "text"``).  Returns ``""`` when no user message is found.
-    """
-    for msg in reversed(messages):
-        if not isinstance(msg, dict):
-            continue
-        if msg.get("role") != "user":
-            continue
-        content = msg.get("content", "")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            # Multimodal format — gather all text parts
-            parts = [
-                p.get("text", "")
-                for p in content
-                if isinstance(p, dict) and p.get("type") == "text"
-            ]
-            return " ".join(parts)
-    return ""
-
-
-def _ollama_block_response(model: str, block_message: str) -> dict:
-    """Build an Ollama-format response dict for a blocked message."""
-    return {
-        "model": model,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "message": {"role": "assistant", "content": block_message},
-        "done": True,
-        "done_reason": "stop",
-        "total_duration": 0,
-        "eval_count": 0,
-    }
-
-
-def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
-    """Best-effort human-in-the-loop escalation for a blocked student message.
-
-    Records a DB incident and — for major/critical severities such as a
-    self-harm disclosure — queues a parent alert via the incident logger.
-    Without this, a child's crisis message shows the 988 safe-response but
-    never notifies a trusted adult, and no incident is recorded for review.
-
-    Students reach the model through this proxy (not api/routes/chat.py), so the
-    escalation has to live here too. Fail-safe by design: any error is swallowed
-    so the child's safe response is always delivered.
-    """
-    try:
-        from safety.incident_logger import incident_logger
-
-        incident_logger.log_incident(
-            profile_id=profile_id or "unknown",
-            session_id=None,
-            incident_type=result.category.value,
-            severity=result.severity.value,
-            content_snippet=(content_snippet or "")[:200],
-            metadata={
-                "source": "ollama_proxy",
-                "stage": getattr(result, "stage", None),
-                "triggered_keywords": list(
-                    getattr(result, "triggered_keywords", ()) or ()
-                ),
-            },
-        )
-    except Exception as exc:  # never let escalation break the child's response
-        logger.error(
-            "Failed to record safety incident (non-fatal): %s", exc, exc_info=True
-        )
-
-
-# ---------------------------------------------------------------------------
-# Streaming helper
-# ---------------------------------------------------------------------------
-
-
-async def _stream_chunks_from_ollama(body: bytes, headers: dict):
-    """Open a streaming connection to Ollama and yield raw NDJSON chunks.
-
-    Separated from the response builder so the chat handler can buffer chunks
-    through ``check_output`` before forwarding them to the client.
-    """
-    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
-    client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
-    req = client.build_request("POST", url, content=body, headers=headers)
-    resp = await client.send(req, stream=True)
-    try:
-        async for chunk in resp.aiter_bytes():
-            yield chunk
-    finally:
-        await resp.aclose()
-        await client.aclose()
-
-
-def _extract_text_from_ndjson_chunks(chunks: list[bytes]) -> str:
-    """Concatenate the ``message.content`` fields from a list of Ollama NDJSON chunks."""
-    parts: list[str] = []
-    buffer = b"".join(chunks)
-    for line in buffer.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = _json.loads(line)
-        except (_json.JSONDecodeError, ValueError):
-            continue
-        msg = obj.get("message") if isinstance(obj, dict) else None
-        if isinstance(msg, dict):
-            content = msg.get("content", "")
-            if isinstance(content, str):
-                parts.append(content)
-    return "".join(parts)
-
-
-def _ollama_block_stream_bytes(model: str, block_message: str) -> bytes:
-    """Build a single-chunk NDJSON stream body that delivers a safe-fallback block."""
-    chunk = _json.dumps(_ollama_block_response(model, block_message)) + "\n"
-    return chunk.encode()
-
-
-# Hold-back streaming: how much text to accumulate before the FIRST output-safety
-# check. A sentence boundary triggers it sooner (fast first flush); the char cap
-# guarantees a long unbroken stream still gets vetted promptly.
-_FIRST_CHECKPOINT_CHARS = 160
-
-
-def _first_checkpoint_ready(text: str) -> bool:
-    """True once enough answer text has accumulated to run the first check_output:
-    a sentence boundary (after a little content) or the char cap."""
-    if len(text) >= _FIRST_CHECKPOINT_CHARS:
-        return True
-    return len(text) >= 12 and any(p in text for p in ".!?")
-
-
-async def _stream_chat_from_ollama(
-    body: bytes, headers: dict
-) -> StreamingResponse | JSONResponse:
-    """Stream Ollama chat response back to the client without inspection.
-
-    Used by the admin pass-through path; student traffic uses
-    ``_stream_chunks_from_ollama`` + ``check_output`` instead.
-    """
-    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
-    client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
-    try:
-        req = client.build_request("POST", url, content=body, headers=headers)
-        resp = await client.send(req, stream=True)
-    except httpx.ConnectError:
-        await client.aclose()
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Ollama backend unreachable"},
-        )
-
-    async def _yield_chunks():
-        try:
-            async for chunk in resp.aiter_bytes():
-                yield chunk
-        finally:
-            await resp.aclose()
-            await client.aclose()
-
-    return StreamingResponse(
-        _yield_chunks(),
-        status_code=resp.status_code,
-        media_type=resp.headers.get("content-type", "application/x-ndjson"),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +76,7 @@ async def proxy_chat(
     # forwarded user only when the caller is Open WebUI (the internal key). This
     # is used purely to look up the right child profile below.
     if session.user_id == "internal_service":
-        user_id, _ = _get_user_from_headers(request)
+        user_id, _ = access._get_user_from_headers(request)
     else:
         user_id = session.user_id
 
@@ -417,9 +95,9 @@ async def proxy_chat(
             if k.lower() not in ("host", "content-length")
         }
         if stream:
-            return await _stream_chat_from_ollama(body_bytes, fwd_headers)
+            return await transport._stream_chat_from_ollama(body_bytes, fwd_headers)
         try:
-            upstream = await _forward_request(
+            upstream = await transport._forward_request(
                 "POST",
                 "/api/chat",
                 content=body_bytes,
@@ -456,7 +134,7 @@ async def proxy_chat(
                 "You're sending messages a little too fast — take a breath and "
                 "try again in a moment. 🌻"
             )
-            return JSONResponse(content=_ollama_block_response(model, slow_msg))
+            return JSONResponse(content=blocks._ollama_block_response(model, slow_msg))
 
     # If the Ollama backend is unhealthy, fail fast instead of piling onto a
     # struggling GPU. The shared circuit is tripped by the safety classifier's
@@ -470,7 +148,7 @@ async def proxy_chat(
             "The tutor is taking a quick break and will be back in a moment. "
             "Please try again shortly. 🌻"
         )
-        return JSONResponse(content=_ollama_block_response(model, busy_msg))
+        return JSONResponse(content=blocks._ollama_block_response(model, busy_msg))
 
     # License gate — students must hold a valid subscription/trial token.
     # Fail-safe: any licensing problem => gated, never a crash. Admins already
@@ -489,10 +167,10 @@ async def proxy_chat(
                 "A snflwr.ai subscription is needed to use the tutor. "
                 "Open Settings → Billing to subscribe or sign in."
             )
-            return JSONResponse(content=_ollama_block_response(model, msg))
+            return JSONResponse(content=blocks._ollama_block_response(model, msg))
 
     # Student path — run safety pipeline
-    profile_id = await _get_profile_for_user(user_id)
+    profile_id = await profile._get_profile_for_user(user_id)
 
     no_profile_msg = no_profile_block_reason(profile_id)
     if no_profile_msg:
@@ -500,7 +178,9 @@ async def proxy_chat(
             "Blocked student chat: no learning profile for user %s",
             observability.hash_profile(user_id) if user_id else "unknown",
         )
-        return JSONResponse(content=_ollama_block_response(model, no_profile_msg))
+        return JSONResponse(
+            content=blocks._ollama_block_response(model, no_profile_msg)
+        )
 
     # Resolve age from profile (best-effort; None is acceptable)
     age: Optional[int] = None
@@ -509,9 +189,9 @@ async def proxy_chat(
         from core.profile_manager import ProfileManager
 
         pm = ProfileManager(auth_manager.db)
-        profile = pm.get_profile(profile_id)
-        if profile is not None:
-            age = profile.age or None
+        prof = pm.get_profile(profile_id)
+        if prof is not None:
+            age = prof.age or None
     except Exception as exc:
         logger.debug("Could not resolve age for profile %s: %s", profile_id, exc)
 
@@ -552,9 +232,9 @@ async def proxy_chat(
     if coppa_msg is not None:
         _trace["safety"] = {"blocked_layer": "coppa"}
         _emit_trace()
-        return JSONResponse(content=_ollama_block_response(model, coppa_msg))
+        return JSONResponse(content=blocks._ollama_block_response(model, coppa_msg))
 
-    text = _extract_last_user_message(messages)
+    text = blocks._extract_last_user_message(messages)
     # Captured separately because `text` is shadowed inside the streaming _vet()
     # closure; passed as `context` to check_output so the answer inherits the
     # question's educational context (e.g. a biology question about "drugs").
@@ -570,7 +250,7 @@ async def proxy_chat(
         block_msg = "I'm unable to process that request right now."
         _trace["safety"] = {"blocked_layer": "input"}
         _emit_trace()
-        return JSONResponse(content=_ollama_block_response(model, block_msg))
+        return JSONResponse(content=blocks._ollama_block_response(model, block_msg))
 
     if not result.is_safe:
         block_message = (
@@ -583,14 +263,14 @@ async def proxy_chat(
             profile_id,
             result.category,
         )
-        _record_safety_incident(profile_id, result, text)
+        blocks._record_safety_incident(profile_id, result, text)
         _trace["safety"] = {
             "category": str(result.category),
             "severity": str(result.severity),
             "blocked_layer": "input",
         }
         _emit_trace()
-        return JSONResponse(content=_ollama_block_response(model, block_message))
+        return JSONResponse(content=blocks._ollama_block_response(model, block_message))
 
     # Safe — forward to Ollama
     fwd_headers = {
@@ -627,7 +307,7 @@ async def proxy_chat(
             )
 
         def _emit_block(out_result, text) -> None:
-            _record_safety_incident(profile_id, out_result, text)
+            blocks._record_safety_incident(profile_id, out_result, text)
             _trace["safety"] = {
                 "category": str(out_result.category),
                 "severity": str(out_result.severity),
@@ -640,18 +320,22 @@ async def proxy_chat(
             flushed = 0
             checkpoint_done = False
             try:
-                async for chunk in _stream_chunks_from_ollama(body_bytes, fwd_headers):
+                async for chunk in transport._stream_chunks_from_ollama(
+                    body_bytes, fwd_headers
+                ):
                     collected.append(chunk)
                     if checkpoint_done:
                         continue
-                    text = _extract_text_from_ndjson_chunks(collected)
-                    if not _first_checkpoint_ready(text):
+                    text = blocks._extract_text_from_ndjson_chunks(collected)
+                    if not blocks._first_checkpoint_ready(text):
                         continue
                     res = await _vet(text)
                     if not res.is_safe:
                         # Nothing flushed yet — replace the whole response.
                         _emit_block(res, text)
-                        yield _ollama_block_stream_bytes(model, _fallback_for(res))
+                        yield blocks._ollama_block_stream_bytes(
+                            model, _fallback_for(res)
+                        )
                         return
                     for c in collected[flushed:]:
                         yield c
@@ -659,14 +343,14 @@ async def proxy_chat(
                     checkpoint_done = True
 
                 # Stream done — vet the FULL text before flushing the remainder.
-                full = _extract_text_from_ndjson_chunks(collected)
+                full = blocks._extract_text_from_ndjson_chunks(collected)
                 res = await _vet(full)
                 if not res.is_safe:
                     # The un-flushed remainder is un-vetted → withhold it and send
                     # a safe fallback for the rest. Already-flushed content passed
                     # the checkpoint check, so no unsafe token ever reached the child.
                     _emit_block(res, full)
-                    yield _ollama_block_stream_bytes(model, _fallback_for(res))
+                    yield blocks._ollama_block_stream_bytes(model, _fallback_for(res))
                     return
                 for c in collected[flushed:]:
                     yield c
@@ -676,7 +360,7 @@ async def proxy_chat(
             except httpx.ConnectError:
                 _trace["safety"] = {"blocked_layer": "error"}
                 _emit_trace()
-                yield _ollama_block_stream_bytes(
+                yield blocks._ollama_block_stream_bytes(
                     model, "The tutor is unavailable right now. Please try again."
                 )
 
@@ -685,7 +369,9 @@ async def proxy_chat(
     if stream:
         try:
             collected: list[bytes] = []
-            async for chunk in _stream_chunks_from_ollama(body_bytes, fwd_headers):
+            async for chunk in transport._stream_chunks_from_ollama(
+                body_bytes, fwd_headers
+            ):
                 collected.append(chunk)
         except httpx.ConnectError:
             _trace["safety"] = {"blocked_layer": "error"}
@@ -698,7 +384,7 @@ async def proxy_chat(
         # Output safety pipeline runs on the full assembled assistant message.
         # Fail-closed: any unsafe content replaces the stream with a single
         # safe-fallback NDJSON chunk so harmful text never reaches the child.
-        assistant_text = _extract_text_from_ndjson_chunks(collected)
+        assistant_text = blocks._extract_text_from_ndjson_chunks(collected)
         try:
             from safety.pipeline import safety_pipeline
 
@@ -716,7 +402,7 @@ async def proxy_chat(
             _trace["safety"] = {"blocked_layer": "output"}
             _emit_trace()
             return Response(
-                content=_ollama_block_stream_bytes(model, block_msg),
+                content=blocks._ollama_block_stream_bytes(model, block_msg),
                 media_type="application/x-ndjson",
             )
 
@@ -731,7 +417,7 @@ async def proxy_chat(
                 profile_id,
                 out_result.category,
             )
-            _record_safety_incident(profile_id, out_result, assistant_text)
+            blocks._record_safety_incident(profile_id, out_result, assistant_text)
             _trace["safety"] = {
                 "category": str(out_result.category),
                 "severity": str(out_result.severity),
@@ -739,7 +425,7 @@ async def proxy_chat(
             }
             _emit_trace()
             return Response(
-                content=_ollama_block_stream_bytes(model, block_msg),
+                content=blocks._ollama_block_stream_bytes(model, block_msg),
                 media_type="application/x-ndjson",
             )
 
@@ -752,7 +438,7 @@ async def proxy_chat(
         )
 
     try:
-        upstream = await _forward_request(
+        upstream = await transport._forward_request(
             "POST",
             "/api/chat",
             content=body_bytes,
@@ -791,7 +477,7 @@ async def proxy_chat(
             block_msg = "I'm unable to process that request right now."
             _trace["safety"] = {"blocked_layer": "output"}
             _emit_trace()
-            return JSONResponse(content=_ollama_block_response(model, block_msg))
+            return JSONResponse(content=blocks._ollama_block_response(model, block_msg))
 
         if not out_result.is_safe:
             block_msg = (
@@ -804,14 +490,14 @@ async def proxy_chat(
                 profile_id,
                 out_result.category,
             )
-            _record_safety_incident(profile_id, out_result, assistant_text)
+            blocks._record_safety_incident(profile_id, out_result, assistant_text)
             _trace["safety"] = {
                 "category": str(out_result.category),
                 "severity": str(out_result.severity),
                 "blocked_layer": "output",
             }
             _emit_trace()
-            return JSONResponse(content=_ollama_block_response(model, block_msg))
+            return JSONResponse(content=blocks._ollama_block_response(model, block_msg))
 
     _trace["blocked"] = False
     _trace["safety"] = {"blocked_layer": None}
@@ -842,11 +528,11 @@ async def proxy_tags(
     closed: only a genuine admin *session* sees the full list — the internal
     service key (relay) cannot unlock it with a forwarded admin header.
     """
-    response = await _proxy_to_ollama(request, "/api/tags")
+    response = await transport._proxy_to_ollama(request, "/api/tags")
     if is_genuine_admin(session) or response.status_code != 200:
         return response
     return Response(
-        content=_filter_tags_for_students(response.body),
+        content=access._filter_tags_for_students(response.body),
         status_code=response.status_code,
         media_type=response.media_type or "application/json",
     )
@@ -865,11 +551,11 @@ async def proxy_show(
     model dropdown. Mirrors ``proxy_tags``; fails closed (only a genuine admin
     session unlocks the full body, never a forwarded admin header).
     """
-    response = await _proxy_to_ollama(request, "/api/show")
+    response = await transport._proxy_to_ollama(request, "/api/show")
     if is_genuine_admin(session) or response.status_code != 200:
         return response
     return Response(
-        content=_filter_show_for_students(response.body),
+        content=access._filter_show_for_students(response.body),
         status_code=response.status_code,
         media_type=response.media_type or "application/json",
     )
@@ -881,30 +567,30 @@ async def proxy_generate(
 ) -> Response:
     # Admin-only: raw completion bypasses the /api/chat safety pipeline and would
     # return UNFILTERED model output to a child. Students use /api/chat only.
-    blocked = _admin_only(request, session)
+    blocked = access._admin_only(request, session)
     if blocked is not None:
         return blocked
-    return await _proxy_to_ollama(request, "/api/generate")
+    return await transport._proxy_to_ollama(request, "/api/generate")
 
 
 @router.post("/embed")
 async def proxy_embed(
     request: Request, session: AuthSession = Depends(get_current_session)
 ) -> Response:
-    blocked = _admin_only(request, session)
+    blocked = access._admin_only(request, session)
     if blocked is not None:
         return blocked
-    return await _proxy_to_ollama(request, "/api/embed")
+    return await transport._proxy_to_ollama(request, "/api/embed")
 
 
 @router.post("/embeddings")
 async def proxy_embeddings(
     request: Request, session: AuthSession = Depends(get_current_session)
 ) -> Response:
-    blocked = _admin_only(request, session)
+    blocked = access._admin_only(request, session)
     if blocked is not None:
         return blocked
-    return await _proxy_to_ollama(request, "/api/embeddings")
+    return await transport._proxy_to_ollama(request, "/api/embeddings")
 
 
 @router.delete("/delete")
@@ -912,10 +598,10 @@ async def proxy_delete(
     request: Request, session: AuthSession = Depends(get_current_session)
 ) -> Response:
     # Admin-only: mutates the installed model set (destructive).
-    blocked = _admin_only(request, session)
+    blocked = access._admin_only(request, session)
     if blocked is not None:
         return blocked
-    return await _proxy_to_ollama(request, "/api/delete")
+    return await transport._proxy_to_ollama(request, "/api/delete")
 
 
 @router.post("/pull")
@@ -923,10 +609,10 @@ async def proxy_pull(
     request: Request, session: AuthSession = Depends(get_current_session)
 ) -> Response:
     # Admin-only: could introduce an unvetted (uncensored) model.
-    blocked = _admin_only(request, session)
+    blocked = access._admin_only(request, session)
     if blocked is not None:
         return blocked
-    return await _proxy_to_ollama(request, "/api/pull")
+    return await transport._proxy_to_ollama(request, "/api/pull")
 
 
 @router.post("/copy")
@@ -934,10 +620,10 @@ async def proxy_copy(
     request: Request, session: AuthSession = Depends(get_current_session)
 ) -> Response:
     # Admin-only: mutates the installed model set.
-    blocked = _admin_only(request, session)
+    blocked = access._admin_only(request, session)
     if blocked is not None:
         return blocked
-    return await _proxy_to_ollama(request, "/api/copy")
+    return await transport._proxy_to_ollama(request, "/api/copy")
 
 
 @router.get("/version")
@@ -947,7 +633,7 @@ async def proxy_version(request: Request) -> Response:
     # health check, and the body is just the Ollama version string — non-sensitive,
     # unlike /api/show (which leaks the Modelfile). Admin-gating it would break
     # OWUI's connection indicator for no security gain.
-    return await _proxy_to_ollama(request, "/api/version")
+    return await transport._proxy_to_ollama(request, "/api/version")
 
 
 # ---------------------------------------------------------------------------
@@ -959,7 +645,7 @@ async def proxy_version(request: Request) -> Response:
 async def proxy_health() -> JSONResponse:
     """Verify the proxy can reach the Ollama backend."""
     try:
-        resp = await _forward_request("GET", "/api/version")
+        resp = await transport._forward_request("GET", "/api/version")
         ollama_version = resp.json() if resp.status_code == 200 else None
     except httpx.ConnectError:
         return JSONResponse(

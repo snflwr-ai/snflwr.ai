@@ -76,11 +76,11 @@ def test_internal_service_cannot_bypass_safety_with_admin_header():
     client = TestClient(app)
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="profile-1"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post(
@@ -102,7 +102,7 @@ def test_genuine_admin_session_still_bypasses_safety():
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
     with (
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post(
@@ -119,7 +119,7 @@ def test_internal_service_cannot_reach_model_management():
     session — the internal key + forged admin header is rejected."""
     app = _app_with_session(_internal_session())
     client = TestClient(app)
-    with patch("api.routes.ollama_proxy._forward_request",
+    with patch("api.routes.ollama_proxy.transport._forward_request",
                new_callable=AsyncMock) as fwd:
         resp = client.post("/api/generate", json={"model": "m", "prompt": "x"},
                            headers={"X-OpenWebUI-User-Role": "admin"})
@@ -131,7 +131,7 @@ def test_genuine_admin_session_reaches_model_management():
     app = _app_with_session(_genuine_admin())
     client = TestClient(app)
     ollama_resp = httpx.Response(200, json={"response": "ok"})
-    with patch("api.routes.ollama_proxy._forward_request",
+    with patch("api.routes.ollama_proxy.transport._forward_request",
                new_callable=AsyncMock, return_value=ollama_resp) as fwd:
         resp = client.post("/api/generate", json={"model": "m"})
     assert resp.status_code == 200

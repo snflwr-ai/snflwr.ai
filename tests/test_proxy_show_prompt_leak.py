@@ -56,7 +56,7 @@ def test_student_show_strips_system_prompt():
     app = _app_with_session(user_id="parent_1", role="user")
     client = TestClient(app)
     with patch(
-        "api.routes.ollama_proxy._forward_request",
+        "api.routes.ollama_proxy.transport._forward_request",
         new_callable=AsyncMock,
         return_value=_show_resp(),
     ):
@@ -77,7 +77,7 @@ def test_internal_relay_show_strips_system_prompt():
     app = _app_with_session(user_id="internal_service", role="admin")
     client = TestClient(app)
     with patch(
-        "api.routes.ollama_proxy._forward_request",
+        "api.routes.ollama_proxy.transport._forward_request",
         new_callable=AsyncMock,
         return_value=_show_resp(),
     ):
@@ -95,7 +95,7 @@ def test_admin_session_show_passthrough_full():
     app = _app_with_session(user_id="admin_1", role="admin")
     client = TestClient(app)
     with patch(
-        "api.routes.ollama_proxy._forward_request",
+        "api.routes.ollama_proxy.transport._forward_request",
         new_callable=AsyncMock,
         return_value=_show_resp(),
     ):

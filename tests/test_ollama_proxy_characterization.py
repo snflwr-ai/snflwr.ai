@@ -62,9 +62,9 @@ def test_rate_limit_precedes_profile_lookup():
     with (
         patch.object(proxy_mod.rate_limiter, "check_rate_limit",
                      return_value=(False, {"retry_after": 42})),
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock) as prof,
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock) as fwd,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
@@ -77,9 +77,9 @@ def test_no_profile_precedes_forward():
     # A student with no real profile is blocked before Ollama is called.
     client = TestClient(_app())
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="safety_required_stud_1"),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock) as fwd,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())

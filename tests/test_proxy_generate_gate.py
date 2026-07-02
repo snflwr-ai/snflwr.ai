@@ -46,7 +46,7 @@ def test_student_session_cannot_reach_gated_endpoints():
     client = TestClient(app)
     for method, path in GATED:
         with patch(
-            "api.routes.ollama_proxy._forward_request", new_callable=AsyncMock
+            "api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock
         ) as fwd:
             resp = client.request(method.upper(), path, json={"model": "m", "prompt": "hi"})
         assert resp.status_code == 403, f"{path} should be forbidden for students"
@@ -59,7 +59,7 @@ def test_forged_admin_header_cannot_unlock_gated_endpoints():
     client = TestClient(app)
     for method, path in GATED:
         with patch(
-            "api.routes.ollama_proxy._forward_request", new_callable=AsyncMock
+            "api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock
         ) as fwd:
             resp = client.request(
                 method.upper(),
@@ -83,11 +83,11 @@ def test_internal_service_with_admin_header_is_blocked():
     for method, path in GATED:
         with (
             patch(
-                "api.routes.ollama_proxy._get_user_from_headers",
+                "api.routes.ollama_proxy.access._get_user_from_headers",
                 return_value=("admin_1", "admin"),
             ),
             patch(
-                "api.routes.ollama_proxy._forward_request",
+                "api.routes.ollama_proxy.transport._forward_request",
                 new_callable=AsyncMock,
             ) as fwd,
         ):
@@ -106,7 +106,7 @@ def test_real_admin_session_is_allowed():
     ollama_resp = httpx.Response(200, json={"response": "ok", "done": True})
     for method, path in GATED:
         with patch(
-            "api.routes.ollama_proxy._forward_request",
+            "api.routes.ollama_proxy.transport._forward_request",
             new_callable=AsyncMock,
             return_value=ollama_resp,
         ) as fwd:

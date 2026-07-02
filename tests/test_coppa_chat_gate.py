@@ -37,12 +37,12 @@ def test_unverified_under13_blocked(monkeypatch):
     from core.authentication import auth_manager
     client = TestClient(_app())
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="prof_child"),
         patch.object(auth_manager.db, "execute_query",
                      return_value=[{"age": 9, "coppa_verified": 0}]),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
-        patch("api.routes.ollama_proxy._forward_request", new_callable=AsyncMock) as fwd,
+        patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock) as fwd,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_student_headers())
     assert resp.status_code == 200
@@ -56,13 +56,13 @@ def test_verified_under13_allowed(monkeypatch):
     client = TestClient(_app())
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="prof_child"),
         patch.object(auth_manager.db, "execute_query",
                      return_value=[{"age": 9, "coppa_verified": 1}]),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_body(), headers=_student_headers())
@@ -83,13 +83,13 @@ def test_under13_failclosed_on_lookup_error(monkeypatch):
 
     client = TestClient(_app())
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="prof_child"),
         patch.object(ProfileManager, "get_profile", return_value=_Profile()),
         patch.object(auth_manager.db, "execute_query",
                      side_effect=RuntimeError("db down")),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
-        patch("api.routes.ollama_proxy._forward_request", new_callable=AsyncMock) as fwd,
+        patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock) as fwd,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_student_headers())
     assert resp.status_code == 200
@@ -104,13 +104,13 @@ def test_teen_not_coppa_gated(monkeypatch):
     client = TestClient(_app())
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="prof_teen"),
         patch.object(auth_manager.db, "execute_query",
                      return_value=[{"age": 15, "coppa_verified": 0}]),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_body(), headers=_student_headers())

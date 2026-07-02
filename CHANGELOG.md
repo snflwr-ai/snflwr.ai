@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-06-27
 
+### Changed
+- **CI quality gates hardened** — pylint floor raised `5.0 → 8.0` (code sits at
+  8.30); Bandit now *blocks* on medium-severity/medium-confidence findings (was
+  high/high in `ci.yml`, advisory `|| true` in `security-scan.yml`); the JSON
+  report generation stays non-blocking for artifact upload.
+- **mypy now checks untyped function bodies** across `api/core/safety/storage/
+  utils` (`check_untyped_defs = True`, removing the per-module opt-outs). Closed
+  the resulting ~56 findings with real type annotations — including a latent
+  `AttributeError` in `SessionCacheMixin` when Redis init takes the fallback
+  path (`_redis` is now a class-level annotated default).
+
 ### Added
+- **Scheduled DR drill** (`.github/workflows/dr-drill.yml`) — re-runs the
+  Postgres backup/restore suite weekly (and on demand) so the restore guarantee
+  stays honest between commits, independent of push-triggered CI.
+
 - **Opt-in `gemma4:31b` high-end tutor tier** (`SNFLWR_ENABLE_GEMMA_31B`, GPU
   ≥26GB so it co-resides with the 8B safety classifier). A stronger-judge bake-off
   found it ~tied with `gemma4:e4b` on tutoring quality, so it's for big-GPU

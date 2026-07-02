@@ -20,6 +20,7 @@ from api.middleware.auth import get_current_session, is_genuine_admin
 from config import system_config
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
+from core.profile_gate import no_profile_block_reason
 from utils import observability
 from utils.circuit_breaker import ollama_circuit
 from utils.logger import get_logger
@@ -492,6 +493,14 @@ async def proxy_chat(
 
     # Student path — run safety pipeline
     profile_id = await _get_profile_for_user(user_id)
+
+    no_profile_msg = no_profile_block_reason(profile_id)
+    if no_profile_msg:
+        logger.warning(
+            "Blocked student chat: no learning profile for user %s",
+            observability.hash_profile(user_id) if user_id else "unknown",
+        )
+        return JSONResponse(content=_ollama_block_response(model, no_profile_msg))
 
     # Resolve age from profile (best-effort; None is acceptable)
     age: Optional[int] = None

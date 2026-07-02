@@ -1,0 +1,54 @@
+name: Redis Sentinel Failover
+
+on:
+  push:
+    branches: [ main, develop, "claude/*" ]
+    paths:
+      - "utils/cache.py"
+      - "utils/celery_config.py"
+      - "config.py"
+      - "docker/compose/docker-compose.sentinel-ci.yml"
+      - "tests/integration/test_redis_sentinel_failover.py"
+      - ".github/workflows/redis-sentinel-ci.yml"
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redis-sentinel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  failover:
+    name: Sentinel failover smoke
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+    - name: Install deps
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+    - name: Run Sentinel failover smoke test
+      env:
+        REDIS_PASSWORD: ci_redis_pw
+      run: |
+        pytest -o addopts="" -p no:cacheprovider -m integration \
+          tests/integration/test_redis_sentinel_failover.py -v
+
+  manifest-lint:
+    name: Validate k8s manifests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: kubeconform
+      run: |
+        curl -sSLo /tmp/kc.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+        tar -xzf /tmp/kc.tar.gz -C /tmp
+        /tmp/kubeconform -strict -ignore-missing-schemas enterprise/k8s/redis-sentinel.yaml

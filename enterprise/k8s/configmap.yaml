@@ -44,3 +44,9 @@ data:
   SMTP_HOST: "smtp.sendgrid.net"
   SMTP_PORT: "587"
   SMTP_USE_TLS: "true"
+
+  # --- Redis HA (opt-in; UNCOMMENT these only when applying redis-sentinel.yaml
+  # instead of redis-deployment.yaml). Default install uses standalone Redis. ---
+  # REDIS_SENTINEL_ENABLED: "true"
+  # REDIS_SENTINEL_MASTER: "mymaster"
+  # REDIS_SENTINEL_HOSTS: "redis-sentinel:26379"

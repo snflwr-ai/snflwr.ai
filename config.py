@@ -200,6 +200,10 @@ class _SystemConfig:
     REDIS_PORT: int = int(os.getenv("REDIS_PORT") or "6379")
     REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
     REDIS_DB: int = int(os.getenv("REDIS_DB") or "0")
+    REDIS_SENTINEL_ENABLED: bool = (
+        os.getenv("REDIS_SENTINEL_ENABLED", "false").lower() == "true"
+    )
+    REDIS_SENTINEL_MASTER: str = os.getenv("REDIS_SENTINEL_MASTER", "mymaster")
 
     # Self-hosted Langfuse observability (enterprise). Default OFF; when on, the
     # proxy emits METADATA-ONLY traces (no chat content) — see utils/observability.py.
@@ -244,6 +248,28 @@ class _SystemConfig:
         if self.REDIS_PASSWORD:
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    def celery_broker_config(self) -> tuple:
+        """Return (broker_url, transport_options) for Celery.
+
+        Standalone Redis when REDIS_SENTINEL_ENABLED is false; otherwise a
+        kombu sentinel:// URL (semicolon-separated) plus the transport options
+        Celery needs to resolve the master via Sentinel.
+        """
+        if not self.REDIS_SENTINEL_ENABLED:
+            return self.REDIS_URL, {}
+
+        auth = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
+        hosts = [
+            h.strip()
+            for h in os.getenv("REDIS_SENTINEL_HOSTS", "").split(",")
+            if h.strip()
+        ]
+        url = ";".join(f"sentinel://{auth}{hp}" for hp in hosts)
+        opts: dict = {"master_name": self.REDIS_SENTINEL_MASTER}
+        if self.REDIS_PASSWORD:
+            opts["sentinel_kwargs"] = {"password": self.REDIS_PASSWORD}
+        return url, opts
 
     @staticmethod
     def _get_jwt_secret() -> str:

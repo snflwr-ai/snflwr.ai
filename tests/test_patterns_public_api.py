@@ -59,7 +59,7 @@ def test_severity_map_known_keys():
 
 
 def test_normalize_text_returns_pair():
-    result = normalize = patterns.normalize_text("test")
+    result = patterns.normalize_text("test")
     assert isinstance(result, tuple) and len(result) == 2
     assert all(isinstance(s, str) for s in result)
 

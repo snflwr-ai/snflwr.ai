@@ -705,8 +705,11 @@ class TestGracefulShutdown:
         from api.server import graceful_shutdown
         import api.server as server_mod
 
-        # Patch _active_connections to 0 so the while loop exits immediately
-        with patch.object(server_mod, '_active_connections', 0), \
+        # Patch the connection_tracker name in server's namespace so the
+        # while loop exits immediately (count == 0).
+        mock_tracker = MagicMock()
+        mock_tracker.count = 0
+        with patch.object(server_mod, 'connection_tracker', mock_tracker), \
              patch.object(server_mod, '_shutdown_event', None):
             # Should complete without hanging
             try:
@@ -722,8 +725,10 @@ class TestGracefulShutdown:
         from api.server import graceful_shutdown
         import api.server as server_mod
 
+        mock_tracker = MagicMock()
+        mock_tracker.count = 0
         evt = asyncio.Event()
-        with patch.object(server_mod, '_active_connections', 0), \
+        with patch.object(server_mod, 'connection_tracker', mock_tracker), \
              patch.object(server_mod, '_shutdown_event', evt):
             try:
                 await graceful_shutdown(sig_module.SIGINT)

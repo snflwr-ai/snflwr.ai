@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from api import __version__
+from api.connection_tracking import connection_tracker
 from config import system_config
 from storage.db_adapters import DB_ERRORS
 from storage.encryption import is_encryption_available
@@ -112,8 +113,6 @@ if not is_encryption_available():
 
 # Global shutdown flag
 _shutdown_event: Optional[asyncio.Event] = None
-_active_connections: int = 0
-_connections_lock = asyncio.Lock()
 
 # Request body size limit (10MB default, configurable)
 MAX_REQUEST_SIZE = getattr(system_config, "MAX_REQUEST_SIZE_MB", 10) * 1024 * 1024
@@ -559,9 +558,7 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
         token = set_correlation_id(request_id)
 
         # Track active connections for graceful shutdown
-        global _active_connections
-        async with _connections_lock:
-            _active_connections += 1
+        await connection_tracker.increment()
 
         try:
             # Process request
@@ -576,8 +573,7 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
             correlation_id_var.reset(token)
 
             # Decrement active connections
-            async with _connections_lock:
-                _active_connections -= 1
+            await connection_tracker.decrement()
 
 
 app.add_middleware(CorrelationIDMiddleware)
@@ -791,13 +787,15 @@ async def graceful_shutdown(sig: signal.Signals):
     shutdown_timeout = 30.0
     start_time = asyncio.get_event_loop().time()
 
-    logger.info(f"Waiting for {_active_connections} in-flight requests to complete...")
+    logger.info(
+        f"Waiting for {connection_tracker.count} in-flight requests to complete..."
+    )
 
-    while _active_connections > 0:
+    while connection_tracker.count > 0:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > shutdown_timeout:
             logger.warning(
-                f"Shutdown timeout exceeded. {_active_connections} requests still active. "
+                f"Shutdown timeout exceeded. {connection_tracker.count} requests still active. "
                 "Forcing shutdown."
             )
             break

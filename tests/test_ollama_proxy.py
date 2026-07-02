@@ -247,8 +247,10 @@ class TestChatSafety:
         mock_pipeline.check_input.assert_not_called()
 
     def test_missing_user_headers_treated_as_student(self):
-        """No OWU headers → fail-closed as student, safety pipeline IS called."""
+        """No OWU headers → student with no resolvable profile → fail-closed BLOCK
+        before the safety pipeline or upstream Ollama is ever reached."""
         from fastapi.testclient import TestClient
+        from core.profile_gate import NO_PROFILE_MESSAGE
         import api.routes.ollama_proxy as proxy_mod
 
         client = TestClient(_make_app())
@@ -257,6 +259,7 @@ class TestChatSafety:
 
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
+        mock_forward = AsyncMock(return_value=ollama_resp)
 
         with (
             patch.object(
@@ -264,18 +267,15 @@ class TestChatSafety:
                 "_get_profile_for_user",
                 new=AsyncMock(return_value="safety_required_unknown"),
             ),
-            patch.object(
-                proxy_mod,
-                "_forward_request",
-                new_callable=AsyncMock,
-                return_value=ollama_resp,
-            ),
+            patch.object(proxy_mod, "_forward_request", new=mock_forward),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post("/api/chat", json=_chat_body())
 
         assert resp.status_code == 200
-        mock_pipeline.check_input.assert_called_once()
+        assert NO_PROFILE_MESSAGE in resp.json()["message"]["content"]
+        mock_pipeline.check_input.assert_not_called()
+        mock_forward.assert_not_called()
 
     def test_ollama_unreachable_returns_503(self):
         """After safety passes, a ConnectError from Ollama yields 503."""

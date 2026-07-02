@@ -76,6 +76,6 @@ async def generic_exception_handler(request, exc):
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Register the module's exception handlers on the given app."""
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(HTTPException, http_exception_handler)
-    app.add_exception_handler(Exception, generic_exception_handler)
+    app.exception_handler(RequestValidationError)(validation_exception_handler)
+    app.exception_handler(HTTPException)(http_exception_handler)
+    app.exception_handler(Exception)(generic_exception_handler)

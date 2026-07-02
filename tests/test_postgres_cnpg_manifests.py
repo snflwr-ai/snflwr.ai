@@ -18,7 +18,9 @@ def _docs(path):
 
 def test_cluster_has_three_instances():
     cluster = next(d for d in _docs(MANIFEST) if d["kind"] == "Cluster")
-    assert cluster["apiVersion"].startswith("postgresql.cnpg.io/")
+    # Exact match (not startswith): asserts the precise CNPG API version and
+    # avoids CodeQL's URL-substring-sanitization false positive on the domain.
+    assert cluster["apiVersion"] == "postgresql.cnpg.io/v1"
     assert cluster["metadata"]["name"] == "snflwr-pg"
     assert cluster["spec"]["instances"] == 3
 

@@ -9,13 +9,14 @@ Registered on the app with no prefix, so the paths are unchanged:
     GET  /api/system/setup-status
     POST /api/system/setup
 
-The setup endpoints are rate limited by ``api.server.check_setup_rate_limit``.
-That function (and its ``_setup_rate_limiter``) must stay in ``api.server`` so
-existing tests can ``patch("api.server._setup_rate_limiter")`` and have it take
-effect. To avoid an import cycle at module load (``api.server`` imports this
-module to register the router), the dependency is resolved lazily at request
-time via :func:`_check_setup_rate_limit`, which calls through to the function
-living in ``api.server`` — so the patch contract is preserved.
+The setup endpoints are rate limited by ``check_setup_rate_limit``. That
+function (and its ``_setup_rate_limiter``) live in ``api.lifecycle`` and are
+re-exported from ``api.server`` (still importable as
+``api.server.check_setup_rate_limit``). Tests patch the limiter at its home
+module: ``patch("api.lifecycle._setup_rate_limiter")``. To avoid an import
+cycle at module load (``api.server`` imports this module to register the
+router), the dependency is resolved lazily at request time via
+:func:`_check_setup_rate_limit`.
 """
 
 from datetime import datetime, timezone
@@ -36,12 +37,12 @@ router = APIRouter()
 
 
 def _check_setup_rate_limit(request: Request):
-    """Lazy proxy to ``api.server.check_setup_rate_limit``.
+    """Lazy proxy to ``check_setup_rate_limit`` (re-exported by ``api.server``).
 
     Deferring the import to call-time avoids a circular import (api.server
     imports this module) while still invoking the rate limiter that lives in
-    ``api.server`` — so ``patch("api.server._setup_rate_limiter")`` continues
-    to take effect against the setup endpoints.
+    ``api.lifecycle`` — so ``patch("api.lifecycle._setup_rate_limiter")``
+    continues to take effect against the setup endpoints.
     """
     from api.server import check_setup_rate_limit
 

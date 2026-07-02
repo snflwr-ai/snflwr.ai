@@ -918,8 +918,15 @@ class TestAdminGetRoute:
 # ============================================================================
 
 def _bypass_csrf():
-    """Return a patch context that bypasses CSRF validation."""
-    return patch("api.server.validate_csrf_token", new=AsyncMock(return_value=True))
+    """Return a patch context that bypasses CSRF validation.
+
+    CSRFMiddleware now lives in api.middleware.csrf and looks up
+    validate_csrf_token in that namespace (moved out of api.server during the
+    god-file split), so patch it there.
+    """
+    return patch(
+        "api.middleware.csrf.validate_csrf_token", new=AsyncMock(return_value=True)
+    )
 
 
 class TestAdminLoginErrors:

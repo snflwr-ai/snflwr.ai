@@ -9,7 +9,7 @@ Adapted from snflwr.ai's openwebui_safety_filter_age_adaptive.py and
 safety/pipeline.py normalization logic.  No external ML model required.
 
 All pattern definitions, normalisation constants, and the false-positive
-allowlist live in safety/patterns.py (single source of truth).
+allowlist live in the safety.patterns package (single source of truth).
 
 Usage:
     from external_filters.account_creation_safety_filter import (

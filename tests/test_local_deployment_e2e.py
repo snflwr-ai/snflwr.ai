@@ -30,14 +30,14 @@ from api.routes import auth as _auth_routes
 from api.routes import admin as _admin_routes
 from api.routes import chat as _chat_routes
 from api.routes import profiles as _profile_routes
-import api.server as _server_mod
+import api.lifecycle as _lifecycle_mod  # _setup_rate_limiter moved here (refactor B4)
 from api.middleware import auth as _auth_mw
 
 _auth_routes.rate_limiter.check_rate_limit = _always_allow
 _admin_routes.rate_limiter.check_rate_limit = _always_allow
 _chat_routes.rate_limiter.check_rate_limit = _always_allow
 _profile_routes.rate_limiter.check_rate_limit = _always_allow
-_server_mod._setup_rate_limiter.check_rate_limit = _always_allow
+_lifecycle_mod._setup_rate_limiter.check_rate_limit = _always_allow
 _auth_mw._rate_limiter.check_rate_limit = lambda *a, **kw: True
 from starlette.testclient import TestClient
 from storage.database import db_manager

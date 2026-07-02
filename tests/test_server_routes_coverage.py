@@ -368,7 +368,8 @@ class TestSetupRateLimiter:
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
 
-        with patch("api.server._setup_rate_limiter") as mock_rl:
+        # _setup_rate_limiter now lives in api.lifecycle (refactor B4)
+        with patch("api.lifecycle._setup_rate_limiter") as mock_rl:
             mock_rl.check_rate_limit.return_value = (True, {"requests_made": 1})
             result = check_setup_rate_limit(mock_request)
             assert result == {"requests_made": 1}
@@ -381,7 +382,8 @@ class TestSetupRateLimiter:
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
 
-        with patch("api.server._setup_rate_limiter") as mock_rl:
+        # _setup_rate_limiter now lives in api.lifecycle (refactor B4)
+        with patch("api.lifecycle._setup_rate_limiter") as mock_rl:
             mock_rl.check_rate_limit.return_value = (False, {"retry_after": 3600})
             with pytest.raises(HTTPException) as exc:
                 check_setup_rate_limit(mock_request)
@@ -394,7 +396,8 @@ class TestSetupRateLimiter:
         mock_request = MagicMock()
         mock_request.client = None
 
-        with patch("api.server._setup_rate_limiter") as mock_rl:
+        # _setup_rate_limiter now lives in api.lifecycle (refactor B4)
+        with patch("api.lifecycle._setup_rate_limiter") as mock_rl:
             mock_rl.check_rate_limit.return_value = (True, {})
             result = check_setup_rate_limit(mock_request)
             assert result == {}
@@ -703,11 +706,14 @@ class TestGracefulShutdown:
         """graceful_shutdown with 0 active connections completes quickly."""
         import signal as sig_module
         from api.server import graceful_shutdown
-        import api.server as server_mod
+        import api.lifecycle as lifecycle_mod
 
-        # Patch _active_connections to 0 so the while loop exits immediately
-        with patch.object(server_mod, '_active_connections', 0), \
-             patch.object(server_mod, '_shutdown_event', None):
+        # Patch connection_tracker and _shutdown_event in lifecycle's namespace
+        # (graceful_shutdown reads them from api.lifecycle, not api.server).
+        mock_tracker = MagicMock()
+        mock_tracker.count = 0
+        with patch.object(lifecycle_mod, 'connection_tracker', mock_tracker), \
+             patch.object(lifecycle_mod, '_shutdown_event', None):
             # Should complete without hanging
             try:
                 await graceful_shutdown(sig_module.SIGTERM)
@@ -720,11 +726,13 @@ class TestGracefulShutdown:
         import asyncio
         import signal as sig_module
         from api.server import graceful_shutdown
-        import api.server as server_mod
+        import api.lifecycle as lifecycle_mod
 
+        mock_tracker = MagicMock()
+        mock_tracker.count = 0
         evt = asyncio.Event()
-        with patch.object(server_mod, '_active_connections', 0), \
-             patch.object(server_mod, '_shutdown_event', evt):
+        with patch.object(lifecycle_mod, 'connection_tracker', mock_tracker), \
+             patch.object(lifecycle_mod, '_shutdown_event', evt):
             try:
                 await graceful_shutdown(sig_module.SIGINT)
             except Exception:

@@ -499,9 +499,10 @@ class TestNormalization:
         """On exception, should return text.lower() as fallback."""
         from safety.pipeline import _stage_normalize
 
-        # normalize_text lives in safety.patterns, so mock unicodedata there
+        # normalize_text lives in safety.patterns.normalization, so mock unicodedata there
         with patch(
-            "safety.patterns.unicodedata.normalize", side_effect=Exception("boom")
+            "safety.patterns.normalization.unicodedata.normalize",
+            side_effect=Exception("boom"),
         ):
             result = _stage_normalize("HELLO")
             assert "hello" in result

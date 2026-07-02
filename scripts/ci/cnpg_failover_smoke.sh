@@ -34,7 +34,8 @@ run_sql() {  # $1 = SQL
   PSQL_N=$((PSQL_N+1))
   kubectl -n "$NS" run "psql-${PSQL_N}" --rm -i --restart=Never --image="$PSQL_IMG" \
     --env="PGPASSWORD=ci_pg_pw" -- \
-    psql "host=$RW user=snflwr dbname=snflwr_db" -tAc "$1"
+    psql "host=$RW user=snflwr dbname=snflwr_db" -tAqc "$1" 2>/dev/null \
+    | grep -vE 'pod ".*" deleted' || true | tr -d '[:space:]'
 }
 
 # ── 1. Topology assertion ────────────────────────────────────────────────────

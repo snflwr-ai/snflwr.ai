@@ -7,7 +7,6 @@ import asyncio
 import os
 import signal
 import sys
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -23,19 +22,18 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from api import __version__
 from api.connection_tracking import connection_tracker
+from api.middleware.correlation import CorrelationIDMiddleware
+from api.middleware.csrf import CSRFMiddleware
+from api.middleware.request_limits import RequestSizeLimitMiddleware
+from api.middleware.security_headers import SecurityHeadersMiddleware
+from api.middleware.timeout import RequestTimeoutMiddleware
 from config import system_config
 from storage.db_adapters import DB_ERRORS
 from storage.encryption import is_encryption_available
-from utils.logger import (
-    correlation_id_var,
-    get_correlation_id,
-    get_logger,
-    set_correlation_id,
-)
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -113,9 +111,6 @@ if not is_encryption_available():
 
 # Global shutdown flag
 _shutdown_event: Optional[asyncio.Event] = None
-
-# Request body size limit (10MB default, configurable)
-MAX_REQUEST_SIZE = getattr(system_config, "MAX_REQUEST_SIZE_MB", 10) * 1024 * 1024
 
 
 # Maximum time (in seconds) allowed for startup before the server aborts.
@@ -431,64 +426,6 @@ app = FastAPI(
 )
 
 
-# Request Body Size Limit Middleware
-class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware to enforce request body size limits.
-
-    Prevents denial-of-service attacks via oversized request bodies.
-    Default limit: 10MB (configurable via MAX_REQUEST_SIZE_MB)
-    """
-
-    async def dispatch(self, request, call_next):
-        # Check Content-Length header if present
-        content_length = request.headers.get("content-length")
-
-        if content_length:
-            try:
-                size = int(content_length)
-                if size > MAX_REQUEST_SIZE:
-                    request_id = get_correlation_id() or "unknown"
-                    logger.warning(
-                        f"Request body too large: {size} bytes (limit: {MAX_REQUEST_SIZE})",
-                        extra={"request_id": request_id},
-                    )
-                    return JSONResponse(
-                        status_code=413,
-                        content={
-                            "detail": "Request body too large",
-                            "max_size_bytes": MAX_REQUEST_SIZE,
-                            "received_bytes": size,
-                        },
-                    )
-            except ValueError:
-                logger.warning(f"Malformed Content-Length header: {content_length}")
-                return JSONResponse(
-                    status_code=400, content={"detail": "Invalid Content-Length header"}
-                )
-        elif request.method in ("POST", "PUT", "PATCH"):
-            # No Content-Length header (e.g. chunked transfer encoding).
-            # Read body with size cap to prevent unbounded memory use.
-            body = b""
-            async for chunk in request.stream():
-                body += chunk
-                if len(body) > MAX_REQUEST_SIZE:
-                    logger.warning(
-                        f"Chunked request body exceeded limit: >{MAX_REQUEST_SIZE} bytes"
-                    )
-                    return JSONResponse(
-                        status_code=413,
-                        content={
-                            "detail": "Request body too large",
-                            "max_size_bytes": MAX_REQUEST_SIZE,
-                        },
-                    )
-            # Re-inject the body so downstream handlers can read it
-            request._body = body
-
-        return await call_next(request)
-
-
 app.add_middleware(RequestSizeLimitMiddleware)
 
 
@@ -507,191 +444,13 @@ app.add_middleware(
     ],
 )
 
-# CSRF Protection Middleware
-from api.middleware.csrf_protection import validate_csrf_token
-
-
-class CSRFMiddleware(BaseHTTPMiddleware):
-    """Middleware to validate CSRF tokens on state-changing requests"""
-
-    async def dispatch(self, request, call_next):
-        # Validate CSRF token before processing request.
-        # BaseHTTPMiddleware does not propagate HTTPException to FastAPI's
-        # exception handlers, so we must catch and return a JSONResponse.
-        try:
-            await validate_csrf_token(request)
-        except HTTPException as exc:
-            return JSONResponse(
-                status_code=exc.status_code,
-                content={
-                    "detail": exc.detail,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-
-        # Process request
-        response = await call_next(request)
-        return response
-
-
 app.add_middleware(CSRFMiddleware)
-
-
-# Request Correlation ID Middleware
-class CorrelationIDMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware to add correlation IDs to all requests for distributed tracing.
-
-    - Generates or propagates X-Request-ID header
-    - Stores in context variable for access in handlers and logs
-    - Integrates with utils.logger for automatic log correlation
-    - Returns correlation ID in response headers
-    """
-
-    async def dispatch(self, request, call_next):
-        # Get or generate correlation ID
-        request_id = request.headers.get("X-Request-ID")
-        if not request_id:
-            request_id = str(uuid.uuid4())
-
-        # Store in context variable (integrates with logger)
-        token = set_correlation_id(request_id)
-
-        # Track active connections for graceful shutdown
-        await connection_tracker.increment()
-
-        try:
-            # Process request
-            response = await call_next(request)
-
-            # Add correlation ID to response
-            response.headers["X-Request-ID"] = request_id
-
-            return response
-        finally:
-            # Reset context
-            correlation_id_var.reset(token)
-
-            # Decrement active connections
-            await connection_tracker.decrement()
 
 
 app.add_middleware(CorrelationIDMiddleware)
 
 
-# Request Timeout Middleware
-class RequestTimeoutMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware to enforce global request timeouts.
-
-    Prevents runaway requests from consuming resources indefinitely.
-    Default timeout: 60 seconds (configurable via REQUEST_TIMEOUT_SECONDS)
-    """
-
-    def __init__(self, app, timeout_seconds: float = 60.0):
-        super().__init__(app)
-        self.timeout = getattr(
-            system_config, "REQUEST_TIMEOUT_SECONDS", timeout_seconds
-        )
-
-    async def dispatch(self, request, call_next):
-        # Skip timeout for WebSocket connections and streaming endpoints
-        if request.url.path.startswith("/api/ws"):
-            return await call_next(request)
-
-        try:
-            return await asyncio.wait_for(call_next(request), timeout=self.timeout)
-        except asyncio.TimeoutError:
-            request_id = get_correlation_id() or "unknown"
-            logger.error(
-                f"Request timeout after {self.timeout}s",
-                extra={"request_id": request_id, "path": request.url.path},
-            )
-            return JSONResponse(
-                status_code=504,
-                content={
-                    "detail": "Request timeout",
-                    "request_id": request_id,
-                    "timeout_seconds": self.timeout,
-                },
-            )
-
-
 app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=60.0)
-
-
-# Security Headers Middleware
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Middleware to add security headers to all responses"""
-
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-
-        # Content-Security-Policy
-        # Relax CSP for Swagger/ReDoc docs pages which load JS/CSS from CDN
-        path = request.url.path
-        if path in ("/docs", "/redoc", "/docs/oauth2-redirect"):
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "img-src 'self' data: https://fastapi.tiangolo.com; "
-                "font-src 'self' data:; "
-                "connect-src 'self'; "
-                "frame-ancestors 'none'; "
-                "base-uri 'self'; "
-                "form-action 'self'"
-            )
-        elif path.startswith("/admin"):
-            # Admin dashboard loads Google Fonts
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; "
-                "script-src 'self'; "
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-                "img-src 'self' data:; "
-                "font-src 'self' https://fonts.gstatic.com; "
-                "connect-src 'self'; "
-                "frame-ancestors 'none'; "
-                "base-uri 'self'; "
-                "form-action 'self'"
-            )
-        else:
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; "
-                "script-src 'self'; "
-                "style-src 'self'; "
-                "img-src 'self' data:; "
-                "font-src 'self' data:; "
-                "connect-src 'self' wss:; "
-                "frame-ancestors 'none'; "
-                "base-uri 'self'; "
-                "form-action 'self'"
-            )
-
-        # X-Content-Type-Options
-        response.headers["X-Content-Type-Options"] = "nosniff"
-
-        # X-Frame-Options
-        response.headers["X-Frame-Options"] = "DENY"
-
-        # X-XSS-Protection (legacy but still useful)
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-
-        # Referrer-Policy
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        # HSTS - Only enable when running behind HTTPS (not on localhost/USB)
-        if os.getenv("ENABLE_HSTS", "false").lower() == "true":
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
-
-        # Permissions-Policy
-        response.headers["Permissions-Policy"] = (
-            "geolocation=(), microphone=(), camera=(), payment=()"
-        )
-
-        return response
 
 
 app.add_middleware(SecurityHeadersMiddleware)

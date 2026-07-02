@@ -1,0 +1,26 @@
+# Minimal CNPG cluster for the CI failover smoke (no object store — failover only).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: snflwr-pg-ci-app
+type: kubernetes.io/basic-auth
+stringData:
+  username: snflwr
+  password: ci_pg_pw
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: snflwr-pg-ci
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 1Gi
+  bootstrap:
+    initdb:
+      database: snflwr_db
+      owner: snflwr
+      secret:
+        name: snflwr-pg-ci-app

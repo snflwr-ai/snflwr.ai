@@ -307,9 +307,41 @@ has passive ejection + active failover.
 
 Still open — decide before scaling beyond a pilot:
 
-- **Stateful tier is single-replica.** `postgres-deployment.yaml` is `replicas: 1`
-  with no PITR/replication. For real HA use a Postgres operator (e.g. CloudNativePG);
-  a PodDisruptionBudget only helps once these run >1 replica.
+- **Stateful tier is single-replica by default.** `postgres-deployment.yaml` and
+  `redis-deployment.yaml` are `replicas: 1`. See the opt-in HA paths below —
+  Postgres via CloudNativePG and Redis via Sentinel; a PodDisruptionBudget only
+  helps once these run >1 replica.
+
+### Postgres HA (opt-in)
+
+`postgres-deployment.yaml` is a single replica (fine for dev / low-stakes installs).
+For high availability + point-in-time recovery, use CloudNativePG instead:
+
+1. Install the operator (once per cluster, pinned):
+
+       kubectl apply --server-side -f \
+         https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.0.yaml
+
+2. Set the backup bucket/endpoint + create `snflwr-pg-backup-creds`
+   (ACCESS_KEY_ID / SECRET_ACCESS_KEY) and the `snflwr-pg-app` password in
+   `postgres-cnpg.yaml`, then apply it (do NOT also apply postgres-deployment.yaml):
+
+       kubectl apply -f postgres-cnpg.yaml
+
+   **Important:** the `snflwr-pg-app` Secret password (the `snflwr` role) MUST match `POSTGRES_PASSWORD` in `snflwr-secrets` (which the API uses to connect) — keep the two in sync or the app will fail to authenticate.
+
+3. In the ConfigMap, comment out `POSTGRES_HOST: "postgres-service"` and uncomment
+   `POSTGRES_HOST: "snflwr-pg-rw"` (CNPG's primary service), then redeploy the API.
+
+CNPG runs 1 primary + 2 streaming standbys with automatic failover; `-rw` always
+routes to the current primary, and WAL is continuously archived for PITR.
+
+**Cutover from an existing single-instance Postgres:**
+1. `python scripts/backup_database.py backup` (final pg_dump of the old DB).
+2. Install the operator + apply `postgres-cnpg.yaml`; wait for the cluster to be ready.
+3. Restore the dump into the new cluster (`psql`/`pg_restore` against `snflwr-pg-rw`).
+4. Repoint `POSTGRES_HOST` (step 3 above) and redeploy.
+5. Retire `postgres-deployment.yaml`.
 
 ### Redis HA (opt-in)
 
@@ -324,7 +356,7 @@ For high availability, apply `redis-sentinel.yaml` INSTEAD (1 master + 2 replica
     kubectl apply -f redis-sentinel.yaml   # do NOT also apply redis-deployment.yaml
 
 The app and Celery connect to Sentinel (`redis-sentinel:26379`) and follow the
-promoted master automatically. (Postgres HA via CloudNativePG is tracked separately.)
+promoted master automatically.
 - **Multi-GPU Ollama needs a StatefulSet.** The Deployment + RWO PVC is correct
   for one GPU; per-GPU model caches require a StatefulSet with
   `volumeClaimTemplates` (an RWO PVC can't be shared across nodes).

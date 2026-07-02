@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-06-27
 
+### Changed
+- **CI quality gates hardened** — pylint floor raised `5.0 → 8.0` (code sits at
+  8.30); Bandit now *blocks* on medium-severity/medium-confidence findings (was
+  high/high in `ci.yml`, advisory `|| true` in `security-scan.yml`); the JSON
+  report generation stays non-blocking for artifact upload.
+- **mypy now checks untyped function bodies** across `api/core/safety/storage/
+  utils` (`check_untyped_defs = True`, removing the per-module opt-outs). Closed
+  the resulting ~56 findings with real type annotations — including a latent
+  `AttributeError` in `SessionCacheMixin` when Redis init takes the fallback
+  path (`_redis` is now a class-level annotated default).
+
 ### Added
+- **Scheduled DR drill** (`.github/workflows/dr-drill.yml`) — re-runs the
+  Postgres backup/restore suite weekly (and on demand) so the restore guarantee
+  stays honest between commits, independent of push-triggered CI.
+
 - **Opt-in `gemma4:31b` high-end tutor tier** (`SNFLWR_ENABLE_GEMMA_31B`, GPU
   ≥26GB so it co-resides with the 8B safety classifier). A stronger-judge bake-off
   found it ~tied with `gemma4:e4b` on tutoring quality, so it's for big-GPU
@@ -40,6 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open WebUI pinned via `OWU_IMAGE_TAG` (v0.9.6), Ollama via `OLLAMA_IMAGE_TAG`
   (0.30.10); `ENABLE_INITIAL_ADMIN_SIGNUP` for first-admin creation.
 - `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`, `docs/compliance/REQUIRED_DISCLOSURES.md`.
+
+### Changed
+- **Versioned database migrations** — replaced the ad-hoc schema mechanisms
+  (inline CREATE+ALTER on startup, the `schema.sql` differ, and loose `*.sql`
+  files) with a single lightweight runner (`database/migrations/`). Migrations
+  are ordered, dialect-aware (SQLite + Postgres), reversible to an explicit
+  target, and tracked in a `schema_migrations` table. Existing databases are
+  auto-detected and stamped at the baseline on first run; fresh installs run
+  `0001 → head`. Startup, `database/init_db.py`, and `python -m database.migrate`
+  all apply migrations through the runner; `storage/schema.py` is the single
+  source of schema truth.
 
 ### Fixed
 - **Database now actually encrypted at rest** — the image lacked a SQLCipher

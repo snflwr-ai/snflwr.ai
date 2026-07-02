@@ -1,0 +1,89 @@
+name: Scheduled DR Drill
+
+# The disaster-recovery restore tests already run inside the main CI pipeline on
+# every push/PR. This workflow re-runs the DR/backup suite on a fixed weekly
+# cadence (and on demand) so the "we can restore from a backup" guarantee stays
+# honest between commits — catching rot from dependency drift, base-image
+# changes, or pg_dump/pg_restore version skew when nobody happens to be pushing.
+
+on:
+  schedule:
+    # 07:00 UTC every Monday.
+    - cron: '0 7 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dr-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dr-drill:
+    name: Postgres backup/restore drill
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: snflwr
+          POSTGRES_PASSWORD: snflwr_test
+          POSTGRES_DB: snflwr_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -r requirements-dev.txt
+
+    - name: Create data directories
+      run: mkdir -p data/logs
+
+    - name: Start Redis
+      run: |
+        sudo apt-get update -qq && sudo apt-get install -y -qq redis-server
+        redis-server --daemonize yes
+        redis-cli ping | grep -q PONG && echo "Redis ready"
+
+    - name: Install PostgreSQL client (pg_dump/pg_restore)
+      run: sudo apt-get install -y -qq postgresql-client
+
+    - name: Run DR / backup restore drill
+      env:
+        REDIS_ENABLED: 'true'
+        REDIS_HOST: 'localhost'
+        REDIS_PORT: '6379'
+        POSTGRES_HOST: 'localhost'
+        POSTGRES_PORT: '5432'
+        POSTGRES_USER: 'snflwr'
+        POSTGRES_PASSWORD: 'snflwr_test'
+        POSTGRES_DATABASE: 'snflwr_test'
+      run: |
+        # No coverage gate here — this drill exercises restore paths, not the
+        # full suite, so the ratchet would not apply.
+        pytest \
+          tests/test_dr_restore_postgres.py \
+          tests/test_dr_restore_end_to_end.py \
+          tests/test_offhost_backup.py \
+          tests/test_owui_pg_backup.py \
+          -p no:cacheprovider \
+          -o addopts="" \
+          -v

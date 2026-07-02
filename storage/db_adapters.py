@@ -8,7 +8,7 @@ import sqlite3
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 try:
     import psycopg2
@@ -88,7 +88,7 @@ class SQLiteAdapter(DatabaseAdapter):
         self.db_path = db_path
         self.timeout = timeout
         self.check_same_thread = check_same_thread
-        self.connection = None
+        self.connection: Optional[sqlite3.Connection] = None
         logger.info(f"Initializing SQLite adapter: {db_path}")
 
     def connect(self):

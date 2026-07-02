@@ -14,31 +14,38 @@ Output:
 """
 
 import os
-import sys
+import secrets
 import shutil
 import sqlite3
-import secrets
+import sys
 import zipfile
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+
+from storage.schema import create_indexes, create_sqlite_tables
+
 
 def print_step(msg):
     print(f"  >> {msg}")
 
+
 def print_success(msg):
     print(f"  [OK] {msg}")
+
 
 def print_warning(msg):
     print(f"  [WARN] {msg}")
 
+
 def print_error(msg):
     print(f"  [ERROR] {msg}")
+
 
 def _mask_secret(value: str, visible: int = 4) -> str:
     """Show only last N chars of a secret for verification."""
     s = str(value)
     if len(s) <= visible:
-        return '***'
+        return "***"
     return f"***{s[-visible:]}"
 
 
@@ -76,13 +83,13 @@ class USBImageBuilder:
         # Package as ZIP
         zip_path = self.create_zip_package()
 
-        print_success(f"\n[OK] USB image built successfully!")
+        print_success("\n[OK] USB image built successfully!")
         print(f"\nUSB Image Location: {self.usb_root}")
         print(f"ZIP Package: {zip_path}")
-        print(f"\nTo deploy:")
+        print("\nTo deploy:")
         print(f"  1. Extract {zip_path.name} to a USB drive")
-        print(f"  2. Run launcher script (run_snflwr.bat or run_snflwr.sh)")
-        print(f"  3. Access at http://localhost:8000")
+        print("  2. Run launcher script (run_snflwr.bat or run_snflwr.sh)")
+        print("  3. Access at http://localhost:8000")
 
     def create_directory_structure(self):
         """Create USB directory structure"""
@@ -95,17 +102,17 @@ class USBImageBuilder:
 
         # Create subdirectories
         dirs = [
-            'data',              # Database and encryption keys
-            'logs',              # Application logs
-            'backups',           # Database backups
-            'app',               # Application code
-            'app/api',
-            'app/core',
-            'app/storage',
-            'app/safety',
-            'app/utils',
-            'app/models',
-            'docs',              # Documentation
+            "data",  # Database and encryption keys
+            "logs",  # Application logs
+            "backups",  # Database backups
+            "app",  # Application code
+            "app/api",
+            "app/core",
+            "app/storage",
+            "app/safety",
+            "app/utils",
+            "app/models",
+            "docs",  # Documentation
         ]
 
         for dir_path in dirs:
@@ -113,8 +120,8 @@ class USBImageBuilder:
             print_success(f"Created {dir_path}/")
 
         # Create __init__.py for app package so Python can find it
-        init_path = self.usb_root / 'app' / '__init__.py'
-        init_path.write_text('# snflwr.ai USB Package\n')
+        init_path = self.usb_root / "app" / "__init__.py"
+        init_path.write_text("# snflwr.ai USB Package\n")
         print_success("Created app/__init__.py")
 
     def copy_application_files(self):
@@ -123,17 +130,17 @@ class USBImageBuilder:
 
         # Directories to copy
         app_dirs = [
-            'api',
-            'core',
-            'storage',
-            'safety',
-            'utils',
-            'models',
+            "api",
+            "core",
+            "storage",
+            "safety",
+            "utils",
+            "models",
         ]
 
         for dir_name in app_dirs:
             src = self.project_root / dir_name
-            dst = self.usb_root / 'app' / dir_name
+            dst = self.usb_root / "app" / dir_name
 
             if src.exists():
                 shutil.copytree(src, dst, dirs_exist_ok=True)
@@ -141,8 +148,11 @@ class USBImageBuilder:
 
         # Copy essential files
         essential_files = [
-            'config.py',
-            ('requirements-usb.txt', 'requirements.txt'),  # Use USB requirements, rename to requirements.txt
+            "config.py",
+            (
+                "requirements-usb.txt",
+                "requirements.txt",
+            ),  # Use USB requirements, rename to requirements.txt
         ]
 
         for file_info in essential_files:
@@ -152,54 +162,31 @@ class USBImageBuilder:
                 src_name = dst_name = file_info
 
             src = self.project_root / src_name
-            dst = self.usb_root / 'app' / dst_name
+            dst = self.usb_root / "app" / dst_name
 
             if src.exists():
                 shutil.copy2(src, dst)
                 print_success(f"Copied {src_name} -> {dst_name}")
 
-        # Copy database schema
-        schema_src = self.project_root / 'database' / 'schema.sql'
-        schema_dst = self.usb_root / 'app' / 'schema.sql'
-        if schema_src.exists():
-            shutil.copy2(schema_src, schema_dst)
-            print_success("Copied database schema")
-
     def initialize_database(self):
-        """Initialize SQLite database with schema"""
+        """Initialize SQLite database with schema (from storage/schema.py)."""
         print_step("Initializing database...")
 
-        db_path = self.usb_root / 'data' / 'snflwr.db'
-        schema_path = self.project_root / 'database' / 'schema.sql'
+        db_path = self.usb_root / "data" / "snflwr.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Read schema
-        with open(schema_path, 'r') as f:
-            schema_sql = f.read()
-
-        # Create database and execute schema
         conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-
-        # Execute schema (split on semicolons for multiple statements)
-        for statement in schema_sql.split(';'):
-            if statement.strip():
-                try:
-                    cursor.execute(statement)
-                except sqlite3.Error as e:
-                    print_warning(f"Schema statement warning: {type(e).__name__}")
-
-        conn.commit()
-
-        # Enable WAL mode for better concurrency
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-
-        conn.commit()
-        conn.close()
-
-        print_success(f"Database initialized at data/snflwr.db")
-        print_success(f"Database size: {db_path.stat().st_size / 1024:.1f} KB")
+        try:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            create_sqlite_tables(cursor)
+            create_indexes(cursor, "sqlite")
+            conn.commit()
+            print_success("Database initialized")
+        finally:
+            conn.close()
 
     def create_config_files(self):
         """Create configuration files"""
@@ -242,23 +229,23 @@ LOG_LEVEL=INFO
 # Parent Dashboard: http://localhost:8000/dashboard
 """
 
-        env_path = self.usb_root / '.env'
+        env_path = self.usb_root / ".env"
         fd = os.open(str(env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(env_content)
 
         print_success("Created .env configuration")
         print_warning("Dashboard password saved to .env file")
 
         # Save dashboard reference file (no secrets - password is in .env)
-        password_file = self.usb_root / 'DASHBOARD_INFO.txt'
+        password_file = self.usb_root / "DASHBOARD_INFO.txt"
         fd = os.open(str(password_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            f.write(f"snflwr.ai Parent Dashboard\n")
-            f.write(f"========================================\n\n")
-            f.write(f"URL: http://localhost:8000/dashboard\n\n")
-            f.write(f"Your password is stored in the .env file.\n")
-            f.write(f"Look for PARENT_DASHBOARD_PASSWORD in .env\n")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("snflwr.ai Parent Dashboard\n")
+            f.write("========================================\n\n")
+            f.write("URL: http://localhost:8000/dashboard\n\n")
+            f.write("Your password is stored in the .env file.\n")
+            f.write("Look for PARENT_DASHBOARD_PASSWORD in .env\n")
 
         print_success("Created DASHBOARD_INFO.txt")
 
@@ -267,8 +254,8 @@ LOG_LEVEL=INFO
         print_step("Creating launcher scripts...")
 
         # Windows launcher
-        windows_launcher = self.usb_root / 'run_snflwr.bat'
-        with open(windows_launcher, 'w', encoding='utf-8') as f:
+        windows_launcher = self.usb_root / "run_snflwr.bat"
+        with open(windows_launcher, "w", encoding="utf-8") as f:
             f.write("""@echo off
 setlocal enabledelayedexpansion
 REM snflwr.ai USB Launcher for Windows
@@ -426,8 +413,8 @@ pause
         print_success("Created run_snflwr.bat (Windows)")
 
         # Unix launcher (macOS/Linux)
-        unix_launcher = self.usb_root / 'run_snflwr.sh'
-        with open(unix_launcher, 'w', encoding='utf-8') as f:
+        unix_launcher = self.usb_root / "run_snflwr.sh"
+        with open(unix_launcher, "w", encoding="utf-8") as f:
             f.write("""#!/bin/bash
 # snflwr.ai USB Launcher for macOS/Linux
 # Auto-installs prerequisites and launches the application
@@ -767,22 +754,22 @@ chmod +x run_snflwr.sh
 *snflwr.ai - Privacy-First K-12 AI Education*
 """
 
-        readme_path = self.usb_root / 'README.md'
-        with open(readme_path, 'w', encoding='utf-8') as f:
+        readme_path = self.usb_root / "README.md"
+        with open(readme_path, "w", encoding="utf-8") as f:
             f.write(readme_content)
 
         print_success("Created README.md")
 
         # Copy additional docs
         docs_to_copy = [
-            'QUICKSTART.md',
-            'docs/DATABASE_GUIDE.md',
+            "QUICKSTART.md",
+            "docs/DATABASE_GUIDE.md",
         ]
 
         for doc_path in docs_to_copy:
             src = self.project_root / doc_path
             if src.exists():
-                dst = self.usb_root / 'docs' / src.name
+                dst = self.usb_root / "docs" / src.name
                 shutil.copy2(src, dst)
                 print_success(f"Copied {src.name}")
 
@@ -794,7 +781,7 @@ chmod +x run_snflwr.sh
         zip_name = f"SnflwrAI_USB_{timestamp}.zip"
         zip_path = self.output_dir / zip_name
 
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(self.usb_root):
                 for file in files:
                     file_path = Path(root) / file
@@ -813,7 +800,7 @@ def main():
     if len(sys.argv) > 1:
         output_dir = Path(sys.argv[1])
     else:
-        output_dir = Path.cwd() / 'dist'
+        output_dir = Path.cwd() / "dist"
 
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -827,9 +814,10 @@ def main():
     except Exception as e:
         print_error(f"Build failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

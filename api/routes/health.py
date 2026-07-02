@@ -16,6 +16,7 @@ module stays cheap and free of import cycles.
 """
 
 import os
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -72,7 +73,7 @@ async def health_check_detailed(session=Depends(require_admin)):
     Returns detailed status of database, Redis, Celery, and Ollama.
     Use this for monitoring dashboards and alerting.
     """
-    health = {"status": "healthy", "checks": {}}
+    health: Dict[str, Any] = {"status": "healthy", "checks": {}}
     unhealthy_count = 0
 
     # Database check

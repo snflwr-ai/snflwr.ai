@@ -6,6 +6,10 @@ separate because SQLite and PostgreSQL differ in type/constraint syntax; the
 shared idempotent migration column lists below are deduplicated across dialects.
 """
 
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 # Idempotent ADD COLUMN migrations for existing databases. Identical column set
 # for both dialects (the per-dialect ALTER wrapping stays in database.py).
 ACCOUNT_MIGRATION_COLUMNS = [
@@ -333,6 +337,93 @@ def create_sqlite_tables(cursor):
                 )
             """)
 
+    # Full-text search index for messages
+    cursor.execute("""
+                CREATE TABLE IF NOT EXISTS message_search_index (
+                    id INTEGER PRIMARY KEY,
+                    message_id TEXT NOT NULL,
+                    conversation_id TEXT NOT NULL,
+                    token_hash TEXT NOT NULL,
+                    FOREIGN KEY (message_id) REFERENCES messages(message_id) ON DELETE CASCADE,
+                    FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
+                )
+            """)
+
+    # Per-profile usage quotas
+    cursor.execute("""
+                CREATE TABLE IF NOT EXISTS usage_quotas (
+                    quota_id TEXT PRIMARY KEY,
+                    profile_id TEXT NOT NULL,
+                    quota_type TEXT NOT NULL CHECK (quota_type IN ('daily_messages', 'daily_tokens', 'session_duration')),
+                    limit_value INTEGER NOT NULL,
+                    current_value INTEGER DEFAULT 0,
+                    reset_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
+                )
+            """)
+
+    # Per-profile parental control settings
+    cursor.execute("""
+                CREATE TABLE IF NOT EXISTS parental_controls (
+                    control_id TEXT PRIMARY KEY,
+                    profile_id TEXT NOT NULL UNIQUE,
+                    allowed_models TEXT,
+                    blocked_topics TEXT,
+                    time_restrictions TEXT,
+                    daily_message_limit INTEGER DEFAULT -1,
+                    require_approval INTEGER DEFAULT 0,
+                    enable_web_search INTEGER DEFAULT 1,
+                    enable_file_upload INTEGER DEFAULT 0,
+                    enable_code_execution INTEGER DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
+                )
+            """)
+
+    # Per-profile activity log
+    cursor.execute("""
+                CREATE TABLE IF NOT EXISTS activity_log (
+                    log_id TEXT PRIMARY KEY,
+                    profile_id TEXT NOT NULL,
+                    session_id TEXT,
+                    activity_type TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    metadata TEXT,
+                    timestamp TEXT NOT NULL,
+                    FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
+                    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE SET NULL
+                )
+            """)
+
+    # Cache for safety-filter decisions
+    cursor.execute("""
+                CREATE TABLE IF NOT EXISTS safety_filter_cache (
+                    cache_id TEXT PRIMARY KEY,
+                    content_hash TEXT UNIQUE NOT NULL,
+                    is_safe INTEGER NOT NULL,
+                    severity TEXT,
+                    reason TEXT,
+                    triggered_keywords TEXT,
+                    cached_at TEXT NOT NULL,
+                    hit_count INTEGER DEFAULT 1
+                )
+            """)
+
+    # Per-profile model usage stats
+    cursor.execute("""
+                CREATE TABLE IF NOT EXISTS model_usage (
+                    usage_id TEXT PRIMARY KEY,
+                    profile_id TEXT NOT NULL,
+                    model_name TEXT NOT NULL,
+                    request_count INTEGER DEFAULT 0,
+                    total_tokens INTEGER DEFAULT 0,
+                    total_duration_seconds INTEGER DEFAULT 0,
+                    last_used TEXT NOT NULL,
+                    FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
+                )
+            """)
+
 
 def create_postgres_tables(cursor):
     """Create all PostgreSQL tables (idempotent; uses IF NOT EXISTS)."""
@@ -612,3 +703,143 @@ def create_postgres_tables(cursor):
                         context TEXT
                     )
                 """)
+
+    # Full-text search index for messages
+    cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS message_search_index (
+                        id INTEGER PRIMARY KEY,
+                        message_id TEXT NOT NULL,
+                        conversation_id TEXT NOT NULL,
+                        token_hash TEXT NOT NULL,
+                        FOREIGN KEY (message_id) REFERENCES messages(message_id) ON DELETE CASCADE,
+                        FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id) ON DELETE CASCADE
+                    )
+                """)
+
+    # Per-profile usage quotas
+    cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS usage_quotas (
+                        quota_id TEXT PRIMARY KEY,
+                        profile_id TEXT NOT NULL,
+                        quota_type TEXT NOT NULL CHECK (quota_type IN ('daily_messages', 'daily_tokens', 'session_duration')),
+                        limit_value INTEGER NOT NULL,
+                        current_value INTEGER DEFAULT 0,
+                        reset_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
+                    )
+                """)
+
+    # Per-profile parental control settings
+    cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS parental_controls (
+                        control_id TEXT PRIMARY KEY,
+                        profile_id TEXT NOT NULL UNIQUE,
+                        allowed_models TEXT,
+                        blocked_topics TEXT,
+                        time_restrictions TEXT,
+                        daily_message_limit INTEGER DEFAULT -1,
+                        require_approval INTEGER DEFAULT 0,
+                        enable_web_search INTEGER DEFAULT 1,
+                        enable_file_upload INTEGER DEFAULT 0,
+                        enable_code_execution INTEGER DEFAULT 0,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
+                    )
+                """)
+
+    # Per-profile activity log
+    cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS activity_log (
+                        log_id TEXT PRIMARY KEY,
+                        profile_id TEXT NOT NULL,
+                        session_id TEXT,
+                        activity_type TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        metadata TEXT,
+                        timestamp TEXT NOT NULL,
+                        FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE,
+                        FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE SET NULL
+                    )
+                """)
+
+    # Cache for safety-filter decisions
+    cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS safety_filter_cache (
+                        cache_id TEXT PRIMARY KEY,
+                        content_hash TEXT UNIQUE NOT NULL,
+                        is_safe INTEGER NOT NULL,
+                        severity TEXT,
+                        reason TEXT,
+                        triggered_keywords TEXT,
+                        cached_at TEXT NOT NULL,
+                        hit_count INTEGER DEFAULT 1
+                    )
+                """)
+
+    # Per-profile model usage stats
+    cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS model_usage (
+                        usage_id TEXT PRIMARY KEY,
+                        profile_id TEXT NOT NULL,
+                        model_name TEXT NOT NULL,
+                        request_count INTEGER DEFAULT 0,
+                        total_tokens INTEGER DEFAULT 0,
+                        total_duration_seconds INTEGER DEFAULT 0,
+                        last_used TEXT NOT NULL,
+                        FOREIGN KEY (profile_id) REFERENCES child_profiles(profile_id) ON DELETE CASCADE
+                    )
+                """)
+
+
+def create_indexes(cursor, dialect):
+    """Create all performance indexes (idempotent). dialect in {"sqlite","postgresql"}."""
+    indexes = [
+        # Accounts
+        "CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username)",
+        "CREATE INDEX IF NOT EXISTS idx_accounts_device ON accounts(device_id)",
+        "CREATE INDEX IF NOT EXISTS idx_accounts_email_hash ON accounts(email_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role)",
+        # Profiles
+        "CREATE INDEX IF NOT EXISTS idx_profiles_parent ON child_profiles(parent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_profiles_active ON child_profiles(is_active)",
+        # Sessions
+        "CREATE INDEX IF NOT EXISTS idx_sessions_profile ON sessions(profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at)",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id)",
+        # Conversations
+        "CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_conversations_profile ON conversations(profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_conversations_flagged ON conversations(is_flagged)",
+        # Messages
+        "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)",
+        # Safety incidents
+        "CREATE INDEX IF NOT EXISTS idx_incidents_profile ON safety_incidents(profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON safety_incidents(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_severity ON safety_incidents(severity)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_unresolved ON safety_incidents(resolved) WHERE NOT resolved",
+        # Analytics
+        "CREATE INDEX IF NOT EXISTS idx_analytics_profile_date ON learning_analytics(profile_id, date)",
+        "CREATE INDEX IF NOT EXISTS idx_analytics_date ON learning_analytics(date)",
+        # Audit
+        "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_type)",
+        # Error tracking
+        "CREATE INDEX IF NOT EXISTS idx_errors_hash ON error_tracking(error_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_errors_severity ON error_tracking(severity)",
+        "CREATE INDEX IF NOT EXISTS idx_errors_first_seen ON error_tracking(first_seen)",
+        "CREATE INDEX IF NOT EXISTS idx_errors_unresolved ON error_tracking(resolved) WHERE resolved = 0",  # INTEGER col, not BOOLEAN
+    ]
+    for index_sql in indexes:
+        try:
+            if dialect == "postgresql":
+                cursor.execute("SAVEPOINT idx_sp")
+            cursor.execute(index_sql)
+            if dialect == "postgresql":
+                cursor.execute("RELEASE SAVEPOINT idx_sp")
+        except Exception as e:
+            if dialect == "postgresql":
+                cursor.execute("ROLLBACK TO SAVEPOINT idx_sp")
+            logger.warning(f"Index creation warning: {e}")

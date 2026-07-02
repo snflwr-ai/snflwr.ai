@@ -118,3 +118,34 @@ class TestRateLimiterFallback:
 
         assert allowed is True
         assert 'remaining' in info
+
+
+class TestFailClosedOnRedisError:
+    """On a Redis error, non-critical endpoints must degrade to the in-memory
+    limiter (still enforce a limit) — never allow unlimited. Critical endpoints
+    still hard-deny."""
+
+    class _BoomClient:
+        def pipeline(self):
+            raise ConnectionError("redis down")
+
+    class _BoomCache:
+        def __init__(self):
+            self.enabled = True
+            self._client = TestFailClosedOnRedisError._BoomClient()
+
+    def test_noncritical_error_degrades_to_inmemory_not_open(self):
+        from utils.rate_limiter import RateLimiter
+        rl = RateLimiter(redis_cache=self._BoomCache())
+        ident = "fail-closed-noncrit-unique-1"
+        a1, _ = rl.check_rate_limit(ident, 2, 60, limit_type="api")
+        a2, _ = rl.check_rate_limit(ident, 2, 60, limit_type="api")
+        a3, _ = rl.check_rate_limit(ident, 2, 60, limit_type="api")
+        assert a1 is True and a2 is True
+        assert a3 is False  # would be True (unlimited) under the old fail-open
+
+    def test_critical_error_still_denies(self):
+        from utils.rate_limiter import RateLimiter
+        rl = RateLimiter(redis_cache=self._BoomCache())
+        allowed, _ = rl.check_rate_limit("crit-unique-1", 5, 60, limit_type="auth")
+        assert allowed is False

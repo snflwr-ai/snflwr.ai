@@ -270,7 +270,7 @@ class RateLimiter:
             logger.error(f"Rate limiter error for {identifier} ({limit_type}): {e}")
 
             # Fail-closed for critical endpoints (deny on error)
-            # Fail-open for general API (allow on error for better UX)
+            # Degrade to in-memory for general API (protective fallback)
             if fail_closed:
                 logger.warning(
                     f"Rate limiter failing CLOSED for critical endpoint {limit_type}. "
@@ -283,16 +283,14 @@ class RateLimiter:
                     "error": "Rate limiting temporarily unavailable",
                 }
             else:
-                logger.info(
-                    f"Rate limiter failing OPEN for non-critical endpoint {limit_type}. "
-                    f"Allowing request despite error: {e}"
+                logger.warning(
+                    "Rate limiter degraded to in-memory (Redis error) for %s: %s",
+                    limit_type,
+                    e,
                 )
-                return True, {
-                    "remaining": max_requests,
-                    "reset_time": None,
-                    "retry_after": 0,
-                    "error": str(e),
-                }
+                return _local_limiter.check_rate_limit(
+                    identifier, max_requests, window_seconds, limit_type
+                )
 
     def reset_limit(self, identifier: str, limit_type: str = "api") -> bool:
         """
@@ -431,9 +429,10 @@ class TokenBucketRateLimiter:
             return allowed, info
 
         except (RedisError, ConnectionError, OSError) as e:
-            logger.error(f"Token bucket error: {e}")
-            # On error, allow request
-            return True, {"tokens": capacity, "capacity": capacity, "error": str(e)}
+            logger.warning("Token bucket degraded to in-memory (Redis error): %s", e)
+            return _local_limiter.check_rate_limit(
+                identifier, capacity, 60, "token_bucket"
+            )
 
 
 # Predefined rate limit configurations

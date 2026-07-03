@@ -892,18 +892,26 @@ INTERNAL_API_KEY_MAX_AGE_DAYS: int = int(
     os.getenv("INTERNAL_API_KEY_MAX_AGE_DAYS", "90")
 )
 
-_created_at_raw = os.getenv("INTERNAL_API_KEY_CREATED_AT")
-INTERNAL_API_KEY_CREATED_AT: Optional[datetime] = None
-if _created_at_raw:
+
+def _parse_created_at(raw: Optional[str]) -> Optional[datetime]:
+    """Parse INTERNAL_API_KEY_CREATED_AT. Normalizes a trailing 'Z'
+    (datetime.fromisoformat rejects it on Python 3.10) and fails safe — a
+    malformed value returns None (disabling the age-check warning) rather than
+    crashing config import. Exposed as a helper so it is unit-testable WITHOUT
+    reloading the config module (a reload regenerates ephemeral secrets and
+    desyncs modules that imported config globals at startup)."""
+    if not raw:
+        return None
     try:
-        # Normalize a trailing "Z": datetime.fromisoformat rejects it on
-        # Python 3.10. Fail safe — a malformed value disables the age-check
-        # warning rather than crashing config import.
-        INTERNAL_API_KEY_CREATED_AT = datetime.fromisoformat(
-            _created_at_raw.replace("Z", "+00:00")
-        )
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         warnings.warn(
             "INTERNAL_API_KEY_CREATED_AT is not valid ISO-8601; ignoring "
             "(key-rotation age warnings disabled)."
         )
+        return None
+
+
+INTERNAL_API_KEY_CREATED_AT: Optional[datetime] = _parse_created_at(
+    os.getenv("INTERNAL_API_KEY_CREATED_AT")
+)

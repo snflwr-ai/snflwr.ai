@@ -25,6 +25,24 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _gate_block(model: str, message: str, *, stream: bool) -> Response:
+    """Return an early gate/block response in the format the client requested.
+
+    Open WebUI >=0.10 requests ``/api/chat`` with ``stream=True`` and does not
+    render a non-streaming ``JSONResponse`` (single object) — the child sees a
+    blank bubble instead of the safe-redirect / 988 text. When a stream was
+    requested, deliver the block as a single NDJSON chunk; otherwise a JSON
+    object. (The later streaming paths already emit NDJSON; this covers the
+    early gates: rate-limit, circuit, license, no-profile, COPPA, input-safety.)
+    """
+    if stream:
+        return Response(
+            content=blocks._ollama_block_stream_bytes(model, message),
+            media_type="application/x-ndjson",
+        )
+    return JSONResponse(content=blocks._ollama_block_response(model, message))
+
+
 @router.post("/chat")
 async def proxy_chat(
     request: Request,
@@ -93,7 +111,7 @@ async def proxy_chat(
         or guards.license_block_reason(user_id)
     )
     if _reason:
-        return JSONResponse(content=blocks._ollama_block_response(model, _reason))
+        return _gate_block(model, _reason, stream=stream)
 
     # Student path — run safety pipeline
     profile_id = await profile._get_profile_for_user(user_id)
@@ -104,9 +122,7 @@ async def proxy_chat(
             "Blocked student chat: no learning profile for user %s",
             observability.hash_profile(user_id) if user_id else "unknown",
         )
-        return JSONResponse(
-            content=blocks._ollama_block_response(model, no_profile_msg)
-        )
+        return _gate_block(model, no_profile_msg, stream=stream)
 
     # Resolve age from profile (best-effort; None is acceptable)
     age: Optional[int] = profile._resolve_age(profile_id)
@@ -148,7 +164,7 @@ async def proxy_chat(
     if coppa_msg is not None:
         _trace["safety"] = {"blocked_layer": "coppa"}
         _emit_trace()
-        return JSONResponse(content=blocks._ollama_block_response(model, coppa_msg))
+        return _gate_block(model, coppa_msg, stream=stream)
 
     text = blocks._extract_last_user_message(messages)
     # Captured separately because `text` is shadowed inside the streaming _vet()
@@ -166,7 +182,7 @@ async def proxy_chat(
         block_msg = "I'm unable to process that request right now."
         _trace["safety"] = {"blocked_layer": "input"}
         _emit_trace()
-        return JSONResponse(content=blocks._ollama_block_response(model, block_msg))
+        return _gate_block(model, block_msg, stream=stream)
 
     if not result.is_safe:
         block_message = (
@@ -186,7 +202,7 @@ async def proxy_chat(
             "blocked_layer": "input",
         }
         _emit_trace()
-        return JSONResponse(content=blocks._ollama_block_response(model, block_message))
+        return _gate_block(model, block_message, stream=stream)
 
     # Safe — forward to Ollama
     fwd_headers = {

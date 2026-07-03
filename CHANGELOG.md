@@ -79,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source of schema truth.
 
 ### Fixed
+- **Block / safe-redirect messages render on Open WebUI ≥0.10** — early gate
+  responses (rate-limit, circuit, license, no-profile, COPPA, input-safety) were
+  returned as a non-streaming `JSONResponse`, which OWUI 0.10 won't render when a
+  stream was requested — a blocked child saw a blank bubble instead of the
+  988/safe-redirect text. Blocks now honour the requested format: a single NDJSON
+  chunk when `stream=True`, JSON otherwise.
 - **Tutor answers render on Open WebUI ≥0.10** — the tutor is a reasoning model
   and emits a `message.thinking` field; OWUI 0.10's new reasoning display
   mishandled it on the proxied stream and rendered a blank answer. The proxy now

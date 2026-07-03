@@ -52,8 +52,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Crisis escalation wired into the proxy path** students use — self-harm/major
   blocks now record a DB incident + parent alert (previously only on the
   unused `chat.py` route). Fail-safe.
-- Open WebUI pinned via `OWU_IMAGE_TAG` (v0.9.6), Ollama via `OLLAMA_IMAGE_TAG`
+- Open WebUI pinned via `OWU_IMAGE_TAG` (v0.10.2), Ollama via `OLLAMA_IMAGE_TAG`
   (0.30.10); `ENABLE_INITIAL_ADMIN_SIGNUP` for first-admin creation.
+- **Open WebUI upgraded 0.9.6 → 0.10.2 with new-surface lockdown** — 0.10
+  introduced team folder-sharing, per-user webhooks, automations, a calendar,
+  and a web/URL upload path. The compose env now explicitly denies every new
+  student-reachable surface (`USER_PERMISSIONS_CHAT_WEB_UPLOAD/IMPORT`,
+  `FEATURES_DIRECT_TOOL_SERVERS/AUTOMATIONS/USER_WEBHOOKS/CALENDAR`,
+  `FOLDERS_ALLOW_SHARING`, public-sharing perms) plus global kill-switches
+  (`ENABLE_USER_WEBHOOKS/AUTOMATIONS/CALENDAR/NOTES/CHANNELS`) — set even where
+  the 0.10 default is already off, so an upstream default flip can't reopen them.
+  Upgrade runs through the guarded upgrader (snapshot webui.db → apply → smoke
+  test → auto-rollback); 0.10 ships DB migrations, so rollback restores the
+  pre-upgrade DB.
 - `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`, `docs/compliance/REQUIRED_DISCLOSURES.md`.
 
 ### Changed
@@ -68,6 +79,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source of schema truth.
 
 ### Fixed
+- **Tutor answers render on Open WebUI ≥0.10** — the tutor is a reasoning model
+  and emits a `message.thinking` field; OWUI 0.10's new reasoning display
+  mishandled it on the proxied stream and rendered a blank answer. The proxy now
+  strips `thinking` from every response path (streaming + non-streaming), keeping
+  the model's reasoning server-side. `content` — the only field output-safety
+  vets — is untouched, and the raw chain-of-thought never reaches a child.
+- **API image now includes `database/`** — the Dockerfile never copied the
+  `database/` package, so an image built from current `main` failed to boot
+  (`No module named 'database'` once the migration runner loads at startup).
 - **Database now actually encrypted at rest** — the image lacked a SQLCipher
   driver, so encryption silently fell back to plaintext. Ship `sqlcipher3-binary`;
   fix the schema-init and VACUUM paths that bypassed the encrypted adapter;

@@ -461,7 +461,7 @@ docker-compose up -d  # Start all services
 - **Inference:** HTTP API client
 
 ### Frontend
-- **Framework:** Open WebUI (v0.9.6) + FastAPI safety proxy
+- **Framework:** Open WebUI (v0.10.2) + FastAPI safety proxy
 - **API Client:** FastAPI auto-generated OpenAPI
 
 ### DevOps

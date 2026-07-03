@@ -22,7 +22,7 @@ services:
 
   # Open WebUI - Frontend (pre-built image)
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.9.6
+    image: ghcr.io/open-webui/open-webui:v0.10.2
     container_name: snflwr-frontend
     volumes:
       - open-webui-data:/app/backend/data
@@ -64,6 +64,28 @@ services:
       - USER_PERMISSIONS_CHAT_TEMPORARY=false
       - ENABLE_COMMUNITY_SHARING=false
       - ENABLE_EVALUATION_ARENA_MODELS=false
+      # --- Open WebUI 0.10.x new-surface lockdown (kids' app) ---
+      # 0.10 added team folder-sharing, per-user webhooks, automations, a
+      # calendar, and a web/URL upload path. Lock every new student-reachable
+      # surface: the safety proxy still mediates generation, but these avoid
+      # outbound data egress and unvetted ingestion entirely. Set explicitly
+      # even where the 0.10 default is already False, so an upstream default
+      # flip can't silently reopen them.
+      - USER_PERMISSIONS_CHAT_WEB_UPLOAD=false
+      - USER_PERMISSIONS_CHAT_IMPORT=false
+      - USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS=false
+      - USER_PERMISSIONS_FEATURES_AUTOMATIONS=false
+      - USER_PERMISSIONS_FEATURES_USER_WEBHOOKS=false
+      - USER_PERMISSIONS_FEATURES_CALENDAR=false
+      - USER_PERMISSIONS_FOLDERS_ALLOW_SHARING=false
+      - USER_PERMISSIONS_CHAT_ALLOW_PUBLIC_SHARING=false
+      - USER_PERMISSIONS_CALENDAR_ALLOW_PUBLIC_SHARING=false
+      # Global kill-switches for 0.10 subsystems the tutor doesn't use
+      - ENABLE_USER_WEBHOOKS=false
+      - ENABLE_AUTOMATIONS=false
+      - ENABLE_CALENDAR=false
+      - ENABLE_NOTES=false
+      - ENABLE_CHANNELS=false
       - ENABLE_TITLE_GENERATION=true
       - ENABLE_FOLLOW_UP_GENERATION=true
       - ENABLE_TAGS_GENERATION=true

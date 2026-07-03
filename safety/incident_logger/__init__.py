@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from config import safety_config
 from core.email_crypto import get_email_crypto
 from storage.database import db_manager
-from storage.db_adapters import DB_ERRORS
+from storage.db_adapters import DB_ERRORS, DB_INTEGRITY_ERRORS
 from storage.encryption import encryption_manager
 from utils.logger import get_logger, sanitize_log_value
 
@@ -90,26 +90,59 @@ class IncidentLogger(_IncidentQueryMixin, _IncidentEscalationMixin):
                 encrypted_metadata = self.encryption.encrypt_dict(metadata)
 
             # Insert incident
-            self.db.execute_write(
-                """
+            try:
+                self.db.execute_write(
+                    """
                 INSERT INTO safety_incidents (
                     profile_id, session_id, incident_type, severity,
                     content_snippet, timestamp, parent_notified,
                     resolved, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    profile_id,
-                    session_id,
-                    incident_type,
-                    severity,
-                    encrypted_snippet,
-                    datetime.now(timezone.utc).isoformat(),
-                    False,
-                    False,
-                    encrypted_metadata,
-                ),
-            )
+                    (
+                        profile_id,
+                        session_id,
+                        incident_type,
+                        severity,
+                        encrypted_snippet,
+                        datetime.now(timezone.utc).isoformat(),
+                        False,
+                        False,
+                        encrypted_metadata,
+                    ),
+                )
+            except DB_INTEGRITY_ERRORS:
+                # profile_id isn't a valid child_profiles reference (synthetic /
+                # unknown / deleted). A crisis must never be dropped: record it
+                # UNLINKED (profile_id NULL) with the original id preserved.
+                logger.warning(
+                    "Incident profile_id %r is not a valid profile — recording "
+                    "unlinked (crisis preserved).",
+                    sanitize_log_value(profile_id),
+                )
+                unlinked_meta = dict(metadata or {})
+                unlinked_meta["original_profile_id"] = profile_id
+                self.db.execute_write(
+                    """
+                INSERT INTO safety_incidents (
+                    profile_id, session_id, incident_type, severity,
+                    content_snippet, timestamp, parent_notified,
+                    resolved, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        None,
+                        session_id,
+                        incident_type,
+                        severity,
+                        encrypted_snippet,
+                        datetime.now(timezone.utc).isoformat(),
+                        False,
+                        False,
+                        self.encryption.encrypt_dict(unlinked_meta),
+                    ),
+                )
+                return True, None  # no linked profile -> no incident-id lookup/alert
 
             # Get incident ID
             result = self.db.execute_query(

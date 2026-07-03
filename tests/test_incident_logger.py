@@ -1388,6 +1388,39 @@ class TestCrisisIncidentNotDropped:
         assert ok is False
 
 
+class TestLogIncidentUnlinkedOnFKFailure:
+    """A profile_id that violates the child_profiles FK must NOT drop the crisis:
+    the incident is re-inserted with profile_id=NULL and the original id kept in
+    (encrypted) metadata."""
+
+    def test_log_incident_records_unlinked_on_fk_failure(self, logger, mock_db):
+        from storage.db_adapters import DB_INTEGRITY_ERRORS
+
+        fk_err = DB_INTEGRITY_ERRORS[0]("FOREIGN KEY constraint failed")
+
+        calls = []
+
+        def fake_write(query, params=()):
+            calls.append(params)
+            if len(calls) == 1:  # first insert = the FK-violating one
+                raise fk_err
+            return 1  # retry succeeds
+
+        mock_db.execute_write.side_effect = fake_write
+
+        ok, incident_id = logger.log_incident(
+            profile_id="safety_required_abc",
+            incident_type="self_harm",
+            severity="critical",
+            content_snippet="...",
+            metadata={"source": "ollama_proxy"},
+        )
+        assert ok is True
+        # retry ran (2 inserts), second used NULL profile_id
+        assert len(calls) == 2
+        assert calls[1][0] is None  # profile_id param is None on the retry
+
+
 class TestUnresolvableParentEscalation:
     """A major/critical crisis whose child profile (and thus parent) cannot be
     resolved — e.g. a profile-less session's synthetic ``safety_required_<id>`` —

@@ -18,7 +18,7 @@ from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_gate import no_profile_block_reason
 from utils import observability
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -114,7 +114,9 @@ async def proxy_chat(
     if model not in access._student_visible_models():
         pinned = system_config.OLLAMA_DEFAULT_MODEL or "snflwr.ai"
         if model:
-            logger.info("Pinned student model %r -> %r", model, pinned)
+            logger.info(
+                "Pinned student model %r -> %r", sanitize_log_value(model), pinned
+            )
         model = pinned
         body["model"] = pinned
         body_bytes = _json.dumps(body).encode()

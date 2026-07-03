@@ -38,7 +38,7 @@ def test_trace_emitted_on_allowed_turn():
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()),
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
         patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
-        patch("api.routes.ollama_proxy.observability.trace_chat_turn") as tr,
+        patch("api.routes.ollama_proxy.chat.observability.trace_chat_turn") as tr,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200
@@ -58,7 +58,7 @@ def test_trace_emitted_on_blocked_input():
         patch("api.routes.ollama_proxy.profile._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=blocked),
         patch("api.routes.ollama_proxy.blocks._record_safety_incident"),
-        patch("api.routes.ollama_proxy.observability.trace_chat_turn") as tr,
+        patch("api.routes.ollama_proxy.chat.observability.trace_chat_turn") as tr,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200
@@ -74,7 +74,7 @@ def test_trace_failure_does_not_break_chat():
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()),
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
         patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
-        patch("api.routes.ollama_proxy.observability.trace_chat_turn", side_effect=RuntimeError("trace down")),
+        patch("api.routes.ollama_proxy.chat.observability.trace_chat_turn", side_effect=RuntimeError("trace down")),
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200   # chat unaffected by a tracing error

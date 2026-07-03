@@ -34,11 +34,11 @@ def test_non_internal_session_cannot_forge_admin_via_header():
     client = TestClient(app)
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="profile-1"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_body(),
@@ -56,13 +56,13 @@ def test_internal_service_does_not_bypass_safety_via_header():
     client = TestClient(app)
     ollama_resp = httpx.Response(200, json={"model": "m", "done": True})
     with (
-        patch("api.routes.ollama_proxy._get_user_from_headers",
+        patch("api.routes.ollama_proxy.access._get_user_from_headers",
               return_value=("kid_1", "admin")),
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="profile-1"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()) as chk,
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_body(),

@@ -161,7 +161,7 @@ class TestSnflwrBackendDisablesThinking:
 # Structural: Ollama proxy admin-bypass branch sets body["think"] = False
 # ---------------------------------------------------------------------------
 
-PROXY_PATH = REPO_ROOT / "api" / "routes" / "ollama_proxy.py"
+PROXY_PATH = REPO_ROOT / "api" / "routes" / "ollama_proxy" / "chat.py"
 
 
 class TestProxyAdminBypassDisablesThinking:

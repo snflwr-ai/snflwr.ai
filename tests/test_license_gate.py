@@ -47,9 +47,9 @@ def test_unlicensed_student_blocked_no_model_call():
     with (
         patch.object(system_config, "LICENSE_ENFORCED", True),
         patch("core.licensing.current_state", return_value=_unlicensed()),
-        patch("api.routes.ollama_proxy._get_user_from_headers",
+        patch("api.routes.ollama_proxy.access._get_user_from_headers",
               return_value=("stud_1", "user")),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock) as mock_fwd,
         patch("safety.pipeline.safety_pipeline.check_input") as mock_safety,
     ):
@@ -74,12 +74,12 @@ def test_licensed_student_passes_gate():
     with (
         patch.object(system_config, "LICENSE_ENFORCED", True),
         patch("core.licensing.current_state", return_value=_active()),
-        patch("api.routes.ollama_proxy._get_user_from_headers",
+        patch("api.routes.ollama_proxy.access._get_user_from_headers",
               return_value=("stud_1", "user")),
-        patch("api.routes.ollama_proxy._get_profile_for_user",
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user",
               new_callable=AsyncMock, return_value="profile-1"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=safe),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_chat_body())
@@ -99,7 +99,7 @@ def test_admin_never_gated():
     with (
         patch.object(system_config, "LICENSE_ENFORCED", True),
         patch("core.licensing.current_state", return_value=_unlicensed()),
-        patch("api.routes.ollama_proxy._forward_request",
+        patch("api.routes.ollama_proxy.transport._forward_request",
               new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_chat_body())

@@ -34,11 +34,11 @@ def test_trace_emitted_on_allowed_turn():
     client = TestClient(_app())
     ollama_resp = httpx.Response(200, json={"model": "snflwr.ai", "message": {"role": "assistant", "content": "2+2=4"}, "done": True})
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()),
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
-        patch("api.routes.ollama_proxy._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
-        patch("api.routes.ollama_proxy.observability.trace_chat_turn") as tr,
+        patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
+        patch("api.routes.ollama_proxy.chat.observability.trace_chat_turn") as tr,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200
@@ -55,10 +55,10 @@ def test_trace_emitted_on_blocked_input():
     blocked = SafetyResult(is_safe=False, severity=Severity.MAJOR, category=Category.SELF_HARM, reason="x")
     client = TestClient(_app())
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=blocked),
-        patch("api.routes.ollama_proxy._record_safety_incident"),
-        patch("api.routes.ollama_proxy.observability.trace_chat_turn") as tr,
+        patch("api.routes.ollama_proxy.blocks._record_safety_incident"),
+        patch("api.routes.ollama_proxy.chat.observability.trace_chat_turn") as tr,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200
@@ -70,11 +70,11 @@ def test_trace_failure_does_not_break_chat():
     client = TestClient(_app())
     ollama_resp = httpx.Response(200, json={"model": "snflwr.ai", "message": {"role": "assistant", "content": "ok"}, "done": True})
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=_safe()),
         patch("safety.pipeline.safety_pipeline.check_output", return_value=_safe()),
-        patch("api.routes.ollama_proxy._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
-        patch("api.routes.ollama_proxy.observability.trace_chat_turn", side_effect=RuntimeError("trace down")),
+        patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
+        patch("api.routes.ollama_proxy.chat.observability.trace_chat_turn", side_effect=RuntimeError("trace down")),
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200   # chat unaffected by a tracing error

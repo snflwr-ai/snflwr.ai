@@ -33,9 +33,9 @@ def _headers():
 def test_student_without_profile_is_blocked():
     client = TestClient(_app())
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user", new_callable=AsyncMock,
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user", new_callable=AsyncMock,
               return_value="safety_required_stud_1"),
-        patch("api.routes.ollama_proxy._forward_request", new_callable=AsyncMock) as fwd,
+        patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock) as fwd,
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200
@@ -51,10 +51,10 @@ def test_student_with_real_profile_proceeds():
     from safety.pipeline import SafetyResult, Severity, Category
     safe = SafetyResult(is_safe=True, severity=Severity.NONE, category=Category.VALID, reason="")
     with (
-        patch("api.routes.ollama_proxy._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
+        patch("api.routes.ollama_proxy.profile._get_profile_for_user", new_callable=AsyncMock, return_value="prof_teen"),
         patch("safety.pipeline.safety_pipeline.check_input", return_value=safe),
         patch("safety.pipeline.safety_pipeline.check_output", return_value=safe),
-        patch("api.routes.ollama_proxy._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
+        patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock, return_value=ollama_resp),
     ):
         resp = client.post("/api/chat", json=_body(), headers=_headers())
     assert resp.status_code == 200

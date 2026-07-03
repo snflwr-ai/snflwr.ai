@@ -128,12 +128,21 @@ class DatabaseBackup:
 
             # WAL-safe: flush the -wal into the main DB before copying so
             # committed-but-uncheckpointed writes are not silently lost.
-            # Only for unencrypted DBs — a plain sqlite3 connection cannot
-            # open an SQLCipher-encrypted file, so the checkpoint would fail
-            # (best-effort, but the warning would be confusing). Per the DR
-            # runbook, encrypted SQLite backups copy the encrypted file as-is.
-            if not system_config.DB_ENCRYPTION_ENABLED:
-                try:
+            # Encrypted path: open a keyed SQLCipher connection (plain
+            # sqlite3 cannot read an encrypted file). Unencrypted path:
+            # plain sqlite3. Best-effort — a checkpoint failure must never
+            # fail the backup.
+            try:
+                if system_config.DB_ENCRYPTION_ENABLED:
+                    from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
+                    _adapter = EncryptedSQLiteAdapter(db_path=db_path)
+                    _ck_conn = _adapter.connect()
+                    try:
+                        _ck_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    finally:
+                        _adapter.close()
+                else:
                     import sqlite3 as _sqlite3
 
                     _ck = _sqlite3.connect(str(db_path))
@@ -141,10 +150,10 @@ class DatabaseBackup:
                         _ck.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                     finally:
                         _ck.close()
-                except Exception as _exc:
-                    logger.warning(
-                        "WAL checkpoint before backup failed (non-fatal): %s", _exc
-                    )
+            except Exception as _exc:
+                logger.warning(
+                    "WAL checkpoint before backup failed (non-fatal): %s", _exc
+                )
 
             # Copy the database file
             shutil.copy2(db_path, backup_file)

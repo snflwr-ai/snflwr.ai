@@ -158,7 +158,9 @@ class TestChatSafety:
             mock_pipeline = MagicMock()
             mock_pipeline.check_input.return_value = safe
 
-            with patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-abc"),
+            with patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-abc"),
             ):
                 # Use a fresh import scope patch for safety_pipeline
                 with patch("safety.pipeline.safety_pipeline", mock_pipeline):
@@ -185,9 +187,13 @@ class TestChatSafety:
         mock_pipeline.check_input.return_value = block
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-456", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-456", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-xyz"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-xyz"),
             ),
         ):
             # Also patch the lazy import of safety_pipeline inside the endpoint
@@ -219,7 +225,9 @@ class TestChatSafety:
         mock_pipeline = MagicMock()
 
         with (
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
         ):
@@ -252,9 +260,13 @@ class TestChatSafety:
         mock_forward = AsyncMock(return_value=ollama_resp)
 
         with (
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="safety_required_unknown"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="safety_required_unknown"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new=mock_forward),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request", new=mock_forward
+            ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
                 resp = client.post("/api/chat", json=_chat_body())
@@ -276,11 +288,17 @@ class TestChatSafety:
         mock_pipeline.check_input.return_value = safe
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-789", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-789", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-789"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-789"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 side_effect=httpx.ConnectError("refused"),
             ),
         ):
@@ -351,7 +369,8 @@ class TestForwardRequest:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch(
-            "api.routes.ollama_proxy.transport.httpx.AsyncClient", return_value=mock_client
+            "api.routes.ollama_proxy.transport.httpx.AsyncClient",
+            return_value=mock_client,
         ):
             result = await _forward_request("GET", "/api/tags")
 
@@ -550,7 +569,9 @@ class TestAdminStreamAndConnectError:
 
         client = TestClient(_make_app(user_id="admin-err"))
 
-        with patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+        with patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new_callable=AsyncMock,
             side_effect=httpx.ConnectError("refused"),
         ):
             resp = client.post(
@@ -590,11 +611,17 @@ class TestAgeResolution:
         mock_auth.db = MagicMock()
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-age", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-age", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-age"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-age"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
             patch.dict(
@@ -635,11 +662,17 @@ class TestAgeResolution:
         mock_pipeline.check_input.return_value = safe
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-ageerr", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-ageerr", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-ageerr"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-ageerr"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
             patch.dict(
@@ -692,9 +725,13 @@ class TestSafetyPipelineException:
         mock_pipeline.check_input.side_effect = RuntimeError("pipeline crash")
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-exc", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-exc", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-exc"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-exc"),
             ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
@@ -733,11 +770,17 @@ class TestStudentStreaming:
         ]
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-stream", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-stream", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-stream"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-stream"),
             ),
-            patch("api.routes.ollama_proxy.transport._stream_chunks_from_ollama", new=_async_iter(chunks)
+            patch(
+                "api.routes.ollama_proxy.transport._stream_chunks_from_ollama",
+                new=_async_iter(chunks),
             ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
@@ -782,7 +825,8 @@ class TestStreamChatFromOllama:
         mock_client.aclose = AsyncMock()
 
         with patch(
-            "api.routes.ollama_proxy.transport.httpx.AsyncClient", return_value=mock_client
+            "api.routes.ollama_proxy.transport.httpx.AsyncClient",
+            return_value=mock_client,
         ):
             result = await _stream_chat_from_ollama(b'{"model":"x"}', {})
 
@@ -806,7 +850,8 @@ class TestStreamChatFromOllama:
         mock_client.aclose = AsyncMock()
 
         with patch(
-            "api.routes.ollama_proxy.transport.httpx.AsyncClient", return_value=mock_client
+            "api.routes.ollama_proxy.transport.httpx.AsyncClient",
+            return_value=mock_client,
         ):
             result = await _stream_chat_from_ollama(b'{"model":"x"}', {})
 
@@ -968,11 +1013,17 @@ class TestOutputFiltering:
         mock_pipeline.check_output.return_value = unsafe_output
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-1", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-1", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-1"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-1"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
         ):
@@ -1015,11 +1066,17 @@ class TestOutputFiltering:
         mock_pipeline.check_output.return_value = _safe_result()
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-2", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-2", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-2"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-2"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
         ):
@@ -1090,11 +1147,17 @@ class TestOutputFiltering:
         )
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-3", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-3", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-3"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-3"),
             ),
-            patch("api.routes.ollama_proxy.transport._stream_chunks_from_ollama", new=_async_iter(unsafe_chunks)
+            patch(
+                "api.routes.ollama_proxy.transport._stream_chunks_from_ollama",
+                new=_async_iter(unsafe_chunks),
             ),
         ):
             with patch("safety.pipeline.safety_pipeline", mock_pipeline):
@@ -1201,9 +1264,13 @@ class TestProxyBearerAuth:
         mock_pipeline.check_output.return_value = _safe_result()
 
         with (
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-x"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-x"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
         ):
@@ -1241,9 +1308,13 @@ class TestCrisisEscalation:
         mock_incident.log_incident.return_value = (True, 1)
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-sh", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-sh", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-sh"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-sh"),
             ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
             # Patch the module object directly. `safety/__init__.py` re-exports
@@ -1290,9 +1361,13 @@ class TestCrisisEscalation:
         mock_incident.log_incident.side_effect = RuntimeError("db down")
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-x", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-x", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-x"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-x"),
             ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
             # Patch the module object directly. `safety/__init__.py` re-exports
@@ -1340,11 +1415,17 @@ class TestCrisisEscalation:
         mock_incident = MagicMock()
 
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-ok", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-ok", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-ok"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-ok"),
             ),
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
@@ -1506,15 +1587,22 @@ class TestChatAdmissionControl:
 
         client = TestClient(_make_app())  # internal_service relay -> student path
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-rl", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-rl", "user"),
             ),
             patch.object(
                 proxy_mod.rate_limiter,
                 "check_rate_limit",
                 return_value=(False, {"retry_after": 30}),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock()) as prof,
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock) as fwd,
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock()
+            ) as prof,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+            ) as fwd,
         ):
             resp = client.post(
                 "/api/chat",
@@ -1539,7 +1627,9 @@ class TestChatAdmissionControl:
 
         client = TestClient(_make_app())
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-cb", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-cb", "user"),
             ),
             patch.object(
                 proxy_mod.rate_limiter, "check_rate_limit", return_value=(True, {})
@@ -1550,7 +1640,9 @@ class TestChatAdmissionControl:
                 new_callable=PropertyMock,
                 return_value=True,
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock()) as prof,
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock()
+            ) as prof,
         ):
             resp = client.post(
                 "/api/chat",
@@ -1576,7 +1668,9 @@ class TestChatAdmissionControl:
                 "check_rate_limit",
                 return_value=(False, {"retry_after": 30}),
             ) as rl,
-            patch("api.routes.ollama_proxy.transport._forward_request", new_callable=AsyncMock,
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
                 return_value=ollama_resp,
             ),
         ):
@@ -1609,11 +1703,17 @@ class TestHoldbackStreaming:
 
         client = TestClient(_make_app())
         with (
-            patch("api.routes.ollama_proxy.access._get_user_from_headers", return_value=("uid-hb", "user")
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-hb", "user"),
             ),
-            patch("api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock(return_value="profile-hb"),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-hb"),
             ),
-            patch("api.routes.ollama_proxy.transport._stream_chunks_from_ollama", new=_async_iter(chunks)
+            patch(
+                "api.routes.ollama_proxy.transport._stream_chunks_from_ollama",
+                new=_async_iter(chunks),
             ),
             patch.object(proxy_mod.system_config, "CHAT_STREAMING_ENABLED", enabled),
             patch("safety.pipeline.safety_pipeline", mock_pipeline),
@@ -1664,3 +1764,97 @@ class TestHoldbackStreaming:
         assert resp.status_code == 200
         assert b"Photosynthesis is how plants make food" in resp.content
         mp.check_output.assert_called_once()  # buffered path = single full-text check
+
+
+class TestThinkingStrip:
+    """The tutor is a reasoning model — every chunk's message may carry a
+    ``thinking`` (chain-of-thought) field. Open WebUI >=0.10 mishandles it on the
+    proxied stream (renders a blank answer), and the raw chain-of-thought is
+    unvetted text that must never reach a child. The proxy strips ``thinking``
+    from what the client sees while the model keeps reasoning; ``content`` — the
+    only field output-safety vets — is left untouched.
+    """
+
+    def test_line_strip_removes_thinking_keeps_content(self):
+        from api.routes.ollama_proxy.blocks import _strip_thinking_from_ndjson_line
+
+        line = json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "Spiders have eight legs.",
+                    "thinking": "[age 5-7] analysis... internal reasoning",
+                },
+                "done": False,
+            }
+        ).encode()
+        obj = json.loads(_strip_thinking_from_ndjson_line(line))
+        assert obj["message"]["content"] == "Spiders have eight legs."
+        assert "thinking" not in obj["message"]
+
+    def test_line_passthrough_when_no_thinking_is_byte_identical(self):
+        from api.routes.ollama_proxy.blocks import _strip_thinking_from_ndjson_line
+
+        line = json.dumps(
+            {"message": {"role": "assistant", "content": "hi"}, "done": True}
+        ).encode()
+        assert _strip_thinking_from_ndjson_line(line) == line
+
+    def test_line_passthrough_when_unparseable(self):
+        from api.routes.ollama_proxy.blocks import _strip_thinking_from_ndjson_line
+
+        line = b"{not valid json"
+        assert _strip_thinking_from_ndjson_line(line) == line
+
+    async def test_stream_strips_thinking_across_chunk_boundaries(self):
+        """Line-buffering must strip ``thinking`` even when Ollama's byte chunks
+        split a JSON object mid-line (aiter_bytes boundaries are arbitrary)."""
+        import api.routes.ollama_proxy.transport as transport
+
+        obj1 = json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "thinking": "secret reasoning",
+                },
+                "done": False,
+            }
+        )
+        obj2 = json.dumps(
+            {"message": {"role": "assistant", "content": "Eight legs."}, "done": True}
+        )
+        raw = (obj1 + "\n" + obj2 + "\n").encode()
+        # Deliberately split mid-line so the line buffer is exercised.
+        chunks = [raw[:12], raw[12 : len(obj1) + 5], raw[len(obj1) + 5 :]]
+
+        mock_resp = AsyncMock()
+
+        async def aiter_bytes():
+            for c in chunks:
+                yield c
+
+        mock_resp.aiter_bytes = aiter_bytes
+        mock_resp.aclose = AsyncMock()
+
+        mock_client = AsyncMock()
+        mock_client.build_request = MagicMock(return_value=MagicMock())
+        mock_client.send = AsyncMock(return_value=mock_resp)
+        mock_client.aclose = AsyncMock()
+
+        out = []
+        with patch(
+            "api.routes.ollama_proxy.transport.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
+            async for ch in transport._stream_chunks_from_ollama(b'{"model":"x"}', {}):
+                out.append(ch)
+
+        result = b"".join(out)
+        assert b"thinking" not in result
+        assert b"secret reasoning" not in result
+        lines = [ln for ln in result.split(b"\n") if ln.strip()]
+        parsed = [json.loads(ln) for ln in lines]
+        assert parsed[0]["message"]["content"] == ""
+        assert "thinking" not in parsed[0]["message"]
+        assert parsed[1]["message"]["content"] == "Eight legs."

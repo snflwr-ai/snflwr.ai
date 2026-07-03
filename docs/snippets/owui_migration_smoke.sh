@@ -4,7 +4,7 @@
 # then runs the migration and asserts row counts. Requires Docker + network.
 set -euo pipefail
 NET="owui-smoke-net-$$"; PG="owui-smoke-pg-$$"; OWUI="owui-smoke-fe-$$"
-IMG="ghcr.io/open-webui/open-webui:v0.9.6"
+IMG="ghcr.io/open-webui/open-webui:v0.10.2"
 # Pinned pgloader version — must match the tag used by
 # scripts/migrate_owui_to_postgres.sh (data-critical step; avoid :latest drift).
 PGLOADER_IMG="dimitri/pgloader:v3.6.7"

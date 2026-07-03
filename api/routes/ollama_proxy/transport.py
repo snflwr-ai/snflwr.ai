@@ -54,18 +54,34 @@ async def _proxy_to_ollama(request: Request, path: str) -> Response:
 
 
 async def _stream_chunks_from_ollama(body: bytes, headers: dict):
-    """Open a streaming connection to Ollama and yield raw NDJSON chunks.
+    """Open a streaming connection to Ollama and yield NDJSON chunks, one line at
+    a time, with the model's ``message.thinking`` field stripped out.
 
     Separated from the response builder so the chat handler can buffer chunks
     through ``check_output`` before forwarding them to the client.
+
+    Yields whole NDJSON lines (not raw byte chunks): Ollama's ``aiter_bytes``
+    boundaries are arbitrary and can split a JSON object mid-line, so we buffer
+    to newline boundaries before stripping ``thinking`` per line (see
+    ``blocks._strip_thinking_from_ndjson_line``). ``content`` is untouched, so
+    downstream vetting and text extraction are unaffected.
     """
+    from api.routes.ollama_proxy.blocks import _strip_thinking_from_ndjson_line
+
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     req = client.build_request("POST", url, content=body, headers=headers)
     resp = await client.send(req, stream=True)
+    buffer = b""
     try:
         async for chunk in resp.aiter_bytes():
-            yield chunk
+            buffer += chunk
+            while b"\n" in buffer:
+                line, buffer = buffer.split(b"\n", 1)
+                yield _strip_thinking_from_ndjson_line(line) + b"\n"
+        # Flush any trailing line that arrived without a closing newline.
+        if buffer.strip():
+            yield _strip_thinking_from_ndjson_line(buffer)
     finally:
         await resp.aclose()
         await client.aclose()

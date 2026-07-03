@@ -419,8 +419,20 @@ async def proxy_chat(
     _trace["safety"] = {"blocked_layer": None}
     _trace["tokens"] = _usage_from(upstream_json)
     _emit_trace()
+    # Strip the model's reasoning field before returning: OWUI >=0.10 mishandles
+    # `message.thinking` (blank render) and the raw chain-of-thought is unvetted
+    # content that must never reach a child. `content` is untouched. (Streaming
+    # paths strip per-line in transport._stream_chunks_from_ollama.)
+    out_content = upstream.content
+    if (
+        isinstance(upstream_json, dict)
+        and isinstance(upstream_json.get("message"), dict)
+        and "thinking" in upstream_json["message"]
+    ):
+        upstream_json["message"].pop("thinking", None)
+        out_content = _json.dumps(upstream_json).encode()
     return Response(
-        content=upstream.content,
+        content=out_content,
         status_code=upstream.status_code,
         media_type=upstream.headers.get("content-type", "application/json"),
     )

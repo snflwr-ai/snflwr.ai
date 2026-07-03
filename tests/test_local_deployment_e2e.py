@@ -405,10 +405,22 @@ class TestChatEndpoint:
         token, csrf, _ = _get_auth(client)
         profile_id = _ensure_teen_profile(client)
         _sync_csrf(client, csrf)
-        resp = client.post("/api/chat/send", json={
-            "message": "Can you help me understand photosynthesis?",
-            "profile_id": profile_id,
-        }, headers=_headers(token, csrf))
+        # Represent a healthy deployment: the semantic classifier is available and
+        # clears the safe message. Without this, the test env's unavailable
+        # classifier fails closed (CLASSIFIER_ERROR) for EVERY message under the
+        # default SAFETY_CLASSIFIER_REQUIRED=true — correct behavior, but then a
+        # safe message never reaches the Ollama stage this test exercises.
+        from unittest.mock import MagicMock, patch
+        from safety.pipeline import safety_pipeline
+
+        _clf = MagicMock()
+        _clf.classify.return_value = None  # clears (safe)
+        _clf.available = True
+        with patch.object(safety_pipeline, "_classifier", _clf):
+            resp = client.post("/api/chat/send", json={
+                "message": "Can you help me understand photosynthesis?",
+                "profile_id": profile_id,
+            }, headers=_headers(token, csrf))
         if resp.status_code == 200:
             # Ollama is running — verify safe response came through
             data = resp.json()

@@ -142,6 +142,25 @@ class IncidentLogger(_IncidentQueryMixin, _IncidentEscalationMixin):
                         self.encryption.encrypt_dict(unlinked_meta),
                     ),
                 )
+                # No valid profile -> no parent can be notified. For
+                # major/critical severities the operator alert is the ONLY
+                # escalation path, so send it best-effort here (mirrors the
+                # outer DB_ERRORS handler; swallow all exceptions).
+                if severity in ("major", "critical"):
+                    try:
+                        from core.email_service import email_service
+
+                        email_service.send_operator_alert(
+                            subject=f"Unlinked {severity} incident recorded ({incident_type})",
+                            description=(
+                                f"A {severity} safety incident (type={incident_type}) was "
+                                f"recorded UNLINKED because profile "
+                                f"{sanitize_log_value(profile_id)!r} had no valid child_profiles "
+                                "reference — no parent can be notified. Review immediately."
+                            ),
+                        )
+                    except Exception:
+                        pass  # operator alert is best-effort; never raise from logger
                 return True, None  # no linked profile -> no incident-id lookup/alert
 
             # Get incident ID

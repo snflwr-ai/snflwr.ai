@@ -81,7 +81,12 @@ def test_profile_id_becomes_nullable_and_preserves_everything():
     assert fk_raised
     # indexes recreated
     idx = {r[1] for r in conn.execute("PRAGMA index_list(safety_incidents)")}
-    assert "idx_incidents_profile" in idx and "idx_incidents_severity" in idx
+    assert {
+        "idx_incidents_profile",
+        "idx_incidents_severity",
+        "idx_incidents_timestamp",
+        "idx_incidents_unresolved",
+    } <= idx
 
 
 def test_postgres_branch_emits_drop_not_null():

@@ -1342,14 +1342,67 @@ class TestCleanup:
 
 
 class TestCrisisIncidentNotDropped:
-    """A major/critical incident that fails to persist (e.g. a profile-less
-    session hitting the COPPA FK on profile_id) must escalate via an operator
-    alert — never be silently dropped."""
+    """A major/critical incident that fails to persist must never be silently
+    dropped. Two distinct DB-failure shapes are covered:
 
-    def test_db_failure_on_critical_alerts_operator(self, logger, mock_db):
-        mock_db.execute_write.side_effect = sqlite3.Error(
-            "FOREIGN KEY constraint failed"
-        )
+    * A real FK/COPPA violation (``sqlite3.IntegrityError``) on a profile-less
+      session takes the inner UNLINKED path — the incident is recorded with
+      ``profile_id=NULL`` and, since no parent can be notified, the operator is
+      paged (return ``(True, None)``).
+    * A generic non-integrity error (e.g. ``database is locked``) takes the
+      OUTER handler — the row cannot be written at all, so the operator is
+      paged and the call returns ``(False, None)``.
+    """
+
+    def test_fk_violation_on_critical_records_unlinked_and_alerts_operator(
+        self, logger, mock_db
+    ):
+        # First insert violates the child_profiles FK; the unlinked re-INSERT
+        # succeeds. Per the fix, the critical incident is recorded unlinked and
+        # the operator is paged (no valid profile -> no parent to notify).
+        mock_db.execute_write.side_effect = [
+            sqlite3.IntegrityError("FOREIGN KEY constraint failed"),
+            None,  # unlinked re-INSERT succeeds
+        ]
+        with patch("core.email_service.email_service") as email:
+            ok, iid = logger.log_incident(
+                profile_id="safety_required_x",
+                incident_type="self_harm",
+                severity="critical",
+                content_snippet="i want to die",
+                send_alert=True,
+            )
+        assert ok is True and iid is None
+        assert mock_db.execute_write.call_count == 2
+        # unlinked re-INSERT used a NULL profile_id
+        assert mock_db.execute_write.call_args_list[1][0][1][0] is None
+        email.send_operator_alert.assert_called_once()
+
+    def test_fk_violation_on_minor_records_unlinked_without_operator_alert(
+        self, logger, mock_db
+    ):
+        mock_db.execute_write.side_effect = [
+            sqlite3.IntegrityError("FOREIGN KEY constraint failed"),
+            None,  # unlinked re-INSERT succeeds
+        ]
+        with patch("core.email_service.email_service") as email:
+            ok, iid = logger.log_incident(
+                profile_id="x",
+                incident_type="pii",
+                severity="minor",
+                content_snippet="...",
+                send_alert=True,
+            )
+        assert ok is True and iid is None
+        assert mock_db.execute_write.call_count == 2
+        email.send_operator_alert.assert_not_called()
+
+    def test_generic_db_error_on_critical_takes_outer_handler_and_alerts(
+        self, logger, mock_db
+    ):
+        # A non-integrity failure cannot be re-inserted unlinked: it takes the
+        # outer handler, the row is not persisted, and the operator is paged.
+        mock_db.execute_write.side_effect = sqlite3.Error("database is locked")
         with patch("core.email_service.email_service") as email:
             ok, iid = logger.log_incident(
                 profile_id="safety_required_x",
@@ -1361,8 +1414,8 @@ class TestCrisisIncidentNotDropped:
         assert ok is False and iid is None
         email.send_operator_alert.assert_called_once()
 
-    def test_db_failure_on_minor_does_not_alert(self, logger, mock_db):
-        mock_db.execute_write.side_effect = sqlite3.Error("FK")
+    def test_generic_db_error_on_minor_does_not_alert(self, logger, mock_db):
+        mock_db.execute_write.side_effect = sqlite3.Error("database is locked")
         with patch("core.email_service.email_service") as email:
             ok, _ = logger.log_incident(
                 profile_id="x",
@@ -1375,7 +1428,7 @@ class TestCrisisIncidentNotDropped:
         email.send_operator_alert.assert_not_called()
 
     def test_operator_alert_failure_does_not_raise(self, logger, mock_db):
-        mock_db.execute_write.side_effect = sqlite3.Error("FK")
+        mock_db.execute_write.side_effect = sqlite3.Error("database is locked")
         with patch("core.email_service.email_service") as email:
             email.send_operator_alert.side_effect = RuntimeError("smtp down")
             ok, _ = logger.log_incident(  # must not raise despite alert failure

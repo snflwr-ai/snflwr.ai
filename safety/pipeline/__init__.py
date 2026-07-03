@@ -423,8 +423,16 @@ class SafetyPipeline:
                     if verdict is not None:
                         self._log_block(verdict, text, profile_id)
                         return verdict
-                    # cleared by classifier — the deterministic match was a false
-                    # positive on educational content; continue to later stages.
+                    # verdict is None: the classifier either CLEARED it, or could
+                    # not adjudicate (unavailable + SAFETY_CLASSIFIER_REQUIRED=false
+                    # skip). A deferral must never DROP a deterministic match — if
+                    # the classifier could not adjudicate, honor the deterministic
+                    # block (fail closed).
+                    if not self._classifier.available:
+                        self._log_block(det_result, text, profile_id)
+                        return det_result
+                    # cleared by an available classifier — the deterministic match
+                    # was a false positive on educational content; continue.
                 else:
                     self._log_block(det_result, text, profile_id)
                     return det_result
@@ -438,6 +446,7 @@ class SafetyPipeline:
                 # false positives from the LLM (e.g. "math" flagged as "meth").
                 if (
                     result.severity != Severity.CRITICAL
+                    and result.category in self._pattern_matcher._DEFERRABLE_CATS
                     and self._pattern_matcher._has_educational_context(text.lower())
                 ):
                     logger.info(
@@ -527,7 +536,14 @@ class SafetyPipeline:
                     classifier_ran = True
                     if verdict is not None:
                         return self._finalize_output_block(verdict, text, profile_id)
-                    # cleared — fall through to age gate
+                    # verdict is None: the classifier either CLEARED it, or could
+                    # not adjudicate (unavailable + SAFETY_CLASSIFIER_REQUIRED=false
+                    # skip). A deferral must never DROP a deterministic match — if
+                    # the classifier could not adjudicate, honor the deterministic
+                    # block (fail closed). Mirrors check_input.
+                    if not self._classifier.available:
+                        return self._finalize_output_block(det_result, text, profile_id)
+                    # cleared by an available classifier — fall through to age gate
                 else:
                     return self._finalize_output_block(det_result, text, profile_id)
 

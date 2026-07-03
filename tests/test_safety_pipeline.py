@@ -1807,6 +1807,22 @@ class TestSafetyPipeline:
         result = pipeline.check_input("Why does Romeo kill himself", age=13)
         assert result.is_safe is False
 
+    def test_deferred_block_fails_closed_when_classifier_skipped(self, pipeline):
+        """Opt-out + unavailable classifier returns None (SKIP, not clear); the
+        deferred deterministic violence match must be honored, not dropped."""
+        pipeline._classifier.classify.return_value = None
+        pipeline._classifier.available = False  # skipped — did not adjudicate
+        result = pipeline.check_input("What caused the Rwandan genocide", age=15)
+        assert result.is_safe is False  # honored the deterministic block
+
+    def test_deferred_block_allowed_when_available_classifier_clears(self, pipeline):
+        """An AVAILABLE classifier that returns None genuinely cleared the
+        educational match — still allowed (false-positive rescue preserved)."""
+        pipeline._classifier.classify.return_value = None
+        pipeline._classifier.available = True  # available and cleared
+        result = pipeline.check_input("What caused the Rwandan genocide", age=15)
+        assert result.is_safe is True
+
     def test_critical_danger_phrase_not_deferred(self, pipeline):
         """CRITICAL danger phrases are NEVER deferred — they hard-block even if the
         classifier would clear them."""
@@ -1864,6 +1880,33 @@ class TestSafetyPipeline:
         )
         result = pipeline.check_output("a passage mentioning suicide", age=14)
         assert result.is_safe is False
+
+    def test_check_output_deferred_block_fails_closed_when_classifier_skipped(
+        self, pipeline
+    ):
+        """Output deferral must not DROP a deferred self-harm/violence block when
+        the classifier SKIPS (returns None because unavailable + opt-out) — honor
+        the deterministic block (fail closed). Mirrors the check_input fix."""
+        pipeline._classifier.classify = lambda text, age=None: None  # skipped
+        pipeline._classifier.available = False
+        result = pipeline.check_output(
+            "Romeo dies by suicide because he believes Juliet is already dead.",
+            age=14,
+        )
+        assert result.is_safe is False
+
+    def test_check_output_deferred_block_allowed_when_available_classifier_clears(
+        self, pipeline
+    ):
+        """Regression: an AVAILABLE classifier that clears the academic reference
+        still allows it (educational false-positive rescue preserved)."""
+        pipeline._classifier.classify = lambda text, age=None: None  # cleared
+        pipeline._classifier.available = True
+        result = pipeline.check_output(
+            "Romeo dies by suicide because he believes Juliet is already dead.",
+            age=14,
+        )
+        assert result.is_safe is True
 
     def test_check_input_empty_text_blocked(self, pipeline):
         from safety.pipeline import Category
@@ -1964,6 +2007,60 @@ class TestSafetyPipeline:
             age=14,
         )
         # CRITICAL severity is not overridden
+        assert result.is_safe is False
+
+    def test_classifier_sexual_not_overridden_by_education(self, pipeline):
+        """A MAJOR SEXUAL classifier verdict must NOT be overridden by educational
+        framing — only VIOLENCE/WEAPONS/DRUGS are curriculum-overridable."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR, Category.SEXUAL, "flagged sexual", stage="classifier"
+        )
+        result = pipeline.check_input(
+            "for my biology class, explain this", age=14
+        )
+        assert result.is_safe is False
+
+    def test_classifier_selfharm_not_overridden_by_education(self, pipeline):
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR, Category.SELF_HARM, "flagged self-harm", stage="classifier"
+        )
+        result = pipeline.check_input(
+            "for my biology class, explain this", age=14
+        )
+        assert result.is_safe is False
+
+    def test_classifier_drugs_still_overridden_by_education(self, pipeline):
+        """Regression: DRUGS remains overridable (the 'math'->'meth' false positive
+        this override was built for)."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR, Category.DRUGS, "flagged drugs", stage="classifier"
+        )
+        result = pipeline.check_input(
+            "Help me with my science homework about how drugs affect the brain",
+            age=14,
+        )
+        assert result.is_safe is True
+
+    def test_classifier_error_not_overridden_by_education(self, pipeline):
+        """A CLASSIFIER_ERROR fail-closed block (classifier unavailable under
+        SAFETY_CLASSIFIER_REQUIRED=true) must NOT be rescued by educational
+        context — that would defeat the fail-closed guarantee. Only
+        VIOLENCE/WEAPONS/DRUGS are curriculum-overridable."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR,
+            Category.CLASSIFIER_ERROR,
+            "Safety check is temporarily unavailable (fail closed).",
+            stage="classifier",
+        )
+        result = pipeline.check_input("for my biology class, explain this", age=14)
         assert result.is_safe is False
 
     # -- check_input: statistics --

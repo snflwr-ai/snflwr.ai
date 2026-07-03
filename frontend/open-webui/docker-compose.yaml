@@ -19,6 +19,11 @@ services:
       - 'BYPASS_MODEL_ACCESS_CONTROL=false'
       - 'WEBUI_AUTH=true'
       - 'DEFAULT_MODELS=snflwr.ai'
+      # OWUI 0.10 model access-control hides the tutor from non-admin students;
+      # the snflwr-api proxy is the enforcement point (per-student /api/tags
+      # filter + safety pipeline), so bypass OWUI's redundant gate — otherwise a
+      # student's model dropdown is EMPTY and they can't select the tutor.
+      - 'BYPASS_MODEL_ACCESS_CONTROL=true'
       # Lock down student accounts — chat only, no advanced controls
       - 'USER_PERMISSIONS_CHAT_CONTROLS=false'
       - 'USER_PERMISSIONS_CHAT_VALVES=false'

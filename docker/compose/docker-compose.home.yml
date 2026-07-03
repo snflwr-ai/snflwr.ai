@@ -139,6 +139,12 @@ services:
       - ENABLE_INITIAL_ADMIN_SIGNUP=true
       - DEFAULT_USER_ROLE=user
       - DEFAULT_MODELS=${OLLAMA_MODEL:-snflwr.ai}
+      # OWUI model access-control is redundant here and hides the tutor from
+      # non-admin students: the snflwr-api proxy is the enforcement point — it
+      # filters /api/tags per-student to only the snflwr.ai model AND runs the
+      # full safety pipeline. Without this, OWUI 0.10 double-gates base models
+      # and a student's model dropdown comes up EMPTY (can't select the tutor).
+      - BYPASS_MODEL_ACCESS_CONTROL=true
       # Lock down student accounts - chat only
       - USER_PERMISSIONS_CHAT_CONTROLS=false
       - USER_PERMISSIONS_CHAT_VALVES=false

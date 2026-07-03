@@ -431,3 +431,72 @@ class TestProductionDetection:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("API_WORKERS", None)
             assert cfg.is_production_like() is False
+
+
+# =========================================================================
+# Key Rotation — CREATED_AT provisioning
+# =========================================================================
+
+
+def test_setup_production_auth_lines_include_created_at():
+    """The auth .env lines include a parseable INTERNAL_API_KEY_CREATED_AT so the
+    key-rotation age check is not inert on the setup_production path."""
+    import importlib.util, re
+    from datetime import datetime
+    spec = importlib.util.spec_from_file_location(
+        "setup_production", "scripts/setup_production.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    lines = mod._auth_env_lines("j", "s", "c", "ikey", "w")
+    text = "\n".join(lines)
+    assert "INTERNAL_API_KEY=ikey" in text
+    m = re.search(r"^INTERNAL_API_KEY_CREATED_AT=(.+)$", text, re.M)
+    assert m, "CREATED_AT line missing"
+    datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))  # parseable
+
+
+def test_installer_create_env_file_includes_created_at(tmp_path, monkeypatch):
+    """installer/config.py create_env_file emits INTERNAL_API_KEY_CREATED_AT for
+    an enterprise (postgres) config."""
+    import importlib.util, re, sys, types
+    from datetime import datetime
+    from unittest.mock import MagicMock
+
+    # Stub out the installer package and installer.ui so the relative import
+    # from .ui works when the module is loaded stand-alone via importlib.
+    stub_installer = types.ModuleType("installer")
+    stub_ui = types.ModuleType("installer.ui")
+    stub_ui.print_info = MagicMock()
+    stub_ui.print_success = MagicMock()
+    stub_ui.print_warning = MagicMock()
+    stub_ui.print_error = MagicMock()
+    stub_installer.ui = stub_ui
+    sys.modules["installer"] = stub_installer
+    sys.modules["installer.ui"] = stub_ui
+
+    spec = importlib.util.spec_from_file_location(
+        "installer.config",
+        "installer/config.py",
+        submodule_search_locations=[],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    mod.__package__ = "installer"
+    spec.loader.exec_module(mod)
+
+    monkeypatch.chdir(tmp_path)  # create_env_file writes to ./.env by default
+    cfg = {
+        "DATABASE_TYPE": "postgresql", "INTERNAL_API_KEY": "ikey",
+        "WEBUI_SECRET_KEY": "w", "DB_ENCRYPTION_KEY": "d", "REDIS_PASSWORD": "r",
+        "JWT_SECRET_KEY": "j", "PARENT_DASHBOARD_PASSWORD": "p",
+        "POSTGRES_HOST": "h", "POSTGRES_PORT": "5432", "POSTGRES_USER": "u",
+        "POSTGRES_PASSWORD": "pw", "POSTGRES_DATABASE": "db",
+        "BASE_URL": "http://x", "ENVIRONMENT": "production",
+        "GRAFANA_PASSWORD": "gp", "KIBANA_ENCRYPTION_KEY": "kek",
+        "FLOWER_USER": "fu", "FLOWER_PASSWORD": "fp",
+    }
+    mod.create_env_file(cfg)
+    text = (tmp_path / ".env").read_text()
+    m = re.search(r"^INTERNAL_API_KEY_CREATED_AT=(.+)$", text, re.M)
+    assert m, "CREATED_AT line missing"
+    datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))

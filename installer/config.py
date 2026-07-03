@@ -2,6 +2,7 @@
 
 import os
 import platform
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .ui import print_error, print_info, print_success, print_warning
@@ -63,6 +64,11 @@ def create_env_file(config):
         if config["DATABASE_TYPE"] == "postgresql":
             f.write("\n# Enterprise Service Credentials\n")
             f.write(f"INTERNAL_API_KEY={config['INTERNAL_API_KEY']}\n")
+            f.write(
+                "INTERNAL_API_KEY_CREATED_AT="
+                + datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                + "\n"
+            )
             f.write(f"WEBUI_SECRET_KEY={config['WEBUI_SECRET_KEY']}\n")
             f.write(f"DB_ENCRYPTION_KEY={config['DB_ENCRYPTION_KEY']}\n")
             f.write(f"\n# Redis (required for enterprise rate limiting & caching)\n")

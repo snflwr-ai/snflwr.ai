@@ -389,3 +389,22 @@ class TestDotenvFallback:
                 assert os.getenv("TEST_SNFLWR_PROD_VAR") == "from_production"
             finally:
                 os.environ.pop("TEST_SNFLWR_PROD_VAR", None)
+
+
+def test_created_at_parses_z_suffix(monkeypatch):
+    """A `...Z` UTC value must parse on all Python versions (3.10 fromisoformat
+    rejects a bare Z) and must not crash config import."""
+    import importlib
+    monkeypatch.setenv("INTERNAL_API_KEY_CREATED_AT", "2026-07-02T20:00:00Z")
+    import config as _cfg
+    importlib.reload(_cfg)
+    assert _cfg.INTERNAL_API_KEY_CREATED_AT is not None
+    assert _cfg.INTERNAL_API_KEY_CREATED_AT.tzinfo is not None
+
+
+def test_created_at_malformed_is_none_not_crash(monkeypatch):
+    import importlib
+    monkeypatch.setenv("INTERNAL_API_KEY_CREATED_AT", "not-a-date")
+    import config as _cfg
+    importlib.reload(_cfg)  # must not raise
+    assert _cfg.INTERNAL_API_KEY_CREATED_AT is None

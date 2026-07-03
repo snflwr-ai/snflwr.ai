@@ -893,6 +893,17 @@ INTERNAL_API_KEY_MAX_AGE_DAYS: int = int(
 )
 
 _created_at_raw = os.getenv("INTERNAL_API_KEY_CREATED_AT")
-INTERNAL_API_KEY_CREATED_AT: Optional[datetime] = (
-    datetime.fromisoformat(_created_at_raw) if _created_at_raw else None
-)
+INTERNAL_API_KEY_CREATED_AT: Optional[datetime] = None
+if _created_at_raw:
+    try:
+        # Normalize a trailing "Z": datetime.fromisoformat rejects it on
+        # Python 3.10. Fail safe — a malformed value disables the age-check
+        # warning rather than crashing config import.
+        INTERNAL_API_KEY_CREATED_AT = datetime.fromisoformat(
+            _created_at_raw.replace("Z", "+00:00")
+        )
+    except ValueError:
+        warnings.warn(
+            "INTERNAL_API_KEY_CREATED_AT is not valid ISO-8601; ignoring "
+            "(key-rotation age warnings disabled)."
+        )

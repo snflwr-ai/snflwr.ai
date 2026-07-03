@@ -446,6 +446,7 @@ class SafetyPipeline:
                 # false positives from the LLM (e.g. "math" flagged as "meth").
                 if (
                     result.severity != Severity.CRITICAL
+                    and result.category in self._pattern_matcher._DEFERRABLE_CATS
                     and self._pattern_matcher._has_educational_context(text.lower())
                 ):
                     logger.info(

@@ -1982,6 +1982,44 @@ class TestSafetyPipeline:
         # CRITICAL severity is not overridden
         assert result.is_safe is False
 
+    def test_classifier_sexual_not_overridden_by_education(self, pipeline):
+        """A MAJOR SEXUAL classifier verdict must NOT be overridden by educational
+        framing — only VIOLENCE/WEAPONS/DRUGS are curriculum-overridable."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR, Category.SEXUAL, "flagged sexual", stage="classifier"
+        )
+        result = pipeline.check_input(
+            "for my biology class, explain this", age=14
+        )
+        assert result.is_safe is False
+
+    def test_classifier_selfharm_not_overridden_by_education(self, pipeline):
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR, Category.SELF_HARM, "flagged self-harm", stage="classifier"
+        )
+        result = pipeline.check_input(
+            "for my biology class, explain this", age=14
+        )
+        assert result.is_safe is False
+
+    def test_classifier_drugs_still_overridden_by_education(self, pipeline):
+        """Regression: DRUGS remains overridable (the 'math'->'meth' false positive
+        this override was built for)."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR, Category.DRUGS, "flagged drugs", stage="classifier"
+        )
+        result = pipeline.check_input(
+            "Help me with my science homework about how drugs affect the brain",
+            age=14,
+        )
+        assert result.is_safe is True
+
     # -- check_input: statistics --
 
     def test_check_input_increments_inputs_checked(self, pipeline):

@@ -1858,3 +1858,54 @@ class TestThinkingStrip:
         assert parsed[0]["message"]["content"] == ""
         assert "thinking" not in parsed[0]["message"]
         assert parsed[1]["message"]["content"] == "Eight legs."
+
+
+class TestStreamAwareBlock:
+    """Open WebUI >=0.10 requests /api/chat with stream=True and won't render a
+    non-streaming JSONResponse block (blank bubble). Early gate/block responses
+    must be NDJSON when a stream was requested, JSON otherwise."""
+
+    def _post_blocked(self, stream: bool):
+        from fastapi.testclient import TestClient
+
+        client = TestClient(_make_app())
+        block = _block_result("That topic isn't allowed.")
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = block
+
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-block", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-block"),
+            ),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+        ):
+            return client.post(
+                "/api/chat",
+                json=_chat_body(stream=stream, text="How do I hurt someone?"),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-block",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+    def test_block_is_ndjson_when_stream_requested(self):
+        resp = self._post_blocked(stream=True)
+        assert resp.status_code == 200
+        assert "application/x-ndjson" in resp.headers.get("content-type", "")
+        # Body must be a parseable NDJSON line carrying the block message as
+        # message.content — this is what OWUI 0.10 actually renders.
+        lines = [ln for ln in resp.content.split(b"\n") if ln.strip()]
+        obj = json.loads(lines[0])
+        assert obj["message"]["content"] == "That topic isn't allowed."
+        assert obj["done"] is True
+
+    def test_block_is_json_when_stream_not_requested(self):
+        resp = self._post_blocked(stream=False)
+        assert resp.status_code == 200
+        assert "application/json" in resp.headers.get("content-type", "")
+        assert resp.json()["message"]["content"] == "That topic isn't allowed."

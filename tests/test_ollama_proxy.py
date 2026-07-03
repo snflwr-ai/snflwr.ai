@@ -514,7 +514,9 @@ class TestAdminStreamAndConnectError:
         from fastapi.testclient import TestClient
         import api.routes.ollama_proxy as proxy_mod
 
-        client = TestClient(_make_app())
+        # Genuine admin session (not the internal-service relay) so the admin
+        # bypass branch is actually reached and the stream helper is invoked.
+        client = TestClient(_make_app(user_id="admin-s"))
 
         async def _fake_stream(body, headers):
             from fastapi.responses import StreamingResponse
@@ -525,11 +527,10 @@ class TestAdminStreamAndConnectError:
 
             return StreamingResponse(gen(), media_type="application/x-ndjson")
 
-        with (
-            patch.object(
-                proxy_mod, "_stream_chat_from_ollama", side_effect=_fake_stream
-            ),
-        ):
+        with patch(
+            "api.routes.ollama_proxy.transport._stream_chat_from_ollama",
+            side_effect=_fake_stream,
+        ) as mock_stream:
             resp = client.post(
                 "/api/chat",
                 json=_chat_body(stream=True),
@@ -541,6 +542,7 @@ class TestAdminStreamAndConnectError:
 
         assert resp.status_code == 200
         assert b"done" in resp.content
+        mock_stream.assert_called_once()  # the admin streaming branch was exercised
 
     def test_admin_non_stream_connect_error_returns_503(self):
         from fastapi.testclient import TestClient

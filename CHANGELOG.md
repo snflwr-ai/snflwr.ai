@@ -79,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source of schema truth.
 
 ### Fixed
+- **Tutor model is pinned server-side for students** (hardening, #190) — the
+  Ollama proxy trusted the client-supplied `model` on `/api/chat`, so a crafted
+  student request naming the raw backbone could run it unpinned (losing the
+  tutor Modelfile's system/safety prompt). Student turns now coerce any model
+  outside `_student_visible_models()` to the tutor before forwarding. The safety
+  pipeline already ran regardless, so this closes a defense-in-depth gap.
 - **Students can see the tutor model on Open WebUI ≥0.10** — 0.10 applies model
   access-control to base Ollama models, so a non-admin student's model dropdown
   came up **empty** and they couldn't start a chat at all. Set

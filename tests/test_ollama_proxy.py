@@ -1909,3 +1909,72 @@ class TestStreamAwareBlock:
         assert resp.status_code == 200
         assert "application/json" in resp.headers.get("content-type", "")
         assert resp.json()["message"]["content"] == "That topic isn't allowed."
+
+
+class TestStudentModelPin:
+    """A student may only run the tutor model (#190). A crafted /api/chat naming
+    a non-tutor model is coerced to the tutor before forwarding; a legitimate
+    tutor-model request is left unchanged. Admins bypass earlier in the handler."""
+
+    def _forward_model_for(self, requested_model):
+        from fastapi.testclient import TestClient
+
+        client = TestClient(_make_app())
+        safe = _safe_result()
+        mp = MagicMock()
+        mp.check_input.return_value = safe
+        mp.check_output.return_value = safe
+        captured = {}
+
+        async def fake_forward(method, path, content=b"{}", headers=None):
+            captured["model"] = json.loads(content).get("model")
+            return httpx.Response(
+                200,
+                json={
+                    "model": captured["model"],
+                    "message": {"role": "assistant", "content": "hi"},
+                    "done": True,
+                },
+            )
+
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-pin", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-pin"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new=AsyncMock(side_effect=fake_forward),
+            ),
+            patch("safety.pipeline.safety_pipeline", mp),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json=_chat_body(model=requested_model, stream=False),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-pin",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        return resp, captured.get("model")
+
+    def test_non_tutor_model_is_coerced_to_tutor(self):
+        from api.routes.ollama_proxy.access import _student_visible_models
+
+        resp, forwarded = self._forward_model_for("gemma4:e4b")
+        assert resp.status_code == 200
+        # The raw backbone request never reaches Ollama as-is.
+        assert forwarded != "gemma4:e4b"
+        assert forwarded in _student_visible_models()
+
+    def test_tutor_model_request_is_preserved(self):
+        from api.routes.ollama_proxy.access import _student_visible_models
+
+        tutor = sorted(_student_visible_models())[0]
+        resp, forwarded = self._forward_model_for(tutor)
+        assert resp.status_code == 200
+        assert forwarded == tutor

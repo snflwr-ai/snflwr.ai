@@ -104,6 +104,21 @@ async def proxy_chat(
             media_type=upstream.headers.get("content-type", "application/json"),
         )
 
+    # ---- Pin the model (students only; admins returned above) ----
+    # A student may only ever run the tutor model. The OWUI dropdown already
+    # lists only snflwr.ai (the proxy filters /api/tags), but /api/chat otherwise
+    # trusts the request body — a crafted call naming the raw backbone would run
+    # it unpinned, losing the tutor Modelfile's system/safety prompt (#190). The
+    # safety pipeline still runs regardless, so this is defense-in-depth. Coerce
+    # any out-of-set model to the default tutor before any downstream use.
+    if model not in access._student_visible_models():
+        pinned = system_config.OLLAMA_DEFAULT_MODEL or "snflwr.ai"
+        if model:
+            logger.info("Pinned student model %r -> %r", model, pinned)
+        model = pinned
+        body["model"] = pinned
+        body_bytes = _json.dumps(body).encode()
+
     # ---- Admission control (students only; admins returned above) ----
     _reason = (
         guards.rate_limit_block_reason(user_id)

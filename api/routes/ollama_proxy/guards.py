@@ -37,9 +37,11 @@ def rate_limit_block_reason(user_id: Optional[str]) -> Optional[str]:
     return None
 
 
-def circuit_block_reason() -> Optional[str]:
+def circuit_block_reason(user_id: Optional[str]) -> Optional[str]:
     if ollama_circuit.is_open:
-        logger.warning("Ollama circuit OPEN — fast-failing student chat for %s", None)
+        logger.warning(
+            "Ollama circuit OPEN — fast-failing student chat for %s", user_id
+        )
         busy_msg = (
             "The tutor is taking a quick break and will be back in a moment. "
             "Please try again shortly. 🌻"

@@ -117,7 +117,7 @@ async def proxy_chat(
     # ---- Admission control (students only; admins returned above) ----
     _reason = (
         guards.rate_limit_block_reason(user_id)
-        or guards.circuit_block_reason()
+        or guards.circuit_block_reason(user_id)
         or guards.license_block_reason(user_id)
     )
     if _reason:

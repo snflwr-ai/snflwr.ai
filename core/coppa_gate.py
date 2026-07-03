@@ -3,7 +3,7 @@
 An under-13 profile may only tutor once parental consent has been verified
 (``coppa_verified=1``, set per-profile by ``/api/parental-consent/verify`` — never
 at profile creation). This gate is enforced on EVERY path that can reach the
-tutor model: the Open WebUI / Ollama proxy (``api/routes/ollama_proxy.py``) and
+tutor model: the Open WebUI / Ollama proxy (``api/routes/ollama_proxy/``) and
 the native chat route (``api/routes/chat.py``). Keeping it in one place stops the
 two paths from drifting (the native route previously lacked the gate).
 

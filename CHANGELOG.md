@@ -79,6 +79,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source of schema truth.
 
 ### Fixed
+- **Students can see the tutor model on Open WebUI ≥0.10** — 0.10 applies model
+  access-control to base Ollama models, so a non-admin student's model dropdown
+  came up **empty** and they couldn't start a chat at all. Set
+  `BYPASS_MODEL_ACCESS_CONTROL=true` across the compose files: the `snflwr-api`
+  proxy is the real enforcement point (it filters `/api/tags` per-student to
+  only `snflwr.ai` and runs the full safety pipeline), so OWUI's gate is
+  redundant here and only broke student access. Verified end-to-end: a
+  provisioned student now selects the tutor, gets a rendered answer, and a
+  blocked prompt shows the safe-redirect message.
 - **Block / safe-redirect messages render on Open WebUI ≥0.10** — early gate
   responses (rate-limit, circuit, license, no-profile, COPPA, input-safety) were
   returned as a non-streaming `JSONResponse`, which OWUI 0.10 won't render when a

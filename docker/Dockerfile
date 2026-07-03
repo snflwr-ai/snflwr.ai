@@ -57,6 +57,7 @@ COPY --chown=snflwr:snflwr core/ ./core/
 COPY --chown=snflwr:snflwr safety/ ./safety/
 COPY --chown=snflwr:snflwr models/ ./models/
 COPY --chown=snflwr:snflwr storage/ ./storage/
+COPY --chown=snflwr:snflwr database/ ./database/
 COPY --chown=snflwr:snflwr utils/ ./utils/
 COPY --chown=snflwr:snflwr tasks/ ./tasks/
 COPY --chown=snflwr:snflwr config.py .

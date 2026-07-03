@@ -294,3 +294,81 @@ class TestSetUserContext:
         from utils.sentry_config import set_user_context
         set_user_context("user-456")
         mock_sdk.set_user.assert_called_once_with({"id": "user-456"})
+
+
+# ---------------------------------------------------------------------------
+# _scrub_freetext / frame-local suppression (new PII tests)
+# ---------------------------------------------------------------------------
+
+
+def test_before_send_redacts_exception_value_keeps_type(monkeypatch):
+    from utils.sentry_config import before_send_filter
+    monkeypatch.setenv("SENTRY_SEND_IN_DEV", "true")  # don't drop in dev
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "type": "ValueError",
+                    "value": "bad email alice@example.com for profile 123",
+                    "stacktrace": {"frames": [
+                        {"filename": "core/x.py", "function": "f", "lineno": 5,
+                         "vars": {"child_email": "alice@example.com"}}
+                    ]},
+                }
+            ]
+        }
+    }
+    out = before_send_filter(event, {})
+    v = out["exception"]["values"][0]
+    assert v["value"] == "[Filtered]"          # message redacted
+    assert v["type"] == "ValueError"           # type preserved (PII-free)
+    frame = v["stacktrace"]["frames"][0]
+    assert frame["filename"] == "core/x.py"    # frame location preserved
+    assert frame["function"] == "f"
+
+
+def test_before_send_redacts_top_level_message_and_logentry(monkeypatch):
+    from utils.sentry_config import before_send_filter
+    monkeypatch.setenv("SENTRY_SEND_IN_DEV", "true")
+    event = {
+        "message": "profile 123 birthdate 2015-01-01",
+        "logentry": {"message": "user %s failed", "formatted": "user bob@x.com failed"},
+    }
+    out = before_send_filter(event, {})
+    assert out["message"] == "[Filtered]"
+    assert out["logentry"]["message"] == "[Filtered]"
+    assert out["logentry"]["formatted"] == "[Filtered]"
+
+
+def test_before_send_redacts_breadcrumb_messages(monkeypatch):
+    from utils.sentry_config import before_send_filter
+    monkeypatch.setenv("SENTRY_SEND_IN_DEV", "true")
+    event = {"breadcrumbs": {"values": [
+        {"category": "auth", "message": "login for alice@example.com"},
+    ]}}
+    out = before_send_filter(event, {})
+    assert out["breadcrumbs"]["values"][0]["message"] == "[Filtered]"
+
+
+def test_before_send_survives_malformed_exception_shape(monkeypatch):
+    from utils.sentry_config import before_send_filter
+    monkeypatch.setenv("SENTRY_SEND_IN_DEV", "true")
+    # exception is a string, not the expected dict — must not raise, must not leak
+    event = {"exception": "weird", "message": "pii here"}
+    out = before_send_filter(event, {})  # no exception raised
+    assert out is not None
+    assert out.get("message") == "[Filtered]"
+
+
+def test_init_sentry_disables_local_variables(monkeypatch):
+    import utils.sentry_config as sc
+    captured = {}
+
+    def fake_init(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(sc.sentry_sdk, "init", fake_init)
+    monkeypatch.setenv("SENTRY_DSN", "https://x@example.com/1")
+    monkeypatch.setenv("SENTRY_ENABLED", "true")
+    sc.init_sentry()
+    assert captured.get("include_local_variables") is False

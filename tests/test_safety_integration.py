@@ -87,7 +87,10 @@ def pipeline():
         # Make the semantic classifier always return None (pass-through)
         instance = MockClassifier.return_value
         instance.classify.return_value = None
-        instance.is_available.return_value = False
+        # The pipeline reads the `available` PROPERTY (not is_available()); set it
+        # explicitly so a deferred-block test in this file fails closed rather than
+        # silently passing through on MagicMock auto-truthiness.
+        instance.available = False
         p = SafetyPipeline()
         yield p
 

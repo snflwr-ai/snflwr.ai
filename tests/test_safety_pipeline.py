@@ -1881,6 +1881,33 @@ class TestSafetyPipeline:
         result = pipeline.check_output("a passage mentioning suicide", age=14)
         assert result.is_safe is False
 
+    def test_check_output_deferred_block_fails_closed_when_classifier_skipped(
+        self, pipeline
+    ):
+        """Output deferral must not DROP a deferred self-harm/violence block when
+        the classifier SKIPS (returns None because unavailable + opt-out) — honor
+        the deterministic block (fail closed). Mirrors the check_input fix."""
+        pipeline._classifier.classify = lambda text, age=None: None  # skipped
+        pipeline._classifier.available = False
+        result = pipeline.check_output(
+            "Romeo dies by suicide because he believes Juliet is already dead.",
+            age=14,
+        )
+        assert result.is_safe is False
+
+    def test_check_output_deferred_block_allowed_when_available_classifier_clears(
+        self, pipeline
+    ):
+        """Regression: an AVAILABLE classifier that clears the academic reference
+        still allows it (educational false-positive rescue preserved)."""
+        pipeline._classifier.classify = lambda text, age=None: None  # cleared
+        pipeline._classifier.available = True
+        result = pipeline.check_output(
+            "Romeo dies by suicide because he believes Juliet is already dead.",
+            age=14,
+        )
+        assert result.is_safe is True
+
     def test_check_input_empty_text_blocked(self, pipeline):
         from safety.pipeline import Category
 

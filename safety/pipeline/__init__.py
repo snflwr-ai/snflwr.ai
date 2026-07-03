@@ -536,7 +536,14 @@ class SafetyPipeline:
                     classifier_ran = True
                     if verdict is not None:
                         return self._finalize_output_block(verdict, text, profile_id)
-                    # cleared — fall through to age gate
+                    # verdict is None: the classifier either CLEARED it, or could
+                    # not adjudicate (unavailable + SAFETY_CLASSIFIER_REQUIRED=false
+                    # skip). A deferral must never DROP a deterministic match — if
+                    # the classifier could not adjudicate, honor the deterministic
+                    # block (fail closed). Mirrors check_input.
+                    if not self._classifier.available:
+                        return self._finalize_output_block(det_result, text, profile_id)
+                    # cleared by an available classifier — fall through to age gate
                 else:
                     return self._finalize_output_block(det_result, text, profile_id)
 

@@ -423,8 +423,16 @@ class SafetyPipeline:
                     if verdict is not None:
                         self._log_block(verdict, text, profile_id)
                         return verdict
-                    # cleared by classifier — the deterministic match was a false
-                    # positive on educational content; continue to later stages.
+                    # verdict is None: the classifier either CLEARED it, or could
+                    # not adjudicate (unavailable + SAFETY_CLASSIFIER_REQUIRED=false
+                    # skip). A deferral must never DROP a deterministic match — if
+                    # the classifier could not adjudicate, honor the deterministic
+                    # block (fail closed).
+                    if not self._classifier.available:
+                        self._log_block(det_result, text, profile_id)
+                        return det_result
+                    # cleared by an available classifier — the deterministic match
+                    # was a false positive on educational content; continue.
                 else:
                     self._log_block(det_result, text, profile_id)
                     return det_result

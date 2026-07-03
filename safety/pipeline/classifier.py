@@ -197,6 +197,18 @@ class _SemanticClassifier:
             except Exception as exc:
                 logger.debug("Classifier probe error: %s", exc)
 
+    @property
+    def available(self) -> bool:
+        """True if the classifier can actually adjudicate a request right now.
+
+        Mirrors the guard in classify() (``self._available and self._client is
+        not None``). When False, classify() either fails closed
+        (SAFETY_CLASSIFIER_REQUIRED=true / under-13) or SKIPS (opt-out,
+        teen/unknown) returning None; callers that defer to the classifier use
+        this to tell 'cleared' apart from 'skipped'.
+        """
+        return self._available and self._client is not None
+
     # --------------------------------------------------------------------- #
 
     def classify(self, text: str, age: Optional[int] = None) -> Optional[SafetyResult]:

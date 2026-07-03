@@ -1807,6 +1807,22 @@ class TestSafetyPipeline:
         result = pipeline.check_input("Why does Romeo kill himself", age=13)
         assert result.is_safe is False
 
+    def test_deferred_block_fails_closed_when_classifier_skipped(self, pipeline):
+        """Opt-out + unavailable classifier returns None (SKIP, not clear); the
+        deferred deterministic violence match must be honored, not dropped."""
+        pipeline._classifier.classify.return_value = None
+        pipeline._classifier.available = False  # skipped — did not adjudicate
+        result = pipeline.check_input("What caused the Rwandan genocide", age=15)
+        assert result.is_safe is False  # honored the deterministic block
+
+    def test_deferred_block_allowed_when_available_classifier_clears(self, pipeline):
+        """An AVAILABLE classifier that returns None genuinely cleared the
+        educational match — still allowed (false-positive rescue preserved)."""
+        pipeline._classifier.classify.return_value = None
+        pipeline._classifier.available = True  # available and cleared
+        result = pipeline.check_input("What caused the Rwandan genocide", age=15)
+        assert result.is_safe is True
+
     def test_critical_danger_phrase_not_deferred(self, pipeline):
         """CRITICAL danger phrases are NEVER deferred — they hard-block even if the
         classifier would clear them."""

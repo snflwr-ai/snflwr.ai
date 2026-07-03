@@ -100,6 +100,25 @@ def monitor(mock_db):
         yield m
 
 
+def _healthy_classifier():
+    """Patch the global pipeline's classifier to a healthy (available + clearing)
+    state — a normal deployment where a genuinely-safe message passes Stage 4.
+
+    Without this, the test env's classifier is unavailable, and with the default
+    SAFETY_CLASSIFIER_REQUIRED=true the pipeline fails closed (CLASSIFIER_ERROR)
+    for EVERY message — correct behavior, but a "safe message" lifecycle test
+    means to exercise the message actually clearing the pipeline. (The educational
+    override no longer masks CLASSIFIER_ERROR, so a healthy classifier is required
+    to represent a genuine pass.)
+    """
+    from safety.pipeline import safety_pipeline
+
+    clf = MagicMock()
+    clf.classify.return_value = None  # clears (safe)
+    clf.available = True
+    return patch.object(safety_pipeline, "_classifier", clf)
+
+
 # =========================================================================
 # 1. Conversation Encryption Flow
 # =========================================================================
@@ -382,12 +401,13 @@ class TestMonitorIncidentFlow:
         """Safe messages should not generate incidents."""
         monitor.start_monitoring("child-1", "parent-1")
 
-        result = monitor.monitor_message(
-            profile_id="child-1",
-            message="What is photosynthesis?",
-            age=12,
-            session_id="sess-1",
-        )
+        with _healthy_classifier():
+            result = monitor.monitor_message(
+                profile_id="child-1",
+                message="What is photosynthesis?",
+                age=12,
+                session_id="sess-1",
+            )
 
         # Safe messages return None (no alert)
         assert result is None
@@ -584,12 +604,13 @@ class TestFullPipeline:
 
         # 3. Monitor
         monitor.start_monitoring("child-1", "parent-1")
-        monitor_result = monitor.monitor_message(
-            profile_id="child-1",
-            message=message,
-            age=10,
-            session_id="sess-1",
-        )
+        with _healthy_classifier():
+            monitor_result = monitor.monitor_message(
+                profile_id="child-1",
+                message=message,
+                age=10,
+                session_id="sess-1",
+            )
         assert monitor_result is None
 
     def test_full_flow_unsafe_message_lifecycle(

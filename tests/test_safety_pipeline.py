@@ -2020,6 +2020,22 @@ class TestSafetyPipeline:
         )
         assert result.is_safe is True
 
+    def test_classifier_error_not_overridden_by_education(self, pipeline):
+        """A CLASSIFIER_ERROR fail-closed block (classifier unavailable under
+        SAFETY_CLASSIFIER_REQUIRED=true) must NOT be rescued by educational
+        context — that would defeat the fail-closed guarantee. Only
+        VIOLENCE/WEAPONS/DRUGS are curriculum-overridable."""
+        from safety.pipeline import _block, Severity, Category
+
+        pipeline._classifier.classify.return_value = _block(
+            Severity.MAJOR,
+            Category.CLASSIFIER_ERROR,
+            "Safety check is temporarily unavailable (fail closed).",
+            stage="classifier",
+        )
+        result = pipeline.check_input("for my biology class, explain this", age=14)
+        assert result.is_safe is False
+
     # -- check_input: statistics --
 
     def test_check_input_increments_inputs_checked(self, pipeline):

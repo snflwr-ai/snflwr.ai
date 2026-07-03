@@ -13,10 +13,9 @@ mocking SQLCIPHER_AVAILABLE.
 """
 
 import os
-import sqlite3
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -26,29 +25,60 @@ def tmp_db():
     d = tempfile.mkdtemp()
     yield Path(d) / "test_encrypted.db"
     import shutil
+
     shutil.rmtree(d, ignore_errors=True)
 
 
 LONG_KEY = "a" * 32 + "b" * 32  # 64-char key (well above minimum)
 
 
+@pytest.fixture
+def tmp_encrypted_adapter(tmp_path):
+    """EncryptedSQLiteAdapter in fallback (non-SQLCipher) mode for PRAGMA testing."""
+    with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
+        from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
+        adapter = EncryptedSQLiteAdapter(
+            tmp_path / "enc.db",
+            encryption_key=LONG_KEY,
+            require_encryption=False,
+        )
+        yield adapter
+        adapter.close()
+
+
+# ==========================================================================
+# WAL + busy_timeout
+# ==========================================================================
+
+
+class TestWALAndBusyTimeout:
+    def test_encrypted_adapter_sets_wal_and_busy_timeout(self, tmp_encrypted_adapter):
+        conn = tmp_encrypted_adapter.connect()
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+
+
 # ==========================================================================
 # Init — Key Validation
 # ==========================================================================
+
 
 class TestEncryptedAdapterInit:
 
     def test_no_key_raises(self, tmp_db):
         with patch.dict(os.environ, {}, clear=True):
-            os.environ.pop('DB_ENCRYPTION_KEY', None)
+            os.environ.pop("DB_ENCRYPTION_KEY", None)
             with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
                 from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
                 with pytest.raises(ValueError, match="encryption key not provided"):
                     EncryptedSQLiteAdapter(tmp_db, encryption_key=None)
 
     def test_short_key_warns(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             # Short key (< 32) should warn but not raise in dev mode
             adapter = EncryptedSQLiteAdapter(
                 tmp_db, encryption_key="short-key-20chars!!", require_encryption=False
@@ -56,9 +86,10 @@ class TestEncryptedAdapterInit:
             assert adapter.encryption_key == "short-key-20chars!!"
 
     def test_key_from_env(self, tmp_db):
-        with patch.dict(os.environ, {'DB_ENCRYPTION_KEY': LONG_KEY}):
+        with patch.dict(os.environ, {"DB_ENCRYPTION_KEY": LONG_KEY}):
             with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
                 from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
                 adapter = EncryptedSQLiteAdapter(
                     tmp_db, encryption_key=None, require_encryption=False
                 )
@@ -69,11 +100,13 @@ class TestEncryptedAdapterInit:
 # SQLCipher Not Available
 # ==========================================================================
 
+
 class TestSqlcipherUnavailable:
 
     def test_dev_mode_allows_unencrypted(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             adapter = EncryptedSQLiteAdapter(
                 tmp_db, encryption_key=LONG_KEY, require_encryption=False
             )
@@ -82,6 +115,7 @@ class TestSqlcipherUnavailable:
     def test_production_mode_raises(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             with pytest.raises(RuntimeError, match="FERPA"):
                 EncryptedSQLiteAdapter(
                     tmp_db, encryption_key=LONG_KEY, require_encryption=True
@@ -89,15 +123,17 @@ class TestSqlcipherUnavailable:
 
     def test_auto_detect_production(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
-            with patch.dict(os.environ, {'ENVIRONMENT': 'production'}):
+            with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
                 from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
                 with pytest.raises(RuntimeError, match="FERPA"):
                     EncryptedSQLiteAdapter(tmp_db, encryption_key=LONG_KEY)
 
     def test_auto_detect_development(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
-            with patch.dict(os.environ, {'ENVIRONMENT': 'development'}):
+            with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
                 from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
                 # Should not raise in development
                 adapter = EncryptedSQLiteAdapter(tmp_db, encryption_key=LONG_KEY)
                 assert adapter.require_encryption is False
@@ -105,6 +141,7 @@ class TestSqlcipherUnavailable:
     def test_connect_falls_back_to_sqlite(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             adapter = EncryptedSQLiteAdapter(
                 tmp_db, encryption_key=LONG_KEY, require_encryption=False
             )
@@ -124,12 +161,14 @@ class TestSqlcipherUnavailable:
 # Encryption Info
 # ==========================================================================
 
+
 class TestEncryptionInfo:
 
     def test_info_when_encrypted(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", True):
             # Don't actually connect — just check info
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             adapter = EncryptedSQLiteAdapter.__new__(EncryptedSQLiteAdapter)
             adapter.is_encrypted = True
             adapter.kdf_iter = 256000
@@ -142,6 +181,7 @@ class TestEncryptionInfo:
     def test_info_when_not_encrypted(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             adapter = EncryptedSQLiteAdapter(
                 tmp_db, encryption_key=LONG_KEY, require_encryption=False
             )
@@ -152,6 +192,7 @@ class TestEncryptionInfo:
     def test_is_database_encrypted(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             adapter = EncryptedSQLiteAdapter(
                 tmp_db, encryption_key=LONG_KEY, require_encryption=False
             )
@@ -162,18 +203,24 @@ class TestEncryptionInfo:
 # Helper Functions
 # ==========================================================================
 
+
 class TestHelperFunctions:
 
     def test_create_encrypted_database(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import create_encrypted_database
+
             adapter = create_encrypted_database(tmp_db, encryption_key=LONG_KEY)
             assert adapter.connection is not None
             adapter.close()
 
     def test_test_encryption_key_valid(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
-            from storage.encrypted_db_adapter import create_encrypted_database, test_encryption_key
+            from storage.encrypted_db_adapter import (
+                create_encrypted_database,
+                test_encryption_key,
+            )
+
             # Create the database first
             adapter = create_encrypted_database(tmp_db, encryption_key=LONG_KEY)
             adapter.close()
@@ -184,6 +231,7 @@ class TestHelperFunctions:
     def test_test_encryption_key_invalid(self, tmp_db):
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import test_encryption_key
+
             # Non-existent DB with bogus key should still work in non-encrypted mode
             result = test_encryption_key(tmp_db, LONG_KEY)
             assert result is True  # SQLite fallback always "works"
@@ -192,6 +240,7 @@ class TestHelperFunctions:
 # ==========================================================================
 # Connect with SQLCipher available (mocked)
 # ==========================================================================
+
 
 class TestConnectWithSqlcipher:
 
@@ -203,14 +252,16 @@ class TestConnectWithSqlcipher:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", True), \
-             patch("storage.encrypted_db_adapter.sqlcipher", mock_sqlcipher, create=True):
+        with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", True), patch(
+            "storage.encrypted_db_adapter.sqlcipher", mock_sqlcipher, create=True
+        ):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             adapter = EncryptedSQLiteAdapter(
                 tmp_db, encryption_key=LONG_KEY, require_encryption=False
             )
             adapter.is_encrypted = True
-            conn = adapter.connect()
+            adapter.connect()
             # Should have called sqlcipher.connect
             mock_sqlcipher.connect.assert_called_once()
             # Should have set encryption key
@@ -222,10 +273,15 @@ class TestConnectWithSqlcipher:
             mock_sqlcipher = MagicMock()
             mock_conn = MagicMock()
             mock_sqlcipher.connect.return_value = mock_conn
-            with patch("storage.encrypted_db_adapter.sqlcipher", mock_sqlcipher, create=True):
+            with patch(
+                "storage.encrypted_db_adapter.sqlcipher", mock_sqlcipher, create=True
+            ):
                 from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
                 adapter = EncryptedSQLiteAdapter(
-                    tmp_db, encryption_key=LONG_KEY + ";DROP TABLE", require_encryption=False
+                    tmp_db,
+                    encryption_key=LONG_KEY + ";DROP TABLE",
+                    require_encryption=False,
                 )
                 adapter.is_encrypted = True
                 with pytest.raises(ValueError, match="invalid characters"):
@@ -235,6 +291,7 @@ class TestConnectWithSqlcipher:
         """Invalid kdf_iter should be rejected."""
         with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", False):
             from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
             adapter = EncryptedSQLiteAdapter(
                 tmp_db, encryption_key=LONG_KEY, require_encryption=False
             )
@@ -246,7 +303,8 @@ class TestConnectWithSqlcipher:
             mock_conn = MagicMock()
             mock_sqlcipher.connect.return_value = mock_conn
 
-            with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", True), \
-                 patch("storage.encrypted_db_adapter.sqlcipher", mock_sqlcipher, create=True):
+            with patch("storage.encrypted_db_adapter.SQLCIPHER_AVAILABLE", True), patch(
+                "storage.encrypted_db_adapter.sqlcipher", mock_sqlcipher, create=True
+            ):
                 with pytest.raises(ValueError, match="Invalid kdf_iter"):
                     adapter.connect()

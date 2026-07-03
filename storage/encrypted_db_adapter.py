@@ -170,6 +170,12 @@ class EncryptedSQLiteAdapter(SQLiteAdapter):
                     "PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512"
                 )
 
+                # WAL + busy_timeout must come after PRAGMA key (SQLCipher
+                # requirement). Set explicitly here so the encrypted path gets
+                # the same concurrency settings as the plain adapter.
+                self.connection.execute("PRAGMA journal_mode = WAL")
+                self.connection.execute("PRAGMA busy_timeout = 5000")
+
                 logger.info(
                     f"Encrypted database connection established: {self.db_path}"
                 )
@@ -199,6 +205,7 @@ class EncryptedSQLiteAdapter(SQLiteAdapter):
             self.connection.execute("PRAGMA synchronous = NORMAL")
             self.connection.execute("PRAGMA cache_size = -20000")  # 20MB cache
             self.connection.execute("PRAGMA temp_store = MEMORY")
+            self.connection.execute("PRAGMA busy_timeout = 5000")  # 5s wait for locks
 
             # Verify encryption is working
             if SQLCIPHER_AVAILABLE:

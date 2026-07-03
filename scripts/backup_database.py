@@ -4,16 +4,16 @@ Database Backup Script for snflwr.ai
 Supports both SQLite and PostgreSQL databases with automatic rotation
 """
 
-import sys
-import os
-import re
-from pathlib import Path
-from datetime import datetime, timedelta, timezone
-import shutil
-import subprocess
 import gzip
 import json
+import os
+import re
+import shutil
+import subprocess
+import sys
 import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # A valid rclone remote target looks like `remote:path/segment`, e.g.
 # `b2:snflwr-backups-prod`. We pass it as an argv element (never through a
@@ -95,7 +95,7 @@ class DatabaseBackup:
         # Create backup directory
         self.backup_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Backup configuration:")
+        logger.info("Backup configuration:")
         logger.info(f"  Enabled: {self.backup_enabled}")
         logger.info(f"  Path: {self.backup_path}")
         logger.info(f"  Retention: {self.backup_retention_days} days")
@@ -125,6 +125,35 @@ class DatabaseBackup:
             if not db_path.exists():
                 logger.error(f"Database file not found: {db_path}")
                 return False, "Database file not found"
+
+            # WAL-safe: flush the -wal into the main DB before copying so
+            # committed-but-uncheckpointed writes are not silently lost.
+            # Encrypted path: open a keyed SQLCipher connection (plain
+            # sqlite3 cannot read an encrypted file). Unencrypted path:
+            # plain sqlite3. Best-effort — a checkpoint failure must never
+            # fail the backup.
+            try:
+                if system_config.DB_ENCRYPTION_ENABLED:
+                    from storage.encrypted_db_adapter import EncryptedSQLiteAdapter
+
+                    _adapter = EncryptedSQLiteAdapter(db_path=db_path)
+                    _ck_conn = _adapter.connect()
+                    try:
+                        _ck_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    finally:
+                        _adapter.close()
+                else:
+                    import sqlite3 as _sqlite3
+
+                    _ck = _sqlite3.connect(str(db_path))
+                    try:
+                        _ck.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    finally:
+                        _ck.close()
+            except Exception as _exc:
+                logger.warning(
+                    "WAL checkpoint before backup failed (non-fatal): %s", _exc
+                )
 
             # Copy the database file
             shutil.copy2(db_path, backup_file)

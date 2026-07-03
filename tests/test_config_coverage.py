@@ -13,19 +13,18 @@ Targets uncovered lines:
 """
 
 import os
-import warnings
 import tempfile
-import pytest
+import warnings
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
 
 from config import (
-    _SystemConfig,
     INSECURE_JWT_DEFAULTS,
-    MIN_JWT_SECRET_LENGTH,
     ProductionConfigValidator,
+    _SystemConfig,
 )
-
 
 _VALID_JWT = "a" * 64
 
@@ -332,7 +331,6 @@ class TestInternalAPIKeyAutoGeneration:
                 warnings.simplefilter("always")
                 # Force re-evaluation by importing the module-level logic
                 # We test the branch directly since the module is already loaded
-                import config
                 import secrets
                 # Simulate the branch
                 _internal_key_from_env = os.getenv("INTERNAL_API_KEY")
@@ -356,8 +354,6 @@ class TestInternalAPIKeyAutoGeneration:
 class TestDotenvFallback:
     def test_dotenv_import_error_handled(self):
         """When dotenv is not available, ImportError is silently caught."""
-        import importlib
-        import sys
         # This branch is already covered at module load if dotenv is absent.
         # We test the behavior by verifying config module loads without dotenv.
         # Since dotenv IS installed, we simulate the fallback by directly
@@ -389,3 +385,22 @@ class TestDotenvFallback:
                 assert os.getenv("TEST_SNFLWR_PROD_VAR") == "from_production"
             finally:
                 os.environ.pop("TEST_SNFLWR_PROD_VAR", None)
+
+
+def test_created_at_parses_z_suffix():
+    """A `...Z` UTC value must parse on all Python versions (3.10 fromisoformat
+    rejects a bare Z). Tests the parse helper directly — NO config reload (a
+    reload regenerates ephemeral secrets and pollutes other tests)."""
+    import config as _cfg
+    parsed = _cfg._parse_created_at("2026-07-02T20:00:00Z")
+    assert parsed is not None
+    assert parsed.tzinfo is not None
+
+
+def test_created_at_malformed_is_none_not_crash():
+    """A malformed value returns None (disables the age check) rather than
+    crashing config import."""
+    import config as _cfg
+    assert _cfg._parse_created_at("not-a-date") is None
+    assert _cfg._parse_created_at(None) is None
+    assert _cfg._parse_created_at("") is None

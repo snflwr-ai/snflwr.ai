@@ -95,6 +95,7 @@ def init_sentry():
         # Additional Options
         send_default_pii=False,  # COPPA compliance: Don't send PII
         attach_stacktrace=True,  # Always attach stack traces
+        include_local_variables=False,  # never capture frame locals (PII)
         max_breadcrumbs=50,  # Number of breadcrumbs to keep
         # Filtering
         before_send=before_send_filter,
@@ -108,6 +109,40 @@ def init_sentry():
         f"traces_sample_rate={traces_sample_rate}, "
         f"profiles_sample_rate={profiles_sample_rate}"
     )
+
+
+def _scrub_freetext(event):
+    """Wholesale-redact free-text that can carry children's PII (COPPA):
+    exception value strings, the top-level message/logentry, and breadcrumb
+    messages. Keeps exception ``type`` and stacktrace frames (file/func/line —
+    PII-free). Never raises: on any error, coarse-redact and return the event
+    rather than dropping it."""
+    FILTERED = "[Filtered]"
+    try:
+        exc = event.get("exception")
+        if isinstance(exc, dict):
+            for v in exc.get("values") or []:
+                if isinstance(v, dict) and v.get("value") is not None:
+                    v["value"] = FILTERED
+        if event.get("message") is not None:
+            event["message"] = FILTERED
+        logentry = event.get("logentry")
+        if isinstance(logentry, dict):
+            for k in ("message", "formatted"):
+                if logentry.get(k) is not None:
+                    logentry[k] = FILTERED
+        bc = event.get("breadcrumbs")
+        bc_values = bc.get("values") if isinstance(bc, dict) else bc
+        if isinstance(bc_values, list):
+            for crumb in bc_values:
+                if isinstance(crumb, dict) and crumb.get("message") is not None:
+                    crumb["message"] = FILTERED
+    except Exception:
+        # Never drop an event over a scrub bug; never leak a partially-scrubbed
+        # exception. Remove the exception node and blank the message.
+        event.pop("exception", None)
+        event["message"] = FILTERED
+    return event
 
 
 def before_send_filter(event, hint):
@@ -158,7 +193,7 @@ def before_send_filter(event, hint):
             if any(sensitive in key.lower() for sensitive in sensitive_keys):
                 event["extra"][key] = "[Filtered]"
 
-    return event
+    return _scrub_freetext(event)
 
 
 def before_breadcrumb_filter(crumb, hint):

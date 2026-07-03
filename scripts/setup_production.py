@@ -13,9 +13,10 @@ No technical knowledge required. Just answer the prompts.
 """
 
 import os
-import sys
 import secrets
 import string
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add parent directory so we can import project modules
@@ -148,6 +149,21 @@ def validate_domain(domain):
     if domain.startswith('http'):
         return "Just the domain name, without http:// (e.g. school.example.com)"
     return None
+
+
+def _auth_env_lines(jwt_secret, session_secret, csrf_secret, internal_api_key,
+                    webui_secret_key):
+    """Auth-secret .env lines, including the INTERNAL_API_KEY rotation timestamp
+    so the key-age check is active on this provisioning path."""
+    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return [
+        f"JWT_SECRET_KEY={jwt_secret}",
+        f"SESSION_SECRET={session_secret}",
+        f"CSRF_SECRET={csrf_secret}",
+        f"INTERNAL_API_KEY={internal_api_key}",
+        f"INTERNAL_API_KEY_CREATED_AT={created_at}",
+        f"WEBUI_SECRET_KEY={webui_secret_key}",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -328,13 +344,12 @@ def step_review_and_write(basics, database, email, redis):
     lines.append(f"ADMIN_EMAIL={basics['admin_email']}")
     lines.append("")
 
-    # Authentication
+    # Authentication (auto-generated — do not change unless rotating)
     lines.append("# Authentication (auto-generated — do not change unless rotating)")
-    lines.append(f"JWT_SECRET_KEY={jwt_secret}")
-    lines.append(f"SESSION_SECRET={session_secret}")
-    lines.append(f"CSRF_SECRET={csrf_secret}")
-    lines.append(f"INTERNAL_API_KEY={internal_api_key}")
-    lines.append(f"WEBUI_SECRET_KEY={webui_secret_key}")
+    lines.extend(
+        _auth_env_lines(jwt_secret, session_secret, csrf_secret,
+                        internal_api_key, webui_secret_key)
+    )
     lines.append("")
 
     # Database

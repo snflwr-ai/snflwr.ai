@@ -114,6 +114,40 @@ def _ollama_block_stream_bytes(model: str, block_message: str) -> bytes:
     return chunk.encode()
 
 
+def _strip_thinking_from_ndjson_line(line: bytes) -> bytes:
+    """Return one Ollama NDJSON *line* with any ``message.thinking`` removed.
+
+    The tutor is a reasoning model: each streamed message may carry a
+    ``thinking`` (chain-of-thought) field alongside ``content``. Two reasons to
+    drop it before it reaches Open WebUI:
+
+    1. **Rendering** — OWUI >=0.10 added a reasoning display that mishandles the
+       ``thinking`` field on our proxied stream and renders a *blank* answer.
+    2. **Safety** — the raw chain-of-thought is unvetted text (output-safety
+       only inspects ``content``) and must never be shown to a child.
+
+    The model keeps reasoning (tutoring quality is unchanged); only what the
+    client sees is trimmed. ``content`` is left byte-for-byte intact, so
+    ``_extract_text_from_ndjson_chunks`` and output vetting are unaffected.
+
+    Lines that don't parse, or that carry no ``thinking``, are returned exactly
+    as received — this never fails closed on *content*, only passes through
+    shape it doesn't recognise.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return line
+    try:
+        obj = _json.loads(stripped)
+    except (_json.JSONDecodeError, ValueError):
+        return line
+    msg = obj.get("message") if isinstance(obj, dict) else None
+    if not isinstance(msg, dict) or "thinking" not in msg:
+        return line
+    msg.pop("thinking", None)
+    return _json.dumps(obj).encode()
+
+
 def _first_checkpoint_ready(text: str) -> bool:
     """True once enough answer text has accumulated to run the first check_output:
     a sentence boundary (after a little content) or the char cap."""

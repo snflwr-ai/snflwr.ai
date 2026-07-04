@@ -168,7 +168,7 @@ database/migrations/add_privacy_policy_tracking.sql
 
 | Severity | Issue | Location |
 |----------|-------|----------|
-| RESOLVED | Open WebUI Docker tag now parameterized via `WEBUI_DOCKER_TAG` (reviewed default `v0.10.2`); guarded upgrader smoke-tests and rolls back | start_snflwr.sh:~637 |
+| RESOLVED | Open WebUI Docker tag now parameterized via `WEBUI_DOCKER_TAG` (reviewed default `v0.9.6`); guarded upgrader smoke-tests and rolls back | start_snflwr.sh:~637 |
 | MEDIUM | Ollama health check only verifies `/api/tags` responds, not that a model is loaded -- API may start before model ready | start_snflwr.sh:~192 |
 | LOW | No `.env` file validation before services start | start_snflwr.sh |
 

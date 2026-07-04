@@ -10,7 +10,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_DIR="$REPO_ROOT/frontend/open-webui"
 BUILD_DIR="$FRONTEND_DIR/build"
-OWUI_VERSION="v0.10.2"   # keep in sync with docker-compose.yaml WEBUI_DOCKER_TAG
+OWUI_VERSION="v0.9.6"   # keep in sync with docker-compose.yaml WEBUI_DOCKER_TAG
 
 cd "$FRONTEND_DIR"
 

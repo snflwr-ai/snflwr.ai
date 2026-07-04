@@ -1,6 +1,6 @@
 services:
   open-webui:
-    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.10.2}
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.9.6}
     container_name: open-webui
     network_mode: host
     # ports and extra_hosts are not used with network_mode: host —

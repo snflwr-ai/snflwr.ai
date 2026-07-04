@@ -7,7 +7,7 @@ non-prerelease release whose tag is plain semver (``vX.Y.Z``) — never an
 rc/beta/dev tag.
 
 CLI:
-    gh_latest_release.py open-webui/open-webui   ->  v0.10.2
+    gh_latest_release.py open-webui/open-webui   ->  v0.9.6
     gh_latest_release.py ollama/ollama           ->  v0.30.10
 
 Prints the resolved tag to stdout and exits 0, or writes an error to stderr
@@ -45,7 +45,7 @@ def pick_latest_stable(releases):
     """Return the highest stable release tag from a GitHub releases list.
 
     Drafts, prereleases, and non-semver tags are ignored. Returns the tag
-    string (e.g. ``v0.10.2``) or None if there are no stable releases.
+    string (e.g. ``v0.9.6``) or None if there are no stable releases.
     """
     best_version = None
     best_tag = None

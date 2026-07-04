@@ -52,19 +52,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Crisis escalation wired into the proxy path** students use — self-harm/major
   blocks now record a DB incident + parent alert (previously only on the
   unused `chat.py` route). Fail-safe.
-- Open WebUI pinned via `OWU_IMAGE_TAG` (v0.10.2), Ollama via `OLLAMA_IMAGE_TAG`
+- Open WebUI pinned via `OWU_IMAGE_TAG` (v0.9.6), Ollama via `OLLAMA_IMAGE_TAG`
   (0.30.10); `ENABLE_INITIAL_ADMIN_SIGNUP` for first-admin creation.
-- **Open WebUI upgraded 0.9.6 → 0.10.2 with new-surface lockdown** — 0.10
-  introduced team folder-sharing, per-user webhooks, automations, a calendar,
-  and a web/URL upload path. The compose env now explicitly denies every new
-  student-reachable surface (`USER_PERMISSIONS_CHAT_WEB_UPLOAD/IMPORT`,
+- **Open WebUI 0.10.x new-surface lockdown** — 0.10 introduced team
+  folder-sharing, per-user webhooks, automations, a calendar, and a web/URL
+  upload path. The compose env now explicitly denies every new student-reachable
+  surface (`USER_PERMISSIONS_CHAT_WEB_UPLOAD/IMPORT`,
   `FEATURES_DIRECT_TOOL_SERVERS/AUTOMATIONS/USER_WEBHOOKS/CALENDAR`,
   `FOLDERS_ALLOW_SHARING`, public-sharing perms) plus global kill-switches
   (`ENABLE_USER_WEBHOOKS/AUTOMATIONS/CALENDAR/NOTES/CHANNELS`) — set even where
-  the 0.10 default is already off, so an upstream default flip can't reopen them.
-  Upgrade runs through the guarded upgrader (snapshot webui.db → apply → smoke
-  test → auto-rollback); 0.10 ships DB migrations, so rollback restores the
-  pre-upgrade DB.
+  the 0.10 default is already off, so an upstream flip can't reopen them. Kept
+  for when 0.10 is adopted (see the revert note below).
+- **Reverted the OWUI pin 0.10.2 → 0.9.6.** The 0.10.2 upgrade was attempted and
+  fully wired (guarded upgrader, DB migrations, all fixes below), but OWUI 0.10's
+  UI **cannot live-render our tutor's streamed answer**: gemma4:e4b emits a
+  native `thinking` (reasoning) field, and 0.10's reasoning display leaves the
+  answer blank until a page reload (the reply is generated and saved correctly).
+  Proven not to be the proxy (direct-to-Ollama fails identically) and not
+  OWUI-universal (a plain non-reasoning model renders live on 0.10). 0.9.6
+  renders the reasoning stream fine. Re-adopt 0.10 once OWUI fixes its reasoning
+  renderer or the tutor moves to a non-reasoning backbone. All proxy fixes and
+  the lockdown are version-independent and stay.
 - `docs/architecture/REQUEST_FLOW_AND_SAFETY.md`, `docs/compliance/REQUIRED_DISCLOSURES.md`.
 
 ### Changed

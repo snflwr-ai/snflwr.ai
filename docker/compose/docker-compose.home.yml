@@ -128,6 +128,11 @@ services:
       # on the Ollama connection in this version.
       - OLLAMA_API_KEY=${INTERNAL_API_KEY}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      # No "new version available" nag — the OWUI version is a deliberate,
+      # safety-reviewed pin (managed via the guarded upgrader), not something a
+      # parent/student should be prompted to bump. Also avoids an outbound call
+      # to GitHub on every load.
+      - ENABLE_VERSION_UPDATE_CHECK=false
       # Forward user identity headers so the proxy can identify students
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}

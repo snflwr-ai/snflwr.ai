@@ -111,20 +111,22 @@ def provision_family(
                     e,
                 )
         try:
-            # Delete any child profiles created under this parent, then the
-            # parent account itself.
+            # Delete any child profiles created under this parent.
             db.execute_update(
                 "DELETE FROM child_profiles WHERE parent_id IN "
                 "(SELECT parent_id FROM accounts WHERE username = ?)",
                 (parent_username,),
             )
-            if parent_created:
+        except Exception as e:
+            logger.error("rollback: DB child_profiles cleanup failed: %s", e)
+        if parent_created:
+            try:
                 db.execute_update(
                     "DELETE FROM accounts WHERE username = ?",
                     (parent_username,),
                 )
-        except Exception as e:
-            logger.error("rollback: DB cleanup failed for family: %s", e)
+            except Exception as e:
+                logger.error("rollback: DB accounts cleanup failed: %s", e)
 
     try:
         # 1. Parent dashboard account (temp password; admin hands it off).
@@ -175,7 +177,9 @@ def provision_family(
 
             uid, cerr = owui_create(open_webui_url, owui_token, child.name, cemail, cpw)
             if not uid:
-                raise FamilyProvisioningError(f"OWUI login for {child.name!r}: {cerr}")
+                raise FamilyProvisioningError(
+                    f"OWUI login for {sanitize_log_value(child.name)!r}: {cerr}"
+                )
             created_owui_ids.append(uid)
 
             # calculate_age_from_birthdate raises ValueError on bad birthdate —

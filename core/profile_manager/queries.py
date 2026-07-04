@@ -104,6 +104,36 @@ class _ProfileQueryMixin:
             parental_consent_verified=bool(g("coppa_verified", 19)),
         )
 
+    def get_profile_by_owui_user_id(self, owui_user_id: str) -> Optional[ChildProfile]:
+        """Resolve the newest active child profile for an OWUI chat login.
+
+        Mirrors api/routes/system.py's resolver so the proxy and that route agree.
+        Returns None on miss or any DB error (caller fails closed).
+        """
+        if not owui_user_id:
+            return None
+        try:
+            rows = self.db.execute_query(
+                "SELECT profile_id FROM child_profiles "
+                "WHERE owui_user_id = ? AND is_active = 1 "
+                "ORDER BY created_at DESC LIMIT 1",
+                (owui_user_id,),
+            )
+        except DB_ERRORS as e:
+            logger.debug(
+                f"owui_user_id lookup failed for "
+                f"{sanitize_log_value(owui_user_id)!r} (non-critical): {e}"
+            )
+            return None
+        if not rows:
+            return None
+        row = rows[0]
+        try:
+            profile_id = row["profile_id"]
+        except (KeyError, IndexError, TypeError):
+            profile_id = row[0]
+        return self.get_profile(profile_id)
+
     def get_profiles_by_parent(self, parent_id: str) -> List[ChildProfile]:
         try:
             rows = self.db.execute_query(

@@ -50,3 +50,29 @@ def test_migration_is_idempotent():
     mod.up(cur, "sqlite")  # second run must not raise
     cols = [r[1] for r in cur.execute("PRAGMA table_info(accounts)")]
     assert cols.count("phone") == 1
+
+
+def test_postgresql_branch_executes_expected_sql():
+    """Postgres dialect path issues correct DDL without a real DB."""
+
+    class FakeCursor:
+        def __init__(self):
+            self.executed = []
+
+        def execute(self, sql, *args):
+            self.executed.append(sql)
+
+    fake = FakeCursor()
+    mod = _load_up()
+    mod.up(fake, "postgresql")
+
+    sql_block = "\n".join(fake.executed)
+    assert any(
+        "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS phone" in s
+        for s in fake.executed
+    ), f"ALTER TABLE phone statement missing; got:\n{sql_block}"
+    assert any(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_child_profiles_owui_user_id" in s
+        and "WHERE owui_user_id IS NOT NULL" in s
+        for s in fake.executed
+    ), f"CREATE UNIQUE INDEX statement missing or wrong; got:\n{sql_block}"

@@ -29,9 +29,10 @@ def _resolve_age(profile_id: Optional[str]) -> Optional[int]:
 
 
 async def _get_profile_for_user(user_id: Optional[str]) -> str:
-    """Look up the first child profile linked to *user_id*.
+    """Resolve the child profile for the OWUI chat login *user_id*.
 
-    Returns the profile_id string.  Fails closed: any error yields
+    Keys on child_profiles.owui_user_id (the child's chat identity), matching
+    api/routes/system.py. Fails closed: no match / any error yields
     ``"safety_required_<user_id>"`` so the safety pipeline still runs.
     """
     if user_id is None:
@@ -41,10 +42,10 @@ async def _get_profile_for_user(user_id: Optional[str]) -> str:
         from core.profile_manager import ProfileManager
 
         pm = ProfileManager(auth_manager.db)
-        profiles = pm.get_profiles_by_parent(user_id)
-        if profiles:
-            return profiles[0].profile_id
-        # No profiles found — still run safety with a synthetic profile id
+        profile = pm.get_profile_by_owui_user_id(user_id)
+        if profile is not None:
+            return profile.profile_id
+        # No matching active profile — fail closed
         return f"safety_required_{user_id}"
     except Exception as exc:
         logger.warning(

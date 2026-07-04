@@ -22,6 +22,7 @@ ACCOUNT_MIGRATION_COLUMNS = [
     "email_verified BOOLEAN DEFAULT FALSE",
     "deletion_requested_at TEXT",
     "owui_token TEXT",
+    "phone TEXT",
 ]
 
 PROFILE_MIGRATION_COLUMNS = [
@@ -53,7 +54,8 @@ def create_sqlite_tables(cursor):
                     email_notifications_enabled BOOLEAN DEFAULT TRUE,
                     email_verified BOOLEAN DEFAULT FALSE,
                     deletion_requested_at TEXT,
-                    owui_token TEXT
+                    owui_token TEXT,
+                    phone TEXT
                 )
             """)
 
@@ -81,6 +83,7 @@ def create_sqlite_tables(cursor):
                     parental_consent_method TEXT,
                     coppa_verified BOOLEAN DEFAULT FALSE,
                     age_verified_at TEXT,
+                    owui_user_id TEXT,
                     FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE CASCADE,
                     CONSTRAINT valid_age CHECK (age BETWEEN 5 AND 18),
                     CONSTRAINT valid_learning_level CHECK (learning_level IN ('beginner', 'adaptive', 'advanced'))
@@ -446,7 +449,8 @@ def create_postgres_tables(cursor):
                         email_notifications_enabled BOOLEAN DEFAULT TRUE,
                         email_verified BOOLEAN DEFAULT FALSE,
                         deletion_requested_at TEXT,
-                        owui_token TEXT
+                        owui_token TEXT,
+                        phone TEXT
                     )
                 """)
 
@@ -474,6 +478,7 @@ def create_postgres_tables(cursor):
                         parental_consent_method TEXT,
                         coppa_verified BOOLEAN DEFAULT FALSE,
                         age_verified_at TEXT,
+                        owui_user_id TEXT,
                         FOREIGN KEY (parent_id) REFERENCES accounts(parent_id) ON DELETE CASCADE,
                         CONSTRAINT valid_age CHECK (age BETWEEN 5 AND 18),
                         CONSTRAINT valid_learning_level CHECK (learning_level IN ('beginner', 'adaptive', 'advanced'))
@@ -803,6 +808,8 @@ def create_indexes(cursor, dialect):
         # Profiles
         "CREATE INDEX IF NOT EXISTS idx_profiles_parent ON child_profiles(parent_id)",
         "CREATE INDEX IF NOT EXISTS idx_profiles_active ON child_profiles(is_active)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_child_profiles_owui_user_id "
+        "ON child_profiles(owui_user_id) WHERE owui_user_id IS NOT NULL",
         # Sessions
         "CREATE INDEX IF NOT EXISTS idx_sessions_profile ON sessions(profile_id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at)",

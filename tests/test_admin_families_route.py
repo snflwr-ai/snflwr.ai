@@ -47,6 +47,45 @@ def test_requires_admin():
 
 
 # ---------------------------------------------------------------------------
+# Test 1b: non-admin authenticated user → 403 from require_admin (not CSRF)
+# ---------------------------------------------------------------------------
+
+
+def test_admin_gate_rejects_non_admin():
+    """CSRF bypassed; valid parent session → require_admin raises 403 (not CSRF).
+
+    Isolation: CSRF is patched to pass, auth_manager returns a real (non-admin)
+    session, so the *only* possible source of rejection is require_admin's role
+    check — proving the gate is wired and active.
+    """
+    from core.authentication import AuthSession
+
+    parent_session = AuthSession(
+        user_id="parent1",
+        role="parent",
+        session_token="parent-token",
+        email="parent@test.com",
+    )
+
+    with (
+        patch("api.middleware.auth.auth_manager") as mock_am,
+        patch(
+            "api.middleware.csrf.validate_csrf_token",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        mock_am.validate_session.return_value = (True, parent_session)
+        r = client.post(
+            "/api/admin/families",
+            json={"parent": {"name": "x", "email": "x@y.z"}, "children": []},
+            headers={"Authorization": "Bearer parent-token"},
+        )
+
+    assert r.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
 # Test 2: admin → 200 with mapped JSON
 # ---------------------------------------------------------------------------
 

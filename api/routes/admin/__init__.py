@@ -25,7 +25,7 @@ This package preserves the original public contract of the former
 
 from fastapi import APIRouter
 
-from . import accounts, activity, auth, misc, profiles
+from . import accounts, activity, auth, families, misc, profiles
 
 # Re-export the names that tests patch and that other modules may import,
 # so the public contract of the old single-file module is preserved.
@@ -84,4 +84,5 @@ router.include_router(auth.router)
 router.include_router(accounts.router)
 router.include_router(profiles.router)
 router.include_router(activity.router)
+router.include_router(families.router)
 router.include_router(misc.router)

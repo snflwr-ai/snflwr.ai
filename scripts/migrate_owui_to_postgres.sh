@@ -17,7 +17,7 @@ set -euo pipefail
 
 OWUI_CONTAINER="${OWUI_CONTAINER:-snflwr-frontend}"
 PG_CONTAINER="${POSTGRES_CONTAINER:-snflwr-db}"
-OWUI_IMAGE="${OWUI_IMAGE:-ghcr.io/open-webui/open-webui:v0.10.2}"
+OWUI_IMAGE="${OWUI_IMAGE:-ghcr.io/open-webui/open-webui:v0.9.6}"
 PG_SUPERUSER="${POSTGRES_USER:-snflwr}"
 PG_SUPERDB="${POSTGRES_DB:-snflwr_db}"
 FORCE=0

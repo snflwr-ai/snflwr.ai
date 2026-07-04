@@ -42,3 +42,15 @@ def test_lookup_returns_profile_by_owui_id(pm):
 
 def test_lookup_miss_returns_none(pm):
     assert pm.get_profile_by_owui_user_id("owui-does-not-exist") is None
+
+
+def test_lookup_inactive_profile_returns_none(pm):
+    """is_active = 0 rows must be invisible to the resolver."""
+    parent_id = _mk_parent("par-lk-3")
+    auth_manager.db.execute_update(
+        "INSERT OR IGNORE INTO child_profiles "
+        "(profile_id, parent_id, name, age, grade, owui_user_id, is_active, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)",
+        ("prof-owui-inactive", parent_id, "Zed", 10, "5", "owui-inactive-zed"),
+    )
+    assert pm.get_profile_by_owui_user_id("owui-inactive-zed") is None

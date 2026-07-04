@@ -40,6 +40,9 @@ services:
       - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
       - DEFAULT_USER_ROLE=user
       - DEFAULT_MODELS=snflwr.ai
+      # No "new version available" nag — the OWUI version is a deliberate,
+      # safety-reviewed pin managed via the guarded upgrader.
+      - ENABLE_VERSION_UPDATE_CHECK=false
       # OWUI model access-control is redundant here and hides the tutor from
       # non-admin students: the snflwr-api proxy is the enforcement point — it
       # filters /api/tags per-student to only the snflwr.ai model AND runs the

@@ -97,6 +97,7 @@ def provision_family(
     """
     pm = ProfileManager(db)
     created_owui_ids: List[str] = []
+    created_profile_ids: List[str] = []
     parent_created = False
     parent_username = parent.email
 
@@ -110,15 +111,19 @@ def provision_family(
                     sanitize_log_value(uid),
                     e,
                 )
-        try:
-            # Delete any child profiles created under this parent.
-            db.execute_update(
-                "DELETE FROM child_profiles WHERE parent_id IN "
-                "(SELECT parent_id FROM accounts WHERE username = ?)",
-                (parent_username,),
-            )
-        except Exception as e:
-            logger.error("rollback: DB child_profiles cleanup failed: %s", e)
+        # Delete only the child profiles that *this call* created, identified
+        # by their tracked profile_ids.  A subquery on username would resolve
+        # to the PRE-EXISTING parent on a duplicate-email attempt and wipe that
+        # family's children (C1 data-loss bug).
+        if created_profile_ids:
+            try:
+                placeholders = ",".join("?" * len(created_profile_ids))
+                db.execute_update(
+                    f"DELETE FROM child_profiles WHERE profile_id IN ({placeholders})",
+                    tuple(created_profile_ids),
+                )
+            except Exception as e:
+                logger.error("rollback: DB child_profiles cleanup failed: %s", e)
         if parent_created:
             try:
                 db.execute_update(
@@ -165,7 +170,9 @@ def provision_family(
         )
         used_usernames: set = set()
         for child in children:
-            base = f"{slug}-{_slug(child.name)}"
+            # Include a parent_id prefix so two families with the same parent
+            # slug and same child first name don't collide globally (I1 fix).
+            base = f"{slug}-{_slug(child.name)}-{parent_id[:8]}"
             uname = base
             i = 1
             while uname in used_usernames:
@@ -193,6 +200,7 @@ def provision_family(
                 owui_user_id=uid,
                 birthdate=child.birthdate,
             )
+            created_profile_ids.append(profile.profile_id)
             result.children.append(
                 ProvisionedChild(
                     name=child.name,

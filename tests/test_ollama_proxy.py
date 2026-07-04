@@ -400,7 +400,8 @@ class TestGetProfileForUser:
         mock_profile.profile_id = "child-001"
 
         mock_pm_instance = MagicMock()
-        mock_pm_instance.get_profiles_by_parent.return_value = [mock_profile]
+        # _get_profile_for_user calls get_profile_by_owui_user_id(user_id)
+        mock_pm_instance.get_profile_by_owui_user_id.return_value = mock_profile
 
         mock_auth = MagicMock()
         mock_auth.db = MagicMock()
@@ -427,7 +428,8 @@ class TestGetProfileForUser:
         from api.routes.ollama_proxy import _get_profile_for_user
 
         mock_pm = MagicMock()
-        mock_pm.get_profiles_by_parent.return_value = []
+        # No profile found for this owui_user_id
+        mock_pm.get_profile_by_owui_user_id.return_value = None
 
         mock_auth = MagicMock()
         mock_auth.db = MagicMock()

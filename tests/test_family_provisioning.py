@@ -20,6 +20,7 @@ _TEST_EMAILS = [
     "sarah-happy@example.com",
     "bad-rollback@example.com",
     "dup@example.com",
+    "existing@example.com",
 ]
 
 
@@ -110,7 +111,7 @@ def test_rollback_when_second_child_owui_fails():
     after_c = after["c"] if isinstance(after, dict) else after[0]
     assert after_c == before_c
     assert DB.execute_query(
-        "SELECT parent_id FROM accounts WHERE email = ?", ("bad-rollback@example.com",)
+        "SELECT parent_id FROM accounts WHERE username = ?", ("bad-rollback@example.com",)
     ) == []
 
 
@@ -126,3 +127,68 @@ def test_duplicate_parent_email_raises():
             ParentInput(name="Dup Two", email="dup@example.com"),
             [], owui_create=_fake_owui_create_ok([]), owui_delete=_fake_owui_delete([]),
         )
+
+
+def test_c1_rollback_does_not_delete_existing_family_children():
+    """C1 regression: a duplicate-email rollback must NOT delete an existing
+    family's child profiles.  The old code ran an unconditional subquery-based
+    DELETE that resolved to the pre-existing parent's parent_id on a duplicate
+    submission, wiping their children.  The fix tracks created_profile_ids and
+    deletes only those rows.
+    """
+    # Use unique owui-id prefixes to avoid UNIQUE-constraint collisions with
+    # other tests that also generate ids starting from index 0.
+    created1: list = []
+
+    def _owui_create_existing(url, token, name, email, password):
+        uid = f"c1reg-owui-{len(created1)}"
+        created1.append(uid)
+        return uid, None
+
+    # Phase 1: provision the first (legitimate) family with one child.
+    res1 = provision_family(
+        DB, "http://owui", "tok",
+        ParentInput(name="Existing Family", email="existing@example.com"),
+        [ChildInput(name="Alice", birthdate="2013-05-10", grade="5")],
+        owui_create=_owui_create_existing,
+        owui_delete=_fake_owui_delete([]),
+    )
+    assert res1.parent_id
+    assert len(res1.children) == 1
+    first_profile_id = res1.children[0].profile_id
+
+    # Verify the first child profile is actually in the DB.
+    rows = DB.execute_query(
+        "SELECT profile_id FROM child_profiles WHERE profile_id = ?",
+        (first_profile_id,),
+    )
+    assert rows, "First family's child profile must exist after provisioning"
+
+    # Phase 2: attempt a second provisioning with the same email — must fail.
+    created2: list = []
+
+    def _owui_create_dup(url, token, name, email, password):
+        uid = f"c1reg-dup-owui-{len(created2)}"
+        created2.append(uid)
+        return uid, None
+
+    with pytest.raises(FamilyProvisioningError):
+        provision_family(
+            DB, "http://owui", "tok",
+            ParentInput(name="Duplicate Family", email="existing@example.com"),
+            [ChildInput(name="Bob", birthdate="2015-03-15", grade="3")],
+            owui_create=_owui_create_dup,
+            owui_delete=_fake_owui_delete([]),
+        )
+
+    # Phase 3 (the regression assertion): the first family's child profile
+    # must still be present — the failed-provisioning rollback must not have
+    # deleted it.
+    rows = DB.execute_query(
+        "SELECT profile_id FROM child_profiles WHERE profile_id = ?",
+        (first_profile_id,),
+    )
+    assert rows, (
+        "C1 regression FAILED: rollback deleted the existing family's child "
+        "profile during a duplicate-email failure"
+    )

@@ -74,6 +74,7 @@ spec:
   # Ollama (:11434) is intentionally absent; see child-safety invariant above.
   # Label verified against enterprise/k8s/api-deployment.yaml: app: snflwr-api
   - to:
+    # Same namespace (snflwr-ai): a podSelector without namespaceSelector matches only this namespace
     - podSelector:
         matchLabels:
           app: snflwr-api
@@ -84,6 +85,7 @@ spec:
   # Label convention: cnpg.io/cluster: <Cluster metadata.name>.
   # Cluster name verified against enterprise/k8s/postgres-cnpg.yaml: snflwr-pg
   - to:
+    # Same namespace (snflwr-ai)
     - podSelector:
         matchLabels:
           cnpg.io/cluster: snflwr-pg
@@ -117,6 +119,7 @@ spec:
   # snflwr-api → open-webui: admin SSO callbacks and family-portal redirects.
   # Label verified against enterprise/k8s/api-deployment.yaml: app: snflwr-api
   - from:
+    # Same namespace (snflwr-ai)
     - podSelector:
         matchLabels:
           app: snflwr-api

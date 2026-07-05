@@ -413,10 +413,12 @@ Two secrets must exist **before** any OWUI manifest is applied:
 
 ```bash
 # 1. OWUI Postgres role password.
-#    The key MUST be named "password" (CNPG passwordSecret convention).
+#    Type MUST be kubernetes.io/basic-auth so CNPG can read the username field.
 #    This same secret is mounted into the OWUI Deployment for DATABASE_URL.
 kubectl create secret generic openwebui-db-app \
-  --from-literal=password='<strong-random-password>' \
+  --type=kubernetes.io/basic-auth \
+  --from-literal=username=openwebui \
+  --from-literal=password=<your-secure-password> \
   -n snflwr-ai
 
 # 2. Add OWUI keys to snflwr-secrets (or include when first creating it).

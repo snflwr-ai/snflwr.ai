@@ -40,6 +40,21 @@ spec:
       owner: snflwr
       secret:
         name: snflwr-pg-app
+  # Declarative role management — CNPG reconciles these without a superuser Job.
+  # Requires CNPG operator ≥1.20.  The openwebui role is intentionally non-superuser
+  # and has no access to snflwr_db; it owns only the 'openwebui' Database (see
+  # open-webui-db.yaml).  The password is read from the openwebui-db-app Secret,
+  # which is also mounted into the Open WebUI Deployment for DATABASE_URL.
+  managed:
+    roles:
+    - name: openwebui
+      ensure: present
+      login: true
+      superuser: false
+      createdb: false
+      createrole: false
+      passwordSecret:
+        name: openwebui-db-app
   # Continuous WAL archiving + base backups -> PITR. Fill in the bucket/endpoint
   # and create the snflwr-pg-backup-creds secret (ACCESS_KEY_ID/SECRET_ACCESS_KEY).
   backup:

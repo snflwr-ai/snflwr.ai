@@ -54,3 +54,8 @@ data:
   # REDIS_SENTINEL_ENABLED: "true"
   # REDIS_SENTINEL_MASTER: "mymaster"
   # REDIS_SENTINEL_HOSTS: "redis-sentinel:26379"
+
+  # Open WebUI (student chat UI) — internal is server-to-server (admin SSO / families),
+  # public is browser-facing. See open-webui-* manifests.
+  OPEN_WEBUI_INTERNAL_URL: "http://open-webui-service:8080"
+  OPEN_WEBUI_URL: "https://chat.snflwr.ai"

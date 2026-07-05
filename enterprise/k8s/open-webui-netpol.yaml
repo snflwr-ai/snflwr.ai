@@ -1,0 +1,127 @@
+# open-webui-netpol.yaml — Safety-critical NetworkPolicies for Open WebUI
+#
+# CHILD-SAFETY INVARIANT:
+#   All student LLM traffic MUST traverse the snflwr-api safety proxy.
+#   Open WebUI MUST NOT reach Ollama (:11434) directly.
+#
+#   The egress policy below selects only the open-webui pods and creates an
+#   explicit allowlist.  Once a NetworkPolicy selects a pod's egress, k8s
+#   enforces default-deny for all traffic not in the allowlist — omitting
+#   Ollama from the list is what enforces the safety invariant at the network
+#   layer (not just at the application layer).
+#
+# SCOPE:
+#   Both policies select only { app: open-webui } pods.  There is intentionally
+#   NO namespace-wide default-deny here; existing api/ollama/postgres/redis pods
+#   have no policies and must remain unrestricted.
+#
+# CONFIG-SEED JOB:
+#   The open-webui-config-seed Job (enterprise/k8s/open-webui-config-seed-job.yaml)
+#   is also labeled app: open-webui, so this egress policy applies to it too.
+#   That is correct and intended — the Job only needs Postgres :5432 + DNS,
+#   both of which are in the allowlist.
+#
+# KUBELET PROBE CAVEAT — READ BEFORE DEPLOYING:
+#   The Open WebUI Deployment has liveness and readiness probes (httpGet :8080).
+#   Kubelet probe traffic originates from the node IP, not from another pod, so it
+#   does NOT carry a pod identity that a podSelector or namespaceSelector can match.
+#   On CNIs that enforce ingress NetworkPolicy for kubelet probes (certain Calico
+#   configurations; NOT the default for Cilium or Calico with host-endpoint policy
+#   disabled), the ingress-from-ingress-nginx rule below will NOT pass probe traffic,
+#   and the OWUI pod will be stuck NotReady.
+#
+#   Standard operator fix: add an ipBlock rule for the node/kubelet CIDR.  That
+#   CIDR is cluster-specific and cannot be hardcoded here.  If you observe OWUI
+#   pods stuck in NotReady after applying this policy, add:
+#
+#     - from:
+#       - ipBlock:
+#           cidr: <node-cidr>/24   # e.g. 10.0.0.0/24 — your actual node subnet
+#       ports:
+#       - { protocol: TCP, port: 8080 }
+#
+#   to the ingress spec below.  Many CNIs pass kubelet probes implicitly; add
+#   the ipBlock only if you observe the symptom.
+#
+# INGRESS-NGINX NAMESPACE SELECTOR:
+#   The ingress rule uses the auto-label kubernetes.io/metadata.name applied to
+#   namespaces on k8s ≥1.21.  If your ingress controller runs in a namespace
+#   whose name differs from "ingress-nginx" (e.g. "nginx-ingress" or "kube-ingress"),
+#   update the namespaceSelector value in the ingress rule accordingly.
+
+---
+# EGRESS: open-webui may reach snflwr-api + CNPG Postgres + DNS only.
+# Ollama (:11434) is intentionally absent — omission = deny (safety invariant).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-webui-egress
+  namespace: snflwr-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: open-webui
+  policyTypes: ["Egress"]
+  egress:
+  # DNS — allow UDP+TCP/53 to any namespace so kube-dns resolves service names.
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - { protocol: UDP, port: 53 }
+    - { protocol: TCP, port: 53 }
+
+  # snflwr-api safety proxy — the ONLY allowed LLM back-end.
+  # Ollama (:11434) is intentionally absent; see child-safety invariant above.
+  # Label verified against enterprise/k8s/api-deployment.yaml: app: snflwr-api
+  - to:
+    # Same namespace (snflwr-ai): a podSelector without namespaceSelector matches only this namespace
+    - podSelector:
+        matchLabels:
+          app: snflwr-api
+    ports:
+    - { protocol: TCP, port: 8000 }
+
+  # CNPG Postgres cluster (Open WebUI's own DB).
+  # Label convention: cnpg.io/cluster: <Cluster metadata.name>.
+  # Cluster name verified against enterprise/k8s/postgres-cnpg.yaml: snflwr-pg
+  - to:
+    # Same namespace (snflwr-ai)
+    - podSelector:
+        matchLabels:
+          cnpg.io/cluster: snflwr-pg
+    ports:
+    - { protocol: TCP, port: 5432 }
+
+---
+# INGRESS: open-webui accepts connections from ingress-nginx and snflwr-api only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-webui-ingress
+  namespace: snflwr-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: open-webui
+  policyTypes: ["Ingress"]
+  ingress:
+  # Student traffic forwarded by the ingress-nginx controller.
+  # namespaceSelector uses the auto-label applied to namespaces on k8s ≥1.21.
+  # If your ingress controller namespace is not named "ingress-nginx", update
+  # the matchLabels value below (see header comment for details).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - { protocol: TCP, port: 8080 }
+
+  # snflwr-api → open-webui: admin SSO callbacks and family-portal redirects.
+  # Label verified against enterprise/k8s/api-deployment.yaml: app: snflwr-api
+  - from:
+    # Same namespace (snflwr-ai)
+    - podSelector:
+        matchLabels:
+          app: snflwr-api
+    ports:
+    - { protocol: TCP, port: 8080 }

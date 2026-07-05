@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: snflwr-ai
+  labels:
+    app: open-webui
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: open-webui
+  template:
+    metadata:
+      labels:
+        app: open-webui
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+      - name: open-webui
+        image: ghcr.io/open-webui/open-webui:v0.9.6
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          # NOT readOnlyRootFilesystem: OWUI writes beyond the data mount.
+        ports:
+        - containerPort: 8080
+        env:
+        # --- connectivity ---
+        - name: OLLAMA_BASE_URL
+          value: "http://snflwr-api-service:8000"     # SAFETY PROXY, never ollama-service:11434
+        - name: OLLAMA_API_KEY
+          valueFrom:
+            secretKeyRef: { name: snflwr-secrets, key: INTERNAL_API_KEY }
+        # OWUI_DB_PASSWORD MUST be declared before DATABASE_URL so k8s $(VAR) expansion works
+        - name: OWUI_DB_PASSWORD
+          valueFrom:
+            secretKeyRef: { name: openwebui-db-app, key: password }
+        - name: DATABASE_URL
+          value: "postgresql://openwebui:$(OWUI_DB_PASSWORD)@snflwr-pg-rw:5432/openwebui"
+        - name: WEBUI_SECRET_KEY
+          valueFrom:
+            secretKeyRef: { name: snflwr-secrets, key: WEBUI_SECRET_KEY }
+        # --- auth / signup ---
+        - { name: ENABLE_FORWARD_USER_INFO_HEADERS, value: "true" }
+        - { name: ENABLE_SIGNUP, value: "false" }
+        - { name: ENABLE_INITIAL_ADMIN_SIGNUP, value: "true" }
+        - { name: DEFAULT_USER_ROLE, value: "user" }
+        - { name: DEFAULT_MODELS, value: "snflwr.ai" }
+        - { name: BYPASS_MODEL_ACCESS_CONTROL, value: "true" }
+        - { name: ENABLE_VERSION_UPDATE_CHECK, value: "false" }
+        # --- child-safety lockdown (mirrors compose open-webui env) ---
+        - { name: USER_PERMISSIONS_CHAT_CONTROLS, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_VALVES, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_SYSTEM_PROMPT, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_PARAMS, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_FILE_UPLOAD, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_DELETE, value: "false" }
+        - { name: USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS, value: "false" }
+        - { name: USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS, value: "false" }
+        - { name: USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS, value: "false" }
+        - { name: USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_WEB_SEARCH, value: "true" }
+        - { name: USER_PERMISSIONS_FEATURES_IMAGE_GENERATION, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_CODE_INTERPRETER, value: "true" }
+        - { name: USER_PERMISSIONS_FEATURES_NOTES, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_CHANNELS, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_API_KEYS, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_MEMORIES, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_SHARE, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_EXPORT, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_MULTIPLE_MODELS, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_TEMPORARY, value: "false" }
+        - { name: ENABLE_COMMUNITY_SHARING, value: "false" }
+        - { name: ENABLE_EVALUATION_ARENA_MODELS, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_WEB_UPLOAD, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_IMPORT, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_AUTOMATIONS, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_USER_WEBHOOKS, value: "false" }
+        - { name: USER_PERMISSIONS_FEATURES_CALENDAR, value: "false" }
+        - { name: USER_PERMISSIONS_FOLDERS_ALLOW_SHARING, value: "false" }
+        - { name: USER_PERMISSIONS_CHAT_ALLOW_PUBLIC_SHARING, value: "false" }
+        - { name: USER_PERMISSIONS_CALENDAR_ALLOW_PUBLIC_SHARING, value: "false" }
+        - { name: ENABLE_USER_WEBHOOKS, value: "false" }
+        - { name: ENABLE_AUTOMATIONS, value: "false" }
+        - { name: ENABLE_CALENDAR, value: "false" }
+        - { name: ENABLE_NOTES, value: "false" }
+        - { name: ENABLE_CHANNELS, value: "false" }
+        - { name: ENABLE_TITLE_GENERATION, value: "true" }
+        - { name: ENABLE_FOLLOW_UP_GENERATION, value: "true" }
+        - { name: ENABLE_TAGS_GENERATION, value: "true" }
+        - { name: ENABLE_AUTOCOMPLETE_GENERATION, value: "false" }
+        - { name: SHOW_ADMIN_DETAILS, value: "false" }
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet: { path: /health, port: 8080 }
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /app/backend/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: open-webui-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui-service
+  namespace: snflwr-ai
+  labels:
+    app: open-webui
+spec:
+  selector:
+    app: open-webui
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP

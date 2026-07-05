@@ -27,6 +27,7 @@ metadata:
     component: config-seed
 spec:
   backoffLimit: 10
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
@@ -72,3 +73,9 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "200m"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

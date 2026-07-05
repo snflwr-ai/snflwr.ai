@@ -138,7 +138,8 @@ def _postgres_path(database_url: str, key: str, proxy_url: str) -> int:
             cur.execute("SELECT id, data FROM config ORDER BY id DESC LIMIT 1")
             row = cur.fetchone()
             break
-        except Exception:  # table not yet created or DB not ready
+        except (psycopg2.OperationalError, psycopg2.ProgrammingError) as e:  # table not yet created or DB not ready
+            print(f"Postgres connect/query error: {type(e).__name__}: {e}", file=sys.stderr)
             time.sleep(_RETRY_SLEEP)
     else:
         print("ERROR: Open WebUI config table never appeared (DB not ready)", file=sys.stderr)

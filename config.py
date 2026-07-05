@@ -243,6 +243,18 @@ class _SystemConfig:
     )
 
     @property
+    def OPEN_WEBUI_INTERNAL_URL(self) -> str:
+        """Internal (server-to-server) Open WebUI base URL for admin API calls.
+
+        Defaults to OPEN_WEBUI_URL so single-host deployments need no extra
+        config. Set OPEN_WEBUI_INTERNAL_URL to the container-network address
+        (e.g. http://snflwr-frontend:8080) when the api and OWUI run as
+        separate services. OPEN_WEBUI_URL remains the browser-facing value
+        (used by the thin-client manifest).
+        """
+        return os.getenv("OPEN_WEBUI_INTERNAL_URL", self.OPEN_WEBUI_URL)
+
+    @property
     def REDIS_URL(self) -> str:
         """Build Redis URL from components"""
         if self.REDIS_PASSWORD:

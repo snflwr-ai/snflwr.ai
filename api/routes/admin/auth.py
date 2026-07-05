@@ -40,7 +40,7 @@ async def admin_login(
     """
     import requests as http_client  # type: ignore[import-untyped]
 
-    open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+    open_webui_url = system_config.OPEN_WEBUI_INTERNAL_URL.rstrip("/")
 
     # --- Try Open WebUI auth first ---
     try:

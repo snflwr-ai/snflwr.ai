@@ -33,7 +33,7 @@ async def create_profile(
 
     try:
         db = _pkg().DatabaseManager()
-        open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+        open_webui_url = system_config.OPEN_WEBUI_INTERNAL_URL.rstrip("/")
 
         # Verify parent exists
         parent = db.execute_query(
@@ -119,7 +119,7 @@ async def bulk_import_students(
     admin accepts COPPA responsibility on behalf of the institution.
     """
     db = _pkg().DatabaseManager()
-    open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+    open_webui_url = system_config.OPEN_WEBUI_INTERNAL_URL.rstrip("/")
     age_manager = _pkg().AgeVerificationManager(db)
 
     created = []
@@ -388,7 +388,7 @@ async def delete_profile(
         )
         # Best-effort: remove the corresponding Open WebUI account too.
         if owui_user_id:
-            open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+            open_webui_url = system_config.OPEN_WEBUI_INTERNAL_URL.rstrip("/")
             owui_token = _pkg()._get_owui_token(session)
             _pkg()._owui_delete_user(open_webui_url, owui_token, owui_user_id)
         _pkg().audit_log("delete", "profile", profile_id, session)
@@ -429,7 +429,7 @@ async def batch_delete_profiles(
         )
         # Best-effort: remove corresponding Open WebUI accounts.
         if owui_ids:
-            open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+            open_webui_url = system_config.OPEN_WEBUI_INTERNAL_URL.rstrip("/")
             owui_token = _pkg()._get_owui_token(session)
             for oid in owui_ids:
                 _pkg()._owui_delete_user(open_webui_url, owui_token, oid)

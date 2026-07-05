@@ -78,7 +78,7 @@ async def create_family(
     _pkg = importlib.import_module("api.routes.admin")
     db = _pkg.DatabaseManager()
 
-    open_webui_url = system_config.OPEN_WEBUI_URL.rstrip("/")
+    open_webui_url = system_config.OPEN_WEBUI_INTERNAL_URL.rstrip("/")
     owui_token = _get_owui_token(session)
 
     logger.info(

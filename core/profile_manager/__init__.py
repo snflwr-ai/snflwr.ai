@@ -52,6 +52,8 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
         avatar: str = "default",
         learning_level: str = "adaptive",
         daily_time_limit_minutes: int = 120,
+        owui_user_id: Optional[str] = None,
+        birthdate: Optional[str] = None,
     ) -> ChildProfile:
         # Basic validation
         if not name or len(name) < 2:
@@ -95,7 +97,7 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
         # Insert into DB if possible
         try:
             self.db.execute_write(
-                "INSERT INTO child_profiles (profile_id, parent_id, name, age, grade, grade_level, tier, model_role, created_at, avatar, learning_level, daily_time_limit_minutes, is_active, total_sessions, total_questions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO child_profiles (profile_id, parent_id, name, age, grade, grade_level, tier, model_role, created_at, avatar, learning_level, daily_time_limit_minutes, is_active, total_sessions, total_questions, owui_user_id, birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     profile_id,
                     parent_id,
@@ -112,6 +114,8 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
                     1,
                     0,
                     0,
+                    owui_user_id,
+                    birthdate,
                 ),
             )
         except DB_ERRORS as e:

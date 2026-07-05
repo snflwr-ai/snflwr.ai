@@ -414,7 +414,14 @@ Two secrets must exist **before** any OWUI manifest is applied:
 ```bash
 # 1. OWUI Postgres role password.
 #    Type MUST be kubernetes.io/basic-auth so CNPG can read the username field.
-#    This same secret is mounted into the OWUI Deployment for DATABASE_URL.
+#    This same secret is mounted into the OWUI Deployment and the config-seed
+#    Job for DATABASE_URL.
+#
+#    PASSWORD MUST BE URL-SAFE: the value is interpolated directly into a
+#    Postgres connection URL (postgresql://openwebui:<password>@...).
+#    Characters such as @ : / # ? will break URL parsing.  Use only
+#    alphanumeric + hyphens/underscores, or generate with:
+#      python -c 'import secrets; print(secrets.token_urlsafe(32))'
 kubectl create secret generic openwebui-db-app \
   --type=kubernetes.io/basic-auth \
   --from-literal=username=openwebui \
@@ -462,6 +469,17 @@ kubectl apply -f enterprise/k8s/open-webui-netpol.yaml
 # 5. Run the config-seed Job; wait for it to complete.
 #    The Job seeds the proxy bearer key into OWUI's config table.
 #    backoffLimit=10 lets it retry while OWUI finishes booting.
+#
+#    PREREQUISITE — api image must be rebuilt from this branch:
+#    The config-seed Job runs the snflwr-ai/api image and calls
+#    scripts/owui_connect.py, which was added to the image via a
+#    Dockerfile change on this branch.  If you push the manifest
+#    without first rebuilding + re-pushing the api image, the Job
+#    pod will fail immediately with "python: can't open file
+#    'scripts/owui_connect.py': [Errno 2] No such file or directory".
+#    Rebuild and push before applying this Job:
+#      docker build -f docker/Dockerfile -t snflwr-ai/api:v0.1.0 .
+#      docker push snflwr-ai/api:v0.1.0
 kubectl apply -f enterprise/k8s/open-webui-config-seed-job.yaml
 kubectl wait --for=condition=complete job/open-webui-config-seed \
   -n snflwr-ai --timeout=300s

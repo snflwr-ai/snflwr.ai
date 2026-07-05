@@ -14,8 +14,10 @@
 #   This restart step is intentionally NOT automated here to avoid a restart
 #   loop — do it once after the Job shows Completed.
 #
-# RE-RUNS: The script is idempotent (rc=2 if already correct), so re-running
-#   the Job (e.g. after a key rotation) is safe.
+# RE-RUNS: Re-running the Job (e.g. after a key rotation) is safe.
+#   owui_connect.py exits 2 when the config is already correct; the shell
+#   wrapper below maps rc=2 → 0 so k8s sees a clean success instead of
+#   retrying 10× and marking the Job Failed.
 
 apiVersion: batch/v1
 kind: Job
@@ -43,7 +45,10 @@ spec:
       containers:
       - name: config-seed
         image: snflwr-ai/api:v0.1.0
-        command: ["python", "scripts/owui_connect.py"]
+        command: ["sh", "-c"]
+        args:
+        - |
+          python scripts/owui_connect.py; rc=$?; [ "$rc" -eq 2 ] && exit 0; exit "$rc"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

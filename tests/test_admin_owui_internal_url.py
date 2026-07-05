@@ -3,6 +3,8 @@ compose api services must export it."""
 
 import inspect
 
+import yaml
+
 from unittest.mock import patch, AsyncMock
 
 from fastapi.testclient import TestClient
@@ -71,3 +73,26 @@ def test_families_passes_internal_url_to_provision(monkeypatch):
     args, kwargs = mock_pf.call_args
     passed = kwargs.get("open_webui_url", args[1] if len(args) > 1 else None)
     assert passed == "http://sentinel:9999"
+
+
+def _api_env(path):
+    with open(path) as fh:
+        data = yaml.safe_load(fh)
+    env = data["services"]["snflwr-api"].get("environment", [])
+    return env if isinstance(env, list) else [f"{k}={v}" for k, v in env.items()]
+
+
+def test_home_compose_sets_internal_url():
+    env = _api_env("docker/compose/docker-compose.home.yml")
+    assert any(
+        e.startswith("OPEN_WEBUI_INTERNAL_URL=") and "snflwr-frontend:8080" in e
+        for e in env
+    )
+
+
+def test_legacy_compose_sets_internal_url():
+    env = _api_env("docker/compose/docker-compose.yml")
+    assert any(
+        e.startswith("OPEN_WEBUI_INTERNAL_URL=") and "snflwr-frontend:8080" in e
+        for e in env
+    )

@@ -126,6 +126,10 @@ services:
       - ENVIRONMENT=production
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_PROXY_TARGET=http://ollama:11434
+      # Internal (server-to-server) Open WebUI URL for admin API calls (SSO
+      # bridge, profile sync, family provisioning). OWUI is reachable on the
+      # compose network at snflwr-frontend:8080; OPEN_WEBUI_URL stays browser-facing.
+      - OPEN_WEBUI_INTERNAL_URL=${OPEN_WEBUI_INTERNAL_URL:-http://snflwr-frontend:8080}
       - DB_TYPE=postgresql
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

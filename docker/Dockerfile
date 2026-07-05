@@ -62,6 +62,7 @@ COPY --chown=snflwr:snflwr utils/ ./utils/
 COPY --chown=snflwr:snflwr tasks/ ./tasks/
 COPY --chown=snflwr:snflwr config.py .
 COPY --chown=snflwr:snflwr resource_detection.py .
+COPY --chown=snflwr:snflwr scripts/owui_connect.py ./scripts/owui_connect.py
 
 # Entrypoint (runs as root, fixes volume ownership, then drops to snflwr)
 COPY docker/entrypoint.sh /usr/local/bin/snflwr-entrypoint.sh

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Seed the snflwr-api proxy bearer credential into Open WebUI's database.
 
-Open WebUI (v0.8.x) does NOT read the Ollama connection key from an environment
-variable: its ``OLLAMA_API_CONFIGS`` PersistentConfig is hardcoded to a ``{}``
-default (config.py:1039) and only ever loads the key from ``webui.db``
+Open WebUI (v0.8.x / v0.9.x) does NOT read the Ollama connection key from an
+environment variable: its ``OLLAMA_API_CONFIGS`` PersistentConfig is hardcoded
+to a ``{}`` default (config.py:1039) and only ever loads the key from its DB
 (``ollama.api_configs."<idx>".key``) or the admin "Manage Connections" UI.
 
 So the ``OLLAMA_API_KEY`` env set on the open-webui service is silently ignored,
@@ -11,41 +11,82 @@ the connection sends no ``Authorization`` header, the proxy answers ``401``, and
 the model dropdown shows "No models available" (chat would 401 too).
 
 This script writes the key directly into the connection config so a *fresh*
-``open-webui-data`` volume can authenticate to the proxy. It is idempotent:
-re-running with the same key is a no-op.
+volume / Postgres database can authenticate to the proxy. It is idempotent:
+re-running with the same key is a no-op (rc=2).
 
-Run *inside* the open-webui container with the key on stdin::
+Dialect selection (set DATABASE_URL for k8s/Postgres; omit for home/sqlite):
+    DATABASE_URL=postgresql://...  ->  Postgres path (psycopg2, %s placeholders)
+    DATABASE_URL unset             ->  sqlite path (DB_PATH env or hardcoded default)
+
+Key input:
+    INTERNAL_API_KEY env var (k8s Secrets); falls back to stdin (home flow).
+
+Proxy URL:
+    SNFLWR_PROXY_URL env var; defaults to ``http://snflwr-api:39150``.
+
+Home (sqlite) run example::
 
     docker exec snflwr-api printenv INTERNAL_API_KEY \\
         | docker exec -i snflwr-frontend python /tmp/owui_connect.py
 
-Exit codes (consumed by deploy.sh):
+k8s run: set DATABASE_URL + INTERNAL_API_KEY env vars in the Job spec.
+
+Exit codes (consumed by deploy.sh / Job restartPolicy):
     0  config changed  -> caller should restart open-webui to apply
     2  already correct -> no restart needed
     1  error           -> caller should warn
 """
 import json
+import os
 import sqlite3
 import sys
 import time
 
 DB_PATH = "/app/backend/data/webui.db"
-PROXY_URL = "http://snflwr-api:39150"
+_DEFAULT_PROXY_URL = "http://snflwr-api:39150"
+_RETRY_COUNT = 15
+_RETRY_SLEEP = 2
 
 
-def main() -> int:
-    key = sys.stdin.read().strip()
+def _get_proxy_url() -> str:
+    return os.environ.get("SNFLWR_PROXY_URL") or _DEFAULT_PROXY_URL
+
+
+def _get_key() -> str:
+    """Read key from INTERNAL_API_KEY env var, falling back to stdin."""
+    key = os.environ.get("INTERNAL_API_KEY", "").strip()
     if not key:
-        print("ERROR: empty INTERNAL_API_KEY on stdin", file=sys.stderr)
-        return 1
+        key = sys.stdin.read().strip()
+    return key
 
-    # The `config` table is created by Alembic migrations during boot, but on a
-    # brand-new volume Open WebUI does not write a config *row* until the first
-    # admin signup or settings change — so we must INSERT one ourselves. Retry
-    # only covers the brief window before migrations finish creating the table.
+
+def _already_ok(ollama: dict, key: str, proxy_url: str) -> bool:
+    existing_key = (ollama.get("api_configs") or {}).get("0", {}).get("key")
+    return (
+        existing_key == key
+        and ollama.get("enable") is True
+        and proxy_url in (ollama.get("base_urls") or [])
+    )
+
+
+def _apply_ollama(config: dict, key: str, proxy_url: str) -> dict:
+    """Write the desired ollama block into the config dict (mutates in-place)."""
+    ollama = config.get("ollama") or {}
+    ollama["enable"] = True
+    ollama["base_urls"] = [proxy_url]
+    api_configs = ollama.get("api_configs") or {}
+    api_configs["0"] = {**api_configs.get("0", {}), "enable": True, "key": key}
+    ollama["api_configs"] = api_configs
+    config["ollama"] = ollama
+    return config
+
+
+def _sqlite_path(key: str, proxy_url: str) -> int:
+    """sqlite dialect — used for the home/compose stack (DATABASE_URL unset)."""
     con = None
     cur = None
-    for _ in range(15):
+    # Retry covers the brief window before OWUI's Alembic creates the config table.
+    for _ in range(_RETRY_COUNT):
         try:
             con = sqlite3.connect(DB_PATH)
             cur = con.cursor()
@@ -53,7 +94,7 @@ def main() -> int:
             row = cur.fetchone()
             break
         except sqlite3.OperationalError:
-            time.sleep(2)  # config table not migrated yet
+            time.sleep(_RETRY_SLEEP)  # config table not migrated yet
     else:
         print("ERROR: Open WebUI config table never appeared (DB not ready)", file=sys.stderr)
         return 1
@@ -62,28 +103,15 @@ def main() -> int:
         config_id, data = row
         config = json.loads(data)
     else:
-        # Fresh volume: no row yet. A partial config is valid — Open WebUI's
-        # PersistentConfig reads each key by path and falls back to code
-        # defaults for anything absent (config.py get_config_value).
+        # Fresh volume: no row yet — a partial config is valid; OWUI falls back
+        # to code defaults for absent keys (config.py get_config_value).
         config_id, config = None, {"version": 0, "ui": {}}
 
-    ollama = config.get("ollama") or {}
-    existing_key = (ollama.get("api_configs") or {}).get("0", {}).get("key")
-    already_ok = (
-        existing_key == key
-        and ollama.get("enable") is True
-        and PROXY_URL in (ollama.get("base_urls") or [])
-    )
-    if already_ok:
+    if _already_ok(config.get("ollama") or {}, key, proxy_url):
         print("Open WebUI already connected to proxy.")
         return 2
 
-    ollama["enable"] = True
-    ollama["base_urls"] = [PROXY_URL]
-    api_configs = ollama.get("api_configs") or {}
-    api_configs["0"] = {**api_configs.get("0", {}), "enable": True, "key": key}
-    ollama["api_configs"] = api_configs
-    config["ollama"] = ollama
+    config = _apply_ollama(config, key, proxy_url)
 
     if config_id is None:
         cur.execute("INSERT INTO config (data, version) VALUES (?, 0)", (json.dumps(config),))
@@ -94,6 +122,66 @@ def main() -> int:
     con.commit()
     print(f"{action} proxy credential into Open WebUI.")
     return 0
+
+
+def _postgres_path(database_url: str, key: str, proxy_url: str) -> int:
+    """Postgres dialect — used for the k8s stack (DATABASE_URL=postgresql://...)."""
+    import psycopg2  # type: ignore[import]
+
+    con = None
+    cur = None
+    # Retry covers the window before OWUI's Alembic creates the config table.
+    for _ in range(_RETRY_COUNT):
+        try:
+            con = psycopg2.connect(database_url)
+            cur = con.cursor()
+            cur.execute("SELECT id, data FROM config ORDER BY id DESC LIMIT 1")
+            row = cur.fetchone()
+            break
+        except Exception:  # table not yet created or DB not ready
+            time.sleep(_RETRY_SLEEP)
+    else:
+        print("ERROR: Open WebUI config table never appeared (DB not ready)", file=sys.stderr)
+        return 1
+
+    if row:
+        config_id, data = row
+        # psycopg2 may return a dict when the column type is JSON/JSONB,
+        # or a str for TEXT — handle both.
+        config = data if isinstance(data, dict) else json.loads(data)
+    else:
+        config_id, config = None, {"version": 0, "ui": {}}
+
+    if _already_ok(config.get("ollama") or {}, key, proxy_url):
+        print("Open WebUI already connected to proxy.")
+        return 2
+
+    config = _apply_ollama(config, key, proxy_url)
+    data_json = json.dumps(config)
+
+    if config_id is None:
+        cur.execute("INSERT INTO config (data, version) VALUES (%s, 0)", (data_json,))
+        action = "Inserted"
+    else:
+        cur.execute("UPDATE config SET data = %s WHERE id = %s", (data_json, config_id))
+        action = "Seeded"
+    con.commit()
+    print(f"{action} proxy credential into Open WebUI.")
+    return 0
+
+
+def main() -> int:
+    key = _get_key()
+    if not key:
+        print("ERROR: empty INTERNAL_API_KEY (env unset and stdin empty)", file=sys.stderr)
+        return 1
+
+    proxy_url = _get_proxy_url()
+    database_url = os.environ.get("DATABASE_URL", "")
+
+    if database_url.startswith("postgresql://"):
+        return _postgres_path(database_url, key, proxy_url)
+    return _sqlite_path(key, proxy_url)
 
 
 if __name__ == "__main__":

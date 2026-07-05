@@ -1,0 +1,74 @@
+# open-webui-config-seed Job
+#
+# PURPOSE: Seed the snflwr-api proxy bearer key into Open WebUI's Postgres
+#   `config` table so that OWUI can authenticate to the proxy on first boot
+#   (OWUI v0.9.x ignores the OLLAMA_API_KEY env var; it only reads from its DB).
+#
+# ORDERING: This Job must run AFTER the open-webui Deployment is up, because
+#   OWUI's Alembic migrations (run at container startup) create the `config`
+#   table. The Job uses backoffLimit=10 to retry while OWUI is still booting.
+#
+# POST-SUCCESS: After this Job completes, the operator must restart OWUI so it
+#   reloads the seeded config:
+#     kubectl rollout restart deployment/open-webui -n snflwr-ai
+#   This restart step is intentionally NOT automated here to avoid a restart
+#   loop — do it once after the Job shows Completed.
+#
+# RE-RUNS: The script is idempotent (rc=2 if already correct), so re-running
+#   the Job (e.g. after a key rotation) is safe.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: open-webui-config-seed
+  namespace: snflwr-ai
+  labels:
+    app: open-webui
+    component: config-seed
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: open-webui
+        component: config-seed
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: config-seed
+        image: snflwr-ai/api:v0.1.0
+        command: ["python", "scripts/owui_connect.py"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        env:
+        # OWUI_DB_PASSWORD must be declared BEFORE DATABASE_URL so that
+        # k8s $(VAR) expansion can interpolate it into the connection string.
+        - name: OWUI_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openwebui-db-app
+              key: password
+        - name: DATABASE_URL
+          value: "postgresql://openwebui:$(OWUI_DB_PASSWORD)@snflwr-pg-rw:5432/openwebui"
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: snflwr-secrets
+              key: INTERNAL_API_KEY
+        - name: SNFLWR_PROXY_URL
+          value: "http://snflwr-api-service:8000"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"

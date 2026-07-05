@@ -18,7 +18,13 @@ spec:
         app: open-webui
     spec:
       securityContext:
-        runAsNonRoot: true
+        # The upstream Open WebUI image runs as root (no non-root USER); with
+        # runAsNonRoot:true the kubelet refuses to start it
+        # (CreateContainerConfigError). Verified on a live kind+Calico cluster.
+        # Hardening is still meaningful: all capabilities are dropped and
+        # privilege escalation is disabled below, so it's root-without-caps in a
+        # locked-down, network-isolated pod.
+        runAsNonRoot: false
         fsGroup: 1000
       containers:
       - name: open-webui

@@ -55,9 +55,7 @@ def verify_database_connection(db_path: Path, encryption_key: str) -> bool:
         True if connection successful
     """
     try:
-        adapter = EncryptedSQLiteAdapter(
-            db_path=str(db_path), encryption_key=encryption_key
-        )
+        adapter = EncryptedSQLiteAdapter(db_path=db_path, encryption_key=encryption_key)
         conn = adapter.connect()
         cursor = conn.cursor()
 
@@ -91,7 +89,7 @@ def export_database_to_plaintext(
     try:
         # Connect to encrypted source
         source_adapter = EncryptedSQLiteAdapter(
-            db_path=str(source_db), encryption_key=source_key
+            db_path=source_db, encryption_key=source_key
         )
         source_conn = source_adapter.connect()
 
@@ -132,7 +130,7 @@ def import_plaintext_to_encrypted(
 
         # Connect to encrypted target
         target_adapter = EncryptedSQLiteAdapter(
-            db_path=str(target_db), encryption_key=target_key
+            db_path=target_db, encryption_key=target_key
         )
         target_conn = target_adapter.connect()
 
@@ -168,13 +166,11 @@ def verify_data_integrity(
     try:
         # Connect to both databases
         original_adapter = EncryptedSQLiteAdapter(
-            db_path=str(original_db), encryption_key=original_key
+            db_path=original_db, encryption_key=original_key
         )
         original_conn = original_adapter.connect()
 
-        new_adapter = EncryptedSQLiteAdapter(
-            db_path=str(new_db), encryption_key=new_key
-        )
+        new_adapter = EncryptedSQLiteAdapter(db_path=new_db, encryption_key=new_key)
         new_conn = new_adapter.connect()
 
         # Get all table names from original

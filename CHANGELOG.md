@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-07-06
 
 ### Added
+- **Child-safety disclosure banner in the chat UI** — `scripts/owui_connect.py`
+  now seeds a persistent, non-dismissible Open WebUI banner combining the
+  AI-generated-content notice + the crisis/988 notice (vetted dashboard wording)
+  into OWUI's `ui.banners` config, idempotently, for both the sqlite (home) and
+  Postgres (k8s) paths. Runs as part of the existing deploy/seed step; closes the
+  last chat-UI disclosure gap in `docs/compliance/REQUIRED_DISCLOSURES.md`.
 - **Parent onboarding & child identity linking** (#194) — separates the three
   identities the schema was built for: a parent (dashboard account, no chat
   login), a child chat login (Open WebUI user id, stored on

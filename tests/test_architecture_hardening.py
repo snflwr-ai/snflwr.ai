@@ -94,6 +94,10 @@ class TestKeyRotationConfig:
         env["ENVIRONMENT"] = "development"
         env.setdefault("INTERNAL_API_KEY", "x" * 64)
         env.setdefault("JWT_SECRET_KEY", "x" * 64)
+        # Test the pure env-var DEFAULT — don't let a developer's local .env
+        # (which may set DB_ENCRYPTION_ENABLED=false for the plaintext dev DB)
+        # bleed into the subprocess.
+        env["SNFLWR_SKIP_DOTENV"] = "1"
 
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         result = subprocess.run(

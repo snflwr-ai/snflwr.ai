@@ -25,6 +25,14 @@ spec:
       containers:
       - name: ollama
         image: ollama/ollama:0.30.9  # pinned (matches deploy.sh); never :latest — non-reproducible deploys
+        # runAsNonRoot / drop-ALL-caps / readOnlyRootFilesystem are intentionally
+        # omitted: the Ollama GPU container needs NVIDIA device access and writes
+        # model blobs to its data dir. seccompProfile + no-privilege-escalation are
+        # still applied as meaningful hardening that does not break GPU access.
+        securityContext:
+          allowPrivilegeEscalation: false
+          seccompProfile:
+            type: RuntimeDefault
         ports:
         - containerPort: 11434
         env:

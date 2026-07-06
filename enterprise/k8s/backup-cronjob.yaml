@@ -38,6 +38,17 @@ spec:
                 name: snflwr-config
             - secretRef:
                 name: snflwr-secrets
+            env:
+            # Include the Open WebUI Postgres DB (student accounts + chat history)
+            # in the scheduled pg_dump — belt-and-suspenders alongside CNPG WAL.
+            # Uses POSTGRES_HOST from snflwr-config; openwebui DB/user default in-script.
+            - name: OWUI_PG_BACKUP_ENABLED
+              value: "true"
+            - name: OWUI_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openwebui-db-app
+                  key: password
             volumeMounts:
             - name: backups
               mountPath: /app/data/backups

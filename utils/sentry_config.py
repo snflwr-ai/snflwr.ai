@@ -175,6 +175,12 @@ def before_send_filter(event, hint):
         if "query_string" in event["request"]:
             event["request"]["query_string"] = "[Filtered]"
 
+        # Wholesale-filter the request body — a POST to a chat/profile route can
+        # carry a child's message text, name, or age. We never need it for
+        # debugging, so drop it entirely rather than risk leaking child PII.
+        if "data" in event["request"]:
+            event["request"]["data"] = "[Filtered]"
+
     # Scrub user data (only keep non-PII identifiers)
     if "user" in event:
         # Keep user_id but remove email, name, etc.

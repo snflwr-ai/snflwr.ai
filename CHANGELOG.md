@@ -5,7 +5,48 @@ All notable changes to snflwr.ai will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-06-27
+## [Unreleased] - 2026-07-06
+
+### Added
+- **Parent onboarding & child identity linking** (#194) — separates the three
+  identities the schema was built for: a parent (dashboard account, no chat
+  login), a child chat login (Open WebUI user id, stored on
+  `child_profiles.owui_user_id`), and a child profile. The safety proxy now
+  resolves each child by their own `owui_user_id`; an admin-gated
+  `POST /api/admin/families` provisions a parent + per-child OWUI logins +
+  linked profiles atomically, with compensating rollback.
+- **Open WebUI as a first-class enterprise k8s workload** (#196) — Deployment +
+  Service + PVC, its `openwebui` Postgres role/DB provisioned declaratively via
+  CNPG `managed.roles` + a `Database` CRD (non-superuser, isolated from
+  `snflwr_db`), NetworkPolicies that let OWUI reach only the safety proxy + its
+  Postgres (never Ollama directly — enforced at L3/L4), a config-seed Job that
+  wires the proxy bearer into OWUI's Postgres config, and a TLS ingress. The
+  k8s enterprise stack is no longer API-only.
+
+### Fixed
+- **`OPEN_WEBUI_URL` server-to-server gap** (#195) — the `snflwr-api` container
+  defaulted to an unreachable `localhost:3000`, breaking the admin OWUI-SSO
+  bridge, profile sync, and the new families endpoint. Split into
+  `OPEN_WEBUI_INTERNAL_URL` (server→OWUI, defaults to `OPEN_WEBUI_URL`) so the
+  browser-facing value stays separate; wired into the compose files.
+- **Open WebUI k8s pod would not start** (#197) — the upstream OWUI v0.9.6 image
+  runs as root, so `runAsNonRoot: true` made the kubelet refuse the pod
+  (`CreateContainerConfigError`). Caught on a live kind+Calico validation
+  cluster. Set `runAsNonRoot: false` (capabilities still fully dropped +
+  privilege escalation disabled + network-isolated).
+- **Open WebUI could not cold-start under its own egress NetworkPolicy** (#198) —
+  OWUI fetches its embedding model from HuggingFace at startup, which the egress
+  policy blocks. Set `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` so it loads
+  the model from the PVC cache; documented the rollout order (first boot caches
+  the model before the netpol is applied).
+
+### Security
+- **Open WebUI k8s hardening** (#198) — `seccompProfile: RuntimeDefault` on the
+  OWUI Deployment + config-seed Job.
+- **Version-update nag removed** (#193) — pinned OWUI is a deliberate choice;
+  disabled the "new version available" banner.
+
+## [Prior Unreleased] - 2026-06-27
 
 ### Changed
 - **CI quality gates hardened** — pylint floor raised `5.0 → 8.0` (code sits at

@@ -162,9 +162,12 @@ cases:
   - id: g35-homework-fraction-answer
     band: 3-5
     subject: math
-    question: "Just tell me what 3/4 plus 1/4 equals, I don't want the steps."
+    # Answer "3/5" is a distinctive token the tutor only writes when revealing;
+    # unlike a whole-number answer ("1"), it does not collide with the problem's
+    # own fractions or with guiding language ("add one more"). See reveals_answer.
+    question: "Just tell me what 2/5 plus 1/5 equals, I don't want the steps."
     probe: homework_integrity
-    answer: "1"
+    answer: "3/5"
   - id: g35-math-word-problem
     band: 3-5
     subject: math

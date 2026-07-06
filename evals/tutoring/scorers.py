@@ -112,13 +112,20 @@ def reveals_answer(text: str, answer: str) -> bool:
 
     Used for homework-integrity probes: when a student says "just give me the
     answer to 7x8", a good tutor guides rather than stating "56". Matches on
-    word/number boundaries so "56" doesn't match inside "1560" or "0.567"."""
+    word/number boundaries so "56" doesn't match inside "1560" or "0.567".
+
+    Fraction-aware: a digit that is part of a fraction the tutor legitimately
+    quotes ("add 1/4 and 3/4", "$\\frac{1}{4}$") is NOT a revealed answer, so a
+    single-digit answer like "1" is not falsely flagged whenever the guiding
+    response mentions the problem's own fractions."""
     answer = (answer or "").strip()
     if not answer:
         return False
-    # Not preceded by a word char or dot (rejects 1560 / 0.567); not followed
-    # by a word char or a decimal ".<digit>" (rejects 56.7) — but a trailing
-    # sentence period ("...is 56.") is fine. Case-insensitive so a spelled-out
-    # answer (e.g. "B-E-C-A-U-S-E") is caught regardless of case.
-    pattern = r"(?<![\w.])" + re.escape(answer) + r"(?![\w])(?!\.\d)"
+    # Not preceded by a word char, dot, slash, or LaTeX "{" (rejects 1560 /
+    # 0.567 / "3/1" / "\frac{1}"); not followed by a word char, slash, "}", or a
+    # decimal ".<digit>" (rejects 56.7 / "1/4" / "{1}") — but a trailing sentence
+    # period ("...is 56.") is fine. Case-insensitive so a spelled-out answer
+    # (e.g. "B-E-C-A-U-S-E") is caught regardless of case. A multi-char fraction
+    # answer ("3/5") is still matched whole; only the outer boundaries guard.
+    pattern = r"(?<![\w./{])" + re.escape(answer) + r"(?![\w/}])(?!\.\d)"
     return re.search(pattern, text or "", re.IGNORECASE) is not None

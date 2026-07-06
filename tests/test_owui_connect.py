@@ -11,6 +11,7 @@ Coverage:
 Run with:
     DB_TYPE=sqlite DB_ENCRYPTION_ENABLED=false pytest tests/test_owui_connect.py -v
 """
+
 import importlib
 import importlib.util
 import json
@@ -25,10 +26,10 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helper: load owui_connect from its file path (not a package import).
 # ---------------------------------------------------------------------------
+
 
 def _load_owui_connect():
     """Load scripts/owui_connect.py as a module without relying on sys.path."""
@@ -50,10 +51,13 @@ def owui_connect():
 # Helper: build a temp sqlite DB with a `config` table.
 # ---------------------------------------------------------------------------
 
+
 def _make_sqlite_db(tmp_path: Path, initial_data: dict | None = None) -> Path:
     db_path = tmp_path / "webui.db"
     con = sqlite3.connect(str(db_path))
-    con.execute("CREATE TABLE config (id INTEGER PRIMARY KEY, data TEXT, version INTEGER)")
+    con.execute(
+        "CREATE TABLE config (id INTEGER PRIMARY KEY, data TEXT, version INTEGER)"
+    )
     if initial_data is not None:
         con.execute(
             "INSERT INTO config (data, version) VALUES (?, 0)",
@@ -67,6 +71,7 @@ def _make_sqlite_db(tmp_path: Path, initial_data: dict | None = None) -> Path:
 # ===========================================================================
 # Part 1 — sqlite path
 # ===========================================================================
+
 
 class TestSqlitePath:
     def test_fresh_db_inserts_ollama_block_and_returns_0(
@@ -92,11 +97,43 @@ class TestSqlitePath:
         assert ollama["api_configs"]["0"]["key"] == "test-key-123"
         assert ollama["api_configs"]["0"]["enable"] is True
 
+    def test_fresh_db_seeds_disclosure_banner(
+        self, owui_connect, tmp_path, monkeypatch
+    ):
+        """Seeding also installs the required non-dismissible disclosure banner."""
+        db_path = _make_sqlite_db(tmp_path)
+        monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.setenv("INTERNAL_API_KEY", "test-key-123")
+        monkeypatch.delenv("SNFLWR_PROXY_URL", raising=False)
+
+        assert owui_connect.main() == 0
+
+        con = sqlite3.connect(str(db_path))
+        config = json.loads(con.execute("SELECT data FROM config").fetchone()[0])
+        con.close()
+        banners = config["ui"]["banners"]
+        banner = next(b for b in banners if b["id"] == "snflwr-disclosure")
+        assert banner["dismissible"] is False
+        assert "988" in banner["content"]  # crisis line
+        assert "AI" in banner["content"]  # AI-content line
+        # idempotent: no duplicate banner is added on re-run
+        assert owui_connect.main() == 2
+        con = sqlite3.connect(str(db_path))
+        config = json.loads(con.execute("SELECT data FROM config").fetchone()[0])
+        con.close()
+        ids = [b["id"] for b in config["ui"]["banners"]]
+        assert ids.count("snflwr-disclosure") == 1
+
     def test_existing_row_updates_and_returns_0(
         self, owui_connect, tmp_path, monkeypatch
     ):
         """Existing config row with different key → UPDATE → rc=0."""
-        existing = {"version": 0, "ui": {}, "ollama": {"enable": False, "base_urls": []}}
+        existing = {
+            "version": 0,
+            "ui": {},
+            "ollama": {"enable": False, "base_urls": []},
+        }
         db_path = _make_sqlite_db(tmp_path, initial_data=existing)
         monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
         monkeypatch.delenv("DATABASE_URL", raising=False)
@@ -112,9 +149,7 @@ class TestSqlitePath:
         config = json.loads(row[0])
         assert config["ollama"]["api_configs"]["0"]["key"] == "new-key-abc"
 
-    def test_already_correct_returns_2(
-        self, owui_connect, tmp_path, monkeypatch
-    ):
+    def test_already_correct_returns_2(self, owui_connect, tmp_path, monkeypatch):
         """Config already has correct key+URL → no-op → rc=2."""
         proxy = "http://snflwr-api:39150"
         key = "stable-key"
@@ -127,6 +162,8 @@ class TestSqlitePath:
                 "api_configs": {"0": {"enable": True, "key": key}},
             },
         }
+        # "Already correct" now also requires the disclosure banner to be present.
+        owui_connect._apply_disclosure_banner(existing)
         db_path = _make_sqlite_db(tmp_path, initial_data=existing)
         monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
         monkeypatch.delenv("DATABASE_URL", raising=False)
@@ -171,6 +208,7 @@ class TestSqlitePath:
 # Part 2 — Postgres dialect (mocked psycopg2)
 # ===========================================================================
 
+
 def _make_pg_mock(initial_row=None):
     """Return a mock psycopg2 module with a fake connection."""
     mock_cur = MagicMock()
@@ -186,11 +224,15 @@ def _make_pg_mock(initial_row=None):
 
 
 class TestPostgresPath:
-    def _run_with_pg_mock(self, owui_connect, monkeypatch, initial_row, key, proxy_url=None):
+    def _run_with_pg_mock(
+        self, owui_connect, monkeypatch, initial_row, key, proxy_url=None
+    ):
         """Run main() with DATABASE_URL set + mocked psycopg2; return (rc, cur)."""
         mock_pg, mock_con, mock_cur = _make_pg_mock(initial_row=initial_row)
 
-        monkeypatch.setenv("DATABASE_URL", "postgresql://owui:pw@snflwr-pg-rw:5432/openwebui")
+        monkeypatch.setenv(
+            "DATABASE_URL", "postgresql://owui:pw@snflwr-pg-rw:5432/openwebui"
+        )
         monkeypatch.setenv("INTERNAL_API_KEY", key)
         if proxy_url:
             monkeypatch.setenv("SNFLWR_PROXY_URL", proxy_url)
@@ -214,13 +256,14 @@ class TestPostgresPath:
 
         # Must use %s (Postgres) placeholders, NOT ? (sqlite)
         insert_calls = [
-            c for c in mock_cur.execute.call_args_list
-            if "INSERT" in str(c)
+            c for c in mock_cur.execute.call_args_list if "INSERT" in str(c)
         ]
         assert insert_calls, "No INSERT call found"
         insert_sql = insert_calls[0][0][0]
         assert "%s" in insert_sql, f"Expected %s placeholder, got: {insert_sql!r}"
-        assert "?" not in insert_sql, f"sqlite ? placeholder leaked into Postgres path: {insert_sql!r}"
+        assert (
+            "?" not in insert_sql
+        ), f"sqlite ? placeholder leaked into Postgres path: {insert_sql!r}"
 
         # The JSON payload should contain the correct ollama block
         insert_args = insert_calls[0][0][1]
@@ -229,9 +272,7 @@ class TestPostgresPath:
         assert config["ollama"]["api_configs"]["0"]["key"] == "pg-key-fresh"
         assert config["ollama"]["base_urls"] == ["http://snflwr-api:39150"]
 
-    def test_existing_pg_row_updates_with_percent_s(
-        self, owui_connect, monkeypatch
-    ):
+    def test_existing_pg_row_updates_with_percent_s(self, owui_connect, monkeypatch):
         """Existing Postgres row → UPDATE with %s placeholders → rc=0."""
         initial_config = {"version": 0, "ui": {}}
         initial_row = (42, json.dumps(initial_config))  # (id, data_str)
@@ -242,8 +283,7 @@ class TestPostgresPath:
         assert rc == 0
 
         update_calls = [
-            c for c in mock_cur.execute.call_args_list
-            if "UPDATE" in str(c)
+            c for c in mock_cur.execute.call_args_list if "UPDATE" in str(c)
         ]
         assert update_calls, "No UPDATE call found"
         update_sql = update_calls[0][0][0]
@@ -269,6 +309,8 @@ class TestPostgresPath:
                 "api_configs": {"0": {"enable": True, "key": key}},
             },
         }
+        # "Already correct" now also requires the disclosure banner to be present.
+        owui_connect._apply_disclosure_banner(existing)
         initial_row = (7, json.dumps(existing))
 
         rc, mock_cur = self._run_with_pg_mock(
@@ -278,7 +320,8 @@ class TestPostgresPath:
 
         # No INSERT or UPDATE should have been called
         write_calls = [
-            c for c in mock_cur.execute.call_args_list
+            c
+            for c in mock_cur.execute.call_args_list
             if "INSERT" in str(c) or "UPDATE" in str(c)
         ]
         assert not write_calls, f"Unexpected write calls: {write_calls}"
@@ -321,6 +364,7 @@ class TestPostgresPath:
 # ===========================================================================
 # Part 3 — Key source: INTERNAL_API_KEY env var vs stdin fallback
 # ===========================================================================
+
 
 class TestKeySource:
     def test_key_from_env_var(self, owui_connect, tmp_path, monkeypatch):

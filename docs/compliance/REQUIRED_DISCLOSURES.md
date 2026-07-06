@@ -88,8 +88,12 @@ until the operating entity exists.** Do not invent them. Fill once registered
 > still DRAFT / not-in-effect, and the entity-dependent operator disclosures are
 > blocked until a business entity is registered.
 >
-> **Remaining gap (deploy-config):** the **kids' chat is stock Open WebUI** and has
-> no disclosure banner yet. Surface #1 (AI-generated) + #2 (crisis/988) there via
-> an Open WebUI **admin banner** (Admin Panel → Settings → Banners, or seed it in
-> the OWUI config) as part of deployment. This is the last UI disclosure step
-> before launch.
+> **Chat-UI disclosure — DONE (auto-seeded):** the kids' chat is stock Open WebUI,
+> which has no built-in disclosure. `scripts/owui_connect.py` (run at deploy by
+> `deploy.sh` and by the k8s `open-webui-config-seed` Job) now seeds a persistent,
+> **non-dismissible** Open WebUI banner combining #1 (AI-generated content) + #2
+> (crisis/988), reusing the vetted dashboard wording
+> (`api/static/dashboard/components/disclosures.js`). It writes `ui.banners` in
+> OWUI's DB (sqlite home / Postgres k8s) idempotently; OWUI must be restarted after
+> seeding to load it (the seed step already restarts OWUI). Verified live: OWUI's
+> running config loads the banner and serves it via `/api/v1/configs/banners`.

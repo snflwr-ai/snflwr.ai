@@ -14,6 +14,7 @@ Prints the resolved tag to stdout and exits 0, or writes an error to stderr
 and exits 1. The HTTP fetch is isolated from the selection logic so the
 selection can be unit-tested without network access.
 """
+
 import json
 import sys
 import urllib.request

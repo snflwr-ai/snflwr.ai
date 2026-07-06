@@ -36,6 +36,7 @@ Exit codes (consumed by deploy.sh / Job restartPolicy):
     2  already correct -> no restart needed
     1  error           -> caller should warn
 """
+
 import json
 import os
 import sqlite3
@@ -96,7 +97,10 @@ def _sqlite_path(key: str, proxy_url: str) -> int:
         except sqlite3.OperationalError:
             time.sleep(_RETRY_SLEEP)  # config table not migrated yet
     else:
-        print("ERROR: Open WebUI config table never appeared (DB not ready)", file=sys.stderr)
+        print(
+            "ERROR: Open WebUI config table never appeared (DB not ready)",
+            file=sys.stderr,
+        )
         return 1
 
     if row:
@@ -114,10 +118,14 @@ def _sqlite_path(key: str, proxy_url: str) -> int:
     config = _apply_ollama(config, key, proxy_url)
 
     if config_id is None:
-        cur.execute("INSERT INTO config (data, version) VALUES (?, 0)", (json.dumps(config),))
+        cur.execute(
+            "INSERT INTO config (data, version) VALUES (?, 0)", (json.dumps(config),)
+        )
         action = "Inserted"
     else:
-        cur.execute("UPDATE config SET data = ? WHERE id = ?", (json.dumps(config), config_id))
+        cur.execute(
+            "UPDATE config SET data = ? WHERE id = ?", (json.dumps(config), config_id)
+        )
         action = "Seeded"
     con.commit()
     print(f"{action} proxy credential into Open WebUI.")
@@ -138,11 +146,20 @@ def _postgres_path(database_url: str, key: str, proxy_url: str) -> int:
             cur.execute("SELECT id, data FROM config ORDER BY id DESC LIMIT 1")
             row = cur.fetchone()
             break
-        except (psycopg2.OperationalError, psycopg2.ProgrammingError) as e:  # table not yet created or DB not ready
-            print(f"Postgres connect/query error: {type(e).__name__}: {e}", file=sys.stderr)
+        except (
+            psycopg2.OperationalError,
+            psycopg2.ProgrammingError,
+        ) as e:  # table not yet created or DB not ready
+            print(
+                f"Postgres connect/query error: {type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
             time.sleep(_RETRY_SLEEP)
     else:
-        print("ERROR: Open WebUI config table never appeared (DB not ready)", file=sys.stderr)
+        print(
+            "ERROR: Open WebUI config table never appeared (DB not ready)",
+            file=sys.stderr,
+        )
         return 1
 
     if row:
@@ -174,7 +191,9 @@ def _postgres_path(database_url: str, key: str, proxy_url: str) -> int:
 def main() -> int:
     key = _get_key()
     if not key:
-        print("ERROR: empty INTERNAL_API_KEY (env unset and stdin empty)", file=sys.stderr)
+        print(
+            "ERROR: empty INTERNAL_API_KEY (env unset and stdin empty)", file=sys.stderr
+        )
         return 1
 
     proxy_url = _get_proxy_url()

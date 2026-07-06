@@ -26,27 +26,34 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _bold(text):
     return text
+
 
 def _green(text):
     return text
 
+
 def _yellow(text):
     return text
+
 
 def _red(text):
     return text
 
+
 def _blue(text):
     return text
+
 
 def _mask_secret(value: str, visible: int = 4) -> str:
     """Show only last N chars of a secret for verification."""
     s = str(value)
     if len(s) <= visible:
-        return '***'
+        return "***"
     return f"***{s[-visible:]}"
+
 
 def banner():
     print()
@@ -55,6 +62,7 @@ def banner():
     print("  This will create a secure configuration for your deployment.")
     print("=" * 64)
     print()
+
 
 def ask(prompt, default=None, secret=False, required=True, validator=None):
     """Ask the user a question with optional default and validation."""
@@ -78,6 +86,7 @@ def ask(prompt, default=None, secret=False, required=True, validator=None):
                 continue
         return answer
 
+
 def ask_yes_no(prompt, default=True):
     """Ask a yes/no question."""
     hint = "Y/n" if default else "y/N"
@@ -89,11 +98,12 @@ def ask_yes_no(prompt, default=True):
             sys.exit(1)
         if not answer:
             return default
-        if answer in ('y', 'yes'):
+        if answer in ("y", "yes"):
             return True
-        if answer in ('n', 'no'):
+        if answer in ("n", "no"):
             return False
         print(_yellow("    Please type 'y' or 'n'."))
+
 
 def ask_choice(prompt, choices):
     """Ask the user to pick from a numbered list."""
@@ -116,14 +126,17 @@ def ask_choice(prompt, choices):
             pass
         print(_yellow(f"    Please enter a number between 1 and {len(choices)}."))
 
+
 def generate_secret(length=32):
     """Generate a cryptographically secure random string."""
     return secrets.token_hex(length)
 
+
 def generate_password(length=24):
     """Generate a strong random password."""
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
-    return ''.join(secrets.choice(chars) for _ in range(length))
+    return "".join(secrets.choice(chars) for _ in range(length))
+
 
 def generate_fernet_key():
     """Generate a Fernet encryption key.
@@ -132,27 +145,31 @@ def generate_fernet_key():
     this function is called, so ImportError should never happen here.
     """
     from cryptography.fernet import Fernet
+
     return Fernet.generate_key().decode()
+
 
 def validate_email(email):
     """Basic email validation."""
-    if '@' not in email or '.' not in email.split('@')[-1]:
+    if "@" not in email or "." not in email.split("@")[-1]:
         return "That doesn't look like a valid email address."
     return None
 
+
 def validate_domain(domain):
     """Basic domain validation."""
-    if domain in ('localhost', '127.0.0.1'):
+    if domain in ("localhost", "127.0.0.1"):
         return None  # Allow localhost for home use
-    if '.' not in domain:
+    if "." not in domain:
         return "Please enter a full domain (e.g. school.example.com) or 'localhost'"
-    if domain.startswith('http'):
+    if domain.startswith("http"):
         return "Just the domain name, without http:// (e.g. school.example.com)"
     return None
 
 
-def _auth_env_lines(jwt_secret, session_secret, csrf_secret, internal_api_key,
-                    webui_secret_key):
+def _auth_env_lines(
+    jwt_secret, session_secret, csrf_secret, internal_api_key, webui_secret_key
+):
     """Auth-secret .env lines, including the INTERNAL_API_KEY rotation timestamp
     so the key-age check is active on this provisioning path."""
     created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -170,6 +187,7 @@ def _auth_env_lines(jwt_secret, session_secret, csrf_secret, internal_api_key,
 # Setup steps
 # ---------------------------------------------------------------------------
 
+
 def step_basics():
     """Collect basic deployment info."""
     print(_bold(_blue("\n--- Step 1 of 5: Basic Information ---\n")))
@@ -179,20 +197,20 @@ def step_basics():
         "What domain will snflwr.ai be available at?\n"
         "  (e.g. learn.myschool.org or snflwr.example.com)\n"
         "  Domain",
-        validator=validate_domain
+        validator=validate_domain,
     )
 
     admin_email = ask(
         "\n  What email should receive security alerts?\n"
         "  (This is for the system administrator, not students or parents)\n"
         "  Admin email",
-        validator=validate_email
+        validator=validate_email,
     )
 
     return {
-        'domain': domain,
-        'admin_email': admin_email,
-        'base_url': f"https://{domain}",
+        "domain": domain,
+        "admin_email": admin_email,
+        "base_url": f"https://{domain}",
     }
 
 
@@ -206,23 +224,35 @@ def step_database():
         [
             ("SQLite (simpler, good for small deployments)", "sqlite"),
             ("PostgreSQL (recommended for schools with many students)", "postgresql"),
-        ]
+        ],
     )
 
-    config = {'db_type': db_type}
+    config = {"db_type": db_type}
 
-    if db_type == 'postgresql':
-        print(_yellow("\n  You'll need a PostgreSQL server running. If you don't have one yet,"))
-        print(_yellow("  the Docker setup (docker-compose.yml) includes one automatically.\n"))
-        config['pg_host'] = ask("PostgreSQL host", default="localhost")
-        config['pg_port'] = ask("PostgreSQL port", default="5432")
-        config['pg_database'] = ask("Database name", default="snflwr_production")
-        config['pg_user'] = ask("Database username", default="snflwr_app")
-        config['pg_password'] = generate_password()
-        print(_green(f"\n  A secure database password has been generated automatically."))
+    if db_type == "postgresql":
+        print(
+            _yellow(
+                "\n  You'll need a PostgreSQL server running. If you don't have one yet,"
+            )
+        )
+        print(
+            _yellow(
+                "  the Docker setup (docker-compose.yml) includes one automatically.\n"
+            )
+        )
+        config["pg_host"] = ask("PostgreSQL host", default="localhost")
+        config["pg_port"] = ask("PostgreSQL port", default="5432")
+        config["pg_database"] = ask("Database name", default="snflwr_production")
+        config["pg_user"] = ask("Database username", default="snflwr_app")
+        config["pg_password"] = generate_password()
+        print(
+            _green(f"\n  A secure database password has been generated automatically.")
+        )
     else:
         print(_green("\n  SQLite selected — no extra setup needed."))
-        print("  The database file will be created automatically when you start the app.\n")
+        print(
+            "  The database file will be created automatically when you start the app.\n"
+        )
 
     return config
 
@@ -233,11 +263,17 @@ def step_email():
     print("  snflwr.ai can email parents when safety concerns are detected.")
     print("  This is important for COPPA compliance (protecting children's privacy).\n")
 
-    enable_email = ask_yes_no("Do you want to enable parent email alerts?", default=True)
+    enable_email = ask_yes_no(
+        "Do you want to enable parent email alerts?", default=True
+    )
 
     if not enable_email:
-        print(_yellow("\n  Email alerts disabled. You can enable them later by re-running this setup."))
-        return {'smtp_enabled': False}
+        print(
+            _yellow(
+                "\n  Email alerts disabled. You can enable them later by re-running this setup."
+            )
+        )
+        return {"smtp_enabled": False}
 
     print("\n  You'll need an email sending service. Common free options:")
     print("    - SendGrid (100 emails/day free)")
@@ -250,22 +286,34 @@ def step_email():
             ("SendGrid", "sendgrid"),
             ("Mailgun", "mailgun"),
             ("Custom SMTP server", "custom"),
-        ]
+        ],
     )
 
     defaults = {
-        'sendgrid': {'host': 'smtp.sendgrid.net', 'port': '587', 'user_prompt': 'SendGrid API key'},
-        'mailgun': {'host': 'smtp.mailgun.org', 'port': '587', 'user_prompt': 'Mailgun SMTP password'},
-        'custom': {'host': '', 'port': '587', 'user_prompt': 'SMTP password'},
+        "sendgrid": {
+            "host": "smtp.sendgrid.net",
+            "port": "587",
+            "user_prompt": "SendGrid API key",
+        },
+        "mailgun": {
+            "host": "smtp.mailgun.org",
+            "port": "587",
+            "user_prompt": "Mailgun SMTP password",
+        },
+        "custom": {"host": "", "port": "587", "user_prompt": "SMTP password"},
     }
 
     d = defaults[provider]
 
-    smtp_host = ask("SMTP server address", default=d['host']) if d['host'] else ask("SMTP server address")
-    smtp_port = ask("SMTP port", default=d['port'])
+    smtp_host = (
+        ask("SMTP server address", default=d["host"])
+        if d["host"]
+        else ask("SMTP server address")
+    )
+    smtp_port = ask("SMTP port", default=d["port"])
 
-    if provider == 'sendgrid':
-        smtp_username = 'apikey'
+    if provider == "sendgrid":
+        smtp_username = "apikey"
         print(f"  SMTP username: apikey (this is correct for SendGrid)")
     else:
         smtp_username = ask("SMTP username")
@@ -274,12 +322,12 @@ def step_email():
     from_email = ask("Send emails from this address", default="noreply@snflwr.ai")
 
     return {
-        'smtp_enabled': True,
-        'smtp_host': smtp_host,
-        'smtp_port': smtp_port,
-        'smtp_username': smtp_username,
-        'smtp_password': smtp_password,
-        'smtp_from_email': from_email,
+        "smtp_enabled": True,
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+        "smtp_username": smtp_username,
+        "smtp_password": smtp_password,
+        "smtp_from_email": from_email,
     }
 
 
@@ -292,26 +340,32 @@ def step_redis():
     use_redis = ask_yes_no("Will you be using Redis?", default=True)
 
     if not use_redis:
-        print(_yellow("  Redis disabled. Rate limiting will use in-memory storage (single server only)."))
-        return {'redis_enabled': False}
+        print(
+            _yellow(
+                "  Redis disabled. Rate limiting will use in-memory storage (single server only)."
+            )
+        )
+        return {"redis_enabled": False}
 
     redis_host = ask("Redis host", default="localhost")
     redis_port = ask("Redis port", default="6379")
 
-    use_redis_password = ask_yes_no("Does your Redis server require a password?", default=False)
+    use_redis_password = ask_yes_no(
+        "Does your Redis server require a password?", default=False
+    )
     redis_password = ask("Redis password") if use_redis_password else ""
 
     return {
-        'redis_enabled': True,
-        'redis_host': redis_host,
-        'redis_port': redis_port,
-        'redis_password': redis_password,
+        "redis_enabled": True,
+        "redis_host": redis_host,
+        "redis_port": redis_port,
+        "redis_password": redis_password,
     }
 
 
 def step_review_and_write(basics, database, email, redis):
     """Generate secrets, show summary, write .env file."""
-    is_local = basics['domain'] in ('localhost', '127.0.0.1')
+    is_local = basics["domain"] in ("localhost", "127.0.0.1")
     step_label = "Saving configuration..." if is_local else "Step 5 of 5: Review & Save"
     print(_bold(_blue(f"\n--- {step_label} ---\n")))
 
@@ -331,15 +385,23 @@ def step_review_and_write(basics, database, email, redis):
     # Build the .env content
     lines = []
     env_label = "Local" if is_local else "Production"
-    lines.append("# =============================================================================")
+    lines.append(
+        "# ============================================================================="
+    )
     lines.append(f"# snflwr.ai — {env_label} Configuration")
     lines.append(f"# Generated by setup script")
     lines.append("# IMPORTANT: Keep this file secure. Never commit it to git.")
-    lines.append("# =============================================================================")
+    lines.append(
+        "# ============================================================================="
+    )
     lines.append("")
     lines.append(f"ENVIRONMENT={'development' if is_local else 'production'}")
     lines.append(f"BASE_URL={basics['base_url']}")
-    cors_origins = "http://localhost:3000,http://localhost:5173,http://localhost:39150,http://localhost:8080" if is_local else basics['base_url']
+    cors_origins = (
+        "http://localhost:3000,http://localhost:5173,http://localhost:39150,http://localhost:8080"
+        if is_local
+        else basics["base_url"]
+    )
     lines.append(f"CORS_ORIGINS={cors_origins}")
     lines.append(f"ADMIN_EMAIL={basics['admin_email']}")
     lines.append("")
@@ -347,15 +409,16 @@ def step_review_and_write(basics, database, email, redis):
     # Authentication (auto-generated — do not change unless rotating)
     lines.append("# Authentication (auto-generated — do not change unless rotating)")
     lines.extend(
-        _auth_env_lines(jwt_secret, session_secret, csrf_secret,
-                        internal_api_key, webui_secret_key)
+        _auth_env_lines(
+            jwt_secret, session_secret, csrf_secret, internal_api_key, webui_secret_key
+        )
     )
     lines.append("")
 
     # Database
     lines.append("# Database")
     lines.append(f"DATABASE_TYPE={database['db_type']}")
-    if database['db_type'] == 'postgresql':
+    if database["db_type"] == "postgresql":
         lines.append(f"POSTGRES_HOST={database['pg_host']}")
         lines.append(f"POSTGRES_PORT={database['pg_port']}")
         lines.append(f"POSTGRES_DATABASE={database['pg_database']}")
@@ -374,7 +437,7 @@ def step_review_and_write(basics, database, email, redis):
     # Email
     lines.append("# Email Notifications")
     lines.append(f"SMTP_ENABLED={'true' if email.get('smtp_enabled') else 'false'}")
-    if email.get('smtp_enabled'):
+    if email.get("smtp_enabled"):
         lines.append(f"SMTP_HOST={email['smtp_host']}")
         lines.append(f"SMTP_PORT={email['smtp_port']}")
         lines.append(f"SMTP_USERNAME={email['smtp_username']}")
@@ -386,10 +449,10 @@ def step_review_and_write(basics, database, email, redis):
     # Redis
     lines.append("# Redis")
     lines.append(f"REDIS_ENABLED={'true' if redis.get('redis_enabled') else 'false'}")
-    if redis.get('redis_enabled'):
+    if redis.get("redis_enabled"):
         lines.append(f"REDIS_HOST={redis['redis_host']}")
         lines.append(f"REDIS_PORT={redis['redis_port']}")
-        if redis.get('redis_password'):
+        if redis.get("redis_password"):
             lines.append(f"REDIS_PASSWORD={redis['redis_password']}")
     lines.append("")
 
@@ -424,27 +487,31 @@ def step_review_and_write(basics, database, email, redis):
     print(f"    Domain:           {basics['domain']}")
     print(f"    Admin email:      {basics['admin_email']}")
     print(f"    Database:         {database['db_type']}")
-    print(f"    Email alerts:     {'Enabled' if email.get('smtp_enabled') else 'Disabled'}")
-    print(f"    Redis:            {'Enabled' if redis.get('redis_enabled') else 'Disabled'}")
+    print(
+        f"    Email alerts:     {'Enabled' if email.get('smtp_enabled') else 'Disabled'}"
+    )
+    print(
+        f"    Redis:            {'Enabled' if redis.get('redis_enabled') else 'Disabled'}"
+    )
     print(f"    Encryption:       Enabled (auto-generated keys)")
     print(f"    Safety pipeline:  Always on")
     print()
 
     # Write file
-    env_path = Path(__file__).parent.parent / '.env.production'
+    env_path = Path(__file__).parent.parent / ".env.production"
 
     if env_path.exists():
         overwrite = ask_yes_no(
             f"\n  {_yellow('.env.production already exists.')} Overwrite it?",
-            default=False
+            default=False,
         )
         if not overwrite:
             # Write to alternate path
-            env_path = Path(__file__).parent.parent / '.env.production.new'
+            env_path = Path(__file__).parent.parent / ".env.production.new"
             print(f"  Writing to {env_path.name} instead.")
 
     fd = os.open(str(env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, 'w') as f:
+    with os.fdopen(fd, "w") as f:
         f.write(env_content)
 
     # Only return env_path — sensitive values are written to the file and
@@ -522,6 +589,7 @@ def print_next_steps(env_path, is_local=False):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def setup_local():
     """
     Fast-path setup for running on a home computer.
@@ -539,17 +607,17 @@ def setup_local():
         "What email address do you want for your account?\n"
         "  (This is just for logging in — we won't send anything to it)\n"
         "  Email",
-        validator=validate_email
+        validator=validate_email,
     )
 
     basics = {
-        'domain': 'localhost',
-        'admin_email': admin_email,
-        'base_url': 'http://localhost:39150',
+        "domain": "localhost",
+        "admin_email": admin_email,
+        "base_url": "http://localhost:39150",
     }
-    database = {'db_type': 'sqlite'}
-    email = {'smtp_enabled': False}
-    redis = {'redis_enabled': False}
+    database = {"db_type": "sqlite"}
+    email = {"smtp_enabled": False}
+    redis = {"redis_enabled": False}
 
     return basics, database, email, redis
 
@@ -567,17 +635,22 @@ def main():
         sys.exit(1)
 
     print("  This will walk you through setting up snflwr.ai.")
-    print("  All security keys are generated automatically — no technical knowledge needed.\n")
+    print(
+        "  All security keys are generated automatically — no technical knowledge needed.\n"
+    )
 
     mode = ask_choice(
         "How will you be using snflwr.ai?",
         [
             ("Home use — just me and my family on this computer (fastest)", "local"),
-            ("School or organization — deploying to a server for multiple users", "production"),
-        ]
+            (
+                "School or organization — deploying to a server for multiple users",
+                "production",
+            ),
+        ],
     )
 
-    if mode == 'local':
+    if mode == "local":
         basics, database, email, redis = setup_local()
     else:
         print()
@@ -591,13 +664,11 @@ def main():
         email = step_email()
         redis = step_redis()
 
-    env_path = step_review_and_write(
-        basics, database, email, redis
-    )
+    env_path = step_review_and_write(basics, database, email, redis)
 
-    is_local = basics['domain'] in ('localhost', '127.0.0.1')
+    is_local = basics["domain"] in ("localhost", "127.0.0.1")
     print_next_steps(env_path, is_local=is_local)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

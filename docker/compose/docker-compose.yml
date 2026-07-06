@@ -164,6 +164,10 @@ services:
     restart: unless-stopped
     networks:
       - snflwr-net
+      # snflwr-api bridges to Ollama's isolated net so it can proxy, while OWUI
+      # (snflwr-net only) cannot reach Ollama directly — all student LLM traffic
+      # must go through the safety pipeline.
+      - snflwr-ollama-net
     expose:
       - 8000
     deploy:
@@ -194,7 +198,8 @@ services:
       - ollama-data:/root/.ollama
     restart: unless-stopped
     networks:
-      - snflwr-net
+      # isolated net — only snflwr-api joins it, so OWUI can't reach Ollama directly.
+      - snflwr-ollama-net
     expose:
       - 11434
     # For GPU acceleration, add: -f docker-compose.gpu.yml
@@ -367,3 +372,9 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+  # Isolated backend net for Ollama — only snflwr-api joins it (see the api +
+  # ollama service network lists). OWUI, on snflwr-net only, therefore cannot
+  # reach Ollama directly; student LLM traffic must traverse the safety proxy.
+  # (Minimal 2-net split: OWUI keeps Postgres/Redis/etc. on snflwr-net.)
+  snflwr-ollama-net:
+    driver: bridge

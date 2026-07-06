@@ -125,3 +125,13 @@ spec:
           app: snflwr-api
     ports:
     - { protocol: TCP, port: 8080 }
+
+  # Kubelet health-probe traffic (see header comment). Most CNIs pass it
+  # implicitly; if the OWUI pod is stuck NotReady after applying this policy,
+  # UNCOMMENT and set your node/kubelet CIDR (cluster-specific — cannot be
+  # hardcoded):
+  # - from:
+  #   - ipBlock:
+  #       cidr: 10.0.0.0/16   # <-- your node CIDR
+  #   ports:
+  #   - { protocol: TCP, port: 8080 }

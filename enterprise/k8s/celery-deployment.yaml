@@ -15,10 +15,22 @@ spec:
       labels:
         app: celery-worker
     spec:
+      # Mirror the snflwr-api pod hardening — Celery holds the full secrets
+      # bundle (DB, email, Redis), so it must not run as root.
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: celery-worker
         image: snflwr-ai/api:v0.1.0
         command: ["celery", "-A", "utils.celery_config", "worker", "--loglevel=info", "--concurrency=4"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
         envFrom:
         - configMapRef:
             name: snflwr-config
@@ -34,8 +46,12 @@ spec:
         volumeMounts:
         - name: logs
           mountPath: /app/logs
+        - name: tmp
+          mountPath: /tmp
       volumes:
       - name: logs
+        emptyDir: {}
+      - name: tmp
         emptyDir: {}
 ---
 apiVersion: apps/v1
@@ -55,10 +71,22 @@ spec:
       labels:
         app: celery-beat
     spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: celery-beat
         image: snflwr-ai/api:v0.1.0
-        command: ["celery", "-A", "utils.celery_config", "beat", "--loglevel=info"]
+        # Write the beat schedule to the writable emptyDir (readOnlyRootFilesystem
+        # blocks the default ./celerybeat-schedule under /app).
+        command: ["celery", "-A", "utils.celery_config", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
         envFrom:
         - configMapRef:
             name: snflwr-config
@@ -74,10 +102,10 @@ spec:
         volumeMounts:
         - name: logs
           mountPath: /app/logs
-        - name: celery-beat-schedule
-          mountPath: /app/celerybeat-schedule
+        - name: tmp
+          mountPath: /tmp
       volumes:
       - name: logs
         emptyDir: {}
-      - name: celery-beat-schedule
+      - name: tmp
         emptyDir: {}

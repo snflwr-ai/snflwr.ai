@@ -1,0 +1,27 @@
+name: k8s Manifests
+
+on:
+  pull_request:
+    paths:
+      - 'enterprise/k8s/**'
+      - '.github/workflows/k8s-manifests-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'enterprise/k8s/**'
+
+jobs:
+  validate:
+    name: Validate enterprise/k8s manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: kubeconform
+        run: |
+          curl -sSLo /tmp/kc.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kc.tar.gz -C /tmp
+          # -ignore-missing-schemas: CNPG CRDs (Cluster/Database/ScheduledBackup) and
+          # other operator CRDs have no upstream JSON schema; core objects are still
+          # strictly validated. Schema-only gate (no live cluster).
+          /tmp/kubeconform -strict -ignore-missing-schemas -summary \
+            enterprise/k8s/*.yaml

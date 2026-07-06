@@ -102,6 +102,19 @@ class TestBeforeSendFilter:
         assert "email" not in result["request"]["query_string"]
 
     @patch.dict(os.environ, {"ENVIRONMENT": "production", "SENTRY_SEND_IN_DEV": "false"})
+    def test_scrubs_request_body(self, sample_event, sample_hint):
+        # A POST body can carry a child's message text / name / age — must be dropped.
+        f = self._get_filter()
+        event = deepcopy(sample_event)
+        event["request"]["data"] = {
+            "message": "my name is Timmy and I am 8",
+            "profile_id": "abc",
+        }
+        result = f(event, sample_hint)
+        assert result["request"]["data"] == "[Filtered]"
+        assert "Timmy" not in str(result["request"]["data"])
+
+    @patch.dict(os.environ, {"ENVIRONMENT": "production", "SENTRY_SEND_IN_DEV": "false"})
     def test_scrubs_user_pii_keeps_id_and_role(self, sample_event, sample_hint):
         """COPPA: Only user_id and role should survive; email/name/username removed."""
         f = self._get_filter()

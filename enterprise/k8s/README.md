@@ -459,11 +459,19 @@ kubectl apply -f enterprise/k8s/postgres-cnpg.yaml
 kubectl apply -f enterprise/k8s/open-webui-db.yaml
 
 # 3. Apply the PVC and Deployment; wait for OWUI to boot and run migrations.
+#    IMPORTANT — do this BEFORE the network policy (step 4). At startup OWUI
+#    downloads its all-MiniLM embedding model from HuggingFace; the egress
+#    NetworkPolicy blocks the internet, so OWUI must have internet on this first
+#    boot to fetch + cache the model into the PVC (/app/backend/data/cache).
+#    Thereafter the Deployment's HF_HUB_OFFLINE=1 / TRANSFORMERS_OFFLINE=1 make
+#    OWUI load the cached model without phoning home, so it boots fine under the
+#    policy. If the PVC is ever lost, re-cache by temporarily removing the egress
+#    policy, restarting OWUI once, then re-applying the policy.
 kubectl apply -f enterprise/k8s/open-webui-pvc.yaml
 kubectl apply -f enterprise/k8s/open-webui-deployment.yaml
 kubectl rollout status deployment/open-webui -n snflwr-ai
 
-# 4. Apply network policies.
+# 4. Apply network policies (only after OWUI's first boot has cached the model).
 kubectl apply -f enterprise/k8s/open-webui-netpol.yaml
 
 # 5. Run the config-seed Job; wait for it to complete.

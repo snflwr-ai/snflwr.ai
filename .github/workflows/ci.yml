@@ -44,11 +44,18 @@ jobs:
 
     - name: Run Pylint
       run: |
-        pylint api/ core/ safety/ storage/ utils/ --output-format=colorized --fail-under=8.0
+        # init-hook puts the repo root on sys.path so scripts/ (which import
+        # storage/utils) resolve instead of tripping E0401 import-error.
+        pylint api/ core/ safety/ storage/ utils/ scripts/ \
+          --init-hook="import sys; sys.path.insert(0, '.')" \
+          --output-format=colorized --fail-under=8.0
 
     - name: Run MyPy type checking
       run: |
         mypy api/ core/ safety/ storage/ utils/ --ignore-missing-imports --no-strict-optional
+        # scripts/ is not a package, so it must be checked in its own invocation
+        # (combining it with the above trips a module-path mapping error).
+        mypy scripts/ --ignore-missing-imports --no-strict-optional
 
   # Job 2: Security Scanning
   security:

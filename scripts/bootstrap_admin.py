@@ -292,7 +292,7 @@ def _lookup_admin_by_email(email: str) -> dict | None:
         "SELECT parent_id, password_hash, role FROM accounts WHERE email_hash = ?",
         (email_hash,),
     )
-    return result[0] if result else None
+    return dict(result[0]) if result else None
 
 
 def verify_admin_login(email: str, password: str) -> bool:

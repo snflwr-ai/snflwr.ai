@@ -48,7 +48,7 @@ def print_error(text):
 
 def validate_jwt_secret():
     """Validate JWT secret key"""
-    issues = []
+    issues: list = []
 
     # Read directly from environment to avoid taint propagation through config object
     _jwt_raw = os.environ.get("JWT_SECRET_KEY", "")
@@ -68,7 +68,7 @@ def validate_jwt_secret():
 
 def validate_smtp_config():
     """Validate SMTP configuration"""
-    issues = []
+    issues: list = []
     warnings = []
 
     if not system_config.SMTP_ENABLED:
@@ -112,7 +112,7 @@ def validate_smtp_config():
 
 def validate_encryption_key():
     """Validate encryption key"""
-    issues = []
+    issues: list = []
 
     try:
         encryption_key = os.getenv("ENCRYPTION_KEY", "")
@@ -140,7 +140,7 @@ def validate_encryption_key():
 
 def validate_cors_origins():
     """Validate CORS configuration"""
-    issues = []
+    issues: list = []
     warnings = []
 
     origins = system_config.CORS_ORIGINS
@@ -163,7 +163,7 @@ def validate_cors_origins():
 
 def validate_database_config():
     """Validate database configuration"""
-    issues = []
+    issues: list = []
     warnings = []
 
     if system_config.DATABASE_TYPE == "sqlite":
@@ -179,7 +179,7 @@ def validate_database_config():
 
 def validate_api_config():
     """Validate API server configuration"""
-    issues = []
+    issues: list = []
     warnings = []
 
     if system_config.API_RELOAD:
@@ -201,7 +201,7 @@ def test_smtp_connection():
     if not system_config.SMTP_ENABLED:
         return []
 
-    issues = []
+    issues: list = []
 
     try:
         from core.email_service import email_service

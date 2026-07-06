@@ -122,6 +122,23 @@ class TestReadabilityScore:
         for g in (0.0, 3.0, 8.0, 20.0):
             assert 0.0 <= scorers.readability_score_for_grade(g, "3-5") <= 1.0
 
+    def test_same_overshoot_penalised_equally_across_bands(self):
+        # The core calibration fix: a 1.0-grade overshoot must cost the same
+        # regardless of band width (it used to cost 2.5x more for narrow young
+        # bands). Compare narrow K-2 [0,2] vs wide 9-12 [9,14].
+        k2 = scorers.readability_score_for_grade(3.0, "K-2")  # 1 grade over hi=2
+        hs = scorers.readability_score_for_grade(15.0, "9-12")  # 1 grade over hi=14
+        assert k2 == hs
+        assert abs(k2 - (1.0 - 1.0 / scorers.READABILITY_GRADE_TOLERANCE)) < 1e-9
+
+    def test_beyond_tolerance_scores_zero(self):
+        # A full tolerance (3 grades) outside the band bottoms out at 0.
+        assert scorers.readability_score_for_grade(5.0, "K-2") == 0.0  # 3 over hi=2
+
+    def test_too_easy_also_penalised(self):
+        # Over-simple text for older readers is docked too (symmetric).
+        assert scorers.readability_score_for_grade(7.0, "9-12") < 1.0  # 2 under lo=9
+
 
 # --------------------------------------------------------------------------
 # Pedagogy + homework-integrity signals

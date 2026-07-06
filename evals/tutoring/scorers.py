@@ -99,10 +99,28 @@ def length_score(text: str, band: str, penalize_under: bool = True) -> float:
     return _range_score(words, lo, hi)
 
 
+# Readability decays over an ABSOLUTE grade tolerance, NOT the band width. A
+# Flesch-Kincaid grade this many levels outside its band scores 0; the score is
+# linear in between. Using a fixed tolerance keeps the penalty for a given
+# absolute overshoot equal across bands. (Reusing the width-normalized
+# _range_score made the narrow young bands — grade width 2, e.g. K-2 [0,2] —
+# decay ~2.5x faster than the wide 9-12 band [9,14], width 5, so a 1-grade
+# overshoot cost 50 for K-2 but only 80 for 9-12. "One grade too hard" should
+# mean the same thing at every age.)
+READABILITY_GRADE_TOLERANCE = 3.0
+
+
 def readability_score_for_grade(grade_level: float, band: str) -> float:
-    """How well a Flesch-Kincaid grade fits the band's grade range (0..1)."""
+    """How well a Flesch-Kincaid grade fits the band's grade range (0..1).
+
+    In-band scores 1.0. Outside, the score decays linearly with the absolute
+    grade distance over READABILITY_GRADE_TOLERANCE (too-hard OR too-easy),
+    floored at 0 — consistent across bands regardless of the band's own width."""
     lo, hi = AGE_BANDS[band]["grade"]
-    return _range_score(grade_level, lo, hi)
+    if lo <= grade_level <= hi:
+        return 1.0
+    dist = (lo - grade_level) if grade_level < lo else (grade_level - hi)
+    return max(0.0, 1.0 - dist / READABILITY_GRADE_TOLERANCE)
 
 
 def readability_score(text: str, band: str) -> float:

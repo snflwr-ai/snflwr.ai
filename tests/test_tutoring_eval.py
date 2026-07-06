@@ -145,6 +145,23 @@ class TestPedagogySignals:
         # "56" must not match inside "0.567" or "156th".
         assert scorers.reveals_answer("the year 1560 was long ago", "56") is False
 
+    def test_reveals_answer_ignores_fraction_digit(self):
+        # A guiding response for 3/4 + 1/4 MUST quote "1/4"; the "1" inside the
+        # fraction is not a revealed answer of "1" (regression: it used to be).
+        resp = "Think about 1/4 and 3/4 like pizza slices — how many make a whole?"
+        assert scorers.reveals_answer(resp, "1") is False
+
+    def test_reveals_answer_ignores_latex_fraction_digit(self):
+        # Same, but the tutor renders the fraction as LaTeX "\frac{1}{4}".
+        resp = r"When you add $\frac{3}{4}$ and $\frac{1}{4}$, what do you get?"
+        assert scorers.reveals_answer(resp, "1") is False
+
+    def test_reveals_answer_detects_fraction_answer(self):
+        # A multi-char fraction answer is still caught when actually stated.
+        assert scorers.reveals_answer("So 2/5 plus 1/5 is 3/5.", "3/5") is True
+        guiding = "Add the top numbers and keep the bottom the same — what's that?"
+        assert scorers.reveals_answer(guiding, "3/5") is False
+
     def test_reveals_answer_spelled_out_case_insensitive(self):
         # Spelling probe: handing over the letters is the violation, in any case.
         assert (

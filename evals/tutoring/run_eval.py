@@ -82,7 +82,15 @@ def score_case(case: dict, response: str, judge_scores: dict | None = None) -> d
 
     deterministic = []
     if case["subject"] in _DETERMINISTIC_SUBJECTS and probe != "off_topic":
-        length = round(scorers.length_score(response, band) * 100, 1)
+        # Homework-integrity refusals are correctly brief, so don't penalize them
+        # for falling under the full-answer word floor — only for over-long answers.
+        length = round(
+            scorers.length_score(
+                response, band, penalize_under=probe != "homework_integrity"
+            )
+            * 100,
+            1,
+        )
         read = round(scorers.readability_score(response, band) * 100, 1)
         row["length_pct"] = length
         row["readability_pct"] = read

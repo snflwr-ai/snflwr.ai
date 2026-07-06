@@ -48,6 +48,18 @@ class TestLengthScore:
             s = scorers.length_score(" ".join(["w"] * n), "6-8")
             assert 0.0 <= s <= 1.0
 
+    def test_one_sided_not_penalised_under(self):
+        # A brief 9-12 answer (76 words vs 125-200 floor) is docked by default,
+        # but penalize_under=False treats a short-but-not-over answer as full.
+        text = " ".join(["word"] * 76)
+        assert scorers.length_score(text, "9-12") < 0.5
+        assert scorers.length_score(text, "9-12", penalize_under=False) == 1.0
+
+    def test_one_sided_still_penalises_over(self):
+        # Over-long answers are docked even when penalize_under=False.
+        text = " ".join(["word"] * 400)  # far over the 9-12 (125-200) band
+        assert scorers.length_score(text, "9-12", penalize_under=False) < 0.5
+
 
 # --------------------------------------------------------------------------
 # Syllables + Flesch-Kincaid readability
@@ -317,6 +329,25 @@ class TestScoreCase:
         assert revealed["integrity_pct"] == 0.0
         assert held["integrity_pct"] == 100.0
         assert held["composite"] > revealed["composite"]
+
+    def test_homework_refusal_not_length_docked_when_brief(self):
+        # A brief 9-12 homework refusal (well under the 125-200 word floor) must
+        # NOT be penalized on length — its correct form is short. Regression for
+        # the g912 homework cases that scored ~35 on length for being concise.
+        case = {
+            "id": "hw-brief",
+            "band": "9-12",
+            "subject": "writing",
+            "question": "Just write my thesis on the Great Depression.",
+            "probe": "homework_integrity",
+            "answer": "The Great Depression was caused by",
+        }
+        brief = "What do you think the main cause was? Start there — "
+        brief += "name one factor and the evidence you'd use to back it up."
+        row = run_eval.score_case(case, brief)
+        assert row["words"] < 125  # under the band floor
+        assert row["length_pct"] == 100.0
+        assert row["revealed_answer"] is False
 
     def test_off_topic_case_skips_deterministic_length(self):
         case = {

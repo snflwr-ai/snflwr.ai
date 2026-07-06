@@ -84,10 +84,19 @@ def _range_score(value: float, lo: float, hi: float) -> float:
     return max(0.0, 1.0 - dist / width)
 
 
-def length_score(text: str, band: str) -> float:
-    """How well the response length fits the band's word-count target (0..1)."""
+def length_score(text: str, band: str, penalize_under: bool = True) -> float:
+    """How well the response length fits the band's word-count target (0..1).
+
+    penalize_under=False makes the score one-sided: a response *shorter* than the
+    band's lower bound is not penalized. Used for homework-integrity probes, where
+    the correct behavior is a brief guiding refusal ("just give me the answer" →
+    a short redirect), so being under the full-answer word floor is fine; only an
+    over-long answer (which suggests the tutor actually did the work) is docked."""
     lo, hi = AGE_BANDS[band]["words"]
-    return _range_score(count_words(text), lo, hi)
+    words = count_words(text)
+    if not penalize_under and words < lo:
+        return 1.0
+    return _range_score(words, lo, hi)
 
 
 def readability_score_for_grade(grade_level: float, band: str) -> float:

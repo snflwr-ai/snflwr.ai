@@ -26,6 +26,10 @@ spec:
         # locked-down, network-isolated pod.
         runAsNonRoot: false
         fsGroup: 1000
+        # Syscall filter — meaningful defense-in-depth even for a root process
+        # whose capabilities are already dropped.
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: open-webui
         image: ghcr.io/open-webui/open-webui:v0.9.6
@@ -37,6 +41,17 @@ spec:
         ports:
         - containerPort: 8080
         env:
+        # OWUI fetches/verifies the all-MiniLM embedding model from HuggingFace at
+        # startup; the egress NetworkPolicy blocks the internet, so without offline
+        # mode the pod hangs after the banner and never becomes Ready. Offline mode
+        # loads the model from the PVC cache instead. NOTE: the model must be cached
+        # first — the documented rollout order (deploy OWUI, THEN apply the netpol)
+        # lets the first boot download it; see enterprise/k8s/README.md. Verified on
+        # a live kind+Calico cluster (boots in ~20s under the full netpol).
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_OFFLINE
+          value: "1"
         # --- connectivity ---
         - name: OLLAMA_BASE_URL
           value: "http://snflwr-api-service:8000"     # SAFETY PROXY, never ollama-service:11434

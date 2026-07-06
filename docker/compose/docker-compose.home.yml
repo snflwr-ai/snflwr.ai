@@ -27,7 +27,9 @@ services:
       - ollama-data:/root/.ollama
     restart: unless-stopped
     networks:
-      - snflwr-home-net
+      # backend only — OWUI (frontend-net) cannot reach Ollama directly; all
+      # student LLM traffic must go through the snflwr-api safety proxy.
+      - snflwr-backend-net
     expose:
       - "11434"
     # GPU acceleration: add -f docker-compose.gpu.yml (handled automatically by deploy.sh)
@@ -96,7 +98,9 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - snflwr-home-net
+      # bridges both nets: reachable by OWUI (frontend) AND reaches Ollama (backend).
+      - snflwr-frontend-net
+      - snflwr-backend-net
     expose:
       - "39150"
     healthcheck:
@@ -210,7 +214,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - snflwr-home-net
+      # frontend only — talks to the snflwr-api proxy, never Ollama directly.
+      - snflwr-frontend-net
 
   # Backup cron sidecar — the home stack runs no Celery Beat, so without this
   # the backup tooling never runs automatically (the enterprise stack schedules
@@ -282,7 +287,8 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - snflwr-home-net
+      # backend only — a backup sidecar, no need to reach OWUI.
+      - snflwr-backend-net
 
 volumes:
   ollama-data:
@@ -295,5 +301,11 @@ volumes:
     driver: local
 
 networks:
-  snflwr-home-net:
+  # Two-tier segmentation enforces the safety model at the network layer:
+  # OWUI sits on frontend-net only, Ollama on backend-net only, and snflwr-api
+  # bridges both — so student LLM traffic can only reach Ollama THROUGH the
+  # safety proxy, never directly. (Mirrors the enterprise-k8s OWUI NetworkPolicy.)
+  snflwr-frontend-net:
+    driver: bridge
+  snflwr-backend-net:
     driver: bridge

@@ -39,7 +39,7 @@ def print_warning(text):
 
 def _sanitize_for_log(text: str) -> str:
     """Strip non-printable characters from diagnostic text before logging."""
-    return ''.join(c for c in str(text) if c.isprintable())
+    return "".join(c for c in str(text) if c.isprintable())
 
 
 def print_error(text):
@@ -51,9 +51,9 @@ def validate_jwt_secret():
     issues = []
 
     # Read directly from environment to avoid taint propagation through config object
-    _jwt_raw = os.environ.get('JWT_SECRET_KEY', '')
+    _jwt_raw = os.environ.get("JWT_SECRET_KEY", "")
     _jwt_len = len(_jwt_raw)
-    _jwt_is_default = (_jwt_raw == 'change-this-secret-key-in-production')
+    _jwt_is_default = _jwt_raw == "change-this-secret-key-in-production"
     # Clear the raw value immediately — we only need the derived booleans
     del _jwt_raw
 
@@ -86,19 +86,23 @@ def validate_smtp_config():
 
     # Check for default/example values
     _smtp_email = system_config.SMTP_FROM_EMAIL.lower()
-    _smtp_domain = _smtp_email.split('@', 1)[1] if '@' in _smtp_email else _smtp_email
-    if _smtp_domain == 'example.com':
-        warnings.append("SMTP_FROM_EMAIL contains 'example.com' - update with a real email address")
+    _smtp_domain = _smtp_email.split("@", 1)[1] if "@" in _smtp_email else _smtp_email
+    if _smtp_domain == "example.com":
+        warnings.append(
+            "SMTP_FROM_EMAIL contains 'example.com' - update with a real email address"
+        )
 
     # Read password from env directly to avoid taint propagation through config object
-    _smtp_pw_raw = os.environ.get('SMTP_PASSWORD', '')
-    _smtp_pw_is_example = _smtp_pw_raw.startswith('SG.YOUR')
+    _smtp_pw_raw = os.environ.get("SMTP_PASSWORD", "")
+    _smtp_pw_is_example = _smtp_pw_raw.startswith("SG.YOUR")
     _smtp_pw_is_set = bool(_smtp_pw_raw)
     del _smtp_pw_raw
     _smtp_user_is_set = bool(system_config.SMTP_USERNAME)
 
     if _smtp_pw_is_example:
-        issues.append("SMTP_PASSWORD is using example value - update with real SendGrid API key")
+        issues.append(
+            "SMTP_PASSWORD is using example value - update with real SendGrid API key"
+        )
 
     if not _smtp_user_is_set or not _smtp_pw_is_set:
         warnings.append("SMTP credentials not set - email sending may fail")
@@ -111,18 +115,22 @@ def validate_encryption_key():
     issues = []
 
     try:
-        encryption_key = os.getenv('ENCRYPTION_KEY', '')
+        encryption_key = os.getenv("ENCRYPTION_KEY", "")
         _enc_len = len(encryption_key)
         _enc_is_empty = not encryption_key
-        _enc_is_default = encryption_key.startswith('CHANGE_THIS')
+        _enc_is_default = encryption_key.startswith("CHANGE_THIS")
         del encryption_key
 
         if _enc_is_empty:
-            issues.append("ENCRYPTION_KEY is not set - parent emails cannot be encrypted")
+            issues.append(
+                "ENCRYPTION_KEY is not set - parent emails cannot be encrypted"
+            )
         elif _enc_is_default:
             issues.append("ENCRYPTION_KEY is using default value")
         elif _enc_len < 40:
-            issues.append("ENCRYPTION_KEY is too short (should be 44 characters for Fernet)")
+            issues.append(
+                "ENCRYPTION_KEY is too short (should be 44 characters for Fernet)"
+            )
 
     except Exception as e:
         issues.append(f"Failed to validate ENCRYPTION_KEY: {type(e).__name__}")
@@ -143,9 +151,11 @@ def validate_cors_origins():
     for origin in origins:
         _parsed = urlparse(origin)
         _netloc = _parsed.netloc or _parsed.path
-        if _netloc == 'localhost' or _netloc.startswith('localhost:'):
-            warnings.append(f"CORS_ORIGINS contains localhost: {origin} - OK for dev, not for production")
-        elif _netloc == 'yourdomain.com' or _netloc.endswith('.yourdomain.com'):
+        if _netloc == "localhost" or _netloc.startswith("localhost:"):
+            warnings.append(
+                f"CORS_ORIGINS contains localhost: {origin} - OK for dev, not for production"
+            )
+        elif _netloc == "yourdomain.com" or _netloc.endswith(".yourdomain.com"):
             issues.append(f"CORS_ORIGINS contains example domain: {origin}")
 
     return issues, warnings
@@ -156,7 +166,7 @@ def validate_database_config():
     issues = []
     warnings = []
 
-    if system_config.DATABASE_TYPE == 'sqlite':
+    if system_config.DATABASE_TYPE == "sqlite":
         warnings.append("Using SQLite - consider PostgreSQL for production at scale")
 
         # Check if database file exists
@@ -175,10 +185,12 @@ def validate_api_config():
     if system_config.API_RELOAD:
         warnings.append("API_RELOAD is enabled - should be false in production")
 
-    if system_config.API_HOST == '0.0.0.0':
-        warnings.append("API_HOST is 0.0.0.0 (all interfaces) - ensure firewall is configured")
+    if system_config.API_HOST == "0.0.0.0":
+        warnings.append(
+            "API_HOST is 0.0.0.0 (all interfaces) - ensure firewall is configured"
+        )
 
-    if system_config.LOG_LEVEL == 'DEBUG':
+    if system_config.LOG_LEVEL == "DEBUG":
         warnings.append("LOG_LEVEL is DEBUG - consider INFO or WARNING for production")
 
     return issues, warnings
@@ -194,7 +206,9 @@ def test_smtp_connection():
     try:
         from core.email_service import email_service
 
-        print(f"  Testing SMTP connection to {system_config.SMTP_HOST}:{system_config.SMTP_PORT}...")
+        print(
+            f"  Testing SMTP connection to {system_config.SMTP_HOST}:{system_config.SMTP_PORT}..."
+        )
         success, error = email_service.test_connection()
 
         if not success:
@@ -208,15 +222,21 @@ def test_smtp_connection():
 
 def main():
     """Main validation function"""
-    parser = argparse.ArgumentParser(description='Validate snflwr.ai environment configuration')
-    parser.add_argument('--env', choices=['development', 'staging', 'production'], help='Environment to validate')
-    parser.add_argument('--test-smtp', action='store_true', help='Test SMTP connection')
+    parser = argparse.ArgumentParser(
+        description="Validate snflwr.ai environment configuration"
+    )
+    parser.add_argument(
+        "--env",
+        choices=["development", "staging", "production"],
+        help="Environment to validate",
+    )
+    parser.add_argument("--test-smtp", action="store_true", help="Test SMTP connection")
     args = parser.parse_args()
 
     print_header("snflwr.ai - Environment Configuration Validator")
 
-    environment = os.getenv('ENVIRONMENT', 'development')
-    is_production = environment.lower() == 'production'
+    environment = os.getenv("ENVIRONMENT", "development")
+    is_production = environment.lower() == "production"
 
     print(f"Environment: {environment}")
     print(f"Config File: {system_config.APP_DATA_DIR}")
@@ -247,7 +267,9 @@ def main():
         for warning in warnings:
             print_warning(warning)
     if not issues and not warnings:
-        print_success(f"SMTP configured: {system_config.SMTP_HOST}:{system_config.SMTP_PORT}")
+        print_success(
+            f"SMTP configured: {system_config.SMTP_HOST}:{system_config.SMTP_PORT}"
+        )
 
     # Test SMTP connection if requested
     if args.test_smtp and system_config.SMTP_ENABLED:
@@ -343,10 +365,12 @@ def main():
     else:
         print(f"\n  [OK] VALIDATION PASSED")
         print(f"\n  All configuration checks passed!")
-        print(f"  System is ready for {'production ' if is_production else ''}deployment")
+        print(
+            f"  System is ready for {'production ' if is_production else ''}deployment"
+        )
 
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

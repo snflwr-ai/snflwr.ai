@@ -55,7 +55,7 @@ def print_warning(text):
 
 def _sanitize_for_log(text: str) -> str:
     """Strip non-printable characters from diagnostic text before logging."""
-    return ''.join(c for c in str(text) if c.isprintable())
+    return "".join(c for c in str(text) if c.isprintable())
 
 
 def print_error(text):
@@ -64,9 +64,9 @@ def print_error(text):
 
 def _mask_email(email: str) -> str:
     """Mask email for safe logging: j***@example.com."""
-    if '@' not in email:
-        return '***'
-    local, domain = email.rsplit('@', 1)
+    if "@" not in email:
+        return "***"
+    local, domain = email.rsplit("@", 1)
     if len(local) <= 1:
         return f"***@{domain}"
     return f"{local[0]}***@{domain}"
@@ -82,7 +82,7 @@ def validate_email(email: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return re.match(pattern, email) is not None
 
 
@@ -94,15 +94,16 @@ def _get_password_traits(password: str) -> tuple:
     """
     return (
         len(password),
-        bool(re.search(r'[A-Z]', password)),
-        bool(re.search(r'[a-z]', password)),
-        bool(re.search(r'[0-9]', password)),
+        bool(re.search(r"[A-Z]", password)),
+        bool(re.search(r"[a-z]", password)),
+        bool(re.search(r"[0-9]", password)),
         bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password)),
     )
 
 
-def validate_password_strength(pw_len: int, has_upper: bool, has_lower: bool,
-                               has_digit: bool, has_special: bool) -> tuple[bool, str]:
+def validate_password_strength(
+    pw_len: int, has_upper: bool, has_lower: bool, has_digit: bool, has_special: bool
+) -> tuple[bool, str]:
     """
     Validate password strength from pre-computed, non-sensitive traits.
 
@@ -154,7 +155,7 @@ def check_existing_admins() -> tuple[bool, int]:
         )
 
         if result:
-            count = result[0]['count']
+            count = result[0]["count"]
             return count > 0, count
 
         return False, 0
@@ -176,8 +177,7 @@ def check_email_exists(email_hash: str) -> bool:
     """
     try:
         result = db_manager.execute_query(
-            "SELECT parent_id FROM accounts WHERE email_hash = ?",
-            (email_hash,)
+            "SELECT parent_id FROM accounts WHERE email_hash = ?", (email_hash,)
         )
 
         return len(result) > 0
@@ -193,9 +193,7 @@ def _hash_password(password: str) -> str:
 
 
 def create_admin_account(
-    email: str,
-    password_hash: str,
-    name: str = "System Administrator"
+    email: str, password_hash: str, name: str = "System Administrator"
 ) -> tuple[bool, str, int]:
     """
     Create admin account in database
@@ -241,26 +239,25 @@ def create_admin_account(
                 email_hash,
                 encrypted_email,
                 password_hash,
-                'admin',
+                "admin",
                 name,
                 username,
                 device_id,
                 datetime.now(timezone.utc).isoformat(),
                 1,  # is_active
-                1   # email_notifications_enabled
-            )
+                1,  # email_notifications_enabled
+            ),
         )
 
         # Verify creation
         result = db_manager.execute_query(
-            "SELECT parent_id, role FROM accounts WHERE parent_id = ?",
-            (user_id,)
+            "SELECT parent_id, role FROM accounts WHERE parent_id = ?", (user_id,)
         )
 
         if not result:
             return False, None, 2
 
-        if result[0]['role'] != 'admin':
+        if result[0]["role"] != "admin":
             return False, None, 3
 
         return True, user_id, 0
@@ -293,7 +290,7 @@ def _lookup_admin_by_email(email: str) -> dict | None:
     email_hash = email_crypto.hash_email(email)
     result = db_manager.execute_query(
         "SELECT parent_id, password_hash, role FROM accounts WHERE email_hash = ?",
-        (email_hash,)
+        (email_hash,),
     )
     return result[0] if result else None
 
@@ -313,9 +310,9 @@ def verify_admin_login(email: str, password: str) -> bool:
             # Use a verification code — print outside tainted scope
             return _report_verify_result(1, None)
 
-        parent_id = row['parent_id']
-        stored_hash = row['password_hash']
-        role = row['role']
+        parent_id = row["parent_id"]
+        stored_hash = row["password_hash"]
+        role = row["role"]
 
         if not stored_hash:
             return _report_verify_result(2, None)
@@ -330,10 +327,12 @@ def verify_admin_login(email: str, password: str) -> bool:
         return _report_verify_result(-1, None)
 
 
-def _report_verify_result(code: int, parent_id: str | None, role: str = 'admin') -> bool:
+def _report_verify_result(
+    code: int, parent_id: str | None, role: str = "admin"
+) -> bool:
     """Report verification result using static messages (outside taint scope)."""
     if code == 0:
-        if role != 'admin':
+        if role != "admin":
             print_warning(f"Account exists but role is '{role}', expected 'admin'")
         print_success(f"Password hash verified for admin {parent_id}")
         return True
@@ -359,9 +358,11 @@ def interactive_mode():
 
     if admins_exist:
         print_warning(f"Warning: {admin_count} admin account(s) already exist")
-        response = input("\nDo you want to create another admin? (yes/no): ").strip().lower()
+        response = (
+            input("\nDo you want to create another admin? (yes/no): ").strip().lower()
+        )
 
-        if response not in ['yes', 'y']:
+        if response not in ["yes", "y"]:
             print("\nBootstrap cancelled.")
             return False
 
@@ -430,7 +431,7 @@ def interactive_mode():
 
     response = input("\nCreate this admin account? (yes/no): ").strip().lower()
 
-    if response not in ['yes', 'y']:
+    if response not in ["yes", "y"]:
         print("\nBootstrap cancelled.")
         return False
 
@@ -471,12 +472,20 @@ def interactive_mode():
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description='Bootstrap first admin account for snflwr.ai'
+        description="Bootstrap first admin account for snflwr.ai"
     )
-    parser.add_argument('--email', help='Admin email address')
-    parser.add_argument('--password', help='Admin password (not recommended - use interactive mode)')
-    parser.add_argument('--name', default='System Administrator', help='Admin display name')
-    parser.add_argument('--non-interactive', action='store_true', help='Non-interactive mode (requires --email and --password)')
+    parser.add_argument("--email", help="Admin email address")
+    parser.add_argument(
+        "--password", help="Admin password (not recommended - use interactive mode)"
+    )
+    parser.add_argument(
+        "--name", default="System Administrator", help="Admin display name"
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Non-interactive mode (requires --email and --password)",
+    )
 
     args = parser.parse_args()
 
@@ -499,7 +508,9 @@ def main():
 
         # Create account
         pw_hash = _hash_password(args.password)
-        success, user_id, err_code = create_admin_account(args.email, pw_hash, args.name)
+        success, user_id, err_code = create_admin_account(
+            args.email, pw_hash, args.name
+        )
 
         if not success:
             print_error(_CREATE_ERRORS.get(err_code, "Failed to create admin account"))
@@ -523,9 +534,10 @@ def main():
     except Exception as e:
         print_error(f"Unexpected error: {type(e).__name__}")
         import traceback
+
         traceback.print_exc()
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

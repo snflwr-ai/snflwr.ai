@@ -167,3 +167,50 @@ def test_provisioning_error_returns_400(mock_provision, admin_session):
 
     assert r.status_code == 400, r.text
     assert "Parent account creation failed" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Route-level integration: real provision_family, OWUI create fails -> 400
+# (A4 — exercise the full route -> provision_family -> rollback -> 400 chain,
+# not a mocked provision_family)
+# ---------------------------------------------------------------------------
+
+
+def test_owui_create_failure_rolls_back_and_returns_400(admin_session):
+    """A failing OWUI user-create must roll the parent back and surface a 400 —
+    no orphan account, exercised through the real provision_family."""
+    from core.authentication import auth_manager
+
+    email = "a4-owui-fail@example.com"
+    # ensure a clean slate
+    auth_manager.db.execute_update("DELETE FROM accounts WHERE username = ?", (email,))
+
+    with (
+        patch("api.middleware.auth.auth_manager") as mock_am,
+        patch(
+            "api.middleware.csrf.validate_csrf_token",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "api.routes.admin._common._owui_create_user",
+            return_value=(None, "Open WebUI unreachable"),
+        ),
+        patch("api.routes.admin._common._owui_delete_user", return_value=None),
+    ):
+        mock_am.validate_session.return_value = (True, admin_session)
+        r = client.post(
+            "/api/admin/families",
+            json={
+                "parent": {"name": "A4 Fam", "email": email},
+                "children": [{"name": "Kid", "birthdate": "2014-01-01", "grade": "5"}],
+            },
+            headers={"Authorization": "Bearer admin-token"},
+        )
+
+    assert r.status_code == 400, r.text
+    # rollback must leave no orphan parent account
+    rows = auth_manager.db.execute_query(
+        "SELECT parent_id FROM accounts WHERE username = ?", (email,)
+    )
+    assert rows == []

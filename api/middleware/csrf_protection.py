@@ -147,8 +147,12 @@ async def validate_csrf_token(request: Request) -> bool:
         "/api/internal/",  # Internal server-to-server endpoints
         "/api/thin-client/",  # Thin client API (non-browser clients, no CSRF cookies)
         # Ollama-compatible proxy paths — Open WebUI calls these server-to-server
-        # over the trusted Docker network and forwards user identity via
-        # X-OpenWebUI-User-* headers; safety pipeline runs inside the proxy handler.
+        # over the trusted Docker network with Bearer (INTERNAL_API_KEY) auth and
+        # no CSRF cookie, so CSRF protection doesn't apply. Note the two classes
+        # differ in how child-safety is enforced (not by CSRF here):
+        #   - /api/chat runs the full safety pipeline in the proxy handler.
+        #   - /api/generate, /api/embed*, /api/pull|copy|delete are genuine-admin-
+        #     only (see ollama_proxy/passthrough.py) and never reach child users.
         "/api/chat",
         "/api/generate",
         "/api/show",

@@ -115,6 +115,33 @@ class TestBeforeSendFilter:
         assert "Timmy" not in str(result["request"]["data"])
 
     @patch.dict(os.environ, {"ENVIRONMENT": "production", "SENTRY_SEND_IN_DEV": "false"})
+    def test_scrubs_pii_keyed_tags(self, sample_event, sample_hint):
+        f = self._get_filter()
+        event = deepcopy(sample_event)
+        event["tags"] = {
+            "child_name": "Timmy",
+            "profile_id": "abc",
+            "environment": "production",  # non-PII, must be preserved
+        }
+        result = f(event, sample_hint)
+        assert result["tags"]["child_name"] == "[Filtered]"
+        assert result["tags"]["profile_id"] == "[Filtered]"
+        assert result["tags"]["environment"] == "production"
+
+    @patch.dict(os.environ, {"ENVIRONMENT": "production", "SENTRY_SEND_IN_DEV": "false"})
+    def test_scrubs_custom_contexts_keeps_standard(self, sample_event, sample_hint):
+        f = self._get_filter()
+        event = deepcopy(sample_event)
+        event["contexts"] = {
+            "os": {"name": "Linux", "version": "6.0"},  # standard, preserved
+            "child_info": {"name": "Timmy", "age": 8},  # custom, filtered
+        }
+        result = f(event, sample_hint)
+        assert result["contexts"]["os"] == {"name": "Linux", "version": "6.0"}
+        assert result["contexts"]["child_info"] == "[Filtered]"
+        assert "Timmy" not in str(result["contexts"])
+
+    @patch.dict(os.environ, {"ENVIRONMENT": "production", "SENTRY_SEND_IN_DEV": "false"})
     def test_scrubs_user_pii_keeps_id_and_role(self, sample_event, sample_hint):
         """COPPA: Only user_id and role should survive; email/name/username removed."""
         f = self._get_filter()

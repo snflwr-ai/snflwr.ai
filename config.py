@@ -8,18 +8,21 @@ from typing import List, Optional, Tuple
 
 # Load .env files if present (production first, then dev fallback).
 # .env.production takes priority — it's what setup_production.py generates.
-try:
-    from dotenv import load_dotenv
+# SNFLWR_SKIP_DOTENV=1 skips file loading entirely so a caller can test the pure
+# env-var defaults without a developer's local .env bleeding in.
+if os.getenv("SNFLWR_SKIP_DOTENV", "").lower() not in ("1", "true"):
+    try:
+        from dotenv import load_dotenv
 
-    _project_root = Path(__file__).parent
-    _env_production = _project_root / ".env.production"
-    _env_default = _project_root / ".env"
-    if _env_production.exists():
-        load_dotenv(_env_production)
-    if _env_default.exists():
-        load_dotenv(_env_default, override=False)  # won't override production values
-except ImportError:
-    pass  # python-dotenv not installed, rely on system env vars
+        _project_root = Path(__file__).parent
+        _env_production = _project_root / ".env.production"
+        _env_default = _project_root / ".env"
+        if _env_production.exists():
+            load_dotenv(_env_production)
+        if _env_default.exists():
+            load_dotenv(_env_default, override=False)  # won't override production values
+    except ImportError:
+        pass  # python-dotenv not installed, rely on system env vars
 
 # ---------------------------------------------------------------------------
 # Hardware-aware defaults: detect server resources and compute sane defaults

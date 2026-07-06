@@ -39,6 +39,7 @@ logger = get_logger(__name__)
 
 class KeyRotationError(Exception):
     """Raised when key rotation fails"""
+
     pass
 
 
@@ -55,8 +56,7 @@ def verify_database_connection(db_path: Path, encryption_key: str) -> bool:
     """
     try:
         adapter = EncryptedSQLiteAdapter(
-            db_path=str(db_path),
-            encryption_key=encryption_key
+            db_path=str(db_path), encryption_key=encryption_key
         )
         conn = adapter.connect()
         cursor = conn.cursor()
@@ -75,9 +75,7 @@ def verify_database_connection(db_path: Path, encryption_key: str) -> bool:
 
 
 def export_database_to_plaintext(
-    source_db: Path,
-    source_key: str,
-    export_path: Path
+    source_db: Path, source_key: str, export_path: Path
 ) -> bool:
     """
     Export encrypted database to plaintext SQLite
@@ -93,8 +91,7 @@ def export_database_to_plaintext(
     try:
         # Connect to encrypted source
         source_adapter = EncryptedSQLiteAdapter(
-            db_path=str(source_db),
-            encryption_key=source_key
+            db_path=str(source_db), encryption_key=source_key
         )
         source_conn = source_adapter.connect()
 
@@ -116,9 +113,7 @@ def export_database_to_plaintext(
 
 
 def import_plaintext_to_encrypted(
-    plaintext_db: Path,
-    target_db: Path,
-    target_key: str
+    plaintext_db: Path, target_db: Path, target_key: str
 ) -> bool:
     """
     Import plaintext database to new encrypted database
@@ -137,8 +132,7 @@ def import_plaintext_to_encrypted(
 
         # Connect to encrypted target
         target_adapter = EncryptedSQLiteAdapter(
-            db_path=str(target_db),
-            encryption_key=target_key
+            db_path=str(target_db), encryption_key=target_key
         )
         target_conn = target_adapter.connect()
 
@@ -157,10 +151,7 @@ def import_plaintext_to_encrypted(
 
 
 def verify_data_integrity(
-    original_db: Path,
-    original_key: str,
-    new_db: Path,
-    new_key: str
+    original_db: Path, original_key: str, new_db: Path, new_key: str
 ) -> bool:
     """
     Verify data integrity by comparing table counts and row counts
@@ -177,14 +168,12 @@ def verify_data_integrity(
     try:
         # Connect to both databases
         original_adapter = EncryptedSQLiteAdapter(
-            db_path=str(original_db),
-            encryption_key=original_key
+            db_path=str(original_db), encryption_key=original_key
         )
         original_conn = original_adapter.connect()
 
         new_adapter = EncryptedSQLiteAdapter(
-            db_path=str(new_db),
-            encryption_key=new_key
+            db_path=str(new_db), encryption_key=new_key
         )
         new_conn = new_adapter.connect()
 
@@ -211,7 +200,9 @@ def verify_data_integrity(
             if original_count == new_count:
                 print(f"[OK] {table}: {original_count} rows")
             else:
-                print(f"[FAIL] {table}: {original_count} rows (original) vs {new_count} rows (new)")
+                print(
+                    f"[FAIL] {table}: {original_count} rows (original) vs {new_count} rows (new)"
+                )
                 all_match = False
 
         original_conn.close()
@@ -228,9 +219,9 @@ def rotate_encryption_key():
     """
     Main key rotation function
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("DATABASE ENCRYPTION KEY ROTATION")
-    print("="*70)
+    print("=" * 70)
     print("\n[WARN]  This script will rotate your database encryption key.")
     print("Your data will remain safe, but this is a critical operation.\n")
 
@@ -246,16 +237,16 @@ def rotate_encryption_key():
         return False
 
     # Get current encryption key
-    print("\n" + "-"*70)
+    print("\n" + "-" * 70)
     print("CURRENT ENCRYPTION KEY")
-    print("-"*70)
+    print("-" * 70)
 
-    current_key = os.getenv('DB_ENCRYPTION_KEY')
+    current_key = os.getenv("DB_ENCRYPTION_KEY")
 
     if current_key:
         print(f"[OK] Found DB_ENCRYPTION_KEY in environment")
         use_env = input("Use this key? (y/n): ").strip().lower()
-        if use_env != 'y':
+        if use_env != "y":
             current_key = input("Enter current encryption key: ").strip()
     else:
         current_key = input("Enter current encryption key: ").strip()
@@ -273,9 +264,9 @@ def rotate_encryption_key():
         return False
 
     # Create backup
-    print("\n" + "-"*70)
+    print("\n" + "-" * 70)
     print("BACKUP CREATION")
-    print("-"*70)
+    print("-" * 70)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_dir = db_path.parent / "backups"
@@ -288,9 +279,9 @@ def rotate_encryption_key():
     print(f"[OK] Backup created")
 
     # Generate new key
-    print("\n" + "-"*70)
+    print("\n" + "-" * 70)
     print("NEW ENCRYPTION KEY")
-    print("-"*70)
+    print("-" * 70)
     print("\nHow do you want to generate the new key?")
     print("1. New passphrase")
     print("2. New random key")
@@ -324,21 +315,23 @@ def rotate_encryption_key():
 
         old_key, new_key = key_manager.rotate_key(current_key, None)
         # Save new key directly to .env file
-        _env_path = Path(os.environ.get('ENV_FILE', '.env'))
+        _env_path = Path(os.environ.get("ENV_FILE", ".env"))
         if _env_path.exists():
             _content = _env_path.read_text()
             _content = re.sub(
-                r'^DB_ENCRYPTION_KEY=.*$',
-                f'DB_ENCRYPTION_KEY={new_key}',
+                r"^DB_ENCRYPTION_KEY=.*$",
+                f"DB_ENCRYPTION_KEY={new_key}",
                 _content,
                 flags=re.MULTILINE,
             )
             _fd = os.open(str(_env_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(_fd, 'w') as _f:
+            with os.fdopen(_fd, "w") as _f:
                 _f.write(_content)
             print("\n[OK] New encryption key generated and saved to .env")
         else:
-            print(f"\n[WARN] .env file not found at {_env_path} — update DB_ENCRYPTION_KEY manually")
+            print(
+                f"\n[WARN] .env file not found at {_env_path} — update DB_ENCRYPTION_KEY manually"
+            )
         print("[WARN] CRITICAL: Back up your .env file immediately!")
         input("Press Enter to continue...")
 
@@ -347,9 +340,9 @@ def rotate_encryption_key():
         return False
 
     # Perform rotation
-    print("\n" + "-"*70)
+    print("\n" + "-" * 70)
     print("KEY ROTATION IN PROGRESS")
-    print("-"*70)
+    print("-" * 70)
 
     try:
         # Step 1: Export to plaintext
@@ -393,9 +386,9 @@ def rotate_encryption_key():
         plaintext_path.unlink()  # Delete plaintext export
         shutil.rmtree(temp_dir)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("KEY ROTATION SUCCESSFUL")
-        print("="*70)
+        print("=" * 70)
         print(f"\n[OK] Database encrypted with new key")
         print(f"[OK] Backups saved:")
         print(f"   - {backup_path}")

@@ -18,4 +18,4 @@ repos:
     rev: 26.3.1
     hooks:
       - id: black
-        files: ^(api|core|safety|storage|utils)/
+        files: ^(api|core|safety|storage|utils|scripts)/

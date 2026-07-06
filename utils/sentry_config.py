@@ -199,6 +199,50 @@ def before_send_filter(event, hint):
             if any(sensitive in key.lower() for sensitive in sensitive_keys):
                 event["extra"][key] = "[Filtered]"
 
+    # Scrub tags — filter values whose key suggests PII. Tags are meant to be
+    # low-cardinality labels, so a child's name/age/message in a tag is a misuse;
+    # drop it rather than risk it.
+    if isinstance(event.get("tags"), dict):
+        pii_tag_keys = (
+            "email",
+            "name",
+            "child",
+            "student",
+            "profile",
+            "message",
+            "age",
+            "phone",
+            "address",
+            "user",
+            "password",
+            "token",
+            "secret",
+        )
+        for key in list(event["tags"].keys()):
+            if any(p in key.lower() for p in pii_tag_keys):
+                event["tags"][key] = "[Filtered]"
+
+    # Scrub contexts — keep the standard SDK blocks (os/runtime/etc., which are
+    # PII-free) and wholesale-filter any custom context block, which is where an
+    # app could stash child data.
+    if isinstance(event.get("contexts"), dict):
+        std_contexts = {
+            "trace",
+            "os",
+            "runtime",
+            "device",
+            "app",
+            "browser",
+            "gpu",
+            "culture",
+            "response",
+            "cloud_resource",
+            "replay",
+        }
+        for name in list(event["contexts"].keys()):
+            if name.lower() not in std_contexts:
+                event["contexts"][name] = "[Filtered]"
+
     return _scrub_freetext(event)
 
 

@@ -36,7 +36,7 @@ jobs:
 
     - name: Check code formatting with Black
       run: |
-        black --check --diff api/ core/ safety/ storage/ utils/
+        black --check --diff api/ core/ safety/ storage/ utils/ scripts/
 
     - name: Lint with Ruff
       run: |

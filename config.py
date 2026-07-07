@@ -177,6 +177,22 @@ class _SystemConfig:
         "SAFETY_CLASSIFIER_REQUIRED", "true"
     ).lower() in ("1", "true", "yes")
 
+    # ---- Guidance-enforcement post-processor (pedagogy, fail-OPEN) ------------
+    # Regenerate a homework-integrity response once if it revealed the final
+    # answer. OFF by default: enable only after the tutoring-eval canary shows a
+    # pedagogy lift with flat correctness/tone/readability guardrails.
+    GUIDANCE_ENFORCEMENT_ENABLED: bool = os.getenv(
+        "GUIDANCE_ENFORCEMENT_ENABLED", "false"
+    ).lower() in ("1", "true", "yes")
+    # "" -> use the active tutor model for the confirm/re-prompt calls.
+    GUIDANCE_ENFORCER_CONFIRM_MODEL: str = os.getenv(
+        "GUIDANCE_ENFORCER_CONFIRM_MODEL", ""
+    )
+    # Per-step fail-open budget (seconds) for confirm and for re-prompt.
+    GUIDANCE_ENFORCER_TIMEOUT_S: float = float(
+        os.getenv("GUIDANCE_ENFORCER_TIMEOUT_S", "8")
+    )
+
     # Email Configuration (SMTP for parent alerts)
     SMTP_ENABLED: bool = os.getenv("SMTP_ENABLED", "false").lower() == "true"
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
@@ -826,6 +842,7 @@ class _SafetyConfig:
 
 
 system_config = _SystemConfig()
+settings = system_config  # alias used by the pedagogy sub-system
 safety_config = _SafetyConfig()
 
 

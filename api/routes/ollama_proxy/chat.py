@@ -43,6 +43,53 @@ def _gate_block(model: str, message: str, *, stream: bool) -> Response:
     return JSONResponse(content=blocks._ollama_block_response(model, message))
 
 
+async def _pedagogy_reissue(
+    original_body_bytes: bytes,
+    fwd_headers: dict,
+    assistant_text: str,
+    nudge: str,
+    model: str,
+) -> str:
+    """Re-issue the chat with the assistant's response + nudge appended.
+
+    Called by the pedagogy enforcer's ``_regenerate`` closure. Fail-open:
+    callers (inside ``enforce_guidance``) catch all exceptions from this helper.
+    """
+    body = _json.loads(original_body_bytes)
+    messages = list(body.get("messages", []))
+    # Append the revealing assistant turn so the model has full context,
+    # then the nudge so it knows to guide rather than give the answer.
+    messages.append({"role": "assistant", "content": assistant_text})
+    messages.append({"role": "user", "content": nudge})
+    payload = _json.dumps(
+        {"model": model, "messages": messages, "stream": False, "think": False}
+    ).encode()
+    upstream = await transport._forward_request(
+        "POST", "/api/chat", content=payload, headers=fwd_headers
+    )
+    return upstream.json().get("message", {}).get("content", "")
+
+
+async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
+    """Single-turn Ollama call for the pedagogy confirm stage.
+
+    Called by the pedagogy enforcer's ``_confirm_generate`` closure. Fail-open:
+    callers (inside ``confirm_reveal``) catch all exceptions from this helper.
+    """
+    payload = _json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "think": False,
+        }
+    ).encode()
+    upstream = await transport._forward_request(
+        "POST", "/api/chat", content=payload, headers=fwd_headers
+    )
+    return upstream.json().get("message", {}).get("content", "")
+
+
 @router.post("/chat")
 async def proxy_chat(
     request: Request,
@@ -228,6 +275,10 @@ async def proxy_chat(
         if k.lower() not in ("host", "content-length")
     }
 
+    # TODO(pedagogy): force-buffer homework turns when stream=True so the
+    # enforcer can run — requires adding the hook to the buffered-stream path too.
+    # Deferred: home deployment uses stream=False; only a small fraction of student
+    # turns are homework pushes. Implement after the non-streaming path is validated.
     if stream and system_config.CHAT_STREAMING_ENABLED:
         # Hold-back streaming: flush each part only AFTER check_output has vetted
         # the text-so-far, so the child never receives an un-vetted token. Two
@@ -448,6 +499,42 @@ async def proxy_chat(
             _emit_trace()
             return JSONResponse(content=blocks._ollama_block_response(model, block_msg))
 
+        # ---- Pedagogy post-processor (fail-OPEN, homework-integrity only) --------
+        # Runs only on this buffered non-streaming path; gated off by default.
+        # Never blocks a turn: the outer except logs and serves the original text.
+        _pedagogy_modified = False
+        if system_config.GUIDANCE_ENFORCEMENT_ENABLED:
+            try:
+                from core.pedagogy import enforce_guidance
+
+                async def _regenerate(nudge: str) -> str:
+                    return await _pedagogy_reissue(
+                        body_bytes, fwd_headers, assistant_text, nudge, model
+                    )
+
+                async def _confirm_generate(prompt: str) -> str:
+                    return await _pedagogy_oneshot(
+                        prompt,
+                        system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL or model,
+                        fwd_headers,
+                    )
+
+                new_text, meta = await enforce_guidance(
+                    user_question,
+                    assistant_text,
+                    _regenerate,
+                    confirm_generate=_confirm_generate,
+                )
+                if new_text != assistant_text and isinstance(
+                    upstream_json.get("message"), dict
+                ):
+                    upstream_json["message"]["content"] = new_text
+                    assistant_text = new_text  # noqa: F841 — kept for closure clarity
+                    _pedagogy_modified = True
+                _trace["pedagogy"] = {"action": meta.action}
+            except Exception as exc:  # fail-open: never let pedagogy break a turn
+                logger.warning("guidance enforcer errored (fail-open): %s", exc)
+
     _trace["blocked"] = False
     _trace["safety"] = {"blocked_layer": None}
     _trace["tokens"] = _usage_from(upstream_json)
@@ -457,13 +544,16 @@ async def proxy_chat(
     # content that must never reach a child. `content` is untouched. (Streaming
     # paths strip per-line in transport._stream_chunks_from_ollama.)
     out_content = upstream.content
-    if (
-        isinstance(upstream_json, dict)
-        and isinstance(upstream_json.get("message"), dict)
-        and "thinking" in upstream_json["message"]
+    if isinstance(upstream_json, dict) and isinstance(
+        upstream_json.get("message"), dict
     ):
-        upstream_json["message"].pop("thinking", None)
-        out_content = _json.dumps(upstream_json).encode()
+        msg = upstream_json["message"]
+        # Re-serialize when the enforcer rewrote the content OR when we need to
+        # strip the model's reasoning field (OWUI >=0.10 blank-renders it and
+        # chain-of-thought must never reach a child unvetted).
+        if "thinking" in msg or _pedagogy_modified:
+            msg.pop("thinking", None)
+            out_content = _json.dumps(upstream_json).encode()
     return Response(
         content=out_content,
         status_code=upstream.status_code,

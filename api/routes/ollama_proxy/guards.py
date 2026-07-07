@@ -17,8 +17,14 @@ logger = get_logger(__name__)
 def rate_limit_block_reason(user_id: Optional[str]) -> Optional[str]:
     if system_config.CHAT_RATE_LIMIT_PER_MINUTE <= 0:
         return None
+    # An identity-less relay request (no forwarded user id) can't reach a tutor
+    # turn anyway — the no-profile gate blocks it downstream. Skip the limiter so
+    # these don't all collide in one shared "unknown" bucket and collaterally
+    # block legitimate students during a transient OWUI header drop.
+    if not user_id:
+        return None
     allowed, info = rate_limiter.check_rate_limit(
-        identifier=user_id or "unknown",
+        identifier=user_id,
         max_requests=system_config.CHAT_RATE_LIMIT_PER_MINUTE,
         window_seconds=60,
         limit_type="chat",
@@ -38,7 +44,13 @@ def rate_limit_block_reason(user_id: Optional[str]) -> Optional[str]:
 
 
 def circuit_block_reason(user_id: Optional[str]) -> Optional[str]:
-    if ollama_circuit.is_open:
+    # Non-consuming, self-healing read: only short-circuit with the friendly
+    # message while the circuit is open AND still inside its recovery window.
+    # Once the window elapses we return None so the request reaches the transport
+    # layer, whose can_execute() drives the OPEN→HALF_OPEN recovery probe and
+    # records the outcome. (is_open / time_until_retry don't mutate breaker state,
+    # so this shortcut never consumes a half-open probe slot.)
+    if ollama_circuit.is_open and ollama_circuit.time_until_retry() > 0:
         logger.warning(
             "Ollama circuit OPEN — fast-failing student chat for %s", user_id
         )

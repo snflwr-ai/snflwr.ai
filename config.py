@@ -838,6 +838,23 @@ class _SafetyConfig:
         },
     }
 
+    def max_conversation_turns_for_age(self, age: Optional[int]) -> int:
+        """Per-grade conversation-turn cap from FILTER_LEVELS.
+
+        Maps a child's age to the US grade band (elementary K-5, middle 6-8,
+        high 9-12) and returns that band's ``max_conversation_turns``. An unknown
+        or very young age falls back to the most restrictive elementary cap
+        (fail-safe: smallest context, lowest cost).
+        """
+        if age is None or age <= 10:
+            level = "elementary"
+        elif age <= 13:
+            level = "middle"
+        else:
+            level = "high"
+        turns = self.FILTER_LEVELS[level]["max_conversation_turns"]
+        return turns if isinstance(turns, int) else 20
+
     def get_retention_policy(self):
         """Get retention policy summary"""
         return {

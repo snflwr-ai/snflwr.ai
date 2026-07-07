@@ -69,9 +69,14 @@ class EmailTemplate:
         Returns:
             tuple: (subject, html_body)
         """
-        # Escape user-controlled values to prevent stored XSS in email
-        safe_parent_name = html_escape(parent_name)
-        safe_child_name = html_escape(child_name)
+
+        # Escape user-controlled values to prevent stored XSS in email, and strip
+        # CR/LF so a name can't inject email headers via the Subject line.
+        def _clean(v: str) -> str:
+            return html_escape((v or "").replace("\r", " ").replace("\n", " "))
+
+        safe_parent_name = _clean(parent_name)
+        safe_child_name = _clean(child_name)
 
         subject = f"[ALERT] URGENT: Safety Alert for {safe_child_name}"
         safe_severity = html_escape(severity.upper())
@@ -156,11 +161,15 @@ class EmailTemplate:
         Returns:
             tuple: (subject, html_body)
         """
-        subject = f"[WARN] Safety Notice for {html_escape(child_name)}"
 
-        # Escape user-controlled values to prevent stored XSS in email
-        safe_parent_name = html_escape(parent_name)
-        safe_child_name = html_escape(child_name)
+        # Escape user-controlled values to prevent stored XSS in email, and strip
+        # CR/LF so a name can't inject email headers via the Subject line.
+        def _clean(v: str) -> str:
+            return html_escape((v or "").replace("\r", " ").replace("\n", " "))
+
+        safe_parent_name = _clean(parent_name)
+        safe_child_name = _clean(child_name)
+        subject = f"[WARN] Safety Notice for {safe_child_name}"
         safe_severity = html_escape(severity.upper())
         safe_incident_count = html_escape(str(incident_count))
         safe_description = html_escape(description)
@@ -625,12 +634,15 @@ class EmailService:
             return False
 
         try:
-            subject = f"Parental Consent Required for {child_name}'s Profile"
+            # Escape user-controlled values to prevent stored XSS in email, and
+            # strip CR/LF so a name can't inject email headers via the Subject line.
+            def _clean(v: str) -> str:
+                return html_escape((v or "").replace("\r", " ").replace("\n", " "))
 
-            # Escape user-controlled values to prevent stored XSS in email
-            safe_parent_name = html_escape(parent_name)
-            safe_child_name = html_escape(child_name)
+            safe_parent_name = _clean(parent_name)
+            safe_child_name = _clean(child_name)
             safe_child_age = html_escape(str(child_age))
+            subject = f"Parental Consent Required for {safe_child_name}'s Profile"
 
             html_body = f"""
 <!DOCTYPE html>

@@ -5,12 +5,19 @@ connection counter, which now goes through api.connection_tracking (see B1).
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.connection_tracking import connection_tracker
 from utils.logger import correlation_id_var, set_correlation_id
+
+# A client-supplied X-Request-ID is echoed into every log line and the response
+# header, so it MUST be tightly constrained — otherwise a newline in the header
+# forges fake log entries (e.g. a bogus "[CRITICAL]" safety event). Accept only a
+# short opaque token; anything else is replaced with a server-generated UUID.
+_VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 # Request Correlation ID Middleware
@@ -25,9 +32,10 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request, call_next):
-        # Get or generate correlation ID
+        # Get or generate correlation ID. Reject any client value that isn't a
+        # short opaque token (prevents log-forging / header-injection via newlines).
         request_id = request.headers.get("X-Request-ID")
-        if not request_id:
+        if not request_id or not _VALID_REQUEST_ID.match(request_id):
             request_id = str(uuid.uuid4())
 
         # Store in context variable (integrates with logger)

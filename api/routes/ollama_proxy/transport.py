@@ -7,6 +7,7 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import system_config
+from utils.circuit_breaker import ollama_circuit
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -15,12 +16,27 @@ _OLLAMA_READ_TIMEOUT = 300.0  # seconds — matches OLLAMA_TIMEOUT default
 
 
 async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
-    """Send *method* + *path* to the real Ollama backend and return the raw response."""
+    """Send *method* + *path* to the real Ollama backend and return the raw response.
+
+    Gated by ``ollama_circuit``: when the backend has been failing, ``can_execute``
+    fast-fails (raising ``ConnectError``, which every caller already maps to a
+    graceful 503) instead of hanging on a dead backend. Each completed round-trip
+    records success and each transport error records failure, so the breaker
+    actually reflects backend health (and self-heals via its half-open probe).
+    """
+    if not ollama_circuit.can_execute():
+        raise httpx.ConnectError("Ollama circuit breaker open")
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}{path}"
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT)
-    ) as client:
-        return await client.request(method, url, **kwargs)
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT)
+        ) as client:
+            resp = await client.request(method, url, **kwargs)
+    except httpx.TransportError as exc:
+        ollama_circuit.record_failure(exc)
+        raise
+    ollama_circuit.record_success()
+    return resp
 
 
 async def _proxy_to_ollama(request: Request, path: str) -> Response:
@@ -68,10 +84,18 @@ async def _stream_chunks_from_ollama(body: bytes, headers: dict):
     """
     from api.routes.ollama_proxy.blocks import _strip_thinking_from_ndjson_line
 
+    if not ollama_circuit.can_execute():
+        raise httpx.ConnectError("Ollama circuit breaker open")
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     req = client.build_request("POST", url, content=body, headers=headers)
-    resp = await client.send(req, stream=True)
+    try:
+        resp = await client.send(req, stream=True)
+    except httpx.TransportError as exc:
+        await client.aclose()
+        ollama_circuit.record_failure(exc)
+        raise
+    ollama_circuit.record_success()
     buffer = b""
     try:
         async for chunk in resp.aiter_bytes():
@@ -95,17 +119,24 @@ async def _stream_chat_from_ollama(
     Used by the admin pass-through path; student traffic uses
     ``_stream_chunks_from_ollama`` + ``check_output`` instead.
     """
+    if not ollama_circuit.can_execute():
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Ollama backend unreachable"},
+        )
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     try:
         req = client.build_request("POST", url, content=body, headers=headers)
         resp = await client.send(req, stream=True)
-    except httpx.ConnectError:
+    except httpx.TransportError as exc:
         await client.aclose()
+        ollama_circuit.record_failure(exc)
         return JSONResponse(
             status_code=503,
             content={"detail": "Ollama backend unreachable"},
         )
+    ollama_circuit.record_success()
 
     async def _yield_chunks():
         try:

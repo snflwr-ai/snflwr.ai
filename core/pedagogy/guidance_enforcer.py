@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 from config import system_config as settings
-from core.pedagogy.reveal_detection import confirm_reveal, heuristic_reveals
+from core.pedagogy.reveal_detection import confirm_reveal
 from core.pedagogy.trigger import is_homework_request
 
 logger = logging.getLogger(__name__)
@@ -40,12 +40,13 @@ async def enforce_guidance(
     if not is_homework_request(user_text):
         return response, EnforceMeta("not_homework")
 
-    if not heuristic_reveals(user_text, response):
-        return response, EnforceMeta("pass_gate")
-
     budget = settings.GUIDANCE_ENFORCER_TIMEOUT_S
 
-    # LLM confirm stage — fail-open on timeout or any exception
+    # Confirm on EVERY homework turn. We deliberately do NOT pre-gate on a cheap
+    # regex heuristic: it shares the digit-matcher blind spot and misses word-form
+    # reveals like "two plus two equals four" or "three fifths". The judged canary
+    # (2026-07-07) measured such a gate letting 11/11 real reveals through — so the
+    # LLM confirm, which actually catches them, must run on all homework turns.
     try:
         verdict = await asyncio.wait_for(
             confirm_reveal(user_text, response, confirm_generate), timeout=budget
@@ -55,7 +56,7 @@ async def enforce_guidance(
         return response, EnforceMeta("confirm_failed_open")
 
     if not verdict.revealed:
-        return response, EnforceMeta("pass_confirm")
+        return response, EnforceMeta("no_reveal")
 
     # Single re-prompt — fail-open on timeout or any exception
     try:
@@ -64,7 +65,22 @@ async def enforce_guidance(
         logger.info("guidance re-prompt failed open")
         return response, EnforceMeta("reprompt_failed_open")
 
-    if retry and not heuristic_reveals(user_text, retry):
+    if not retry:
+        return response, EnforceMeta("reprompt_failed_open")
+
+    # Re-check the RETRY with the same strong confirm (not a blind heuristic), so a
+    # retry that still reveals in word form is caught rather than served. If we
+    # cannot verify the retry (timeout/error), keep the original — no change is the
+    # fail-safe (the original was already the model's own answer).
+    try:
+        retry_verdict = await asyncio.wait_for(
+            confirm_reveal(user_text, retry, confirm_generate), timeout=budget
+        )
+    except Exception:
+        logger.info("guidance retry re-check failed open")
+        return response, EnforceMeta("reprompt_recheck_failed_open")
+
+    if not retry_verdict.revealed:
         return retry, EnforceMeta("reprompt_clean")
 
     return response, EnforceMeta("reprompt_still_revealed")

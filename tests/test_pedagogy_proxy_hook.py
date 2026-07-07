@@ -69,13 +69,14 @@ def _ollama_chat_resp(text: str) -> httpx.Response:
     )
 
 
-def _ollama_confirm_resp() -> httpx.Response:
-    """Simulate an Ollama response that says the tutor revealed the answer."""
+def _ollama_confirm_resp(revealed: bool = True) -> httpx.Response:
+    """Simulate an Ollama confirm response (revealed true/false)."""
+    verdict = "true" if revealed else "false"
     return httpx.Response(
         200,
         json={
             "model": "snflwr.ai",
-            "message": {"role": "assistant", "content": '{"revealed": true}'},
+            "message": {"role": "assistant", "content": '{"revealed": %s}' % verdict},
             "done": True,
         },
     )
@@ -109,10 +110,11 @@ class TestPedagogyProxyHook:
     def test_flag_on_reveals_answer_replaced_with_clean(self):
         """Flag ON: the proxy returns the clean re-issue text, not the revealing one.
 
-        _forward_request is expected 3 times:
-          1. Original chat → revealing response
-          2. Confirm call  → {"revealed": true}
-          3. Re-issue call → clean response
+        _forward_request is expected 4 times:
+          1. Original chat        → revealing response
+          2. Confirm (original)   → {"revealed": true}
+          3. Re-issue (regenerate)→ clean response
+          4. Confirm (retry)      → {"revealed": false}  (retry is clean → serve it)
         """
         from fastapi.testclient import TestClient
 
@@ -125,12 +127,13 @@ class TestPedagogyProxyHook:
         mock_pipeline.check_input.return_value = safe
         mock_pipeline.check_output.return_value = safe
 
-        # Three sequential Ollama calls from the proxy + enforcer
+        # Four sequential Ollama calls from the proxy + enforcer
         mock_fwd = AsyncMock(
             side_effect=[
-                _ollama_chat_resp(_REVEALING),   # 1. original turn
-                _ollama_confirm_resp(),           # 2. confirm stage
-                _ollama_chat_resp(_CLEAN),        # 3. re-issue
+                _ollama_chat_resp(_REVEALING),        # 1. original turn
+                _ollama_confirm_resp(revealed=True),  # 2. confirm (original)
+                _ollama_chat_resp(_CLEAN),            # 3. re-issue (regenerate)
+                _ollama_confirm_resp(revealed=False), # 4. confirm (retry) -> clean
             ]
         )
 
@@ -168,8 +171,8 @@ class TestPedagogyProxyHook:
         assert data["message"]["content"] == _CLEAN, (
             f"Expected clean text, got: {data['message']['content']!r}"
         )
-        # Enforcer ran all three calls
-        assert mock_fwd.call_count == 3
+        # Enforcer ran all four calls (original, confirm, re-issue, retry re-check)
+        assert mock_fwd.call_count == 4
 
     def test_flag_off_response_is_unchanged(self):
         """Flag OFF: the proxy returns the revealing text byte-for-byte (no enforcer).
@@ -334,12 +337,15 @@ class TestPedagogyProxyHook:
         mock_pipeline.check_output.side_effect = _check_output_side_effect
         mock_pipeline.get_safe_response.return_value = "safe fallback"
 
-        # Three sequential Ollama calls (original + confirm + re-issue)
+        # Four Ollama calls: original + confirm(original) + re-issue + confirm(retry).
+        # The retry re-check passes (clean per confirm) so the enforcer RETURNS the
+        # rewrite; the proxy's check_output then deems it unsafe and discards it.
         mock_fwd = AsyncMock(
             side_effect=[
-                _ollama_chat_resp(_REVEALING),   # 1. original turn
-                _ollama_confirm_resp(),           # 2. confirm stage
-                _ollama_chat_resp(_CLEAN),        # 3. re-issue (unsafe rewrite)
+                _ollama_chat_resp(_REVEALING),        # 1. original turn
+                _ollama_confirm_resp(revealed=True),  # 2. confirm (original)
+                _ollama_chat_resp(_CLEAN),            # 3. re-issue (unsafe rewrite)
+                _ollama_confirm_resp(revealed=False), # 4. confirm (retry) -> clean
             ]
         )
 
@@ -378,7 +384,7 @@ class TestPedagogyProxyHook:
             f"Expected original text to be served (rewrite was unsafe), "
             f"got: {data['message']['content']!r}"
         )
-        # Enforcer still ran all three calls (detect→confirm→reissue)
-        assert mock_fwd.call_count == 3
+        # Enforcer ran all four calls (original→confirm→reissue→retry re-check)
+        assert mock_fwd.call_count == 4
         # check_output was called at least twice: once for original, once for rewrite
         assert call_count["n"] >= 2

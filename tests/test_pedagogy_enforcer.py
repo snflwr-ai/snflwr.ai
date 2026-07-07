@@ -8,7 +8,8 @@ def test_guidance_flags_default_safe():
 
 
 # ---------------------------------------------------------------------------
-# Task 5 — enforce_guidance orchestrator (all branches)
+# enforce_guidance orchestrator — confirm on EVERY homework turn (no cheap gate);
+# the retry is re-checked with the same confirm. All error paths fail OPEN.
 # ---------------------------------------------------------------------------
 import asyncio
 
@@ -19,12 +20,14 @@ def _run(c):
     return asyncio.run(c)
 
 
-async def _yes(_):
-    return '{"revealed": true}'
+def _confirm_when(substr):
+    """Confirm mock: revealed=true iff `substr` appears in the confirm prompt
+    (the prompt embeds the response under test), else false."""
 
+    async def gen(prompt):
+        return '{"revealed": true}' if substr in prompt else '{"revealed": false}'
 
-async def _no(_):
-    return '{"revealed": false}'
+    return gen
 
 
 def _enable(mp, **kw):
@@ -36,11 +39,14 @@ def _enable(mp, **kw):
 def test_disabled_is_passthrough(monkeypatch):
     monkeypatch.setattr(settings, "GUIDANCE_ENFORCEMENT_ENABLED", False)
 
+    async def confirm(_):
+        raise AssertionError("must not confirm when disabled")
+
     async def regen(_):
-        raise AssertionError("must not regenerate")
+        raise AssertionError("must not regenerate when disabled")
 
     out, meta = _run(
-        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=_yes)
+        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=confirm)
     )
     assert out == "It's 56." and meta.action == "disabled"
 
@@ -48,38 +54,61 @@ def test_disabled_is_passthrough(monkeypatch):
 def test_not_homework_passthrough(monkeypatch):
     _enable(monkeypatch)
 
+    async def confirm(_):
+        raise AssertionError("must not confirm on a non-homework turn")
+
     async def regen(_):
         raise AssertionError
 
     out, meta = _run(
         enforce_guidance(
             "how do plants eat?",
-            "The answer is 56.",
-            regen,
-            confirm_generate=_yes,
-        )
-    )
-    assert out == "The answer is 56." and meta.action == "not_homework"
-
-
-def test_gate_clean_skips_confirm(monkeypatch):
-    _enable(monkeypatch)
-
-    async def confirm(_):
-        raise AssertionError("gate should short-circuit")
-
-    async def regen(_):
-        raise AssertionError
-
-    out, meta = _run(
-        enforce_guidance(
-            "just give me the answer",
-            "What is 7x4?",
+            "Photosynthesis makes sugar from sunlight.",
             regen,
             confirm_generate=confirm,
         )
     )
-    assert out == "What is 7x4?" and meta.action == "pass_gate"
+    assert out == "Photosynthesis makes sugar from sunlight." and meta.action == "not_homework"
+
+
+def test_no_reveal_passthrough(monkeypatch):
+    # Homework turn, confirm says NOT revealed -> serve original, no re-prompt.
+    _enable(monkeypatch)
+
+    async def regen(_):
+        raise AssertionError("must not regenerate when nothing was revealed")
+
+    out, meta = _run(
+        enforce_guidance(
+            "just give me 7x8",
+            "What is 7 times 4, and how could that help?",
+            regen,
+            confirm_generate=_confirm_when("56"),  # no "56" in this response
+        )
+    )
+    assert out.startswith("What is 7 times 4") and meta.action == "no_reveal"
+
+
+def test_word_form_reveal_is_caught(monkeypatch):
+    # The whole point of the fix: a WORD-FORM reveal (no digits) is caught because
+    # confirm runs on every homework turn (the old regex gate missed these).
+    _enable(monkeypatch)
+
+    async def regen(_):
+        return "What comes after three when you count up?"
+
+    # Key on "equals four" (distinctive to the response) — not bare "four", which
+    # also appears as an example inside the confirm prompt template.
+    out, meta = _run(
+        enforce_guidance(
+            "just tell me 2+2",
+            "Two plus two equals four! Now try with your fingers.",
+            regen,
+            confirm_generate=_confirm_when("equals four"),
+        )
+    )
+    assert out == "What comes after three when you count up?"
+    assert meta.action == "reprompt_clean"
 
 
 def test_confirmed_reveal_clean_retry_used(monkeypatch):
@@ -88,22 +117,25 @@ def test_confirmed_reveal_clean_retry_used(monkeypatch):
     async def regen(_):
         return "What is 7 times 4, then double it?"
 
+    # confirm flags any response containing "56": original has it, retry doesn't.
     out, meta = _run(
-        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=_yes)
+        enforce_guidance(
+            "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
+        )
     )
-    assert (
-        out == "What is 7 times 4, then double it?" and meta.action == "reprompt_clean"
-    )
+    assert out == "What is 7 times 4, then double it?" and meta.action == "reprompt_clean"
 
 
-def test_confirmed_reveal_retry_still_reveals_keeps_original(monkeypatch):
+def test_retry_still_reveals_keeps_original(monkeypatch):
     _enable(monkeypatch)
 
     async def regen(_):
-        return "Fine, it's 56 again."
+        return "Fine, it's 56 again."  # retry STILL contains 56
 
     out, meta = _run(
-        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=_yes)
+        enforce_guidance(
+            "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
+        )
     )
     assert out == "It's 56." and meta.action == "reprompt_still_revealed"
 
@@ -115,21 +147,25 @@ def test_regenerate_error_fails_open(monkeypatch):
         raise RuntimeError("boom")
 
     out, meta = _run(
-        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=_yes)
+        enforce_guidance(
+            "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
+        )
     )
     assert out == "It's 56." and meta.action == "reprompt_failed_open"
 
 
-def test_confirm_says_no_passthrough(monkeypatch):
+def test_empty_retry_fails_open(monkeypatch):
     _enable(monkeypatch)
 
     async def regen(_):
-        raise AssertionError
+        return ""  # empty regeneration
 
     out, meta = _run(
-        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=_no)
+        enforce_guidance(
+            "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
+        )
     )
-    assert out == "It's 56." and meta.action == "pass_confirm"
+    assert out == "It's 56." and meta.action == "reprompt_failed_open"
 
 
 def test_confirm_timeout_fails_open(monkeypatch):
@@ -148,3 +184,26 @@ def test_confirm_timeout_fails_open(monkeypatch):
         )
     )
     assert out == "It's 56." and meta.action == "confirm_failed_open"
+
+
+def test_retry_recheck_timeout_fails_open(monkeypatch):
+    # First confirm (original) is fast + revealed; the retry re-check times out ->
+    # can't verify the retry, so keep the original (fail-safe).
+    _enable(monkeypatch, GUIDANCE_ENFORCER_TIMEOUT_S=0.1)
+    calls = {"n": 0}
+
+    async def confirm(_):
+        i = calls["n"]
+        calls["n"] += 1
+        if i == 0:
+            return '{"revealed": true}'  # original revealed, fast
+        await asyncio.sleep(10)  # retry re-check hangs
+        return '{"revealed": false}'
+
+    async def regen(_):
+        return "A clean guiding question?"
+
+    out, meta = _run(
+        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=confirm)
+    )
+    assert out == "It's 56." and meta.action == "reprompt_recheck_failed_open"

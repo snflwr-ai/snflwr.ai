@@ -325,9 +325,14 @@ class _SystemConfig:
                 )
             return env_secret
 
-        # Check if we're in a production-like environment
-        environment = os.getenv("ENVIRONMENT", "development").lower()
-        is_production = environment in ("production", "prod", "staging")
+        # Check if we're in a production-like environment. Honor BOTH ENVIRONMENT
+        # and SNFLWR_ENV (see is_production) — otherwise an operator who set only
+        # SNFLWR_ENV=production would silently get an auto-generated JWT secret.
+        _envs = ("production", "prod", "staging")
+        is_production = (
+            os.getenv("ENVIRONMENT", "development").lower() in _envs
+            or os.getenv("SNFLWR_ENV", "").lower() in _envs
+        )
 
         if is_production:
             raise RuntimeError(
@@ -388,8 +393,13 @@ class _SystemConfig:
         if env_key:
             return env_key
 
-        environment = os.getenv("ENVIRONMENT", "development").lower()
-        if environment in ("production", "prod", "staging"):
+        # Honor BOTH ENVIRONMENT and SNFLWR_ENV so a prod box set only via
+        # SNFLWR_ENV isn't silently handed an auto-generated DB-encryption key.
+        _envs = ("production", "prod", "staging")
+        if (
+            os.getenv("ENVIRONMENT", "development").lower() in _envs
+            or os.getenv("SNFLWR_ENV", "").lower() in _envs
+        ):
             # Don't auto-generate in prod — the validator will surface a
             # clear error and the operator should set this explicitly with
             # offline backup of the key.
@@ -902,8 +912,13 @@ else:
     # Hard-fail in any production-like environment. Auto-generating an
     # ephemeral key means OWU's Bearer breaks on every container restart
     # silently — and the proxy auth gate (audit C2) depends on this key.
-    _internal_env = os.getenv("ENVIRONMENT", "development").lower()
-    if _internal_env in ("production", "prod", "staging"):
+    # Honor BOTH ENVIRONMENT and SNFLWR_ENV so a prod box set only via SNFLWR_ENV
+    # doesn't silently run on an ephemeral internal key (breaks OWU relay on restart).
+    _prod_envs = ("production", "prod", "staging")
+    if (
+        os.getenv("ENVIRONMENT", "development").lower() in _prod_envs
+        or os.getenv("SNFLWR_ENV", "").lower() in _prod_envs
+    ):
         raise RuntimeError(
             "INTERNAL_API_KEY must be set for production deployments.\n"
             "Generate one with:\n"

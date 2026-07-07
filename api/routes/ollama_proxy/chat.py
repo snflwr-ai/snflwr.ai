@@ -174,6 +174,21 @@ async def proxy_chat(
         body["model"] = pinned
         body_bytes = _json.dumps(body).encode()
 
+    # ---- Strip client-supplied system messages (students only) ----
+    # Ollama treats a `system` message as a REPLACEMENT for the tutor Modelfile's
+    # system/safety prompt, so a student-injected system turn could discard the
+    # guardrail. The persona + safety instructions live in the Modelfile and are
+    # never set from the request body; drop any system message before forwarding
+    # (the native chat route never forwards a student system message either).
+    if any(isinstance(m, dict) and m.get("role") == "system" for m in messages):
+        messages = [
+            m
+            for m in messages
+            if not (isinstance(m, dict) and m.get("role") == "system")
+        ]
+        body["messages"] = messages
+        body_bytes = _json.dumps(body).encode()
+
     # ---- Admission control (students only; admins returned above) ----
     _reason = (
         guards.rate_limit_block_reason(user_id)
@@ -236,11 +251,14 @@ async def proxy_chat(
         _emit_trace()
         return _gate_block(model, coppa_msg, stream=stream)
 
-    text = blocks._extract_last_user_message(messages)
-    # Captured separately because `text` is shadowed inside the streaming _vet()
-    # closure; passed as `context` to check_output so the answer inherits the
-    # question's educational context (e.g. a biology question about "drugs").
-    user_question = text
+    # user_question is the CURRENT (last) student turn — passed as `context` to
+    # check_output so the answer inherits the question's educational context (e.g. a
+    # biology question about "drugs"). Captured separately because `text` is later
+    # shadowed inside the streaming _vet() closure.
+    user_question = blocks._extract_last_user_message(messages)
+    # Input safety scans ALL student-authored turns, not only the last: a jailbreak
+    # placed in an earlier user turn would otherwise slip past check_input.
+    text = blocks._all_user_messages_text(messages)
 
     try:
         from safety.pipeline import safety_pipeline

@@ -25,12 +25,23 @@ def test_cluster_has_three_instances():
     assert cluster["spec"]["instances"] == 3
 
 
-def test_pitr_backup_configured():
+def test_pitr_backup_is_optin_not_a_broken_default():
     cluster = next(d for d in _docs(MANIFEST) if d["kind"] == "Cluster")
-    # barmanObjectStore = continuous WAL archiving -> PITR
-    assert "barmanObjectStore" in cluster["spec"]["backup"]
-    kinds = {d["kind"] for d in _docs(MANIFEST)}
-    assert "ScheduledBackup" in kinds
+    # Off-cluster PITR is OPT-IN. The default cluster must NOT ship an active
+    # backup block or ScheduledBackup: a placeholder bucket makes CNPG silently
+    # fail WAL archiving (reads as "PITR is on"). HA is preserved via 3 instances
+    # + local WAL storage; off-cluster archiving needs operator S3 creds.
+    assert "backup" not in cluster["spec"]
+    assert "walStorage" in cluster["spec"]
+    assert "ScheduledBackup" not in {d["kind"] for d in _docs(MANIFEST)}
+
+    raw = MANIFEST.read_text()
+    # The old footgun placeholder must be gone...
+    assert "CHANGE-ME" not in raw
+    # ...but the enablement scaffold stays documented (commented barmanObjectStore
+    # block) so an operator can turn PITR on by uncommenting + filling in creds.
+    assert "barmanObjectStore" in raw
+    assert "OPT-IN" in raw
 
 
 def test_default_configmap_does_not_repoint_to_cnpg():

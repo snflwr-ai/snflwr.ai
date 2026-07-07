@@ -322,9 +322,8 @@ For high availability + point-in-time recovery, use CloudNativePG instead:
        kubectl apply --server-side -f \
          https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.0.yaml
 
-2. Set the backup bucket/endpoint + create `snflwr-pg-backup-creds`
-   (ACCESS_KEY_ID / SECRET_ACCESS_KEY) and the `snflwr-pg-app` password in
-   `postgres-cnpg.yaml`, then apply it (do NOT also apply postgres-deployment.yaml):
+2. Set the `snflwr-pg-app` password in `postgres-cnpg.yaml`, then apply it
+   (do NOT also apply postgres-deployment.yaml):
 
        kubectl apply -f postgres-cnpg.yaml
 
@@ -334,7 +333,19 @@ For high availability + point-in-time recovery, use CloudNativePG instead:
    `POSTGRES_HOST: "snflwr-pg-rw"` (CNPG's primary service), then redeploy the API.
 
 CNPG runs 1 primary + 2 streaming standbys with automatic failover; `-rw` always
-routes to the current primary, and WAL is continuously archived for PITR.
+routes to the current primary. Local WAL storage is provisioned by default.
+
+**Enable off-cluster PITR (opt-in — requires an object store):** the `backup:`
+block and `ScheduledBackup` in `postgres-cnpg.yaml` are commented out on purpose,
+because a placeholder bucket would make CNPG *silently* fail WAL archiving. To turn
+on continuous off-cluster archiving + point-in-time recovery:
+1. Create the bucket, then the credentials Secret:
+
+       kubectl create secret generic snflwr-pg-backup-creds -n snflwr-ai \
+         --from-literal=ACCESS_KEY_ID=<id> --from-literal=SECRET_ACCESS_KEY=<key>
+
+2. Uncomment the `backup:` block AND the `ScheduledBackup` in `postgres-cnpg.yaml`,
+   replacing the `<FILL-bucket>` / `<FILL-s3-endpoint>` values, then re-apply.
 
 **Cutover from an existing single-instance Postgres:**
 1. `python scripts/backup_database.py backup` (final pg_dump of the old DB).

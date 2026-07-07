@@ -842,7 +842,6 @@ class _SafetyConfig:
 
 
 system_config = _SystemConfig()
-settings = system_config  # alias used by the pedagogy sub-system
 safety_config = _SafetyConfig()
 
 

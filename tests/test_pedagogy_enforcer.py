@@ -1,4 +1,4 @@
-from config import settings
+from config import system_config as settings
 
 
 def test_guidance_flags_default_safe():

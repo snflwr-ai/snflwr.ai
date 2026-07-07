@@ -55,34 +55,50 @@ spec:
       createrole: false
       passwordSecret:
         name: openwebui-db-app
-  # Continuous WAL archiving + base backups -> PITR. Fill in the bucket/endpoint
-  # and create the snflwr-pg-backup-creds secret (ACCESS_KEY_ID/SECRET_ACCESS_KEY).
-  backup:
-    retentionPolicy: "30d"
-    barmanObjectStore:
-      destinationPath: "s3://CHANGE-ME-bucket/snflwr-pg"
-      endpointURL: "https://CHANGE-ME-s3-endpoint"
-      s3Credentials:
-        accessKeyId:
-          name: snflwr-pg-backup-creds
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: snflwr-pg-backup-creds
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-      data:
-        compression: gzip
----
-apiVersion: postgresql.cnpg.io/v1
-kind: ScheduledBackup
-metadata:
-  name: snflwr-pg-daily
-  namespace: snflwr-ai
-spec:
-  # CNPG uses 6-field cron (sec min hour dom mon dow): daily at 03:00 UTC.
-  schedule: "0 0 3 * * *"
-  immediate: true
-  backupOwnerReference: self
-  cluster:
-    name: snflwr-pg
+  # ---------------------------------------------------------------------------
+  # OFF-CLUSTER WAL ARCHIVING + PITR — OPT-IN (requires operator S3 credentials).
+  #
+  # This cluster is 3-node HA with local WAL storage as-is. Off-cluster archiving
+  # (survives loss of the whole cluster / enables point-in-time recovery) is left
+  # commented out ON PURPOSE: it cannot work without a real bucket + credentials,
+  # and shipping placeholder values would make CNPG attempt archiving to a
+  # non-existent bucket — a silent backup failure that reads as "PITR is on".
+  #
+  # To enable, do ALL of the following, then re-apply:
+  #   1. Create the object-store bucket.
+  #   2. kubectl create secret generic snflwr-pg-backup-creds -n snflwr-ai \
+  #        --from-literal=ACCESS_KEY_ID=<id> --from-literal=SECRET_ACCESS_KEY=<key>
+  #   3. Uncomment the `backup:` block below AND the ScheduledBackup at the end of
+  #      this file, replacing the two <FILL-...> values with your real endpoint/path.
+  # See enterprise/k8s/README.md ("Enable off-cluster PITR").
+  # ---------------------------------------------------------------------------
+  # backup:
+  #   retentionPolicy: "30d"
+  #   barmanObjectStore:
+  #     destinationPath: "s3://<FILL-bucket>/snflwr-pg"
+  #     endpointURL: "https://<FILL-s3-endpoint>"
+  #     s3Credentials:
+  #       accessKeyId:
+  #         name: snflwr-pg-backup-creds
+  #         key: ACCESS_KEY_ID
+  #       secretAccessKey:
+  #         name: snflwr-pg-backup-creds
+  #         key: SECRET_ACCESS_KEY
+  #     wal:
+  #       compression: gzip
+  #     data:
+  #       compression: gzip
+# ---
+# # Uncomment together with the `backup:` block above (PITR requires it).
+# apiVersion: postgresql.cnpg.io/v1
+# kind: ScheduledBackup
+# metadata:
+#   name: snflwr-pg-daily
+#   namespace: snflwr-ai
+# spec:
+#   # CNPG uses 6-field cron (sec min hour dom mon dow): daily at 03:00 UTC.
+#   schedule: "0 0 3 * * *"
+#   immediate: true
+#   backupOwnerReference: self
+#   cluster:
+#     name: snflwr-pg

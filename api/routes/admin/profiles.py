@@ -6,6 +6,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
+import core.profile_manager.field_crypto as field_crypto
 from api.middleware.auth import require_admin
 from config import system_config
 from core.authentication import AuthSession
@@ -67,14 +68,16 @@ async def create_profile(
 
         db.execute_write(
             "INSERT INTO child_profiles "
-            "(profile_id, parent_id, name, age, grade, grade_level, "
+            "(profile_id, parent_id, name, encrypted_name, name_hash, age, grade, grade_level, "
             "tier, model_role, created_at, is_active, "
             "daily_time_limit_minutes, owui_user_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'standard', 'student', ?, 1, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'standard', 'student', ?, 1, ?, ?)",
             (
                 profile_id,
                 request.parent_id,
-                request.name,
+                field_crypto.NAME_PLACEHOLDER,
+                field_crypto.encrypt_name(request.name),
+                field_crypto.hash_name(request.name),
                 request.age,
                 request.grade_level,
                 request.grade_level,
@@ -152,13 +155,15 @@ async def bulk_import_students(
         try:
             db.execute_write(
                 "INSERT INTO child_profiles "
-                "(profile_id, parent_id, name, age, grade, grade_level, "
+                "(profile_id, parent_id, name, encrypted_name, name_hash, age, grade, grade_level, "
                 "tier, model_role, created_at, is_active, owui_user_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, 'standard', 'student', ?, 1, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'standard', 'student', ?, 1, ?)",
                 (
                     profile_id,
                     session.user_id,
-                    s.name,
+                    field_crypto.NAME_PLACEHOLDER,
+                    field_crypto.encrypt_name(s.name),
+                    field_crypto.hash_name(s.name),
                     s.age,
                     s.grade_level,
                     s.grade_level,
@@ -214,20 +219,23 @@ async def list_students(
     try:
         db = _pkg().DatabaseManager()
         rows = db.execute_query(
-            "SELECT profile_id, name, age, grade_level, owui_user_id, "
+            "SELECT profile_id, name, encrypted_name, age, grade_level, owui_user_id, "
             "parental_consent_given, coppa_verified, is_active, created_at "
             "FROM child_profiles "
             "WHERE parent_id = ? "
             "ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (session.user_id, limit, offset),
         )
-        return [
-            {
-                **_to_dict(r),
-                "linked": bool(_to_dict(r).get("owui_user_id")),
-            }
-            for r in (rows or [])
-        ]
+        out = []
+        for r in rows or []:
+            d = _to_dict(r)
+            d["name"] = field_crypto.decrypt_name(
+                d.get("encrypted_name"), d.get("name")
+            )
+            d.pop("encrypted_name", None)
+            d["linked"] = bool(d.get("owui_user_id"))
+            out.append(d)
+        return out
     except DB_ERRORS as e:
         logger.error(f"DB error listing students: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
@@ -275,7 +283,9 @@ async def list_all_profiles(
                     "parent_id": p["parent_id"],
                     "parent_name": p.get("parent_name") or "",
                     "parent_email": parent_email,
-                    "name": p["name"],
+                    "name": field_crypto.decrypt_name(
+                        p.get("encrypted_name"), p.get("name")
+                    ),
                     "age": p.get("age"),
                     "grade_level": p.get("grade_level") or p.get("grade") or "",
                     "is_active": bool(p.get("is_active", 0)),
@@ -321,8 +331,15 @@ async def admin_update_profile(
         params: list = []
 
         if request.name is not None:
+            # Keep the plaintext column as a placeholder; store the real name
+            # encrypted + its hash (so it stays protected at rest and the read
+            # path decrypts it — not the stale ciphertext).
             updates.append("name = ?")
-            params.append(request.name)
+            params.append(field_crypto.NAME_PLACEHOLDER)
+            updates.append("encrypted_name = ?")
+            params.append(field_crypto.encrypt_name(request.name))
+            updates.append("name_hash = ?")
+            params.append(field_crypto.hash_name(request.name))
         if request.age is not None:
             updates.append("age = ?")
             params.append(request.age)

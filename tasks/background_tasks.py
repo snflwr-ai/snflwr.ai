@@ -16,6 +16,7 @@ from utils.celery_config import celery_app
 from utils.logger import get_logger, mask_email
 from storage.database import db_manager
 from storage.db_adapters import DB_ERRORS
+import core.profile_manager.field_crypto as field_crypto
 from core.email_service import email_service
 from core.email_crypto import get_email_crypto
 from config import system_config
@@ -701,8 +702,21 @@ def export_user_data(self, user_id: str, export_format: str = 'json') -> Optiona
             incidents_query = "SELECT * FROM safety_incidents WHERE profile_id = ?"
             incidents = db_manager.execute_read(incidents_query, (profile_id,))
 
+            # Child name/birthdate are encrypted at rest. For this data-subject
+            # export, present the REAL values and drop the internal
+            # ciphertext/hash/placeholder columns.
+            profile_out = dict(profile)
+            profile_out['name'] = field_crypto.decrypt_name(
+                profile_out.get('encrypted_name'), profile_out.get('name')
+            )
+            profile_out['birthdate'] = field_crypto.decrypt_birthdate(
+                profile_out.get('encrypted_birthdate'), profile_out.get('birthdate')
+            )
+            for _k in ('encrypted_name', 'name_hash', 'encrypted_birthdate'):
+                profile_out.pop(_k, None)
+
             all_data['profiles'].append({
-                'profile': profile,
+                'profile': profile_out,
                 'messages': messages,
                 'incidents': incidents
             })

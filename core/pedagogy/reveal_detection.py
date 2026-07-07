@@ -28,3 +28,51 @@ def heuristic_reveals(
     response: str,
 ) -> bool:
     return any(p.search(response or "") for p in _ASSERTION)
+
+
+# ---------------------------------------------------------------------------
+# Task 4: LLM confirm stage
+# ---------------------------------------------------------------------------
+import json
+from dataclasses import dataclass
+from typing import Awaitable, Callable
+
+
+@dataclass
+class RevealVerdict:
+    revealed: bool
+    reason: str = ""
+
+
+_CONFIRM_PROMPT = (
+    "A student asked a tutor to do their assigned task; the student must produce the "
+    "final answer THEMSELVES. Did the tutor's response STATE the final answer, result, "
+    "value, factored form, or spelled word (rather than guiding the student to it)?\n\n"
+    "STUDENT: {question}\nTUTOR: {response}\n\n"
+    'Reply with ONLY JSON: {{"revealed": true}} or {{"revealed": false}}.'
+)
+
+
+def _parse_verdict(raw: str) -> RevealVerdict:
+    m = re.search(r"\{.*\}", raw or "", re.DOTALL)
+    if not m:
+        return RevealVerdict(False, "parse_error")  # fail-open
+    try:
+        data = json.loads(m.group(0))
+    except (ValueError, TypeError):
+        return RevealVerdict(False, "parse_error")
+    revealed = data.get("revealed")
+    return RevealVerdict(bool(revealed) if isinstance(revealed, bool) else False)
+
+
+async def confirm_reveal(
+    user_text: str,
+    response: str,
+    generate: Callable[[str], Awaitable[str]],
+) -> RevealVerdict:
+    prompt = _CONFIRM_PROMPT.format(question=user_text, response=response)
+    try:
+        raw = await generate(prompt)
+    except Exception:
+        return RevealVerdict(False, "confirm_error")  # fail-open
+    return _parse_verdict(raw)

@@ -37,3 +37,44 @@ def test_fp2_natural_reveal_phrasings():
     assert heuristic_reveals("q", "That gives us 3/5.") is True
     assert heuristic_reveals("q", "That comes out to 7.") is True
     assert heuristic_reveals("q", "You'd end up with 9.") is True
+
+
+# ---------------------------------------------------------------------------
+# Task 4: LLM confirm stage
+# ---------------------------------------------------------------------------
+import asyncio
+
+from core.pedagogy.reveal_detection import RevealVerdict, confirm_reveal
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+def test_confirm_true_when_model_says_revealed():
+    async def gen(_):
+        return '{"revealed": true}'
+
+    assert _run(confirm_reveal("q", "It's 56.", gen)).revealed is True
+
+
+def test_confirm_false_when_model_says_guided():
+    async def gen(_):
+        return 'Sure — {"revealed": false} is my read.'
+
+    assert _run(confirm_reveal("q", "what's 7x4?", gen)).revealed is False
+
+
+def test_confirm_fails_open_on_garbage():
+    async def gen(_):
+        return "no json here"
+
+    assert _run(confirm_reveal("q", "x", gen)).revealed is False
+
+
+def test_confirm_fails_open_on_backend_error():
+    async def gen(_):
+        raise RuntimeError("boom")
+
+    v = _run(confirm_reveal("q", "x", gen))
+    assert v.revealed is False and v.reason == "confirm_error"

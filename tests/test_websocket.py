@@ -621,7 +621,7 @@ class TestWebSocketStatsEndpoint:
         app.include_router(_ws_router, prefix="/ws")
         return TestClient(app, raise_server_exceptions=False)
 
-    def _admin_headers(self):
+    def _internal_key_headers(self):
         from config import INTERNAL_API_KEY
         return {"Authorization": f"Bearer {INTERNAL_API_KEY}"}
 
@@ -629,9 +629,12 @@ class TestWebSocketStatsEndpoint:
         return {"Authorization": "Bearer fake-parent-token"}
 
     def test_ws_stats_admin(self):
-        """Admin GET /stats returns the stats dict."""
+        """A GENUINE admin GET /stats returns the stats dict."""
         client = self._make_client()
-        response = client.get("/ws/stats", headers=self._admin_headers())
+        admin_session = make_auth_session(role="admin", user_id="admin-ws-1")
+        with patch("api.middleware.auth.auth_manager") as mock_auth:
+            mock_auth.validate_session.return_value = (True, admin_session)
+            response = client.get("/ws/stats", headers=self._parent_headers())
 
         assert response.status_code == 200
         data = response.json()
@@ -650,16 +653,27 @@ class TestWebSocketStatsEndpoint:
 
         assert response.status_code == 403
 
+    def test_ws_stats_internal_key_denied(self):
+        """H1 regression: the internal RELAY key is not a genuine admin, so the
+        admin-only /stats endpoint must reject it (403), not serve it."""
+        client = self._make_client()
+        response = client.get("/ws/stats", headers=self._internal_key_headers())
+        assert response.status_code == 403
+
     def test_ws_stats_values_reflect_manager(self):
-        """Stats endpoint reads live data from websocket_manager."""
+        """Stats endpoint reads live data from websocket_manager (genuine admin)."""
         client = self._make_client()
 
         mock_mgr = MagicMock()
         mock_mgr.get_active_connections.return_value = 5
         mock_mgr.parent_connections = {"p1": {1, 2}, "p2": {3}}
+        admin_session = make_auth_session(role="admin", user_id="admin-ws-1")
 
-        with patch("api.routes.websocket.websocket_manager", mock_mgr):
-            response = client.get("/ws/stats", headers=self._admin_headers())
+        with patch("api.middleware.auth.auth_manager") as mock_auth, patch(
+            "api.routes.websocket.websocket_manager", mock_mgr
+        ):
+            mock_auth.validate_session.return_value = (True, admin_session)
+            response = client.get("/ws/stats", headers=self._parent_headers())
 
         assert response.status_code == 200
         data = response.json()

@@ -412,14 +412,22 @@ class TestSafetyLogger:
         assert data["type"] == "violence"
         assert data["profile_id"] == "child-1"
         assert data["severity"] == "major"
-        assert len(data["content"]) <= 500
+        # H2: the raw child message (PII) must NOT be written to this plaintext
+        # file — only a non-PII size signal. The encrypted DB record holds content.
+        assert "content" not in data
+        assert data["content_chars"] == len("some content")
 
-    def test_log_incident_truncates_long_content(self, tmp_path):
+    def test_log_incident_omits_raw_content(self, tmp_path):
         from utils.logger import SafetyLogger
         sl = SafetyLogger(tmp_path)
-        sl.log_incident("test", "child-1", "x" * 1000, "minor")
-        data = json.loads((tmp_path / "safety_incidents.log").read_text().strip())
-        assert len(data["content"]) == 500
+        sensitive = "i want to hurt myself " * 50
+        sl.log_incident("self_harm", "child-1", sensitive, "critical")
+        raw = (tmp_path / "safety_incidents.log").read_text()
+        # The sensitive text must appear NOWHERE in the plaintext file.
+        assert "hurt myself" not in raw
+        data = json.loads(raw.strip())
+        assert "content" not in data
+        assert data["content_chars"] == len(sensitive)
 
     def test_log_incident_survives_write_error(self, tmp_path):
         from utils.logger import SafetyLogger

@@ -6,7 +6,7 @@ Parent/admin authentication
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from api.middleware.auth import audit_log, get_current_session
+from api.middleware.auth import audit_log, get_current_session, is_genuine_admin
 from api.middleware.csrf_protection import set_csrf_cookie
 from core.authentication import (
     AccountLockedError,
@@ -353,9 +353,10 @@ def validate_session(
         if not is_valid:
             raise HTTPException(status_code=401, detail="Invalid or expired session")
 
-        # Only allow validating your own session (or admin)
+        # Only allow validating your own session (or a genuine admin — never the
+        # internal relay key).
         if (
-            current_session.role != "admin"
+            not is_genuine_admin(current_session)
             and current_session.user_id != session.user_id
         ):
             raise HTTPException(

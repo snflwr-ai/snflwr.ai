@@ -60,7 +60,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
-from api.middleware.auth import get_current_session
+from api.middleware.auth import get_current_session, is_genuine_admin
 from api.websocket_server import (
     authenticate_websocket,
     handle_websocket_message,
@@ -241,7 +241,7 @@ async def get_websocket_stats(session: AuthSession = Depends(get_current_session
 
     [LOCKED] SECURED: Admin only
     """
-    if session.role != "admin":
+    if not is_genuine_admin(session):
         raise HTTPException(status_code=403, detail="Admin access required")
     total_connections = websocket_manager.get_active_connections()
 

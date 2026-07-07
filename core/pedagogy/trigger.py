@@ -6,6 +6,7 @@ import re
 
 _PATTERNS = [
     r"just (tell|give) me (the )?(answer|solution|roots?|value)",
+    r"just (tell|give) me\b",  # catch-all: "just give me 7x8", "just tell me X"
     r"just the answer",
     r"do my (homework|assignment|essay|paper|worksheet)",
     r"write my (?:\w+ )*(essay|paragraph|report|book report|thesis)",

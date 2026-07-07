@@ -9,6 +9,7 @@ _ASSERTION_PATTERNS = [
     r"=\s*[-+(]?\s*[\dxX]",  # "x = 5", "= 1", "= (x"
     r"\bequals?\s+[-+(]?\s*\d",  # "equals 4"
     r"\bis\s+[-+]?\d+\.?\d*\s*[.!]",  # "...is 56."
+    r"\bit'?s\s+[-+]?\d",  # contractions: "It's 56", "its 4"
     r"\byou get\s+[-+]?\d",
     r"\bfactors? (as|to|into)\b",  # factored form handed over
     # FP-1: bare \bspelled\b removed — fires on guiding phrases like

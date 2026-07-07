@@ -40,6 +40,34 @@ def _extract_last_user_message(messages: list) -> str:
     return ""
 
 
+def _message_text(msg: dict) -> str:
+    """Text of a single message (plain string or multimodal text parts)."""
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            p.get("text", "")
+            for p in content
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+    return ""
+
+
+def _all_user_messages_text(messages: list) -> str:
+    """Concatenate the text of EVERY user-role message.
+
+    The input safety scan must see all student-authored turns, not only the last:
+    a jailbreak placed in an earlier user turn (or any non-final message) would
+    otherwise slip past ``check_input``.
+    """
+    return "\n".join(
+        _message_text(m)
+        for m in messages
+        if isinstance(m, dict) and m.get("role") == "user"
+    )
+
+
 def _ollama_block_response(model: str, block_message: str) -> dict:
     """Build an Ollama-format response dict for a blocked message."""
     return {

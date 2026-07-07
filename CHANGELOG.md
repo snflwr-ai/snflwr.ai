@@ -5,9 +5,20 @@ All notable changes to snflwr.ai will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-07-06
+## [Unreleased] - 2026-07-07
 
 ### Added
+- **Pedagogy guidance-enforcer (homework integrity)** (#207, #208, #209) — a
+  fail-open output post-processor for the one tutoring residual (the tutor
+  occasionally hands over the final answer under a "just give me it" push). When
+  it detects a revealed answer on a homework turn, it regenerates ONCE to withhold
+  it and guide instead. An LLM "did this reveal the answer?" confirm runs on every
+  homework turn (a minority of turns; it catches word-form reveals like "equals
+  four" that a regex cannot); the rewrite is re-vetted through the safety
+  `check_output` before it reaches the child, and any confirm/re-prompt error or
+  timeout serves the original — it never blocks a turn. OFF by default
+  (`GUIDANCE_ENFORCEMENT_ENABLED`); a blind-judged canary measured homework
+  reveals converting pedagogy 0→2 with no correctness/tone regression.
 - **Child-safety disclosure banner in the chat UI** — `scripts/owui_connect.py`
   now seeds a persistent, non-dismissible Open WebUI banner combining the
   AI-generated-content notice + the crisis/988 notice (vetted dashboard wording)
@@ -45,6 +56,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   policy blocks. Set `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` so it loads
   the model from the PVC cache; documented the rollout order (first boot caches
   the model before the netpol is applied).
+
+### Changed
+- **CNPG off-cluster PITR is now opt-in** (#206) — the CloudNativePG cluster
+  shipped an *active* `backup:` block with placeholder `s3://CHANGE-ME-bucket`
+  values, so applying it would make CNPG silently fail WAL archiving (reads as
+  "PITR is on"). The `backup:` block and `ScheduledBackup` are now commented out
+  with step-by-step enablement docs; the default cluster stays 3-node HA with
+  local WAL, and off-cluster archiving requires an operator to add real S3 creds.
+- **Tutoring-eval scorer calibration** (#203, #204, #205) — fixed a family of
+  deterministic-scorer bugs in `evals/tutoring/` (a fraction/word-form
+  false-positive in reveal detection; homework refusals docked against a
+  full-answer word floor; readability decaying on band width instead of absolute
+  grades). Makes the eval's measurement trustworthy; no app/runtime change.
 
 ### Security
 - **Open WebUI k8s hardening** (#198) — `seccompProfile: RuntimeDefault` on the

@@ -85,10 +85,10 @@ def _ollama_confirm_resp(revealed: bool = True) -> httpx.Response:
 # A question that triggers is_homework_request (matches "just give me the answer")
 _HOMEWORK_Q = "Just give me the answer to 7 times 8."
 
-# A response that triggers heuristic_reveals (matches "the answer is")
+# A revealing response (the mocked confirm stage flags it as a reveal)
 _REVEALING = "The answer is 56."
 
-# A clean response that does NOT trigger heuristic_reveals
+# A clean guiding response (the mocked confirm stage says NOT revealed)
 _CLEAN = "What is 7 times 4? Think about how that helps you get to 7 times 8."
 
 # Common patches applied to every test

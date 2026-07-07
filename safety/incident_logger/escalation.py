@@ -6,6 +6,7 @@ Extracted verbatim from the former monolithic safety/incident_logger.py.
 import asyncio
 from datetime import datetime, timezone
 
+import core.profile_manager.field_crypto as field_crypto
 from core.email_crypto import get_email_crypto
 from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger, sanitize_log_value
@@ -71,7 +72,7 @@ class _IncidentEscalationMixin:
         try:
             # Get parent_id from profile
             result = self.db.execute_query(
-                "SELECT parent_id, name, age FROM child_profiles WHERE profile_id = ?",
+                "SELECT parent_id, name, encrypted_name, age FROM child_profiles WHERE profile_id = ?",
                 (profile_id,),
             )
 
@@ -91,7 +92,13 @@ class _IncidentEscalationMixin:
                 return
 
             parent_id = result[0]["parent_id"]
-            child_name = result[0]["name"]
+            child_name = (
+                field_crypto.decrypt_name(
+                    field_crypto.col(result[0], "encrypted_name"),
+                    field_crypto.col(result[0], "name"),
+                )
+                or "Your child"
+            )
             child_age = result[0]["age"]
 
             # Create in-app alert

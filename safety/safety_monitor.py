@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
+import core.profile_manager.field_crypto as field_crypto
 from config import safety_config
 from safety.pipeline import safety_pipeline
 from storage.database import db_manager
@@ -558,11 +559,17 @@ class SafetyMonitor:
         """
         try:
             result = self.db.execute_query(
-                "SELECT name FROM child_profiles WHERE profile_id = ?", (profile_id,)
+                "SELECT name, encrypted_name FROM child_profiles WHERE profile_id = ?",
+                (profile_id,),
             )
 
             if result and isinstance(result[0], dict) and "name" in result[0]:
-                return result[0]["name"]
+                return (
+                    field_crypto.decrypt_name(
+                        result[0].get("encrypted_name"), result[0]["name"]
+                    )
+                    or "Your Child"
+                )
 
             return "Your Child"
 

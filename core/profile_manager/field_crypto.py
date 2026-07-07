@@ -24,6 +24,16 @@ from storage.encryption import encryption_manager
 NAME_PLACEHOLDER = "[encrypted]"
 
 
+def col(row, key: str):
+    """Safely read a column from a dict-like or sqlite3.Row row, or a tuple.
+    Returns None if the column is absent (e.g. an un-migrated row that predates
+    the encrypted columns, or a test row that omits them)."""
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
 def hash_name(name: str) -> str:
     """Deterministic hash for the within-family duplicate-name check."""
     return hashlib.sha256((name or "").strip().lower().encode()).hexdigest()

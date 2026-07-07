@@ -251,6 +251,8 @@ _ACCOUNT_UPDATE_COLUMNS = frozenset(
 _PROFILE_UPDATE_COLUMNS = frozenset(
     {
         "name",
+        "encrypted_name",
+        "name_hash",
         "age",
         "grade_level",
         "grade",

@@ -429,7 +429,7 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
         return ChildProfile(
             profile_id=profile_id,
             parent_id=g("parent_id", 1),
-            name=g("name", 2) or g("name", 1),
+            name=field_crypto.decrypt_name(g("encrypted_name", None), g("name", 2)),
             age=g("age", 3) or 0,
             grade=g("grade", 4) or g("grade_level", 4) or "K",
             avatar=g("avatar", 5) or g("avatar_url", 5) or "default",

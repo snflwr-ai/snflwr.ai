@@ -500,3 +500,24 @@ def test_installer_create_env_file_includes_created_at(tmp_path, monkeypatch):
     m = re.search(r"^INTERNAL_API_KEY_CREATED_AT=(.+)$", text, re.M)
     assert m, "CREATED_AT line missing"
     datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
+
+
+class TestKeyGeneratorsHonorSnflwrEnv:
+    """M3: the JWT + DB-encryption-key generators must treat SNFLWR_ENV=production
+    as production, not only ENVIRONMENT. Otherwise a box configured solely via
+    SNFLWR_ENV silently auto-generates keys the operator never explicitly chose."""
+
+    def test_jwt_generator_treats_snflwr_env_as_prod(self, monkeypatch):
+        monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.setenv("SNFLWR_ENV", "production")
+        with pytest.raises(RuntimeError):
+            _SystemConfig._get_jwt_secret()
+
+    def test_db_key_generator_treats_snflwr_env_as_prod(self, monkeypatch):
+        # In prod an unset DB key returns None (no silent auto-generate); the
+        # startup validator then hard-fails. Via SNFLWR_ENV this must hold too.
+        monkeypatch.delenv("DB_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.setenv("SNFLWR_ENV", "production")
+        assert _SystemConfig._get_db_encryption_key() is None

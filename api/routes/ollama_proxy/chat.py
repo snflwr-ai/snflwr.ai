@@ -458,6 +458,10 @@ async def proxy_chat(
     except (ValueError, _json.JSONDecodeError):
         upstream_json = None
 
+    # Bound unconditionally so the response-serialization branch below can read it
+    # on every path (incl. non-dict upstream_json). Set True only if the pedagogy
+    # enforcer rewrote the content.
+    _pedagogy_modified = False
     if isinstance(upstream_json, dict):
         msg = upstream_json.get("message")
         assistant_text = msg.get("content", "") if isinstance(msg, dict) else ""
@@ -502,7 +506,6 @@ async def proxy_chat(
         # ---- Pedagogy post-processor (fail-OPEN, homework-integrity only) --------
         # Runs only on this buffered non-streaming path; gated off by default.
         # Never blocks a turn: the outer except logs and serves the original text.
-        _pedagogy_modified = False
         if system_config.GUIDANCE_ENFORCEMENT_ENABLED:
             try:
                 from core.pedagogy import enforce_guidance

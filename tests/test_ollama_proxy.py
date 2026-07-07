@@ -863,6 +863,65 @@ class TestStreamChatFromOllama:
         assert result.status_code == 503
 
 
+class TestCircuitRecording:
+    """L2: transport records Ollama transport failures/successes so the breaker
+    actually reflects backend health (previously it was read but never driven,
+    so it could never trip). can_execute() also gates + self-heals via half-open."""
+
+    def _fresh_circuit(self):
+        from utils.circuit_breaker import ollama_circuit
+
+        # Force a known CLOSED baseline (tests share the process-wide singleton).
+        ollama_circuit._transition_to_closed()
+        return ollama_circuit
+
+    @pytest.mark.asyncio
+    async def test_success_recorded_on_good_forward(self):
+        from api.routes.ollama_proxy import transport
+
+        circuit = self._fresh_circuit()
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.request = AsyncMock(return_value=httpx.Response(200, json={}))
+
+        with patch(
+            "api.routes.ollama_proxy.transport.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
+            await transport._forward_request("POST", "/api/chat", content=b"{}")
+
+        assert circuit._stats.consecutive_successes == 1
+        assert circuit._stats.consecutive_failures == 0
+
+    @pytest.mark.asyncio
+    async def test_failures_trip_circuit_after_threshold(self):
+        from api.routes.ollama_proxy import transport
+        from utils.circuit_breaker import CircuitState
+
+        circuit = self._fresh_circuit()
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.request = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        with patch(
+            "api.routes.ollama_proxy.transport.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
+            for _ in range(circuit.failure_threshold):
+                with pytest.raises(httpx.ConnectError):
+                    await transport._forward_request("POST", "/api/chat", content=b"{}")
+
+        assert circuit._state == CircuitState.OPEN
+        # Once open, the gate fast-fails without touching the backend.
+        with pytest.raises(httpx.ConnectError):
+            await transport._forward_request("POST", "/api/chat", content=b"{}")
+        # Restore CLOSED so the process-wide singleton doesn't leak OPEN state
+        # into later tests.
+        circuit._transition_to_closed()
+
+
 class TestPassThroughEndpoints:
     """Cover the single-line pass-through handlers.
 
@@ -1642,6 +1701,12 @@ class TestChatAdmissionControl:
                 new_callable=PropertyMock,
                 return_value=True,
             ),
+            # A freshly-opened circuit still inside its recovery window: the guard
+            # only short-circuits with the friendly message while time_until_retry
+            # is positive (once it elapses, requests flow so transport can probe).
+            patch.object(
+                proxy_mod.ollama_circuit, "time_until_retry", return_value=30.0
+            ),
             patch(
                 "api.routes.ollama_proxy.profile._get_profile_for_user", new=AsyncMock()
             ) as prof,
@@ -1980,6 +2045,70 @@ class TestStudentModelPin:
         resp, forwarded = self._forward_model_for(tutor)
         assert resp.status_code == 200
         assert forwarded == tutor
+
+
+class TestConversationTurnCap:
+    """L3: enforce FILTER_LEVELS.max_conversation_turns — a student can't forward
+    unbounded chat history (bounds GPU cost / context growth)."""
+
+    def test_config_helper_maps_age_to_grade_band_cap(self):
+        from config import safety_config
+
+        # Unknown / very young → most restrictive elementary cap (fail-safe).
+        assert safety_config.max_conversation_turns_for_age(None) == 20
+        assert safety_config.max_conversation_turns_for_age(7) == 20
+        assert safety_config.max_conversation_turns_for_age(10) == 20
+        # Middle school (6-8).
+        assert safety_config.max_conversation_turns_for_age(12) == 30
+        # High school (9-12).
+        assert safety_config.max_conversation_turns_for_age(16) == 50
+
+    def test_long_conversation_clipped_before_forward(self):
+        """A 50-message history for an age-unknown (elementary, cap 20 turns = 40
+        messages) student is clipped to the most-recent 40 before forwarding."""
+        import json as _j
+
+        from fastapi.testclient import TestClient
+
+        client = TestClient(_make_app())
+        ollama_resp = httpx.Response(200, json={"model": "test-model", "done": True})
+        safe = _safe_result()
+        # 50 alternating turns; the LAST message must survive the clip.
+        msgs = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": f"turn {i}"}
+            for i in range(50)
+        ]
+        body = {"model": "test-model", "stream": False, "messages": msgs}
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = safe
+        mock_pipeline.check_output.return_value = safe
+        with patch(
+            "api.routes.ollama_proxy.access._get_user_from_headers",
+            return_value=("uid-clip", "user"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._get_profile_for_user",
+            new=AsyncMock(return_value="p-clip"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._resolve_age", return_value=None
+        ), patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new_callable=AsyncMock,
+            return_value=ollama_resp,
+        ) as mock_fwd, patch(
+            "safety.pipeline.safety_pipeline", mock_pipeline
+        ):
+            client.post(
+                "/api/chat",
+                json=body,
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-clip",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        sent = _j.loads(mock_fwd.call_args.kwargs["content"])
+        assert len(sent["messages"]) == 40  # cap 20 turns * 2
+        assert sent["messages"][-1]["content"] == "turn 49"  # most recent kept
+        assert sent["messages"][0]["content"] == "turn 10"  # oldest 10 dropped
 
 
 class TestProxyInputHardening:

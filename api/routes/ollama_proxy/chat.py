@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.middleware.auth import get_current_session, is_genuine_admin
 from api.routes.ollama_proxy import access, blocks, guards, profile, transport
-from config import system_config
+from config import safety_config, system_config
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_gate import no_profile_block_reason
@@ -211,6 +211,26 @@ async def proxy_chat(
 
     # Resolve age from profile (best-effort; None is acceptable)
     age: Optional[int] = profile._resolve_age(profile_id)
+
+    # ---- Enforce the per-grade conversation-turn cap (students only) ----
+    # FILTER_LEVELS defines max_conversation_turns per grade band but nothing
+    # consumed it, so a client could forward unbounded chat history and drive
+    # GPU cost / context growth up every turn. Keep only the most recent turns
+    # (each turn ≈ a user+assistant pair) so current tutoring context is preserved
+    # while old history is dropped before forwarding. The dropped turns also fall
+    # out of the safety scan below — safe, since the model never sees them either.
+    max_turns = safety_config.max_conversation_turns_for_age(age)
+    max_messages = max_turns * 2
+    if len(messages) > max_messages:
+        dropped = len(messages) - max_messages
+        messages = messages[-max_messages:]
+        body["messages"] = messages
+        body_bytes = _json.dumps(body).encode()
+        logger.info(
+            "Clipped student conversation to last %d turns (dropped %d older messages)",
+            max_turns,
+            dropped,
+        )
 
     # Observation-only tracing context. Metadata only — never any chat content.
     # Fail-safe: a tracing error must never change the response.

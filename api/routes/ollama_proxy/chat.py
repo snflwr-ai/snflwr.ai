@@ -61,9 +61,15 @@ async def _pedagogy_reissue(
     # then the nudge so it knows to guide rather than give the answer.
     messages.append({"role": "assistant", "content": assistant_text})
     messages.append({"role": "user", "content": nudge})
-    payload = _json.dumps(
-        {"model": model, "messages": messages, "stream": False, "think": False}
-    ).encode()
+    payload_dict: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+    }
+    if isinstance(body.get("options"), dict):
+        payload_dict["options"] = body["options"]
+    payload = _json.dumps(payload_dict).encode()
     upstream = await transport._forward_request(
         "POST", "/api/chat", content=payload, headers=fwd_headers
     )
@@ -528,13 +534,36 @@ async def proxy_chat(
                     _regenerate,
                     confirm_generate=_confirm_generate,
                 )
+                _revet: Optional[str] = None
                 if new_text != assistant_text and isinstance(
                     upstream_json.get("message"), dict
                 ):
-                    upstream_json["message"]["content"] = new_text
-                    assistant_text = new_text  # noqa: F841 — kept for closure clarity
-                    _pedagogy_modified = True
-                _trace["pedagogy"] = {"action": meta.action}
+                    # Re-vet the rewrite before serving: this is model output that
+                    # the original check_output never saw. Fail-open: discard the
+                    # rewrite on any doubt so the child always gets vetted text.
+                    try:
+                        rewrite_result = safety_pipeline.check_output(
+                            text=new_text,
+                            age=age,
+                            profile_id=profile_id,
+                            context=user_question,
+                        )
+                        if rewrite_result.is_safe:
+                            upstream_json["message"]["content"] = new_text
+                            _pedagogy_modified = True
+                            _revet = "safe"
+                        else:
+                            _revet = "discarded"
+                    except Exception as recheck_exc:
+                        logger.warning(
+                            "pedagogy rewrite safety recheck raised (discarding): %s",
+                            recheck_exc,
+                        )
+                        _revet = "discarded"
+                pedagogy_trace: Dict[str, Any] = {"action": meta.action}
+                if _revet is not None:
+                    pedagogy_trace["revet"] = _revet
+                _trace["pedagogy"] = pedagogy_trace
             except Exception as exc:  # fail-open: never let pedagogy break a turn
                 logger.warning("guidance enforcer errored (fail-open): %s", exc)
 

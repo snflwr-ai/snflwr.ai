@@ -226,3 +226,159 @@ class TestPedagogyProxyHook:
         )
         # Enforcer did not run — exactly one Ollama call
         assert mock_fwd.call_count == 1
+
+    def test_stream_on_skips_enforcer(self):
+        """stream=True + CHAT_STREAMING_ENABLED=True → enforcer never runs.
+
+        The pedagogy block lives only on the buffered non-streaming path. When
+        streaming is enabled the proxy takes the hold-back streaming branch and
+        must never reach the guidance-enforcement block.
+        """
+        import asyncio
+        from fastapi.testclient import TestClient
+        from config import system_config
+        from unittest.mock import patch, AsyncMock, MagicMock
+
+        client = TestClient(_make_app())
+
+        safe = _safe_result()
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = safe
+        mock_pipeline.check_output.return_value = safe
+
+        # A minimal NDJSON stream: one done chunk with empty content.
+        done_chunk = (
+            b'{"model":"snflwr.ai","message":{"role":"assistant","content":""},'
+            b'"done":true}\n'
+        )
+
+        async def _fake_stream(*_args, **_kwargs):
+            yield done_chunk
+
+        mock_enforce = AsyncMock()
+
+        with (
+            patch.object(system_config, "GUIDANCE_ENFORCEMENT_ENABLED", True),
+            patch.object(system_config, "CHAT_STREAMING_ENABLED", True),
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-pedagogy", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-pedagogy"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._stream_chunks_from_ollama",
+                side_effect=_fake_stream,
+            ),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch("core.pedagogy.enforce_guidance", mock_enforce),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json={
+                    "model": "snflwr.ai",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": _HOMEWORK_Q}],
+                },
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-pedagogy",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        # Response must be the streaming content-type
+        assert resp.headers["content-type"].startswith("application/x-ndjson"), (
+            f"Expected streaming response, got: {resp.headers['content-type']!r}"
+        )
+        # Enforcer must not have run
+        assert mock_enforce.call_count == 0, (
+            f"enforce_guidance called {mock_enforce.call_count} time(s); expected 0"
+        )
+
+    def test_flag_on_unsafe_rewrite_discarded_original_served(self):
+        """Flag ON: when the rewrite fails the safety re-check, the ORIGINAL text
+        is served to the child — never the unvetted rewrite.
+
+        check_output is configured safe for the original text (_REVEALING) but
+        UNSAFE for the rewrite (_CLEAN), simulating a classifier that rejects the
+        enforcer's re-issued answer. The proxy must fall back to the original.
+        """
+        from fastapi.testclient import TestClient
+        from config import system_config
+        from safety.pipeline import Category, SafetyResult, Severity
+
+        client = TestClient(_make_app())
+
+        safe = _safe_result()
+        unsafe = SafetyResult(
+            is_safe=False,
+            severity=Severity.MAJOR,
+            category=Category.VIOLENCE,
+            reason="rewrite deemed unsafe by classifier",
+        )
+
+        call_count = {"n": 0}
+
+        def _check_output_side_effect(text, age=None, profile_id=None, context=None):
+            call_count["n"] += 1
+            # First call: original assistant text → safe.
+            # Second call: rewrite text → unsafe.
+            if text == _CLEAN:
+                return unsafe
+            return safe
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = safe
+        mock_pipeline.check_output.side_effect = _check_output_side_effect
+        mock_pipeline.get_safe_response.return_value = "safe fallback"
+
+        # Three sequential Ollama calls (original + confirm + re-issue)
+        mock_fwd = AsyncMock(
+            side_effect=[
+                _ollama_chat_resp(_REVEALING),   # 1. original turn
+                _ollama_confirm_resp(),           # 2. confirm stage
+                _ollama_chat_resp(_CLEAN),        # 3. re-issue (unsafe rewrite)
+            ]
+        )
+
+        with (
+            patch.object(system_config, "GUIDANCE_ENFORCEMENT_ENABLED", True),
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-pedagogy", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-pedagogy"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new=mock_fwd,
+            ),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json={
+                    "model": "snflwr.ai",
+                    "stream": False,
+                    "messages": [{"role": "user", "content": _HOMEWORK_Q}],
+                },
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-pedagogy",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["message"]["content"] == _REVEALING, (
+            f"Expected original text to be served (rewrite was unsafe), "
+            f"got: {data['message']['content']!r}"
+        )
+        # Enforcer still ran all three calls (detect→confirm→reissue)
+        assert mock_fwd.call_count == 3
+        # check_output was called at least twice: once for original, once for rewrite
+        assert call_count["n"] >= 2

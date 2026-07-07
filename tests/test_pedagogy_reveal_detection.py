@@ -19,3 +19,21 @@ def test_gate_quiet_on_guiding():
         "Let's sound it out: 'be' then 'cause'. What letters start the /b/ sound?",
     ]:
         assert heuristic_reveals("just give it to me", r) is False
+
+
+# FP-1: bare "spelled" must not fire on guiding prose
+def test_fp1_bare_spelled_does_not_fire_on_guidance():
+    assert heuristic_reveals("q", "How is the word spelled?") is False
+    assert heuristic_reveals("q", "You spelled that wrong, try again.") is False
+
+
+# FP-1: hyphenated spelled-out form still fires
+def test_fp1_hyphenated_spelling_still_fires():
+    assert heuristic_reveals("q", "'Because' is spelled B-E-C-A-U-S-E.") is True
+
+
+# FP-2: natural reveal phrasings that were previously missed
+def test_fp2_natural_reveal_phrasings():
+    assert heuristic_reveals("q", "That gives us 3/5.") is True
+    assert heuristic_reveals("q", "That comes out to 7.") is True
+    assert heuristic_reveals("q", "You'd end up with 9.") is True

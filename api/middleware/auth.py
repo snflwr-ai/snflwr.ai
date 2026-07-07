@@ -226,8 +226,10 @@ class ResourceAuthorization:
         Raises:
             HTTPException: 403 if not authorized
         """
-        # Admins can access everything
-        if session.role == "admin":
+        # Genuine admins can access everything. NOT the internal relay key: it
+        # may bypass ownership only while RELAYING chat (see is_genuine_admin), it
+        # must never wield admin authority over resource read/export/delete.
+        if is_genuine_admin(session):
             logger.info(f"Admin {session.user_id} accessing parent {parent_id}")
             return session
 
@@ -265,8 +267,10 @@ class ResourceAuthorization:
         Raises:
             HTTPException: 403 if not authorized, 404 if profile not found
         """
-        # Admins can access everything
-        if session.role == "admin":
+        # Genuine admins can access everything. NOT the internal relay key: it
+        # may bypass ownership only while RELAYING chat (see is_genuine_admin), it
+        # must never wield admin authority over resource read/export/delete.
+        if is_genuine_admin(session):
             logger.info(f"Admin {session.user_id} accessing profile {profile_id}")
             return session
 
@@ -313,8 +317,10 @@ class ResourceAuthorization:
         Raises:
             HTTPException: 403 if not authorized
         """
-        # Admins can access everything
-        if session.role == "admin":
+        # Genuine admins can access everything. NOT the internal relay key: it
+        # may bypass ownership only while RELAYING chat (see is_genuine_admin), it
+        # must never wield admin authority over resource read/export/delete.
+        if is_genuine_admin(session):
             logger.info(f"Admin {session.user_id} accessing session {session_id}")
             return session
 
@@ -372,8 +378,10 @@ class ResourceAuthorization:
         Raises:
             HTTPException: 403 if not authorized
         """
-        # Admins can access everything
-        if session.role == "admin":
+        # Genuine admins can access everything. NOT the internal relay key: it
+        # may bypass ownership only while RELAYING chat (see is_genuine_admin), it
+        # must never wield admin authority over resource read/export/delete.
+        if is_genuine_admin(session):
             logger.info(f"Admin {session.user_id} accessing alert {alert_id}")
             return session
 

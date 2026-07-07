@@ -20,6 +20,7 @@ from api.middleware.auth import (
     VerifyProfileAccess,
     audit_log,
     get_current_session,
+    is_genuine_admin,
 )
 from core.age_verification import (
     AgeVerificationError,
@@ -181,7 +182,7 @@ def create_profile(
     """
     try:
         # Verify authorization: Parents can only create for themselves
-        if session.role != "admin" and session.user_id != request.parent_id:
+        if not is_genuine_admin(session) and session.user_id != request.parent_id:
             logger.warning(
                 f"Access denied: {sanitize_log_value(session.user_id)!r} tried to create profile for {sanitize_log_value(request.parent_id)!r}"
             )

@@ -212,6 +212,33 @@ class TestVerifyProfileAccess:
         result = await ResourceAuthorization.verify_profile_access("prof1", admin_session)
         assert result.role == "admin"
 
+    @pytest.mark.asyncio
+    async def test_internal_relay_key_cannot_access_other_child_profile(self):
+        """H1 regression: the internal RELAY key has role=admin but is NOT a
+        genuine admin. It must NOT inherit the resource-ownership bypass — it
+        falls through to the ownership check and is denied any child it doesn't
+        own (it owns none), preventing cross-tenant child-PII read/export/delete."""
+        from api.middleware.auth import (
+            INTERNAL_SERVICE_USER_ID,
+            ResourceAuthorization,
+        )
+
+        internal_session = AuthSession(
+            user_id=INTERNAL_SERVICE_USER_ID,
+            role="admin",
+            session_token="relay",
+            email="internal@service",
+        )
+        with patch("api.middleware.auth.ProfileManager") as PM:
+            victim = MagicMock()
+            victim.parent_id = "some-other-parent"
+            PM.return_value.get_profile.return_value = victim
+            with pytest.raises(HTTPException) as exc:
+                await ResourceAuthorization.verify_profile_access(
+                    "victim-prof", internal_session
+                )
+            assert exc.value.status_code == 403
+
 
 # --------------------------------------------------------------------------
 # audit_log — COPPA/FERPA Audit Trail

@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
-from api.middleware.auth import audit_log, get_current_session
+from api.middleware.auth import audit_log, get_current_session, is_genuine_admin
 from config import system_config
 from core.age_verification import (
     AgeVerificationError,
@@ -461,7 +461,7 @@ async def get_consent_status(
         row = profile_rows[0]
         parent_id = row["parent_id"] if isinstance(row, dict) else row[0]
 
-        if parent_id != auth_session.user_id and auth_session.role != "admin":
+        if parent_id != auth_session.user_id and not is_genuine_admin(auth_session):
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: You can only view consent status for your own children",

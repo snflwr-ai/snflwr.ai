@@ -334,11 +334,18 @@ class SafetyLogger:
         """Log a safety incident with full details"""
 
         with self._lock:
+            # SECURITY: the raw triggering text is the most sensitive child PII on
+            # the platform (often a self-harm/crisis/abuse disclosure). It is stored
+            # ENCRYPTED in the DB incident record (safety/incident_logger). This file
+            # is an unencrypted operational trail that bypasses the DB encryption,
+            # the PII log sanitizer, and the retention/erasure purge — so it must
+            # record only non-PII metadata, NEVER the message itself. We keep the
+            # character count as a harmless size signal for debugging.
             incident_data = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "type": incident_type,
                 "profile_id": child_profile_id,
-                "content": content[:500],  # Truncate long content
+                "content_chars": len(content or ""),
                 "severity": severity,
                 "metadata": metadata or {},
             }

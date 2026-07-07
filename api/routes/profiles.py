@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+import core.profile_manager.field_crypto as field_crypto
 from api.middleware.auth import (
     VerifyParentAccess,
     VerifyProfileAccess,
@@ -257,7 +258,8 @@ def create_profile(
             auth_manager.db.execute_write(
                 """
                 UPDATE child_profiles
-                SET birthdate = ?,
+                SET encrypted_birthdate = ?,
+                    birthdate = NULL,
                     parental_consent_given = ?,
                     parental_consent_date = ?,
                     parental_consent_method = ?,
@@ -266,7 +268,7 @@ def create_profile(
                 WHERE profile_id = ?
                 """,
                 (
-                    birthdate_to_store,
+                    field_crypto.encrypt_birthdate(birthdate_to_store),
                     1 if has_consent else 0,
                     datetime.now(timezone.utc).isoformat() if has_consent else None,
                     "db_verified" if has_consent else None,

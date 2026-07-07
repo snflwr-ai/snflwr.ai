@@ -51,12 +51,31 @@ def test_owui_user_id_and_birthdate_persisted(pm, fresh_db):
         birthdate="2013-05-01",
     )
     rows = fresh_db.execute_query(
-        "SELECT owui_user_id, birthdate FROM child_profiles WHERE profile_id = ?",
+        "SELECT owui_user_id, birthdate, encrypted_birthdate, name, encrypted_name, name_hash "
+        "FROM child_profiles WHERE profile_id = ?",
         (prof.profile_id,),
     )
     row = rows[0]
-    assert (row["owui_user_id"] if isinstance(row, dict) else row[0]) == "owui-rey"
-    assert (row["birthdate"] if isinstance(row, dict) else row[1]) == "2013-05-01"
+
+    def col(k, i):
+        return row[k] if isinstance(row, dict) else row[i]
+
+    from core.profile_manager import field_crypto
+
+    assert col("owui_user_id", 0) == "owui-rey"
+    # M5: name + birthdate PII columns are redacted; the real values live encrypted
+    # (protected at rest even in Postgres mode, where SQLCipher isn't used).
+    assert col("birthdate", 1) is None
+    assert (
+        field_crypto.decrypt_birthdate(col("encrypted_birthdate", 2), None)
+        == "2013-05-01"
+    )
+    assert col("name", 3) == field_crypto.NAME_PLACEHOLDER
+    assert field_crypto.decrypt_name(col("encrypted_name", 4), None) == "Rey"
+    assert col("name_hash", 5) == field_crypto.hash_name("Rey")
+    # And the read path decrypts transparently back to the real name.
+    assert prof.name == "Rey"
+    assert pm.get_profile(prof.profile_id).name == "Rey"
 
 
 def test_owui_user_id_none_allows_multiple_profiles(pm, fresh_db):

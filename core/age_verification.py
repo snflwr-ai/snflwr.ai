@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Optional, Tuple
 
+import core.profile_manager.field_crypto as field_crypto
 from storage.db_adapters import DB_ERRORS
 from utils.logger import get_logger, sanitize_log_value
 
@@ -473,7 +474,8 @@ class AgeVerificationManager:
             rows = self.db.execute_query(
                 """
                 SELECT parental_consent_given, parental_consent_date,
-                       parental_consent_method, coppa_verified, age, birthdate
+                       parental_consent_method, coppa_verified, age, birthdate,
+                       encrypted_birthdate
                 FROM child_profiles
                 WHERE profile_id = ?
                 """,
@@ -484,21 +486,24 @@ class AgeVerificationManager:
                 return {"error": "Profile not found"}
 
             row = rows[0]
-            # Support both dict and tuple row types
+            # Support both dict and tuple row types. birthdate is stored encrypted
+            # (field_crypto); decrypt with a fallback to the legacy plaintext column.
             if isinstance(row, dict):
                 consent_given = row.get("parental_consent_given")
                 consent_date = row.get("parental_consent_date")
                 consent_method = row.get("parental_consent_method")
                 coppa_verified = row.get("coppa_verified")
                 age = row.get("age")
-                birthdate = row.get("birthdate")
+                birthdate = field_crypto.decrypt_birthdate(
+                    row.get("encrypted_birthdate"), row.get("birthdate")
+                )
             else:
                 consent_given = row[0]
                 consent_date = row[1]
                 consent_method = row[2]
                 coppa_verified = row[3]
                 age = row[4]
-                birthdate = row[5]
+                birthdate = field_crypto.decrypt_birthdate(row[6], row[5])
 
             return {
                 "profile_id": profile_id,

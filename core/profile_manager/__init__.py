@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
 
+import core.profile_manager.field_crypto as field_crypto
 from storage.db_adapters import DB_ERRORS
 from utils.cache import cached
 from utils.logger import get_logger, sanitize_log_value
@@ -76,11 +77,13 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
                 f"Could not verify parent_id {sanitize_log_value(parent_id)!r} (table may not exist): {e}"
             )
 
-        # Check for duplicate name within family
+        # Check for duplicate name within family. The plaintext `name` column now
+        # holds a placeholder, so match on the deterministic name_hash instead.
         try:
             existing = self.db.execute_query(
-                "SELECT name FROM child_profiles WHERE parent_id = ? AND name = ? AND is_active = 1",
-                (parent_id, name),
+                "SELECT profile_id FROM child_profiles "
+                "WHERE parent_id = ? AND name_hash = ? AND is_active = 1",
+                (parent_id, field_crypto.hash_name(name)),
             )
             if existing:
                 raise ProfileValidationError(
@@ -96,12 +99,17 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
 
         # Insert into DB if possible
         try:
+            # Child name/birthdate are encrypted app-layer (Postgres has no
+            # SQLCipher). The plaintext `name` column holds a non-PII placeholder
+            # and `birthdate` is NULL; the real values live in the encrypted columns.
             self.db.execute_write(
-                "INSERT INTO child_profiles (profile_id, parent_id, name, age, grade, grade_level, tier, model_role, created_at, avatar, learning_level, daily_time_limit_minutes, is_active, total_sessions, total_questions, owui_user_id, birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO child_profiles (profile_id, parent_id, name, encrypted_name, name_hash, age, grade, grade_level, tier, model_role, created_at, avatar, learning_level, daily_time_limit_minutes, is_active, total_sessions, total_questions, owui_user_id, birthdate, encrypted_birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     profile_id,
                     parent_id,
-                    name,
+                    field_crypto.NAME_PLACEHOLDER,
+                    field_crypto.encrypt_name(name),
+                    field_crypto.hash_name(name),
                     age,
                     grade,
                     grade,
@@ -115,7 +123,8 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
                     0,
                     0,
                     owui_user_id,
-                    birthdate,
+                    None,
+                    field_crypto.encrypt_birthdate(birthdate),
                 ),
             )
         except DB_ERRORS as e:
@@ -239,6 +248,16 @@ class ProfileManager(_ProfileQueryMixin, _ProfileActivityMixin):
         ]
         for k, v in kwargs.items():
             if k not in allowed:
+                continue
+            if k == "name":
+                # Keep the plaintext column as a placeholder; store the real name
+                # encrypted + its hash (for the duplicate-name lookup).
+                updates.append("name = ?")
+                params.append(field_crypto.NAME_PLACEHOLDER)
+                updates.append("encrypted_name = ?")
+                params.append(field_crypto.encrypt_name(v))
+                updates.append("name_hash = ?")
+                params.append(field_crypto.hash_name(v))
                 continue
             updates.append(f"{k} = ?")
             params.append(v)

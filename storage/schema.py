@@ -78,6 +78,11 @@ def create_sqlite_tables(cursor):
                     last_active TEXT,
                     is_active BOOLEAN DEFAULT TRUE,
                     birthdate TEXT,
+                    -- App-layer-encrypted child PII (see core/profile_manager/field_crypto.py).
+                    -- The plaintext name/birthdate columns hold a placeholder/NULL.
+                    encrypted_name TEXT,
+                    name_hash TEXT,
+                    encrypted_birthdate TEXT,
                     parental_consent_given BOOLEAN DEFAULT FALSE,
                     parental_consent_date TEXT,
                     parental_consent_method TEXT,
@@ -473,6 +478,11 @@ def create_postgres_tables(cursor):
                         last_active TEXT,
                         is_active BOOLEAN DEFAULT TRUE,
                         birthdate TEXT,
+                        -- App-layer-encrypted child PII (field_crypto.py); plaintext
+                        -- name/birthdate columns hold a placeholder/NULL.
+                        encrypted_name TEXT,
+                        name_hash TEXT,
+                        encrypted_birthdate TEXT,
                         parental_consent_given BOOLEAN DEFAULT FALSE,
                         parental_consent_date TEXT,
                         parental_consent_method TEXT,

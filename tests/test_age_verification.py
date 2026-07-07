@@ -324,10 +324,16 @@ class TestAgeVerificationManager:
         assert status == {"error": "Profile not found"}
 
     def test_get_consent_status_tuple_row(self, manager, mock_db):
-        """Test tuple-style row access (non-dict)."""
-        mock_db.execute_query.return_value = [(1, '2024-01-01', 'email', 1, 10, '2014-01-01')]
+        """Test tuple-style row access (non-dict). birthdate is now the 7th column
+        (encrypted_birthdate) and decrypts back to the real date."""
+        from core.profile_manager import field_crypto
+
+        enc_bd = field_crypto.encrypt_birthdate("2014-01-01")
+        mock_db.execute_query.return_value = [
+            (1, "2024-01-01", "email", 1, 10, None, enc_bd)
+        ]
         status = manager.get_consent_status("prof1")
-        assert status['consent_given'] is True
+        assert status["consent_given"] is True
 
     def test_get_consent_status_db_error(self, manager, mock_db):
         import sqlite3

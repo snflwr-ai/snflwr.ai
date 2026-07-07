@@ -8,6 +8,7 @@ from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
+import core.profile_manager.field_crypto as field_crypto
 from core.profile_manager.models import ChildProfile
 
 
@@ -90,7 +91,7 @@ class _ProfileQueryMixin:
         return ChildProfile(
             profile_id=g("profile_id", 0),
             parent_id=g("parent_id", 1),
-            name=g("name", 2) or g("name", 1),
+            name=field_crypto.decrypt_name(g("encrypted_name", None), g("name", 2)),
             age=g("age", 3) or 0,
             grade=g("grade", 4) or g("grade_level", 4) or "K",
             avatar=g("avatar", 5) or g("avatar_url", 5) or "default",
@@ -170,7 +171,9 @@ class _ProfileQueryMixin:
                 profile = ChildProfile(
                     profile_id=profile_id,
                     parent_id=g("parent_id", 1),
-                    name=g("name", 2) or g("name", 1),
+                    name=field_crypto.decrypt_name(
+                        g("encrypted_name", None), g("name", 2)
+                    ),
                     age=g("age", 3) or 0,
                     grade=g("grade", 4) or g("grade_level", 4) or "K",
                     avatar=g("avatar", 5) or g("avatar_url", 5) or "default",

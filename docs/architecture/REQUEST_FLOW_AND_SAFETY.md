@@ -68,6 +68,25 @@ pulled, Ollama unreachable), an **operator alert** is sent (`alert_if_unavailabl
 and a 60s health probe attempts recovery. Use the **8b** model, not 1b — 1b
 false-blocks benign tutoring.
 
+## Pedagogy post-processor (`core/pedagogy/`) — fail-OPEN, quality not safety
+
+After `check_output` **passes**, one more optional stage runs on the buffered
+(non-streaming) path: the guidance-enforcer. It targets homework integrity — when
+a student pushes for the answer ("just give me it") and the tutor gives it away,
+this regenerates once to withhold it and guide instead. It is **not** a safety
+gate and, unlike the safety pipeline, it **fails OPEN**: any error, timeout, or
+ambiguity serves the original (already safety-vetted) response — it never blocks
+a turn.
+
+Flow (homework turns only; every other turn is a byte-identical no-op): an LLM
+confirm asks "did this response state the final answer?" (it runs on every
+homework turn because a regex can't catch word-form reveals like "equals four");
+if yes, the tutor is re-prompted once with a "stop one step short" instruction.
+Crucially, the **regenerated reply is re-run through `check_output`** before it
+reaches the child — if the rewrite is unsafe or the re-check errors, the rewrite
+is discarded and the original vetted answer is served. So no unvetted text ever
+reaches a student. OFF by default (`GUIDANCE_ENFORCEMENT_ENABLED`).
+
 ## Crisis handling & escalation
 
 - A self-harm disclosure always returns a supportive response with the **988

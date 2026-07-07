@@ -63,6 +63,11 @@ services:
       # Hold-back streaming (better TTFT; ~+1 output-classifier call/turn). Safe
       # to enable on a GPU box with headroom; default off keeps the buffered path.
       - CHAT_STREAMING_ENABLED=${CHAT_STREAMING_ENABLED:-false}
+      # Pedagogy guidance-enforcer (homework-integrity): regenerate once to withhold
+      # a revealed answer. Runs the confirm on every homework turn; fail-open.
+      - GUIDANCE_ENFORCEMENT_ENABLED=${GUIDANCE_ENFORCEMENT_ENABLED:-false}
+      - GUIDANCE_ENFORCER_CONFIRM_MODEL=${GUIDANCE_ENFORCER_CONFIRM_MODEL:-}
+      - GUIDANCE_ENFORCER_TIMEOUT_S=${GUIDANCE_ENFORCER_TIMEOUT_S:-8}
       # Database - SQLite, no external dependency
       - DB_TYPE=sqlite
       - SNFLWR_DATA_DIR=/app/data

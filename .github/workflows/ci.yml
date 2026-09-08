@@ -83,7 +83,15 @@ jobs:
         pip-audit --format json --output pip-audit-report.json || true
         pip-audit
 
+    # `if: always()` is load-bearing. pip-audit runs first in this job, and a
+    # failing dependency audit used to SKIP this step entirely — so static
+    # analysis of the code silently stopped running for as long as any CVE sat
+    # unpatched in requirements.txt, while the job just reported the familiar
+    # "dependency" failure. A red check that hides a check nobody notices is
+    # worse than two red checks. Both now always run; the job still fails if
+    # either does.
     - name: Run Bandit security linter
+      if: always()
       run: |
         # Generate the full JSON report for the uploaded artifact (non-blocking).
         bandit -r api/ core/ safety/ storage/ utils/ -f json -o bandit-report.json --severity-level medium --confidence-level medium || true

@@ -19,7 +19,17 @@ uvicorn[standard]==0.34.3     # ASGI server
 pydantic==2.12.5              # Data validation
 email-validator==2.3.0        # Required for Pydantic EmailStr
 python-multipart==0.0.32      # Form data parsing (CVE fixes through 0.0.32)
-python-jose[cryptography]==3.4.0  # JWT tokens
+# python-jose REMOVED 2026-09-08. It was never imported anywhere in the tree
+# (`grep -rn 'from jose\|import jose'` -> no hits; the app uses session tokens
+# from core/authentication.py, not JOSE), and it was the sole source of SEVEN
+# unfixable transitive vulnerabilities on this manifest:
+#   pyasn1 0.4.8  PYSEC-2026-2263/3455/3456/3457 — patched in 0.6.3/0.6.4, but
+#     python-jose 3.4.0 requires `pyasn1<0.5.0,>=0.4.1`, so the fix was
+#     unreachable while it stayed.
+#   ecdsa 0.19.2  PYSEC-2026-1325 (Minerva timing side-channel) — NO patched
+#     release exists; upstream declined to fix.
+# If JOSE/JWT is ever genuinely needed here, prefer pyjwt: it depends on
+# neither package.
 
 # Redis (needed for rate limiter imports even when disabled)
 redis==5.2.1                  # Redis client

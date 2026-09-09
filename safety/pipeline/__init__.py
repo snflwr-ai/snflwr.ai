@@ -629,7 +629,23 @@ class SafetyPipeline:
             Category.TOPIC_REDIRECT: "Let's explore that in an age-appropriate way. What would you like to learn?",
             Category.AGE_INAPPROPRIATE: "That topic isn't suitable for our learning session. How about we explore something else?",
             Category.VALIDATION_ERROR: "Could you rephrase your question? I want to make sure I understand you correctly.",
-            Category.CLASSIFIER_ERROR: "I'm having trouble processing that. Could you try asking in a different way?",
+            # Carries the crisis line deliberately. When the pipeline cannot
+            # adjudicate a message it does not know what the message WAS — so it
+            # cannot rule out that it was a crisis, and a bare "try rephrasing"
+            # is the wrong thing to hand a child in that state. Found live
+            # 2026-09-09: a degraded classifier returned exactly that to
+            # "I want to hurt myself".
+            #
+            # Kept calm and short on purpose. The overwhelming majority of
+            # classifier errors are a child asking something ordinary, so this
+            # must not read as an accusation or an alarm — it offers the number
+            # without insisting anything is wrong.
+            Category.CLASSIFIER_ERROR: (
+                "I'm having trouble with that one. Could you try asking a "
+                "different way? And if you're going through something hard, "
+                "please talk to a trusted adult, or call or text 988 to reach "
+                "the Suicide & Crisis Lifeline."
+            ),
             Category.HATE_SPEECH: "I can't help with that. Let's keep our conversation respectful and focus on learning together.",
             Category.PROFANITY: "Let's keep our language respectful. How can I help with your schoolwork?",
             Category.DEROGATORY: "Let's keep our conversation kind and respectful. What would you like to learn about?",

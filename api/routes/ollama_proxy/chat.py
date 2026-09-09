@@ -21,6 +21,7 @@ from api.routes.ollama_proxy import (
     transport,
 )
 from config import safety_config, system_config
+from core import topic_gate
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_gate import no_profile_block_reason
@@ -339,6 +340,28 @@ async def proxy_chat(
         }
         _emit_trace()
         return _gate_block(model, block_message, stream=stream)
+
+    # ---- Structural topic gate (S9051B "unable to respond outside the purpose")
+    # DELIBERATELY AFTER check_input, and that order is a child-safety property,
+    # not a preference. A crisis message ("I want to hurt myself") is off-topic
+    # to any academic classifier — if this gate ran first, a distressed child
+    # would get a generic topic refusal and the crisis path (988 response,
+    # incident record, parent alert) would never execute, silently. Safety
+    # classifies first; only a message the safety layer has already cleared can
+    # reach the topic question.
+    #
+    # OFF by default (TOPIC_GATE_ENABLED). Fails closed when on: the classifier
+    # shares Ollama with the tutor, so if it is unreachable the turn was not
+    # going to be answered anyway.
+    topic_msg = await topic_gate.off_topic_block_reason(user_question, age=age)
+    if topic_msg is not None:
+        logger.info("Topic gate blocked an off-topic turn for profile %s", profile_id)
+        _trace["safety"] = {
+            "category": "topic_redirect",
+            "blocked_layer": "topic_gate",
+        }
+        _emit_trace()
+        return _gate_block(model, topic_msg, stream=stream)
 
     # Safe — forward to Ollama
     fwd_headers = {

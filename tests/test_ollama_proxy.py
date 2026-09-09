@@ -2477,3 +2477,159 @@ class TestCrossSessionHistoryLedger:
                 {"role": "assistant", "content": "a full sentence reply."}
             ),
         ), "hold-back streaming must record the assistant reply"
+
+
+class TestTopicGate:
+    """S9051B §1800 requires a permitted-use system be UNABLE to respond outside
+    its purpose. The gate ships OFF; these pin its wiring and, critically, its
+    ORDER relative to the safety pipeline."""
+
+    @staticmethod
+    def _post(client, message, *, mock_pipeline=None):
+        import json as _j
+
+        ollama_resp = httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "done": True,
+                "message": {"role": "assistant", "content": "the reply"},
+            },
+        )
+        safe = _safe_result()
+        pipeline = mock_pipeline or MagicMock()
+        if mock_pipeline is None:
+            pipeline.check_input.return_value = safe
+            pipeline.check_output.return_value = safe
+        with patch(
+            "api.routes.ollama_proxy.access._get_user_from_headers",
+            return_value=("uid-tg", "user"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._get_profile_for_user",
+            new=AsyncMock(return_value="p-tg"),
+        ), patch(
+            # 15, not <13: an under-13 profile trips the COPPA consent gate,
+            # which sits upstream and would block before the topic gate is
+            # reached — making these tests pass vacuously.
+            "api.routes.ollama_proxy.profile._resolve_age",
+            return_value=15,
+        ), patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new_callable=AsyncMock,
+            return_value=ollama_resp,
+        ) as mock_fwd, patch(
+            "safety.pipeline.safety_pipeline", pipeline
+        ):
+            resp = client.post(
+                "/api/chat",
+                json={
+                    "model": "test-model",
+                    "stream": False,
+                    "messages": [{"role": "user", "content": message}],
+                },
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-tg",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        return resp, mock_fwd, pipeline
+
+    def test_disabled_by_default_nothing_is_blocked(self):
+        """The shipped default must not narrow anyone's tutor."""
+        from fastapi.testclient import TestClient
+
+        _resp, mock_fwd, _ = self._post(
+            TestClient(_make_app()), "what movie should I watch"
+        )
+        assert mock_fwd.call_args is not None, "gate is off; the turn must forward"
+
+    def test_enabled_gate_blocks_off_topic_before_forwarding(self):
+        from fastapi.testclient import TestClient
+
+        from config import system_config
+
+        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
+            "core.topic_gate._default_classifier", new=AsyncMock(return_value="NO")
+        ):
+            _resp, mock_fwd, _ = self._post(
+                TestClient(_make_app()), "what movie should I watch"
+            )
+        assert mock_fwd.call_args is None, "off-topic must never reach the model"
+
+    def test_enabled_gate_lets_schoolwork_through(self):
+        from fastapi.testclient import TestClient
+
+        from config import system_config
+
+        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
+            "core.topic_gate._default_classifier", new=AsyncMock(return_value="YES")
+        ):
+            _resp, mock_fwd, _ = self._post(
+                TestClient(_make_app()), "how do I factor x^2 + 5x + 6"
+            )
+        assert mock_fwd.call_args is not None, "schoolwork must still be answered"
+
+    def test_safety_pipeline_runs_BEFORE_the_topic_gate(self):
+        """CHILD-SAFETY CRITICAL. A crisis message is off-topic to any academic
+        classifier. If the topic gate ran first, a distressed child would get a
+        generic topic refusal and the 988 response, the incident record and the
+        parent alert would never fire — a safety regression hiding inside a
+        compliance feature, failing silently.
+
+        Asserting check_input was CALLED proves the safety layer got the turn
+        before the gate could swallow it."""
+        from fastapi.testclient import TestClient
+
+        from config import system_config
+
+        pipeline = MagicMock()
+        pipeline.check_input.return_value = _safe_result()
+        pipeline.check_output.return_value = _safe_result()
+
+        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
+            "core.topic_gate._default_classifier", new=AsyncMock(return_value="NO")
+        ):
+            self._post(
+                TestClient(_make_app()),
+                "I want to hurt myself",
+                mock_pipeline=pipeline,
+            )
+
+        assert pipeline.check_input.called, (
+            "the safety pipeline must see a crisis message even when the topic "
+            "gate would refuse it"
+        )
+
+    def test_classifier_outage_fails_closed_on_an_unresolved_turn(self):
+        """Fail-closed applies to turns the deterministic fast path could not
+        resolve. The message here carries no subject keyword, no schoolwork
+        framing and no arithmetic, so the classifier is genuinely consulted."""
+        from fastapi.testclient import TestClient
+
+        from config import system_config
+
+        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
+            "core.topic_gate._default_classifier",
+            new=AsyncMock(side_effect=RuntimeError("ollama down")),
+        ):
+            _resp, mock_fwd, _ = self._post(
+                TestClient(_make_app()), "can you tell me about that thing"
+            )
+        assert mock_fwd.call_args is None, "an unavailable classifier must block"
+
+    def test_outage_does_not_refuse_recognizable_homework(self):
+        """The counterpart. Blocking a child's algebra because Ollama blipped is
+        the worse failure for a tutoring product, so the fast path allows it
+        without consulting the classifier at all."""
+        from fastapi.testclient import TestClient
+
+        from config import system_config
+
+        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
+            "core.topic_gate._default_classifier",
+            new=AsyncMock(side_effect=RuntimeError("ollama down")),
+        ):
+            _resp, mock_fwd, _ = self._post(
+                TestClient(_make_app()), "how do I factor x^2 + 5x + 6"
+            )
+        assert mock_fwd.call_args is not None

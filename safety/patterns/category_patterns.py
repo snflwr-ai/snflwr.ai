@@ -314,6 +314,24 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bcut\s*myself\b", "self-harm term (EN)"),
         (r"\bkillmyself\b", "self-harm term (EN)"),
         (r"\bkill\s*myself\b", "self-harm term (EN)"),
+        # "hurt/harm myself" was MISSING while "kill myself" and "cut myself"
+        # were present, so one of the commonest phrasings a distressed child
+        # uses fell through to the semantic classifier. Found live 2026-09-09:
+        # with the classifier degraded, "I want to hurt myself" returned
+        # "I'm having trouble processing that" and logged a classifier error
+        # instead of a self-harm incident — so no 988, and no parent alert.
+        #
+        # Anchored on the reflexive pronoun (myself / my own X) rather than the
+        # bare verb: "hurt" is an everyday word, and matching it loosely would
+        # refuse "how do muscles get hurt during exercise" or a novel where a
+        # character is hurt. The reflexive is what carries the intent.
+        (r"\bhurt\s*myself\b", "self-harm term (EN)"),
+        (r"\bhurting\s*myself\b", "self-harm term (EN)"),
+        (r"\bhurtmyself\b", "self-harm term (EN)"),
+        (r"\bharm\s*myself\b", "self-harm term (EN)"),
+        (r"\bharming\s*myself\b", "self-harm term (EN)"),
+        (r"\binjure\s*myself\b", "self-harm term (EN)"),
+        (r"\bend\s*my\s*life\b", "self-harm term (EN)"),
         (r"\biwanttodie\b", "self-harm term (EN)"),
         (r"\bi\s*want\s*to\s*die\b", "self-harm term (EN)"),
         (r"\boverdose\b", "self-harm term (EN)"),

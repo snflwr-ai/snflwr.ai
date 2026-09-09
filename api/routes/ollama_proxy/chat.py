@@ -663,6 +663,45 @@ async def proxy_chat(
             except Exception as exc:  # fail-open: never let pedagogy break a turn
                 logger.warning("guidance enforcer errored (fail-open): %s", exc)
 
+        # ---- Runtime S9051B screen on the FINAL delivered text ----
+        # Deliberately last: the pedagogy enforcer may have rewritten the answer
+        # above, and it is the text actually served that has to be clean. The
+        # compliance eval grades the persona at BUILD time; this is what notices
+        # if a model swap or Modelfile edit reintroduces flattery in production.
+        #
+        # Fail-open, the opposite of the topic gate: a missed "great job" is a
+        # blemish, a refused answer is a broken tutor. OFF by default.
+        try:
+            from core.pedagogy import sycophancy_check
+
+            _current = assistant_text
+            if isinstance(upstream_json, dict) and isinstance(
+                upstream_json.get("message"), dict
+            ):
+                _current = upstream_json["message"].get("content", assistant_text)
+
+            async def _syco_regen(nudge: str) -> str:
+                return await _pedagogy_reissue(
+                    body_bytes, fwd_headers, _current, nudge, model
+                )
+
+            _cleaned, _syco_meta = await sycophancy_check.check_and_repair(
+                _current, regenerate=_syco_regen
+            )
+            if _syco_meta.action not in ("disabled", "clean", "empty"):
+                # Recorded even when repair failed — an unrepaired violation is
+                # the drift signal this exists to surface.
+                _trace["sycophancy"] = {
+                    "action": _syco_meta.action,
+                    "hits": _syco_meta.hits,
+                    "categories": list(_syco_meta.categories),
+                }
+            if _cleaned != _current and isinstance(upstream_json, dict):
+                upstream_json["message"]["content"] = _cleaned
+                _pedagogy_modified = True
+        except Exception as exc:  # fail-open
+            logger.warning("sycophancy screen errored (fail-open): %s", exc)
+
     _trace["blocked"] = False
     _trace["safety"] = {"blocked_layer": None}
     _trace["tokens"] = _usage_from(upstream_json)

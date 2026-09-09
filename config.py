@@ -209,6 +209,19 @@ class _SystemConfig:
     TOPIC_GATE_MODEL: str = os.getenv("TOPIC_GATE_MODEL", "")
     TOPIC_GATE_TIMEOUT_S: float = float(os.getenv("TOPIC_GATE_TIMEOUT_S", "20"))
 
+    # --- Runtime sycophancy screen (core/pedagogy/sycophancy_check.py) ---
+    # The compliance eval grades the persona at BUILD time. A model swap, a
+    # Modelfile edit or sampling variance can reintroduce §1801 flattery in
+    # production with nothing to notice. This is the runtime net, reusing the
+    # same screen the eval uses. OFF by default; fail-open by design (a missed
+    # "great job" is a blemish, a refused answer is a broken tutor).
+    SYCOPHANCY_CHECK_ENABLED: bool = (
+        os.getenv("SYCOPHANCY_CHECK_ENABLED", "false").lower() in ("1", "true", "yes")
+    )
+    SYCOPHANCY_CHECK_TIMEOUT_S: float = float(
+        os.getenv("SYCOPHANCY_CHECK_TIMEOUT_S", "8")
+    )
+
     # Email Configuration (SMTP for parent alerts)
     SMTP_ENABLED: bool = os.getenv("SMTP_ENABLED", "false").lower() == "true"
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")

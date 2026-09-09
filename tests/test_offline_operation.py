@@ -86,7 +86,49 @@ class TestOfflineDataPersistence:
 
 
 class TestOfflineSafetySystems:
-    """Test safety systems work without network"""
+    """Test safety systems work without network.
+
+    These must ACTUALLY be offline. They were not: they constructed a real
+    SafetyPipeline, which discovered a reachable Ollama and deferred to the
+    llama-guard classifier — so they passed only on machines where llama-guard
+    happened to be absent, and failed the moment it was installed. That is a
+    false green in the safety suite, and it was hiding behind the word
+    "offline" in the class name.
+
+    The behaviour they assert is also pre-#184. Since then, plain-text
+    VIOLENCE / WEAPONS / DRUGS are DEFERRABLE: the deterministic stage defers to
+    the classifier, which correctly clears "tell me about weapons" as a
+    legitimate question a child might ask in a history lesson. With the
+    classifier genuinely unavailable, the deferral fails closed and the
+    deterministic block stands — which is exactly what offline operation should
+    do, and what these tests are for.
+
+    The fixture below forces that condition instead of hoping for it.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _force_offline(self, monkeypatch):
+        """Make the semantic classifier genuinely unavailable.
+
+        Patches the availability flags rather than the network, so the pipeline
+        takes its real offline path — deterministic stages only, deferrals
+        failing closed.
+        """
+        # Patch the CLASS, not an instance: each test builds its own
+        # SafetyPipeline(), which constructs a fresh _SemanticClassifier in its
+        # __init__. Patching the module-level singleton leaves those untouched
+        # and the test keeps talking to a live Ollama.
+        from safety.pipeline import classifier as classifier_mod
+
+        monkeypatch.setattr(
+            classifier_mod._SemanticClassifier, "available",
+            property(lambda self: False), raising=False,
+        )
+        monkeypatch.setattr(
+            classifier_mod._SemanticClassifier, "classify",
+            lambda self, *a, **k: None, raising=False,
+        )
+        yield
 
     def test_content_filter_works_offline(self):
         """Test content filtering with local rules"""

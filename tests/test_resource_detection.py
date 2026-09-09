@@ -419,3 +419,97 @@ class TestNegativeEnvVarRejection:
         with patch.dict(os.environ, {"POSTGRES_MAX_CONNECTIONS": "-1"}):
             profile = detect_resources()
             assert profile.postgres_max_connections == recommend_postgres_max_connections(4, 8.0)
+
+
+# ---------------------------------------------------------------------------
+# Backbone selection — gemma4 everywhere, size adapts to the hardware
+#
+# The product decision is that gemma4 is the brain on every deployment, so the
+# tutoring behaviour is the same everywhere and only capacity changes. The old
+# deploy.sh ladder swapped to qwen3.5 families below 16GB, which meant a small
+# machine ran a DIFFERENT tutor — different persona adherence, different
+# pedagogy, and none of the compliance work validated against it.
+#
+# gemma4 publishes no quant-suffixed tags (gemma4:e4b-q4_K_M and friends all
+# 404 in the registry, checked 2026-09-09). It ships pre-quantized at Q4_K_M and
+# varies by SIZE VARIANT instead, so "quantize for the hardware" means selecting
+# the largest variant that fits:
+#
+#     gemma4:e2b   7.2 GB
+#     gemma4:12b   7.6 GB      <- smaller than e4b despite the name; e2b/e4b are
+#     gemma4:e4b   9.6 GB         MatFormer variants, 12b is dense
+#
+# Selection is by the memory the model will actually live in — VRAM when there
+# is a usable GPU, otherwise RAM — minus a reserve for the KV cache and the
+# llama-guard safety classifier, which has to be resident too.
+# ---------------------------------------------------------------------------
+
+from resource_detection import (  # noqa: E402
+    GEMMA4_VARIANTS,
+    recommend_base_model,
+)
+
+
+def test_every_variant_is_gemma4():
+    """The whole point: one family everywhere."""
+    assert GEMMA4_VARIANTS, "ladder must not be empty"
+    for tag, size in GEMMA4_VARIANTS:
+        assert tag.startswith("gemma4:"), f"{tag} is not gemma4"
+        assert size > 0
+
+
+def test_ladder_is_ordered_largest_first():
+    sizes = [size for _tag, size in GEMMA4_VARIANTS]
+    assert sizes == sorted(sizes, reverse=True), "ladder must go largest -> smallest"
+
+
+def test_big_gpu_box_gets_the_validated_default():
+    """A 24GB card: e4b, which is the variant all the tutoring and compliance
+    work was actually measured on."""
+    assert recommend_base_model(memory_gb=64, vram_gb=24) == "gemma4:e4b"
+
+
+def test_midsize_gpu_steps_down_rather_than_changing_family():
+    """Not enough room for e4b plus the classifier — still gemma4."""
+    picked = recommend_base_model(memory_gb=32, vram_gb=14)
+    assert picked.startswith("gemma4:")
+    assert picked != "gemma4:e4b"
+
+
+def test_small_gpu_gets_the_smallest_variant():
+    assert recommend_base_model(memory_gb=16, vram_gb=9) == "gemma4:e2b"
+
+
+def test_cpu_only_box_selects_on_ram():
+    """No GPU: the model lives in RAM, so RAM is what decides."""
+    assert recommend_base_model(memory_gb=64, vram_gb=0) == "gemma4:e4b"
+    assert recommend_base_model(memory_gb=12, vram_gb=0) == "gemma4:e2b"
+
+
+def test_tiny_machine_still_gets_a_working_model():
+    """Never return None and never fall off the ladder — a Pi-class box gets the
+    smallest gemma4 rather than no tutor at all."""
+    assert recommend_base_model(memory_gb=4, vram_gb=0) == "gemma4:e2b"
+    assert recommend_base_model(memory_gb=1, vram_gb=0) == "gemma4:e2b"
+
+
+def test_gpu_is_preferred_over_ram_when_present():
+    """A big-RAM box with a small card must size for the CARD, because that is
+    where the model will actually be loaded."""
+    assert recommend_base_model(memory_gb=128, vram_gb=9) == "gemma4:e2b"
+
+
+def test_reserve_accounts_for_the_safety_classifier():
+    """llama-guard must fit alongside. With the reserve removed, a 12GB card
+    would take e4b; with it, it must not — the classifier being evicted is what
+    makes the pipeline fail closed and block children."""
+    generous = recommend_base_model(memory_gb=32, vram_gb=12, reserve_gb=0.0)
+    realistic = recommend_base_model(memory_gb=32, vram_gb=12)
+    assert generous == "gemma4:e4b"
+    assert realistic != "gemma4:e4b"
+
+
+def test_selection_is_deterministic():
+    assert recommend_base_model(memory_gb=32, vram_gb=16) == recommend_base_model(
+        memory_gb=32, vram_gb=16
+    )

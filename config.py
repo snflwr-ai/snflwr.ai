@@ -193,6 +193,35 @@ class _SystemConfig:
         os.getenv("GUIDANCE_ENFORCER_TIMEOUT_S", "8")
     )
 
+    # --- Structural topic gate (core/topic_gate.py) ---
+    # S9051B's permitted uses require the system be "UNABLE TO RESPOND ON TOPICS
+    # OUTSIDE OF THE SPECIFIED PURPOSE". The Modelfile only instructs a redirect;
+    # this gate makes it structural. OFF by default — enabling narrows the tutor
+    # to schoolwork only, which is a product decision, and it will refuse some
+    # oddly-phrased academic questions. Measure the false-refusal rate with
+    # evals/tutoring/topic_gate_canary.py before switching it on.
+    TOPIC_GATE_ENABLED: bool = (
+        os.getenv("TOPIC_GATE_ENABLED", "false").lower() in ("1", "true", "yes")
+    )
+    # "" -> reuse OLLAMA_DEFAULT_MODEL, i.e. the already-loaded tutor. Loading a
+    # separate classifier is not viable: the box already holds the tutor plus
+    # llama-guard concurrently.
+    TOPIC_GATE_MODEL: str = os.getenv("TOPIC_GATE_MODEL", "")
+    TOPIC_GATE_TIMEOUT_S: float = float(os.getenv("TOPIC_GATE_TIMEOUT_S", "20"))
+
+    # --- Runtime sycophancy screen (core/pedagogy/sycophancy_check.py) ---
+    # The compliance eval grades the persona at BUILD time. A model swap, a
+    # Modelfile edit or sampling variance can reintroduce §1801 flattery in
+    # production with nothing to notice. This is the runtime net, reusing the
+    # same screen the eval uses. OFF by default; fail-open by design (a missed
+    # "great job" is a blemish, a refused answer is a broken tutor).
+    SYCOPHANCY_CHECK_ENABLED: bool = (
+        os.getenv("SYCOPHANCY_CHECK_ENABLED", "false").lower() in ("1", "true", "yes")
+    )
+    SYCOPHANCY_CHECK_TIMEOUT_S: float = float(
+        os.getenv("SYCOPHANCY_CHECK_TIMEOUT_S", "8")
+    )
+
     # Email Configuration (SMTP for parent alerts)
     SMTP_ENABLED: bool = os.getenv("SMTP_ENABLED", "false").lower() == "true"
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")

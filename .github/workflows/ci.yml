@@ -77,6 +77,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install pip-audit bandit
 
+    - name: Verify requirements.lock is in sync with requirements.txt
+      run: python scripts/check_lock_sync.py
+
     - name: Run pip-audit for vulnerable dependencies
       run: |
         pip install -r requirements.txt

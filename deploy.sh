@@ -287,15 +287,41 @@ fi
 # gemma4:e4b (~10 GB) is the default backbone as of 2026-06-17: it won the
 # tutoring-quality backbone bake-off outright (best overall, K-2, math, and
 # homework-integrity) at a fraction of the VRAM of the qwen3.5:27b/35b tiers,
-# which couldn't even hold the production context on a 23 GB card. Boxes too
-# small for gemma fall back to the small qwen3.5 tiers (no tiny gemma exists,
-# and a smaller model beats an OOM). See evals/tutoring/backbone_bakeoff.py.
-if   [[ $TOTAL_RAM_GB -ge 16 ]]; then RECOMMENDED_MODEL="gemma4:e4b"
-elif [[ $TOTAL_RAM_GB -ge  8 ]]; then RECOMMENDED_MODEL="qwen3.5:4b"
-elif [[ $TOTAL_RAM_GB -ge  6 ]]; then RECOMMENDED_MODEL="qwen3.5:2b"
-else                                   RECOMMENDED_MODEL="qwen3.5:0.8b"; fi
+# which couldn't even hold the production context on a 23 GB card.
+#
+# 2026-09-09: gemma4 is now the backbone on EVERY deployment, and only the SIZE
+# VARIANT adapts to the hardware. The old ladder dropped to qwen3.5 below 16GB,
+# which quietly gave a smaller machine a different tutor — different persona
+# adherence, different pedagogy, and none of the S9051B compliance work was
+# measured against it. One family everywhere means the behaviour transfers.
+#
+# The old comment here said "no tiny gemma exists". It does: gemma4:e2b (7.2GB).
+# gemma4 publishes no quant-suffixed tags (gemma4:e4b-q4_K_M etc. all 404), so
+# it ships pre-quantized at Q4_K_M and adapting means choosing a variant.
+#
+# The ladder itself lives in resource_detection.recommend_base_model() so there
+# is ONE source of truth and it is unit-tested (tests/test_resource_detection.py)
+# rather than duplicated in shell. It sizes on VRAM when a GPU is present —
+# that is where the model actually lives — and reserves room for llama-guard,
+# because a classifier that cannot stay resident makes the safety pipeline fail
+# closed and block children on harmless questions.
+DETECTED_VRAM_GB=0
+if [[ "${USE_GPU:-0}" == "1" ]] || command -v nvidia-smi >/dev/null 2>&1; then
+    DETECTED_VRAM_GB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+                       | head -1 | awk '{printf "%.0f", $1/1024}')
+    DETECTED_VRAM_GB=${DETECTED_VRAM_GB:-0}
+fi
+RECOMMENDED_MODEL=$(cd "$SCRIPT_DIR" 2>/dev/null; python3 -c "
+from resource_detection import recommend_base_model
+print(recommend_base_model(memory_gb=${TOTAL_RAM_GB}, vram_gb=${DETECTED_VRAM_GB}))
+" 2>/dev/null)
+# Never let a python hiccup silently produce an empty model name.
+if [[ -z "$RECOMMENDED_MODEL" ]]; then
+    RECOMMENDED_MODEL="gemma4:e2b"
+    warn "could not compute a backbone recommendation; using the safe floor $RECOMMENDED_MODEL"
+fi
 
-info "RAM: ${TOTAL_RAM_GB}GB -- recommended base model: $RECOMMENDED_MODEL"
+info "RAM: ${TOTAL_RAM_GB}GB, VRAM: ${DETECTED_VRAM_GB}GB -- recommended base model: $RECOMMENDED_MODEL"
 
 # --- Resolve final base model ------------------------------------------------
 # RESOLVED_MODEL holds the BASE model tag we'll pull. The user-facing

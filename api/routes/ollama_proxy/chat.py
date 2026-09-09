@@ -353,7 +353,17 @@ async def proxy_chat(
     # OFF by default (TOPIC_GATE_ENABLED). Fails closed when on: the classifier
     # shares Ollama with the tutor, so if it is unreachable the turn was not
     # going to be answered anyway.
-    topic_msg = await topic_gate.off_topic_block_reason(user_question, age=age)
+    # Prior turns give the classifier the context a follow-up needs. These are
+    # the messages that survived the cross-session ledger and the per-grade turn
+    # cap, so nothing older than this session reaches the classifier either.
+    _topic_history = [
+        str(m.get("content", ""))
+        for m in messages[:-1]
+        if isinstance(m, dict) and m.get("content")
+    ]
+    topic_msg = await topic_gate.off_topic_block_reason(
+        user_question, age=age, history=_topic_history
+    )
     if topic_msg is not None:
         logger.info("Topic gate blocked an off-topic turn for profile %s", profile_id)
         _trace["safety"] = {

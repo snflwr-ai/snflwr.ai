@@ -119,7 +119,10 @@ async def run(cases: list, base_url: str, model: str) -> list:
             return await _classify_with(base_url, model, prompt)
 
         reason = await topic_gate.off_topic_block_reason(
-            case["question"], age=None, classify=classify
+            case["question"],
+            age=None,
+            history=case.get("history"),
+            classify=classify,
         )
         rows.append({**case, "blocked": reason is not None})
     return rows
@@ -130,12 +133,38 @@ def main() -> int:
     ap.add_argument("--base-url", default="http://localhost:11434")
     ap.add_argument("--model", required=True)
     ap.add_argument("--json-out", type=Path, default=Path("topic_gate_canary.json"))
+    ap.add_argument(
+        "--cases",
+        type=Path,
+        help="YAML case file (e.g. topic_gate_holdout.yaml). Omit to use the "
+        "in-repo tutoring dataset — note that the keyword list has SEEN that "
+        "dataset, so a number measured against it is in-sample and optimistic.",
+    )
     args = ap.parse_args()
 
     # The gate short-circuits to "allow" when disabled; force it on for measurement.
     topic_gate.system_config.TOPIC_GATE_ENABLED = True
 
-    cases = build_cases(load_dataset())
+    if args.cases:
+        import yaml
+
+        raw = yaml.safe_load(args.cases.read_text())["cases"]
+        cases = [
+            {
+                "id": c["id"],
+                "question": c["question"],
+                "expect": c["expect"],
+                "history": c.get("history"),
+                "source": "holdout",
+            }
+            for c in raw
+        ]
+        print(f"HELD-OUT set: {args.cases.name}", file=sys.stderr)
+    else:
+        cases = build_cases(load_dataset())
+        print(
+            "IN-SAMPLE set (the keyword list has seen this dataset)", file=sys.stderr
+        )
     print(f"{len(cases)} cases", file=sys.stderr)
     rows = asyncio.run(run(cases, args.base_url, args.model))
     summary = summarize(rows)

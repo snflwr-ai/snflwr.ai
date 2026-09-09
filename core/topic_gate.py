@@ -17,6 +17,38 @@ unable are different products.
 
 This module is the structural half.
 
+DO NOT ENABLE THIS YET — MEASURED 2026-09-09
+--------------------------------------------
+Conversation context helped a great deal and is still not enough.
+
+  no context   50.0% of real schoolwork refused
+  context      18.8%                            <- current state
+  correct-block rate 100% in both arms — nothing off-topic leaked either way
+
+Measured on ``topic_gate_holdout2.yaml``, written and committed BEFORE the
+context change so the implementation could not shape the test, with the
+no-context arm run as a control on the identical cases. Without that control
+this looked like a failed fix: the first held-out file
+(``topic_gate_holdout.yaml``) still reports 16.7% afterwards, but its cases carry
+no history at all, so the change cannot apply to them. Comparing against it alone
+would have produced a confident and wrong conclusion.
+
+18.8% is still not shippable. The three remaining refusals share a shape:
+
+    "which one comes first, the one on top or the bottom"
+    "do i have to write all that down"
+    "can you give me a different one"
+
+None is a question about a SUBJECT. They are questions about doing the WORK —
+procedural and meta. The classifier prompt asks whether the turn "is a request
+for help with a school subject", and by that criterion these honestly are not,
+even though refusing them makes a terrible tutor. The residual is a criterion
+problem, not a context problem.
+
+BOTH held-out sets are now spent: the first diagnosed the context fix, the second
+measured it. Whoever attempts the criterion fix needs a THIRD, and should write
+it before touching the prompt.
+
 OFF BY DEFAULT
 --------------
 ``TOPIC_GATE_ENABLED`` defaults to false, matching the guidance-enforcer
@@ -60,7 +92,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from config import system_config
 from utils.logger import get_logger
@@ -80,8 +112,34 @@ def _c(pattern: str) -> "re.Pattern[str]":
 _YES = {"yes", "yes.", "y"}
 _NO = {"no", "no.", "n"}
 
+# Context sizing. Enough turns to establish what a conversation is about, capped
+# so a long session cannot blow the classifier's latency budget or bury the turn
+# being judged underneath its own history.
+_HISTORY_TURNS = 6
+_HISTORY_CHARS = 240
 
-def build_prompt(question: str) -> str:
+
+def _format_history(history: Optional[List[str]]) -> str:
+    """Recent turns, oldest first, trimmed for length and count.
+
+    Truncating each entry matters as much as capping the count: one pasted essay
+    would otherwise crowd every other turn out of the window.
+    """
+    if not history:
+        return ""
+    recent = [str(turn) for turn in history[-_HISTORY_TURNS:] if str(turn).strip()]
+    if not recent:
+        return ""
+    lines = []
+    for turn in recent:
+        text = turn.strip().replace("\n", " ")
+        if len(text) > _HISTORY_CHARS:
+            text = text[:_HISTORY_CHARS] + "..."
+        lines.append(f"- {text}")
+    return "\n".join(lines)
+
+
+def build_prompt(question: str, history: Optional[List[str]] = None) -> str:
     """Ask whether a student turn is schoolwork, in a form that yields YES/NO.
 
     The hard-topics clause is load-bearing. History and literature are full of
@@ -89,24 +147,53 @@ def build_prompt(question: str) -> str:
     prompt refuses Romeo and Juliet and guts the humanities. Whether harmful
     content is present is the safety pipeline's call, made before this gate runs
     — this gate decides only whether the SUBJECT is schoolwork.
+
+    CONTEXT. Measured on a held-out set, classifying a turn in isolation refused
+    16.7% of real schoolwork: "why did they do that though", "can you say it
+    again but easier", "is 3 right". None of those carry a subject alone, and to
+    a context-free classifier they look like the chit-chat the prompt excludes.
+    Recent turns are supplied so a follow-up can be read as what it is.
+
+    The instruction to judge the CURRENT turn is the counterweight. Without it,
+    context invites the opposite failure — an off-topic pivot inheriting the
+    verdict of the schoolwork that preceded it.
     """
+    context = _format_history(history)
+    context_block = (
+        f"CONVERSATION SO FAR (oldest first, for context only):\n{context}\n\n"
+        if context
+        else ""
+    )
+    judged = (
+        "Judge ONLY the student's CURRENT message below. Earlier turns are "
+        'context for understanding it — a follow-up like "why though" or '
+        '"say it again easier" continues the subject above and IS in scope. '
+        "But if the current message changes the subject to something out of "
+        "scope, answer NO even when the conversation before it was schoolwork.\n\n"
+        if context
+        else ""
+    )
     return (
-        "You are a topic classifier for a K-12 school tutoring tool. "
-        "Decide whether the student's message is a request for help with a "
-        "school subject.\n\n"
-        "IN SCOPE: math, science, technology, engineering, reading, literature, "
-        "writing, grammar, history, social studies, civics, geography, the arts, "
-        "world languages, study skills, and questions about assigned work.\n"
-        "Hard subject matter is IN SCOPE when it is academic: war, slavery, the "
-        "Holocaust, a character's death in a novel, historical atrocities, and "
-        "political debates are all legitimate history and literature topics.\n\n"
-        "OUT OF SCOPE: personal life, friendships, dating, family matters, "
-        "shopping or product recommendations, entertainment choices, games, "
-        "sports scores, chit-chat, and questions about the assistant itself.\n\n"
-        "Answer with exactly one word, YES if it is a school subject request, "
-        "NO if it is not. No punctuation, no explanation.\n\n"
-        f"Student message: {question}\n"
-        "Answer:"
+        context_block
+        + judged
+        + (
+            "You are a topic classifier for a K-12 school tutoring tool. "
+            "Decide whether the student's message is a request for help with a "
+            "school subject.\n\n"
+            "IN SCOPE: math, science, technology, engineering, reading, literature, "
+            "writing, grammar, history, social studies, civics, geography, the arts, "
+            "world languages, study skills, and questions about assigned work.\n"
+            "Hard subject matter is IN SCOPE when it is academic: war, slavery, the "
+            "Holocaust, a character's death in a novel, historical atrocities, and "
+            "political debates are all legitimate history and literature topics.\n\n"
+            "OUT OF SCOPE: personal life, friendships, dating, family matters, "
+            "shopping or product recommendations, entertainment choices, games, "
+            "sports scores, chit-chat, and questions about the assistant itself.\n\n"
+            "Answer with exactly one word, YES if it is a school subject request, "
+            "NO if it is not. No punctuation, no explanation.\n\n"
+            f"Student's CURRENT message: {question}\n"
+            "Answer:"
+        )
     )
 
 
@@ -242,6 +329,7 @@ async def off_topic_block_reason(
     question: str,
     *,
     age: Optional[int] = None,
+    history: Optional[List[str]] = None,
     classify: Optional[Classifier] = None,
 ) -> Optional[str]:
     """Return a refusal message when *question* is not schoolwork, else ``None``.
@@ -267,7 +355,7 @@ async def off_topic_block_reason(
     classifier = classify or _default_classifier
     try:
         raw = await asyncio.wait_for(
-            classifier(build_prompt(question)),
+            classifier(build_prompt(question, history)),
             timeout=system_config.TOPIC_GATE_TIMEOUT_S,
         )
     except Exception as exc:

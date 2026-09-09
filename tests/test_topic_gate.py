@@ -323,3 +323,87 @@ def test_ambiguous_turn_still_consults_the_model(enabled):
     )
     assert result is not None
     assert len(calls) == 1, "an ambiguous turn must be classified"
+
+
+# ---------------------------------------------------------------------------
+# Conversation context
+#
+# The first held-out run refused 16.7% of real schoolwork. Every failure was a
+# turn that carries no subject on its own — "why did they do that though", "can
+# you say it again but easier", "is 3 right". Those are unclassifiable in
+# isolation and read as chit-chat, which the prompt lists as out of scope.
+#
+# The fix is context, not more keywords. The risk the fix introduces is its
+# mirror image: a classifier that sees an academic conversation may wave through
+# an off-topic pivot. Both directions are pinned here.
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_includes_recent_history():
+    prompt = topic_gate.build_prompt(
+        "but why did they do that though",
+        history=["why did the roman empire fall", "Several pressures at once."],
+    )
+    assert "roman empire" in prompt.lower()
+    assert "but why did they do that though" in prompt
+
+
+def test_prompt_marks_which_turn_is_being_classified():
+    """The model must judge the CURRENT turn, not the conversation as a whole,
+    or an off-topic pivot inherits the conversation's verdict."""
+    prompt = topic_gate.build_prompt("what movie should I watch", history=["what is 7x8"])
+    lowered = prompt.lower()
+    assert "current" in lowered or "latest" in lowered or "most recent" in lowered
+
+
+def test_prompt_without_history_is_unchanged_in_shape():
+    """Single-turn behaviour must not regress; the history block simply absents
+    itself rather than emitting an empty section the model has to interpret."""
+    prompt = topic_gate.build_prompt("how do I factor x^2 + 5x + 6")
+    assert "conversation so far" not in prompt.lower()
+
+
+def test_history_is_truncated():
+    """A long conversation would blow the classifier's latency budget and bury
+    the current turn. Only the tail is sent."""
+    history = [f"turn {i}" for i in range(50)]
+    prompt = topic_gate.build_prompt("and then?", history=history)
+    assert "turn 0" not in prompt, "oldest turns must be dropped"
+    assert "turn 49" in prompt, "most recent turn must survive"
+
+
+def test_history_entries_are_length_capped():
+    """One enormous pasted turn must not crowd out the rest of the context."""
+    prompt = topic_gate.build_prompt("ok now what", history=["x" * 5000])
+    assert len(prompt) < 4000
+
+
+@pytest.mark.asyncio
+async def test_context_is_passed_through_from_the_gate(enabled):
+    seen = {}
+
+    async def _capture(prompt):
+        seen["prompt"] = prompt
+        return "YES"
+
+    await topic_gate.off_topic_block_reason(
+        "but why though",
+        history=["why did the roman empire fall"],
+        classify=_capture,
+    )
+    assert "roman empire" in seen["prompt"].lower()
+
+
+@pytest.mark.asyncio
+async def test_history_is_ignored_when_the_gate_is_disabled(monkeypatch):
+    monkeypatch.setattr(topic_gate.system_config, "TOPIC_GATE_ENABLED", False)
+
+    async def _never(prompt):
+        raise AssertionError("disabled gate must not classify")
+
+    assert (
+        await topic_gate.off_topic_block_reason(
+            "anything", history=["math"], classify=_never
+        )
+        is None
+    )

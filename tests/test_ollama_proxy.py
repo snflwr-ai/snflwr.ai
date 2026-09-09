@@ -2633,3 +2633,68 @@ class TestTopicGate:
                 TestClient(_make_app()), "how do I factor x^2 + 5x + 6"
             )
         assert mock_fwd.call_args is not None
+
+    def test_prior_turns_reach_the_topic_classifier(self):
+        """A follow-up carries no subject alone. The proxy must hand the
+        classifier the conversation, or the gate refuses real schoolwork — which
+        is what a held-out run measured at 16.7%."""
+        from fastapi.testclient import TestClient
+
+        from config import system_config
+
+        from api.routes.ollama_proxy import history_ledger as _hl
+
+        seen = {}
+
+        async def _capture(prompt):
+            seen["prompt"] = prompt
+            return "YES"
+
+        # Seed the cross-session ledger. It runs UPSTREAM of the topic gate, so
+        # unrecognized prior turns are dropped before the gate ever sees them —
+        # the two features composing correctly. Without seeding, the classifier
+        # would receive a bare current turn and this test would pass vacuously.
+        # In production the same thing happens at a session boundary: the first
+        # turn of a new session gets no context, which is the intended behaviour.
+        _turn_1 = {"role": "user", "content": "why did the roman empire fall"}
+        _turn_1_reply = {"role": "assistant", "content": "Several pressures at once."}
+        _hl.history_ledger.record_turn("p-ctx", _turn_1, _turn_1_reply)
+
+        ollama_resp = httpx.Response(
+            200,
+            json={"model": "test-model", "done": True,
+                  "message": {"role": "assistant", "content": "ok"}},
+        )
+        safe = _safe_result()
+        pipeline = MagicMock()
+        pipeline.check_input.return_value = safe
+        pipeline.check_output.return_value = safe
+
+        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
+            "core.topic_gate._default_classifier", new=_capture
+        ), patch(
+            "api.routes.ollama_proxy.access._get_user_from_headers",
+            return_value=("uid-ctx", "user"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._get_profile_for_user",
+            new=AsyncMock(return_value="p-ctx"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._resolve_age", return_value=15
+        ), patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new_callable=AsyncMock, return_value=ollama_resp,
+        ), patch(
+            "safety.pipeline.safety_pipeline", pipeline
+        ):
+            TestClient(_make_app()).post(
+                "/api/chat",
+                json={"model": "test-model", "stream": False, "messages": [
+                    {"role": "user", "content": "why did the roman empire fall"},
+                    {"role": "assistant", "content": "Several pressures at once."},
+                    {"role": "user", "content": "but why though"},
+                ]},
+                headers={"X-OpenWebUI-User-Id": "uid-ctx",
+                         "X-OpenWebUI-User-Role": "user"},
+            )
+
+        assert "roman empire" in seen.get("prompt", "").lower()

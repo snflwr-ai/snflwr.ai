@@ -119,7 +119,10 @@ async def run(cases: list, base_url: str, model: str) -> list:
             return await _classify_with(base_url, model, prompt)
 
         reason = await topic_gate.off_topic_block_reason(
-            case["question"], age=None, classify=classify
+            case["question"],
+            age=None,
+            history=case.get("history"),
+            classify=classify,
         )
         rows.append({**case, "blocked": reason is not None})
     return rows
@@ -151,6 +154,7 @@ def main() -> int:
                 "id": c["id"],
                 "question": c["question"],
                 "expect": c["expect"],
+                "history": c.get("history"),
                 "source": "holdout",
             }
             for c in raw

@@ -12,7 +12,14 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.middleware.auth import get_current_session, is_genuine_admin
-from api.routes.ollama_proxy import access, blocks, guards, profile, transport
+from api.routes.ollama_proxy import (
+    access,
+    blocks,
+    guards,
+    history_ledger,
+    profile,
+    transport,
+)
 from config import safety_config, system_config
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
@@ -212,6 +219,27 @@ async def proxy_chat(
     # Resolve age from profile (best-effort; None is acceptable)
     age: Optional[int] = profile._resolve_age(profile_id)
 
+    # ---- Drop history this proxy did not serve recently (students only) ----
+    # Open WebUI stores chats in its own DB and resends a reopened conversation's
+    # FULL message array, so the turn cap below — which bounds LENGTH — let
+    # yesterday's messages back into the prompt. S9051B §1801 makes using
+    # personal/wellbeing content "acquired ... more than twelve hours previously
+    # or in any previous user session" an unsafe AI companion feature, and the
+    # native route already avoids it by scoping history to a session row. The
+    # ledger is the proxy's equivalent: it keeps only the trailing run of
+    # messages it actually served for this child inside the TTL window, plus the
+    # current turn. Fail-closed — any ledger error yields the current turn alone.
+    filtered = history_ledger.filter_history(profile_id, messages)
+    if len(filtered) != len(messages):
+        logger.info(
+            "Dropped %d unrecognized history message(s) before forwarding "
+            "(cross-session guard)",
+            len(messages) - len(filtered),
+        )
+        messages = filtered
+        body["messages"] = messages
+        body_bytes = _json.dumps(body).encode()
+
     # ---- Enforce the per-grade conversation-turn cap (students only) ----
     # FILTER_LEVELS defines max_conversation_turns per grade band but nothing
     # consumed it, so a client could forward unbounded chat history and drive
@@ -401,6 +429,11 @@ async def proxy_chat(
                 _trace["blocked"] = False
                 _trace["safety"] = {"blocked_layer": None}
                 _emit_trace()
+                # Remember this exchange so the client may replay it next turn.
+                # Only on the fully-vetted success path: a blocked or errored
+                # stream returns early above and must NOT be recorded, or the
+                # withheld text would be replayable as "known" history.
+                history_ledger.record_turn(profile_id, messages[-1], full)
             except httpx.ConnectError:
                 _trace["safety"] = {"blocked_layer": "error"}
                 _emit_trace()
@@ -476,6 +509,8 @@ async def proxy_chat(
         _trace["blocked"] = False
         _trace["safety"] = {"blocked_layer": None}
         _emit_trace()
+        # Remember this exchange so the client may replay it next turn.
+        history_ledger.record_turn(profile_id, messages[-1], assistant_text)
         return Response(
             content=b"".join(collected),
             media_type="application/x-ndjson",
@@ -624,6 +659,16 @@ async def proxy_chat(
         if "thinking" in msg or _pedagogy_modified:
             msg.pop("thinking", None)
             out_content = _json.dumps(upstream_json).encode()
+    # Remember this exchange so the client may replay it next turn. Record the
+    # text actually DELIVERED (the pedagogy enforcer may have rewritten it) —
+    # that is what Open WebUI stores and will resend.
+    if messages:
+        _delivered = assistant_text
+        if isinstance(upstream_json, dict) and isinstance(
+            upstream_json.get("message"), dict
+        ):
+            _delivered = upstream_json["message"].get("content", assistant_text)
+        history_ledger.record_turn(profile_id, messages[-1], _delivered)
     return Response(
         content=out_content,
         status_code=upstream.status_code,

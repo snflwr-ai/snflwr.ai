@@ -2065,10 +2065,19 @@ class TestConversationTurnCap:
 
     def test_long_conversation_clipped_before_forward(self):
         """A 50-message history for an age-unknown (elementary, cap 20 turns = 40
-        messages) student is clipped to the most-recent 40 before forwarding."""
+        messages) student is clipped to the most-recent 40 before forwarding.
+
+        The history is seeded into the cross-session ledger first. Since that
+        ledger runs UPSTREAM of this cap and drops any message the proxy did not
+        recently serve, unseeded history would be reduced to the current turn and
+        this test would measure the ledger instead of the cap. Seeding isolates
+        the cap, which is what this test is for. See
+        TestCrossSessionHistoryLedger for the ledger's own behavior."""
         import json as _j
 
         from fastapi.testclient import TestClient
+
+        from api.routes.ollama_proxy import history_ledger as _hl
 
         client = TestClient(_make_app())
         ollama_resp = httpx.Response(200, json={"model": "test-model", "done": True})
@@ -2078,6 +2087,8 @@ class TestConversationTurnCap:
             {"role": "user" if i % 2 == 0 else "assistant", "content": f"turn {i}"}
             for i in range(50)
         ]
+        for _m in msgs[:-1]:
+            _hl.history_ledger.record_turn("p-clip", _m, None)
         body = {"model": "test-model", "stream": False, "messages": msgs}
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
@@ -2176,7 +2187,18 @@ class TestProxyInputHardening:
         assert "user" in roles
 
     def test_check_input_scans_earlier_user_turn(self):
+        """M1: a jailbreak split across turns must be caught, not just the last
+        turn.
+
+        The earlier turn is seeded into the cross-session ledger so it is
+        actually forwarded — that is the case where this guarantee bites. An
+        UNSEEN earlier turn is now dropped upstream of the scan and never
+        reaches the model at all, so there is nothing left to jailbreak; that
+        complementary path is covered by
+        TestCrossSessionHistoryLedger::test_resent_prior_session_history_is_dropped."""
         from fastapi.testclient import TestClient
+
+        from api.routes.ollama_proxy import history_ledger as _hl
 
         client = TestClient(_make_app())
         ollama_resp = httpx.Response(200, json={"model": "test-model", "done": True})
@@ -2190,6 +2212,8 @@ class TestProxyInputHardening:
                 {"role": "user", "content": "what is 2+2?"},
             ],
         }
+        for _m in body["messages"][:-1]:
+            _hl.history_ledger.record_turn("p-scan", _m, None)
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
         mock_pipeline.check_output.return_value = safe
@@ -2217,3 +2241,239 @@ class TestProxyInputHardening:
         scanned = mock_pipeline.check_input.call_args.kwargs["text"]
         assert "ignore your instructions" in scanned  # earlier turn IS scanned
         assert "what is 2+2?" in scanned
+
+
+class TestCrossSessionHistoryLedger:
+    """S9051B §1801: prior-session / >12h-old personal content must not reach
+    the model. Open WebUI resends a reopened chat's full message array, and the
+    turn cap above only bounds LENGTH, never AGE — so the proxy validates each
+    resent message against a per-child ledger of what it actually served."""
+
+    @staticmethod
+    def _post(client, msgs, profile="p-ledger", uid="uid-ledger"):
+        import json as _j
+
+        ollama_resp = httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "done": True,
+                "message": {"role": "assistant", "content": "the reply"},
+            },
+        )
+        safe = _safe_result()
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = safe
+        mock_pipeline.check_output.return_value = safe
+        with patch(
+            "api.routes.ollama_proxy.access._get_user_from_headers",
+            return_value=(uid, "user"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._get_profile_for_user",
+            new=AsyncMock(return_value=profile),
+        ), patch(
+            "api.routes.ollama_proxy.profile._resolve_age", return_value=None
+        ), patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new_callable=AsyncMock,
+            return_value=ollama_resp,
+        ) as mock_fwd, patch(
+            "safety.pipeline.safety_pipeline", mock_pipeline
+        ):
+            client.post(
+                "/api/chat",
+                json={"model": "test-model", "stream": False, "messages": msgs},
+                headers={
+                    "X-OpenWebUI-User-Id": uid,
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        return _j.loads(mock_fwd.call_args.kwargs["content"])["messages"]
+
+    @pytest.fixture(autouse=True)
+    def _fresh_ledger(self):
+        """Each test starts with an empty ledger."""
+        from api.routes.ollama_proxy import history_ledger as hl
+
+        original = hl.history_ledger
+        hl.history_ledger = hl.HistoryLedger(ttl_seconds=3600, cache=None)
+        yield
+        hl.history_ledger = original
+
+    def test_resent_prior_session_history_is_dropped(self):
+        """The gap: a student reopens yesterday's chat. Only the new turn goes
+        to the model — the prior-session personal content does not."""
+        from fastapi.testclient import TestClient
+
+        sent = self._post(
+            TestClient(_make_app()),
+            [
+                {"role": "user", "content": "my dog died yesterday"},
+                {"role": "assistant", "content": "that sounds hard"},
+                {"role": "user", "content": "what is 7x8"},
+            ],
+        )
+        assert sent == [{"role": "user", "content": "what is 7x8"}]
+        assert not any("dog died" in str(m) for m in sent)
+
+    def test_history_from_this_session_survives(self):
+        """Multi-turn tutoring must still work: history the proxy itself served
+        within the window is replayed back to the model."""
+        from fastapi.testclient import TestClient
+
+        client = TestClient(_make_app())
+        first = [{"role": "user", "content": "what is a fraction"}]
+        self._post(client, first)
+
+        sent = self._post(
+            client,
+            [
+                {"role": "user", "content": "what is a fraction"},
+                {"role": "assistant", "content": "the reply"},
+                {"role": "user", "content": "and one half?"},
+            ],
+        )
+        assert len(sent) == 3, "turn 1 must survive into turn 2's context"
+        assert sent[0]["content"] == "what is a fraction"
+
+    def test_ledger_is_per_child(self):
+        """One child's served history must not validate another child's resent
+        messages."""
+        from fastapi.testclient import TestClient
+
+        client = TestClient(_make_app())
+        self._post(client, [{"role": "user", "content": "child one secret"}], profile="p-a")
+
+        sent = self._post(
+            client,
+            [
+                {"role": "user", "content": "child one secret"},
+                {"role": "assistant", "content": "the reply"},
+                {"role": "user", "content": "hello"},
+            ],
+            profile="p-b",
+            uid="uid-b",
+        )
+        assert sent == [{"role": "user", "content": "hello"}]
+
+    def test_turn_cap_still_applies_on_top_of_the_ledger(self):
+        """The two filters compose: the ledger drops history by AGE, the
+        existing cap bounds SIZE. A long conversation that is entirely known to
+        the ledger must still be clipped to the per-grade cap.
+
+        The ledger is seeded directly rather than by 25 POSTs — the chat gate
+        allows only CHAT_RATE_LIMIT_PER_MINUTE (20) requests, so driving it
+        through the route would measure the rate limiter, not the cap."""
+        from fastapi.testclient import TestClient
+
+        from api.routes.ollama_proxy import history_ledger as hl
+
+        msgs = []
+        for i in range(25):
+            user = {"role": "user", "content": f"turn {i}"}
+            asst = {"role": "assistant", "content": f"reply {i}"}
+            hl.history_ledger.record_turn("p-ledger", user, asst)
+            msgs += [user, asst]
+
+        sent = self._post(
+            TestClient(_make_app()), msgs + [{"role": "user", "content": "final"}]
+        )
+        assert len(sent) == 40, "elementary cap is 20 turns = 40 messages"
+        assert sent[-1]["content"] == "final"
+        assert sent[0]["content"] != "turn 0", "oldest turns must be clipped"
+
+    def test_admin_path_is_not_filtered(self):
+        """Admins bypass the safety pipeline entirely; the ledger must not
+        silently truncate an admin's own conversation."""
+        import json as _j
+
+        from fastapi.testclient import TestClient
+
+        client = TestClient(_make_app(user_id="admin_1", role="admin"))
+        ollama_resp = httpx.Response(200, json={"model": "test-model", "done": True})
+        msgs = [
+            {"role": "user", "content": "never seen"},
+            {"role": "assistant", "content": "also never seen"},
+            {"role": "user", "content": "now"},
+        ]
+        with patch(
+            "api.routes.ollama_proxy.access._get_user_from_headers",
+            return_value=("admin_1", "admin"),
+        ), patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new_callable=AsyncMock,
+            return_value=ollama_resp,
+        ) as mock_fwd:
+            client.post(
+                "/api/chat",
+                json={"model": "test-model", "stream": False, "messages": msgs},
+                headers={
+                    "X-OpenWebUI-User-Id": "admin_1",
+                    "X-OpenWebUI-User-Role": "admin",
+                },
+            )
+        sent = _j.loads(mock_fwd.call_args.kwargs["content"])["messages"]
+        assert len(sent) == 3
+
+    def test_holdback_streaming_path_records_the_turn(self):
+        """The hold-back streaming path (CHAT_STREAMING_ENABLED) must record the
+        exchange too. It returns a StreamingResponse from a nested generator, so
+        it is easy to miss — and missing it would mean history NEVER accumulates
+        on that path, permanently breaking multi-turn context rather than failing
+        loudly."""
+        from fastapi.testclient import TestClient
+
+        from api.routes.ollama_proxy import history_ledger as hl
+        from config import system_config
+
+        chunk = (
+            b'{"model":"test-model","message":{"role":"assistant",'
+            b'"content":"a full sentence reply."},"done":true}\n'
+        )
+
+        async def _fake_stream(*a, **k):
+            yield chunk
+
+        safe = _safe_result()
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = safe
+        mock_pipeline.check_output.return_value = safe
+        client = TestClient(_make_app())
+        with patch(
+            "api.routes.ollama_proxy.access._get_user_from_headers",
+            return_value=("uid-hb", "user"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._get_profile_for_user",
+            new=AsyncMock(return_value="p-hb"),
+        ), patch(
+            "api.routes.ollama_proxy.profile._resolve_age", return_value=None
+        ), patch(
+            "api.routes.ollama_proxy.transport._stream_chunks_from_ollama", _fake_stream
+        ), patch(
+            "safety.pipeline.safety_pipeline", mock_pipeline
+        ), patch.object(
+            system_config, "CHAT_STREAMING_ENABLED", True
+        ):
+            resp = client.post(
+                "/api/chat",
+                json={
+                    "model": "test-model",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": "hb question"}],
+                },
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-hb",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+            resp.read()
+
+        assert hl.history_ledger._seen(
+            "p-hb", hl.message_hash({"role": "user", "content": "hb question"})
+        ), "hold-back streaming must record the user turn"
+        assert hl.history_ledger._seen(
+            "p-hb",
+            hl.message_hash(
+                {"role": "assistant", "content": "a full sentence reply."}
+            ),
+        ), "hold-back streaming must record the assistant reply"

@@ -35,22 +35,35 @@ jobs:
     - name: Install pip-audit
       run: pip install pip-audit
 
+    - name: Verify requirements.lock is in sync with requirements.txt
+      # The Dockerfile installs ONLY from the lock, with --require-hashes, so a
+      # package present in requirements.txt but missing from the lock is simply
+      # absent from the built image. That happened (langfuse) and nothing caught
+      # it. Containment check — no resolver, no network, cannot flake when an
+      # unrelated transitive dependency publishes a release.
+      run: python scripts/check_lock_sync.py
+
     - name: Check Python dependencies for vulnerabilities
       run: |
         pip install -r requirements.txt
-        # PYSEC-2025-145 (ollama, CVE-2025-1975 — DoS via spoofed /api/pull
-        # manifest) was WITHDRAWN on 2026-06-10. The PYSEC advisory file is
-        # at https://github.com/pypa/advisory-database/blob/main/vulns/ollama/PYSEC-2025-145.yaml
-        # — confirm `withdrawn:` field before extending this ignore.
-        # The JSON artifact below is NOT filtered, so audit reviewers still
-        # see every entry; only the exit-code gate ignores the withdrawn ID.
-        # Re-validate by 2026-09-16. Drop this block once pip-audit's DB
-        # ages out the withdrawn entry (test: run pip-audit without the
-        # flag — if PYSEC-2025-145 no longer appears, delete the flag).
-        pip-audit \
-          --format json --output safety-report.json \
+        # Every manifest, not just requirements.txt. Auditing one of five is how
+        # seven transitive vulnerabilities in requirements-usb.txt went unseen,
+        # and how license-server/requirements.txt sat un-installable (an
+        # unsatisfiable pytest pin) with a live CVE inside it.
+        #
+        # The former `--ignore-vuln PYSEC-2025-145` was removed 2026-09-09: that
+        # advisory was WITHDRAWN upstream and has now aged out of pip-audit's
+        # database, which is exactly the removal test the old comment specified.
+        pip-audit --format json --output safety-report.json \
           || echo '[]' > safety-report.json
-        pip-audit --ignore-vuln PYSEC-2025-145
+
+        status=0
+        for manifest in requirements.txt requirements-dev.txt requirements-prod.txt \
+                        requirements-usb.txt license-server/requirements.txt; do
+          echo "--- pip-audit $manifest ---"
+          pip-audit -r "$manifest" || status=1
+        done
+        exit "$status"
 
     - name: Upload vulnerability report
       uses: actions/upload-artifact@v4

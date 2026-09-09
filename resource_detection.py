@@ -140,6 +140,57 @@ def recommend_num_predict(memory_gb: float) -> int:
     return 1024
 
 
+# ---------------------------------------------------------------------------
+# Tutor backbone selection
+#
+# gemma4 is the brain on EVERY deployment. Keeping one family everywhere means
+# the tutoring behaviour, the persona adherence and the S9051B compliance work
+# all transfer between machines; the previous ladder swapped to qwen3.5 below
+# 16GB, which quietly gave a small machine a different tutor that none of that
+# work had been measured against.
+#
+# gemma4 publishes no quant-suffixed tags — gemma4:e4b-q4_K_M and friends all
+# return 404 from the registry (checked 2026-09-09). It ships pre-quantized at
+# Q4_K_M and varies by SIZE VARIANT, so adapting to hardware means picking the
+# largest variant that fits rather than re-quantizing.
+#
+# Sizes are the real manifest totals, and they are NOT ordered by name: e2b and
+# e4b are MatFormer variants while 12b is dense, so 12b is smaller than e4b.
+GEMMA4_VARIANTS = [
+    ("gemma4:e4b", 9.6),  # the variant the tutoring + compliance evals ran on
+    ("gemma4:12b", 7.6),  # dense; smaller on disk than e4b despite the name
+    ("gemma4:e2b", 7.2),  # floor — always selectable so a tiny box still tutors
+]
+
+# Headroom that must remain free after the tutor is loaded:
+#   ~4.9 GB  llama-guard3, the safety classifier, which has to be resident too
+#   ~1.1 GB  KV cache and runtime overhead at the context sizes above
+# Sized from a real failure: when the classifier could not stay resident it
+# returned empty verdicts, the pipeline failed closed, and children asking
+# "what is photosynthesis" were blocked and their parents alerted.
+DEFAULT_MODEL_RESERVE_GB = 6.0
+
+
+def recommend_base_model(
+    memory_gb: float,
+    vram_gb: float = 0.0,
+    reserve_gb: float = DEFAULT_MODEL_RESERVE_GB,
+) -> str:
+    """Largest gemma4 variant that fits the hardware, with room for the guard.
+
+    Selects on VRAM when a usable GPU is present, because that is where the
+    model will actually live; otherwise on RAM. Never returns None — the
+    smallest variant is the floor, so a constrained machine gets a working
+    tutor rather than no tutor.
+    """
+    budget = vram_gb if vram_gb and vram_gb > 0 else memory_gb
+    usable = budget - reserve_gb
+    for tag, size in GEMMA4_VARIANTS:
+        if size <= usable:
+            return tag
+    return GEMMA4_VARIANTS[-1][0]
+
+
 def recommend_num_ctx(memory_gb: float) -> int:
     """
     Recommend Ollama context window size based on available RAM.

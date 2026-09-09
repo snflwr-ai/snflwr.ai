@@ -63,6 +63,14 @@ COPY --chown=snflwr:snflwr tasks/ ./tasks/
 COPY --chown=snflwr:snflwr config.py .
 COPY --chown=snflwr:snflwr resource_detection.py .
 COPY --chown=snflwr:snflwr scripts/owui_connect.py ./scripts/owui_connect.py
+# Executed inside the container by the backup-cron sidecar
+# (docker/compose/docker-compose.home.yml: `python /app/scripts/backup_database.py
+# backup`) and imported by tasks/background_tasks.py for the Celery schedule.
+# It was previously referenced only in the rclone comment above and never
+# copied, so the nightly backup ran a file that did not exist — and the
+# sidecar's `|| echo` swallowed the error while its heartbeat kept the
+# healthcheck green. Guarded now by tests/test_image_completeness.py.
+COPY --chown=snflwr:snflwr scripts/backup_database.py ./scripts/backup_database.py
 
 # Entrypoint (runs as root, fixes volume ownership, then drops to snflwr)
 COPY docker/entrypoint.sh /usr/local/bin/snflwr-entrypoint.sh

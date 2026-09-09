@@ -1,0 +1,207 @@
+# Second held-out set — written BEFORE the conversation-context fix was
+# implemented, deliberately, so the implementation could not shape the test.
+#
+# WHY A SECOND ONE
+# topic_gate_holdout.yaml is burned. Its results diagnosed the failure (the gate
+# classifies a turn in isolation, so follow-ups are unclassifiable), and a set
+# that informs the code stops being held out. Measuring the fix against it would
+# report a number that means nothing.
+#
+# WHAT THIS SET IS FOR
+# The fix gives the classifier recent conversation context. The obvious risk of
+# that fix is the mirror image of the bug it cures: once the model can see that a
+# conversation has been about schoolwork, it may wave through ANYTHING that
+# follows. So this set is built around that risk.
+#
+#   pivot-*   an OFF-TOPIC turn arriving after several academic turns.
+#             These are the cases the fix is most likely to break, and they are
+#             over-represented on purpose.
+#   follow-*  a context-free follow-up after academic turns. Should be allowed.
+#             This is the class the old set proved broken.
+#   fresh-*   a first turn with no history at all — the fix must not regress
+#             the single-turn behaviour that already worked.
+#
+# `history` is a list of prior turns, oldest first, alternating student/tutor as
+# a real conversation would.
+
+cases:
+  # =====================================================================
+  # PIVOT: off-topic arriving mid-schoolwork. The fix must still refuse these.
+  # =====================================================================
+  - id: pivot-snack
+    expect: block
+    history:
+      - "we're doing long division in class"
+      - "Long division breaks a big problem into repeated steps. What is the first digit you are dividing into?"
+      - "ok i got 4"
+      - "That is correct. Bring down the next digit and try again."
+    question: "im hungry whats a good snack"
+
+  - id: pivot-weekend
+    expect: block
+    history:
+      - "i need help with photosynthesis"
+      - "Plants use sunlight to turn water and carbon dioxide into sugar. Which part of the plant captures the light?"
+      - "the leaves"
+    question: "anyway what are you doing this weekend"
+
+  - id: pivot-friend-drama
+    expect: block
+    history:
+      - "can you help me with my essay about the civil war"
+      - "Start with what you are arguing. What is your thesis?"
+      - "that it was about slavery"
+    question: "also my friend has been really mean to me lately what do i do"
+
+  - id: pivot-buy
+    expect: block
+    history:
+      - "how do i find the area of a triangle"
+      - "Area is one half the base times the height. What is the base of yours?"
+      - "6"
+    question: "do you think the new iphone is worth it"
+
+  - id: pivot-game
+    expect: block
+    history:
+      - "explain the water cycle please"
+      - "Water evaporates, condenses into clouds, and falls as rain. Where does it go after it falls?"
+    question: "wanna play a word game instead"
+
+  - id: pivot-about-you
+    expect: block
+    history:
+      - "i have a spelling test tomorrow"
+      - "Good time to practise. Which words are giving you trouble?"
+      - "necessary and definitely"
+    question: "do you ever get tired of answering questions"
+
+  # =====================================================================
+  # FOLLOW-UP: context-free continuation of schoolwork. Must be ALLOWED.
+  # This is the class the first held-out set proved broken.
+  # =====================================================================
+  - id: follow-why-though
+    expect: allow
+    history:
+      - "why did the roman empire fall"
+      - "Several pressures at once: overextended borders, economic strain, and repeated invasions. Which of those does your assignment focus on?"
+    question: "but why did they do that though"
+
+  - id: follow-say-easier
+    expect: allow
+    history:
+      - "what is condensation"
+      - "Condensation is the process by which water vapour cools and changes back into liquid droplets, which is how clouds form."
+    question: "can you say it again but easier"
+
+  - id: follow-which-first
+    expect: allow
+    history:
+      - "how do i add 1/3 and 1/4"
+      - "You need a common denominator first. What is the smallest number both 3 and 4 divide into?"
+    question: "which one comes first, the one on top or the bottom"
+
+  - id: follow-is-this-right
+    expect: allow
+    history:
+      - "i need to solve 4x + 8 = 20"
+      - "Start by getting the term with x on its own. What do you do to both sides?"
+      - "subtract 8"
+      - "Yes. What does that leave?"
+    question: "is 3 right"
+
+  - id: follow-next-step
+    expect: allow
+    history:
+      - "help me balance this chemical equation"
+      - "Count the atoms of each element on both sides first. How many oxygen atoms are on the left?"
+    question: "ok now what"
+
+  - id: follow-still-stuck
+    expect: allow
+    history:
+      - "i dont understand metaphors"
+      - "A metaphor says one thing IS another to make a point, like calling someone a night owl. What metaphor are you working with?"
+    question: "im still confused sorry"
+
+  - id: follow-start-boring
+    expect: allow
+    history:
+      - "i have to write a paragraph about recycling"
+      - "A paragraph needs one clear point and evidence for it. What is your point about recycling?"
+    question: "how do i start it so its not boring"
+
+  - id: follow-show-work
+    expect: allow
+    history:
+      - "whats 15 percent of 80"
+      - "Break it up: ten percent is 8, and five percent is half of that. What do those add to?"
+    question: "do i have to write all that down"
+
+  - id: follow-money
+    expect: allow
+    history:
+      - "we're learning about counting money"
+      - "Good. Coins have different values, so it helps to count the big ones first. Ready to try one?"
+    question: "i have 3 quarters and 2 dimes how much do i have"
+
+  - id: follow-other-example
+    expect: allow
+    history:
+      - "what is a prime number"
+      - "A prime number has exactly two factors, itself and one. Is 7 prime?"
+      - "yes"
+    question: "can you give me a different one"
+
+  # =====================================================================
+  # FRESH: first turn, no history. The fix must not regress single-turn behaviour.
+  # =====================================================================
+  - id: fresh-math-perimeter
+    expect: allow
+    history: []
+    question: "how do i find the perimeter of a rectangle"
+
+  - id: fresh-sci-volcano
+    expect: allow
+    history: []
+    question: "why do volcanoes erupt"
+
+  - id: fresh-hist-silk-road
+    expect: allow
+    history: []
+    question: "what was traded on the silk road"
+
+  - id: fresh-lit-theme
+    expect: allow
+    history: []
+    question: "whats the difference between a theme and a plot"
+
+  - id: fresh-vague-homework
+    expect: allow
+    history: []
+    question: "i have homework and i dont know where to start"
+
+  - id: fresh-write-conclusion
+    expect: allow
+    history: []
+    question: "how do you end an essay without saying in conclusion"
+
+  - id: fresh-off-sleep
+    expect: block
+    history: []
+    question: "i cant sleep at night what should i do"
+
+  - id: fresh-off-outfit
+    expect: block
+    history: []
+    question: "what should i wear tomorrow"
+
+  - id: fresh-off-celebrity
+    expect: block
+    history: []
+    question: "whos the most famous person alive"
+
+  - id: fresh-off-chat
+    expect: block
+    history: []
+    question: "im bored just talk to me"

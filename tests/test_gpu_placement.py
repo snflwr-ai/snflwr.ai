@@ -152,3 +152,29 @@ class TestNoUserDataInLogs:
         assert not any("model_tag" in ln for ln in log_lines), (
             "the client-supplied model tag must not reach a log sink"
         )
+
+
+class TestOllamaUrlResolution:
+    """Regression: the probe must follow the APP's Ollama URL, not 127.0.0.1.
+
+    Inside the API container 127.0.0.1 is the container's own loopback, so a
+    hardcoded default made the probe fail with ECONNREFUSED and fail-open served
+    every turn from CPU — inert while looking healthy. Only a real deploy
+    surfaced it, because these tests mock the probe itself.
+    """
+
+    def test_prefers_the_proxy_target_the_app_already_uses(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_PROXY_TARGET", "http://172.24.0.1:11434")
+        monkeypatch.delenv("OLLAMA_HOST_URL", raising=False)
+        assert gpu_placement._ollama_url() == "http://172.24.0.1:11434"
+
+    def test_explicit_override_wins(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_HOST_URL", "http://elsewhere:11434")
+        monkeypatch.setenv("OLLAMA_PROXY_TARGET", "http://172.24.0.1:11434")
+        assert gpu_placement._ollama_url() == "http://elsewhere:11434"
+
+    def test_base_url_is_accepted_too(self, monkeypatch):
+        for v in ("OLLAMA_HOST_URL", "OLLAMA_PROXY_TARGET"):
+            monkeypatch.delenv(v, raising=False)
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://172.24.0.1:11434")
+        assert gpu_placement._ollama_url() == "http://172.24.0.1:11434"

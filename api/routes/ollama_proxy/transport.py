@@ -2,17 +2,49 @@
 
 from __future__ import annotations
 
+import json as _json
+
 import httpx
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import system_config
+from core import gpu_placement
 from utils.circuit_breaker import ollama_circuit
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 _OLLAMA_READ_TIMEOUT = 300.0  # seconds — matches OLLAMA_TIMEOUT default
+
+
+def _inject_gpu_placement(path: str, content):
+    """Add ``options.num_gpu`` to an outgoing /api/chat or /api/generate body.
+
+    Applied HERE rather than at each call site because every proxy path — the
+    student turn, the streaming path, the guidance-enforcer regeneration and the
+    pedagogy one-shot — converges on this transport. Editing four call sites
+    would leave the next one to be written uncovered.
+
+    See core.gpu_placement: the tutor takes the GPU when it is free, and backs
+    off to CPU for a cooldown after each swap it causes, so it cannot thrash
+    against IronClaw's brain. Fail-open — any problem returns the body untouched,
+    which is exactly current behaviour.
+    """
+    if path not in ("/api/chat", "/api/generate") or not content:
+        return content
+    try:
+        body = _json.loads(content)
+        if not isinstance(body, dict) or not body.get("model"):
+            return content
+        opts = body.get("options")
+        if not isinstance(opts, dict):
+            opts = {}
+        body["options"] = gpu_placement.apply_to_options(opts, body["model"])
+        return _json.dumps(body).encode()
+    except Exception as exc:  # noqa: BLE001 - never fail a child's turn over placement
+        logger.warning("transport: GPU placement injection skipped (%s)", exc)
+        return content
 
 
 async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
@@ -26,6 +58,8 @@ async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     """
     if not ollama_circuit.can_execute():
         raise httpx.ConnectError("Ollama circuit breaker open")
+    if "content" in kwargs:
+        kwargs["content"] = _inject_gpu_placement(path, kwargs["content"])
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}{path}"
     try:
         async with httpx.AsyncClient(
@@ -88,7 +122,15 @@ async def _stream_chunks_from_ollama(body: bytes, headers: dict):
         raise httpx.ConnectError("Ollama circuit breaker open")
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
-    req = client.build_request("POST", url, content=body, headers=headers)
+    # STUDENT path. Same placement injection as _forward_request; this helper
+    # builds its own request so it bypasses that choke point. This is the one
+    # that decides whether a child waits ~2 s or ~14 s for an answer.
+    req = client.build_request(
+        "POST",
+        url,
+        content=_inject_gpu_placement("/api/chat", body),
+        headers=headers,
+    )
     try:
         resp = await client.send(req, stream=True)
     except httpx.TransportError as exc:
@@ -127,7 +169,16 @@ async def _stream_chat_from_ollama(
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     try:
-        req = client.build_request("POST", url, content=body, headers=headers)
+        # Same placement injection as _forward_request. These streaming helpers
+        # build their own request, so they bypass that choke point entirely —
+        # and _stream_chunks_from_ollama is the STUDENT path, the one that
+        # actually matters for tutor latency.
+        req = client.build_request(
+            "POST",
+            url,
+            content=_inject_gpu_placement("/api/chat", body),
+            headers=headers,
+        )
         resp = await client.send(req, stream=True)
     except httpx.TransportError as exc:
         await client.aclose()

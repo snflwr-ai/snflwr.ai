@@ -16,6 +16,29 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# Context window for the safety classifier.
+#
+# Set EXPLICITLY because Ollama otherwise applies the server-wide
+# OLLAMA_CONTEXT_LENGTH, which on the reference box is 65536. Measured
+# 2026-09-10: a real classification uses 204-219 prompt tokens and emits 2-5
+# ("safe" / "unsafe\nS11"), so the guard was being handed ~300x the context it
+# uses and going resident at 8.1 GB instead of ~5 GB — roughly 3 GB of RAM on
+# the critical path of EVERY tutor turn, for no benefit.
+#
+# That also made DEFAULT_MODEL_RESERVE_GB (6.0, documented as "~4.9 GB guard +
+# ~1.1 GB KV/runtime") an UNDER-estimate, which is the dangerous direction: it
+# lets a box be told it is supported when the guard will not actually fit.
+#
+# 8192 is derived, not picked: MAX_MESSAGE_LENGTH is 10000 characters, which at
+# a pessimistic ~2.5 chars/token (code, non-English) is ~4000 tokens, plus ~220
+# tokens of Llama-Guard policy preamble and 250 of num_predict = ~4470 worst
+# case. 8192 leaves ~1.8x headroom on the longest message the API will accept.
+# Do NOT lower this below the worst case: a truncated prompt means the guard
+# classifies a PARTIAL message, which is a child-safety failure, not a
+# performance one.
+GUARD_NUM_CTX = 8192
+
+
 class _SemanticClassifier:
     """
     LLM-based semantic safety classifier using a local Ollama model.
@@ -259,7 +282,11 @@ class _SemanticClassifier:
             success, response, _meta = self._client.generate(
                 model=self._model,
                 prompt=prompt,
-                options={"temperature": 0.0, "num_predict": 250},
+                options={
+                    "temperature": 0.0,
+                    "num_predict": 250,
+                    "num_ctx": GUARD_NUM_CTX,
+                },
             )
 
             if not success or response is None:

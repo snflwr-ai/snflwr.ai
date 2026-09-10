@@ -174,8 +174,15 @@ GEMMA4_VARIANTS = [
 ]
 
 # Headroom that must remain free after the tutor is loaded:
-#   ~4.9 GB  llama-guard3, the safety classifier, which has to be resident too
-#   ~1.1 GB  KV cache and runtime overhead at the context sizes above
+#   ~5.5 GB  llama-guard3-cpu, the safety classifier, which has to be resident too
+#   ~0.5 GB  runtime overhead
+#
+# ⚠️ COUPLED TO safety.pipeline.classifier.GUARD_NUM_CTX. Measured 2026-09-10:
+# the guard goes resident at 5.46 GB with num_ctx 8192, but 8.05 GB when it
+# inherits the server-wide OLLAMA_CONTEXT_LENGTH of 65536 — which it DID until
+# that constant was pinned, making this reserve an under-estimate and letting a
+# box be told it was supported when the guard would not fit. Raising
+# GUARD_NUM_CTX raises the guard's footprint and must raise this number too.
 # Sized from a real failure: when the classifier could not stay resident it
 # returned empty verdicts, the pipeline failed closed, and children asking
 # "what is photosynthesis" were blocked and their parents alerted.

@@ -668,3 +668,77 @@ class TestRecommendNumGpu:
         tag = recommend_base_model(memory_gb=64.0, vram_gb=23.0)
         assert tag == "gemma4:e4b"
         assert recommend_num_gpu(tag, vram_gb=23.0) > 0
+
+
+# ---------------------------------------------------------------------------
+# ENTRY-POINT CONSISTENCY — the guard that was missing on 2026-09-10.
+#
+# The ladder had drifted into SEVEN hardcoded copies (deploy.sh,
+# start_snflwr.sh, start_snflwr.ps1, START_SNFLWR.bat, installer/,
+# enterprise/build.sh, and two embedded in scripts/build_usb_image.py). Two of
+# them selected NO gemma at all, so Windows installs ran a different model
+# family — a different tutor, with none of the persona / pedagogy / S9051B
+# compliance work measured against it.
+#
+# ~4,172 tests passed the whole time. Every one of them tested the ladder's
+# CONTENTS; none asserted that the entry points actually USE it. These do.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Files that choose a backbone at install/start time and must delegate.
+_DELEGATING_ENTRY_POINTS = [
+    "deploy.sh",
+    "start_snflwr.sh",
+    "start_snflwr.ps1",
+    "START_SNFLWR.bat",
+    "installer/ollama_setup.py",
+]
+
+# Files that build the user-facing snflwr.ai wrapper. gemma4 ships
+# `PARAMETER num_gpu 0` in its own manifest and `FROM` inherits it, so each of
+# these MUST override placement or it silently ships a CPU-pinned tutor
+# (~20x slower) onto a machine with an idle GPU.
+_WRAPPER_BUILDERS = [
+    "deploy.sh",
+    "start_snflwr.sh",
+    "start_snflwr.ps1",
+    "installer/ollama_setup.py",
+]
+
+
+@pytest.mark.parametrize("rel", _DELEGATING_ENTRY_POINTS)
+def test_entry_point_delegates_to_the_shared_ladder(rel):
+    """No entry point may carry its own hardcoded backbone ladder."""
+    text = (_REPO_ROOT / rel).read_text(errors="ignore")
+    assert "recommend_base_model" in text, (
+        f"{rel} selects a backbone without calling "
+        f"resource_detection.recommend_base_model. That is how seven divergent "
+        f"ladders happened; add the call rather than a local tier list."
+    )
+
+
+@pytest.mark.parametrize("rel", _WRAPPER_BUILDERS)
+def test_wrapper_builder_sets_gpu_placement(rel):
+    """Every path that builds snflwr.ai must compute num_gpu."""
+    text = (_REPO_ROOT / rel).read_text(errors="ignore")
+    assert "recommend_num_gpu" in text, (
+        f"{rel} builds the snflwr.ai wrapper but never sets num_gpu. gemma4 "
+        f"ships `PARAMETER num_gpu 0` and FROM inherits it, so this ships a "
+        f"CPU-pinned tutor onto machines with a perfectly good GPU."
+    )
+
+
+def test_no_entry_point_hardcodes_a_rival_model_family():
+    """Guards the specific regression: a non-gemma tier reappearing.
+
+    `scripts/build_usb_image.py` is exempt from DELEGATING (it emits a
+    standalone script for a machine that will not have resource_detection.py),
+    but it is NOT exempt from being gemma-only.
+    """
+    for rel in _DELEGATING_ENTRY_POINTS + ["scripts/build_usb_image.py", "enterprise/build.sh"]:
+        text = (_REPO_ROOT / rel).read_text(errors="ignore").lower()
+        for family in ("qwen", "llama3:", "mistral:", "phi3:"):
+            assert family not in text, f"{rel} references a non-gemma backbone family: {family}"

@@ -81,7 +81,34 @@ def _default_state_path() -> Path:
 _ENV_STATE = os.getenv("SNFLWR_GPU_STATE", "").strip()
 STATE_PATH = Path(_ENV_STATE) if _ENV_STATE else _default_state_path()
 
-_OLLAMA = os.getenv("OLLAMA_HOST_URL", "http://127.0.0.1:11434")
+
+def _ollama_url() -> str:
+    """Where Ollama actually is, from the SAME config the rest of the app uses.
+
+    Not a 127.0.0.1 default: inside the API container that is the CONTAINER's
+    loopback, not the host, so the probe got ECONNREFUSED and fail-open served
+    every turn from CPU — the feature silently inert while looking healthy.
+    Found on the first real deploy; the unit tests mocked this call, so nothing
+    below integration level could have caught it.
+
+    OLLAMA_PROXY_TARGET / OLLAMA_BASE_URL are what the proxy and client already
+    use, so placement follows the app rather than keeping its own opinion.
+    """
+    for env in ("OLLAMA_HOST_URL", "OLLAMA_PROXY_TARGET", "OLLAMA_BASE_URL"):
+        val = os.getenv(env, "").strip()
+        if val:
+            return val
+    try:
+        from config import system_config  # noqa: PLC0415 - avoid an import cycle
+
+        target = getattr(system_config, "OLLAMA_PROXY_TARGET", "") or ""
+        if target:
+            return str(target)
+    except Exception:  # noqa: BLE001 - config unavailable (tests, tooling)
+        pass
+    return "http://127.0.0.1:11434"
+
+
 # /api/ps measured at 0.3 ms locally, so this is affordable on the turn path.
 _PS_TIMEOUT_S = 2.0
 
@@ -96,7 +123,7 @@ def _resident_on_gpu(model_tag: str) -> bool:
     # carries, so an OLLAMA_HOST_URL of file:///... would read a local file
     # (bandit B310). httpx speaks HTTP only, and it is already this codebase's
     # HTTP client everywhere else.
-    resp = httpx.get(_OLLAMA.rstrip("/") + "/api/ps", timeout=_PS_TIMEOUT_S)
+    resp = httpx.get(_ollama_url().rstrip("/") + "/api/ps", timeout=_PS_TIMEOUT_S)
     resp.raise_for_status()
     data = resp.json()
     base = model_tag.split(":")[0]

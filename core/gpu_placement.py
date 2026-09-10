@@ -41,8 +41,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
-from pathlib import Path
 
 import httpx
 
@@ -52,34 +50,9 @@ logger = logging.getLogger(__name__)
 ALL_LAYERS = 999
 CPU_ONLY = 0
 
-# Minimum seconds between two swaps the TUTOR causes. Bounds swap rate no matter
-# how requests interleave. Lower = snappier tutor, more eviction churn for both
-# services; higher = more turns served from CPU at the old latency.
-SWAP_COOLDOWN_S = float(os.getenv("SNFLWR_GPU_SWAP_COOLDOWN_S", "60"))
-
-
-# Where the last-swap timestamp lives. Deliberately a plain file: this is a hint,
-# not a lock, and it must survive a worker restart without a daemon.
-#
-# Under APP_DATA_DIR, NOT /tmp. A predictable name in a world-writable directory
-# lets any local account pre-create or symlink it (bandit B108), and this file
-# steers placement — a planted timestamp could hold the tutor on CPU forever.
-# Same finding class as the notify spool. APP_DATA_DIR is the directory this app
-# already owns for state (the database lives there), so it inherits its perms.
-def _default_state_path() -> Path:
-    try:
-        from config import system_config  # noqa: PLC0415 - avoid an import cycle
-
-        return Path(system_config.APP_DATA_DIR) / "gpu-last-swap"
-    except Exception:  # noqa: BLE001 - config unavailable (tests, tooling)
-        return Path(__file__).resolve().parent.parent / "data" / "gpu-last-swap"
-
-
-# NB: check the env STRING before constructing a Path. `Path("")` is `Path(".")`,
-# which is truthy, so `Path(os.getenv(...)) or default` silently resolves to the
-# current directory instead of falling through to the default.
-_ENV_STATE = os.getenv("SNFLWR_GPU_STATE", "").strip()
-STATE_PATH = Path(_ENV_STATE) if _ENV_STATE else _default_state_path()
+# The state file and swap cooldown that used to live here are gone: the policy
+# is no longer time-based. See choose_num_gpu for why the cooldown made
+# concurrent load dramatically worse rather than better.
 
 
 def _ollama_url() -> str:
@@ -113,71 +86,65 @@ def _ollama_url() -> str:
 _PS_TIMEOUT_S = 2.0
 
 
-def _resident_on_gpu(model_tag: str) -> bool:
-    """True if *model_tag* is already loaded with VRAM assigned.
+def _resident_placement(model_tag: str) -> str | None:
+    """Where *model_tag* is CURRENTLY loaded: "gpu", "cpu", or None if not loaded.
 
-    A model that is resident costs nothing to keep using — no swap, no eviction
-    — so this case bypasses the cooldown entirely.
+    Ollama reports ``size_vram`` per loaded model: non-zero means it is on the
+    card, zero means it is resident in RAM. Which of the two matters enormously,
+    because moving between them is a FULL RELOAD, not a cheap adjustment.
     """
-    # httpx, not urllib.request.urlopen: urlopen honours whatever scheme the URL
-    # carries, so an OLLAMA_HOST_URL of file:///... would read a local file
-    # (bandit B310). httpx speaks HTTP only, and it is already this codebase's
-    # HTTP client everywhere else.
     resp = httpx.get(_ollama_url().rstrip("/") + "/api/ps", timeout=_PS_TIMEOUT_S)
     resp.raise_for_status()
-    data = resp.json()
     base = model_tag.split(":")[0]
-    for m in data.get("models", []):
+    for m in resp.json().get("models", []):
         if m.get("name", "").split(":")[0] == base:
-            return (m.get("size_vram") or 0) > 0
-    return False
-
-
-def _last_swap_at() -> float:
-    try:
-        return float(STATE_PATH.read_text().strip())
-    except Exception:  # noqa: BLE001 - absent/corrupt state means "never"
-        return 0.0
-
-
-def _record_swap(now: float) -> None:
-    try:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(str(now))
-    except OSError as exc:
-        # Losing the timestamp only weakens the damper; it must never fail a turn.
-        logger.warning("gpu_placement: could not record swap time (%s)", exc)
+            return "gpu" if (m.get("size_vram") or 0) > 0 else "cpu"
+    return None
 
 
 def choose_num_gpu(model_tag: str, *, now: float | None = None) -> int:
     """Layers to offload for this turn: ALL_LAYERS (GPU) or CPU_ONLY.
 
-    Three rules, in order:
-      1. already GPU-resident  -> GPU. Free, no swap, cooldown irrelevant.
-      2. inside the cooldown   -> CPU. This is the damper.
-      3. otherwise             -> GPU, and start a new cooldown.
-    """
-    now = time.time() if now is None else now
-    try:
-        if _resident_on_gpu(model_tag):
-            return ALL_LAYERS
+    TWO RULES, and the first one is the whole lesson:
 
-        if now - _last_swap_at() < SWAP_COOLDOWN_S:
-            # NB: the tag is NOT logged. It is the client-supplied body["model"]
-            # from the proxy, and CodeQL flags any user-controlled value reaching
-            # a log sink (log-forging) — correctly, and it cannot see through a
-            # sanitiser. These lines exist to explain a placement DECISION, and
-            # the decision is the useful part; the tag is effectively always the
-            # one tutor model. So log the decision and keep user input out of the
-            # log entirely, rather than arguing with the scanner.
-            logger.debug(
-                "gpu_placement: within %.0fs cooldown, serving from CPU",
-                SWAP_COOLDOWN_S,
-            )
+      1. If the model is ALREADY LOADED, keep it where it is. Flipping
+         placement is not an adjustment — Ollama reloads the entire model, and
+         a cold CPU load of the tutor was measured at 131 s.
+
+      2. Otherwise prefer the GPU, because it is better cold AND warm:
+             GPU   ~5.6 s cold, ~1.4 s warm
+             CPU  ~131   s cold, ~13.6 s warm
+
+    WHY THE COOLDOWN DAMPER WAS REMOVED (2026-09-10). The first version backed
+    off to CPU for 60 s after each swap, to avoid fighting the co-tenant agent
+    for the card. Measured under real concurrent load it made things far worse:
+    4 agent + 4 tutor turns took 381 s wall clock, with tutor turns of 162.8 s
+    and 157.4 s and one agent turn of 147.1 s. The damper avoided GPU swaps by
+    causing PLACEMENT swaps, and a placement swap is a cold reload — strictly
+    the more expensive operation. It was designed against a 13.6 s CPU figure
+    that had silently assumed the CPU copy was already resident.
+
+    Rule 1 is what actually damps thrash: whoever holds a loaded copy keeps it,
+    so neither side can force the other into a reload mid-conversation.
+
+    SNFLWR_GPU_PREFER_CPU=1 inverts rule 2 for an operator who would rather
+    protect a co-tenant than the tutor's latency.
+    """
+    del now  # kept for signature compatibility; the policy is no longer time-based
+    try:
+        placement = _resident_placement(model_tag)
+        if placement == "gpu":
+            return ALL_LAYERS
+        if placement == "cpu":
+            # Loaded on CPU: serving from CPU costs ~13.6 s, forcing it onto the
+            # GPU costs a full reload. Keep it.
             return CPU_ONLY
 
-        _record_swap(now)
-        logger.info("gpu_placement: claiming the GPU for the tutor")
+        if os.getenv("SNFLWR_GPU_PREFER_CPU", "").strip() in ("1", "true", "yes"):
+            logger.info("gpu_placement: SNFLWR_GPU_PREFER_CPU set, loading on CPU")
+            return CPU_ONLY
+
+        logger.info("gpu_placement: not loaded, claiming the GPU for the tutor")
         return ALL_LAYERS
     except Exception as exc:  # noqa: BLE001 - see FAIL-OPEN in the module docstring
         logger.warning(

@@ -13,50 +13,66 @@ from core import gpu_placement
 
 
 @pytest.fixture(autouse=True)
-def _isolated_state(tmp_path, monkeypatch):
-    """Never touch the real timestamp file, and start every test with no history."""
-    monkeypatch.setattr(gpu_placement, "STATE_PATH", tmp_path / "last-swap")
-    monkeypatch.setattr(gpu_placement, "SWAP_COOLDOWN_S", 60.0)
+def _no_operator_override(monkeypatch):
+    monkeypatch.delenv("SNFLWR_GPU_PREFER_CPU", raising=False)
 
 
-def _resident(monkeypatch, value):
-    monkeypatch.setattr(gpu_placement, "_resident_on_gpu", lambda _tag: value)
+def _placement(monkeypatch, value):
+    monkeypatch.setattr(gpu_placement, "_resident_placement", lambda _tag: value)
 
 
-class TestPlacementRules:
-    def test_already_resident_uses_gpu_without_touching_the_cooldown(self, monkeypatch):
-        """A resident model costs nothing to keep using — no swap to damp."""
-        _resident(monkeypatch, True)
-        gpu_placement._record_swap(1000.0)  # mid-cooldown
-        assert gpu_placement.choose_num_gpu("snflwr.ai", now=1001.0) == gpu_placement.ALL_LAYERS
+class TestNeverFlipPlacement:
+    """Rule 1, and the whole lesson: moving a LOADED model between GPU and CPU
+    is a full reload, not an adjustment.
 
-    def test_cold_and_outside_cooldown_claims_the_gpu(self, monkeypatch):
-        _resident(monkeypatch, False)
-        assert gpu_placement.choose_num_gpu("snflwr.ai", now=5000.0) == gpu_placement.ALL_LAYERS
+    Measured 2026-09-10 under real concurrent load, the previous cooldown
+    policy produced 162.8 s and 157.4 s tutor turns and a 147.1 s agent turn —
+    381 s wall clock for 8 turns — because it flipped placement. A cold CPU
+    load of the tutor is ~131 s.
+    """
 
-    def test_cold_and_inside_cooldown_falls_back_to_cpu(self, monkeypatch):
-        """The damper. Serving from CPU here is exactly today's behaviour."""
-        _resident(monkeypatch, False)
-        gpu_placement.choose_num_gpu("snflwr.ai", now=5000.0)      # claims, starts cooldown
-        assert gpu_placement.choose_num_gpu("snflwr.ai", now=5030.0) == gpu_placement.CPU_ONLY
+    def test_loaded_on_gpu_stays_on_gpu(self, monkeypatch):
+        _placement(monkeypatch, "gpu")
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.ALL_LAYERS
 
-    def test_cooldown_expires(self, monkeypatch):
-        _resident(monkeypatch, False)
-        gpu_placement.choose_num_gpu("snflwr.ai", now=5000.0)
-        assert gpu_placement.choose_num_gpu("snflwr.ai", now=5061.0) == gpu_placement.ALL_LAYERS
+    def test_loaded_on_cpu_stays_on_cpu(self, monkeypatch):
+        """Serving from CPU costs ~13.6 s; forcing it to the GPU costs a reload."""
+        _placement(monkeypatch, "cpu")
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.CPU_ONLY
 
-    def test_swap_rate_is_bounded_however_traffic_interleaves(self, monkeypatch):
-        """THE guarantee: at most one tutor-induced swap per cooldown window.
+    def test_not_loaded_prefers_gpu(self, monkeypatch):
+        """GPU wins cold AND warm: ~5.6 s vs ~131 s cold, ~1.4 s vs ~13.6 s warm."""
+        _placement(monkeypatch, None)
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.ALL_LAYERS
 
-        Without this bound, alternating traffic makes BOTH services pay ~5.2 s
-        per turn — the tutor and IronClaw's brain evicting each other.
-        """
-        _resident(monkeypatch, False)
-        claims = sum(
-            1 for t in range(5000, 5300)  # 300 turns, one per second
-            if gpu_placement.choose_num_gpu("snflwr.ai", now=float(t)) == gpu_placement.ALL_LAYERS
-        )
-        assert claims == 5, f"300s at a 60s cooldown should allow 5 swaps, got {claims}"
+    def test_operator_can_prefer_cpu_for_a_co_tenant(self, monkeypatch):
+        _placement(monkeypatch, None)
+        monkeypatch.setenv("SNFLWR_GPU_PREFER_CPU", "1")
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.CPU_ONLY
+
+    def test_prefer_cpu_does_not_override_an_existing_gpu_load(self, monkeypatch):
+        """Even the operator preference must not force a reload."""
+        _placement(monkeypatch, "gpu")
+        monkeypatch.setenv("SNFLWR_GPU_PREFER_CPU", "1")
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.ALL_LAYERS
+
+
+class TestResidentPlacementProbe:
+    def test_reads_size_vram_to_tell_gpu_from_cpu(self, monkeypatch):
+        import types
+
+        def fake_get(_url, timeout=None):
+            return types.SimpleNamespace(
+                raise_for_status=lambda: None,
+                json=lambda: {"models": [
+                    {"name": "snflwr.ai:latest", "size_vram": 3_300_000_000},
+                    {"name": "granite-worker:latest", "size_vram": 0},
+                ]},
+            )
+        monkeypatch.setattr(gpu_placement.httpx, "get", fake_get)
+        assert gpu_placement._resident_placement("snflwr.ai") == "gpu"
+        assert gpu_placement._resident_placement("granite-worker") == "cpu"
+        assert gpu_placement._resident_placement("not-loaded") is None
 
 
 class TestFailOpen:
@@ -64,94 +80,23 @@ class TestFailOpen:
         """A tutor that answers slowly is degraded; one that raises is broken."""
         def boom(_tag):
             raise OSError("connection refused")
-        monkeypatch.setattr(gpu_placement, "_resident_on_gpu", boom)
-        assert gpu_placement.choose_num_gpu("snflwr.ai", now=1.8e9) == gpu_placement.CPU_ONLY
-
-    def test_unwritable_state_still_returns_a_placement(self, monkeypatch, tmp_path):
-        """Losing the timestamp weakens the damper; it must not fail the turn.
-
-        NOW must be a realistic epoch value: with no state file `_last_swap_at`
-        returns 0.0, so a toy `now` like 1.0 sits INSIDE the cooldown window and
-        the call correctly returns CPU. That is right behaviour and a wrong test.
-        """
-        _resident(monkeypatch, False)
-        monkeypatch.setattr(gpu_placement, "STATE_PATH", tmp_path / "nope" / "x")
-        assert gpu_placement.choose_num_gpu("snflwr.ai", now=1.8e9) == gpu_placement.ALL_LAYERS
-
-    def test_corrupt_state_is_treated_as_never_swapped(self, monkeypatch):
-        _resident(monkeypatch, False)
-        gpu_placement.STATE_PATH.write_text("not-a-timestamp")
-        assert gpu_placement.choose_num_gpu("snflwr.ai", now=1.8e9) == gpu_placement.ALL_LAYERS
+        monkeypatch.setattr(gpu_placement, "_resident_placement", boom)
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.CPU_ONLY
 
 
 class TestApplyToOptions:
     def test_sets_num_gpu(self, monkeypatch):
-        _resident(monkeypatch, True)
+        _placement(monkeypatch, "gpu")
         assert gpu_placement.apply_to_options({}, "snflwr.ai")["num_gpu"] == gpu_placement.ALL_LAYERS
 
     def test_explicit_caller_value_always_wins(self, monkeypatch):
-        """An operator or test pinning placement must not be overridden."""
-        _resident(monkeypatch, True)
+        _placement(monkeypatch, "gpu")
         assert gpu_placement.apply_to_options({"num_gpu": 0}, "snflwr.ai")["num_gpu"] == 0
 
     def test_other_options_are_preserved(self, monkeypatch):
-        _resident(monkeypatch, True)
+        _placement(monkeypatch, "gpu")
         out = gpu_placement.apply_to_options({"num_ctx": 8192, "temperature": 0.7}, "snflwr.ai")
         assert out["num_ctx"] == 8192 and out["temperature"] == 0.7
-
-
-class TestTransportInjection:
-    """Every outbound proxy path must inject placement.
-
-    There are THREE: _forward_request, and two streaming helpers that build
-    their own requests. The student turn goes through
-    _stream_chunks_from_ollama — during development that one was the LAST to be
-    wired, so it gets an explicit test rather than trusting the others.
-    """
-
-    def _t(self):
-        return importlib.import_module("api.routes.ollama_proxy.transport")
-
-    def test_injects_into_chat_bodies(self, monkeypatch):
-        t = self._t()
-        monkeypatch.setattr(gpu_placement, "_resident_on_gpu", lambda _tag: True)
-        import json
-        out = t._inject_gpu_placement("/api/chat", json.dumps(
-            {"model": "snflwr.ai", "messages": []}).encode())
-        assert json.loads(out)["options"]["num_gpu"] == gpu_placement.ALL_LAYERS
-
-    def test_leaves_non_inference_paths_untouched(self):
-        t = self._t()
-        body = b'{"model":"snflwr.ai"}'
-        assert t._inject_gpu_placement("/api/tags", body) is body
-
-    def test_malformed_body_is_passed_through_unchanged(self):
-        """Fail-open: never fail a turn over placement."""
-        t = self._t()
-        body = b"not json at all"
-        assert t._inject_gpu_placement("/api/chat", body) is body
-
-    def test_body_without_a_model_is_untouched(self):
-        t = self._t()
-        body = b'{"messages":[]}'
-        assert t._inject_gpu_placement("/api/chat", body) is body
-
-
-class TestNoUserDataInLogs:
-    """CodeQL flags any client-supplied value reaching a log sink, and it cannot
-    see through a sanitiser. The model tag comes from the proxy's
-    body["model"], so it is kept OUT of log messages entirely rather than
-    cleaned on the way in. This test fails if an interpolated tag comes back.
-    """
-
-    def test_log_calls_do_not_interpolate_the_model_tag(self):
-        import inspect
-
-        src = inspect.getsource(gpu_placement.choose_num_gpu)
-        log_lines = [ln for ln in src.splitlines() if "logger." in ln or "model_tag," in ln]
-        assert not any("model_tag" in ln for ln in log_lines), (
-            "the client-supplied model tag must not reach a log sink"
-        )
 
 
 class TestOllamaUrlResolution:
@@ -178,3 +123,55 @@ class TestOllamaUrlResolution:
             monkeypatch.delenv(v, raising=False)
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://172.24.0.1:11434")
         assert gpu_placement._ollama_url() == "http://172.24.0.1:11434"
+
+class TestNoUserDataInLogs:
+    """CodeQL flags any client-supplied value reaching a log sink, and it cannot
+    see through a sanitiser. The model tag comes from the proxy's
+    body["model"], so it is kept OUT of log messages entirely rather than
+    cleaned on the way in. This test fails if an interpolated tag comes back.
+    """
+
+    def test_log_calls_do_not_interpolate_the_model_tag(self):
+        import inspect
+
+        src = inspect.getsource(gpu_placement.choose_num_gpu)
+        log_lines = [ln for ln in src.splitlines() if "logger." in ln or "model_tag," in ln]
+        assert not any("model_tag" in ln for ln in log_lines), (
+            "the client-supplied model tag must not reach a log sink"
+        )
+
+class TestTransportInjection:
+    """Every outbound proxy path must inject placement.
+
+    There are THREE: _forward_request, and two streaming helpers that build
+    their own requests. The student turn goes through
+    _stream_chunks_from_ollama — during development that one was the LAST to be
+    wired, so it gets an explicit test rather than trusting the others.
+    """
+
+    def _t(self):
+        return importlib.import_module("api.routes.ollama_proxy.transport")
+
+    def test_injects_into_chat_bodies(self, monkeypatch):
+        t = self._t()
+        monkeypatch.setattr(gpu_placement, "_resident_placement", lambda _tag: "gpu")
+        import json
+        out = t._inject_gpu_placement("/api/chat", json.dumps(
+            {"model": "snflwr.ai", "messages": []}).encode())
+        assert json.loads(out)["options"]["num_gpu"] == gpu_placement.ALL_LAYERS
+
+    def test_leaves_non_inference_paths_untouched(self):
+        t = self._t()
+        body = b'{"model":"snflwr.ai"}'
+        assert t._inject_gpu_placement("/api/tags", body) is body
+
+    def test_malformed_body_is_passed_through_unchanged(self):
+        """Fail-open: never fail a turn over placement."""
+        t = self._t()
+        body = b"not json at all"
+        assert t._inject_gpu_placement("/api/chat", body) is body
+
+    def test_body_without_a_model_is_untouched(self):
+        t = self._t()
+        body = b'{"messages":[]}'
+        assert t._inject_gpu_placement("/api/chat", body) is body

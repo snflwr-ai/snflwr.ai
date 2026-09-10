@@ -137,26 +137,18 @@ class TestTransportInjection:
         assert t._inject_gpu_placement("/api/chat", body) is body
 
 
-class TestLogInjection:
-    """The proxy passes CLIENT-SUPPLIED body["model"] into placement.
-
-    Flagged by CodeQL on this module. Same class as the X-Request-ID
-    log-forging closed in L1: a model name carrying a newline could forge log
-    records that a reader would take as separate, genuine events.
+class TestNoUserDataInLogs:
+    """CodeQL flags any client-supplied value reaching a log sink, and it cannot
+    see through a sanitiser. The model tag comes from the proxy's
+    body["model"], so it is kept OUT of log messages entirely rather than
+    cleaned on the way in. This test fails if an interpolated tag comes back.
     """
 
-    def test_newlines_cannot_forge_a_log_record(self):
-        out = gpu_placement._safe_tag("ok\nFAKE 2026-01-01 ERROR admin login")
-        assert "\n" not in out and "\r" not in out
+    def test_log_calls_do_not_interpolate_the_model_tag(self):
+        import inspect
 
-    def test_control_characters_are_stripped(self):
-        assert gpu_placement._safe_tag("a\x00\x1b[31mb") == "a[31mb"
-
-    def test_length_is_bounded(self):
-        assert len(gpu_placement._safe_tag("x" * 5000)) == 64
-
-    def test_empty_tag_is_still_identifiable(self):
-        assert gpu_placement._safe_tag("") == "<unnamed>"
-
-    def test_ordinary_tag_survives_unchanged(self):
-        assert gpu_placement._safe_tag("snflwr.ai") == "snflwr.ai"
+        src = inspect.getsource(gpu_placement.choose_num_gpu)
+        log_lines = [ln for ln in src.splitlines() if "logger." in ln or "model_tag," in ln]
+        assert not any("model_tag" in ln for ln in log_lines), (
+            "the client-supplied model tag must not reach a log sink"
+        )

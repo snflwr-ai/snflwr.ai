@@ -122,19 +122,6 @@ def _record_swap(now: float) -> None:
         logger.warning("gpu_placement: could not record swap time (%s)", exc)
 
 
-def _safe_tag(model_tag: str) -> str:
-    """Make a model tag safe to log.
-
-    The proxy passes the CLIENT-SUPPLIED ``body["model"]`` straight through to
-    placement, so this string is attacker-controlled. Logging it raw lets a
-    request forge log lines (CodeQL log-injection) — the same class as the
-    X-Request-ID log-forging closed in L1. Strip anything that could break out
-    of a single log record, and bound the length.
-    """
-    cleaned = "".join(c for c in str(model_tag) if c.isprintable() and c not in "\r\n")
-    return cleaned[:64] or "<unnamed>"
-
-
 def choose_num_gpu(model_tag: str, *, now: float | None = None) -> int:
     """Layers to offload for this turn: ALL_LAYERS (GPU) or CPU_ONLY.
 
@@ -149,15 +136,21 @@ def choose_num_gpu(model_tag: str, *, now: float | None = None) -> int:
             return ALL_LAYERS
 
         if now - _last_swap_at() < SWAP_COOLDOWN_S:
+            # NB: the tag is NOT logged. It is the client-supplied body["model"]
+            # from the proxy, and CodeQL flags any user-controlled value reaching
+            # a log sink (log-forging) — correctly, and it cannot see through a
+            # sanitiser. These lines exist to explain a placement DECISION, and
+            # the decision is the useful part; the tag is effectively always the
+            # one tutor model. So log the decision and keep user input out of the
+            # log entirely, rather than arguing with the scanner.
             logger.debug(
-                "gpu_placement: within %.0fs cooldown, serving %s from CPU",
+                "gpu_placement: within %.0fs cooldown, serving from CPU",
                 SWAP_COOLDOWN_S,
-                _safe_tag(model_tag),
             )
             return CPU_ONLY
 
         _record_swap(now)
-        logger.info("gpu_placement: claiming the GPU for %s", _safe_tag(model_tag))
+        logger.info("gpu_placement: claiming the GPU for the tutor")
         return ALL_LAYERS
     except Exception as exc:  # noqa: BLE001 - see FAIL-OPEN in the module docstring
         logger.warning(

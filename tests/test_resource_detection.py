@@ -742,3 +742,63 @@ def test_no_entry_point_hardcodes_a_rival_model_family():
         text = (_REPO_ROOT / rel).read_text(errors="ignore").lower()
         for family in ("qwen", "llama3:", "mistral:", "phi3:"):
             assert family not in text, f"{rel} references a non-gemma backbone family: {family}"
+
+
+# ---------------------------------------------------------------------------
+# CONTEXT SIZING — the KV cache lives where the MODEL lives (fixed 2026-09-10).
+#
+# recommend_num_ctx keyed on RAM alone, so a box with plenty of RAM and a small
+# card was handed a context its VRAM could not back. Third instance of the same
+# dual-budget mistake: the CPU-pinned guard charged against VRAM, and variant
+# sizes read from manifest totals instead of resident VRAM.
+#
+# Measured cost (gemma4:e4b, q4_0 cache, via /api/ps on 2026-09-10):
+#   4096 -> 3.20 GB   16384 -> 3.34 GB   32768 -> 3.44 GB  => ~0.0086 GB/1k
+# ---------------------------------------------------------------------------
+
+from resource_detection import (  # noqa: E402
+    KV_GB_PER_1K_TOKENS,
+    recommend_num_ctx,
+)
+
+
+def test_context_sizes_on_vram_when_the_model_is_on_gpu():
+    """A tiny card must not inherit a big-RAM context it cannot back."""
+    generous_ram_tiny_card = recommend_num_ctx(256.0, vram_gb=4.0, model_tag="gemma4:e4b")
+    generous_ram_no_card = recommend_num_ctx(256.0, vram_gb=0.0)
+    assert generous_ram_tiny_card < generous_ram_no_card, (
+        "with only 4 GB of VRAM the KV cache has nowhere to live; sizing must "
+        "come off the card, not off 256 GB of RAM the cache will never touch"
+    )
+
+
+def test_cpu_path_still_sizes_on_ram():
+    """No GPU: model and KV cache are both in RAM, so RAM decides."""
+    assert recommend_num_ctx(64.0, vram_gb=0.0) == 32768
+    assert recommend_num_ctx(8.0, vram_gb=0.0) == 8192
+    assert recommend_num_ctx(2.0, vram_gb=0.0) == 2048
+
+
+def test_supported_gpu_hardware_still_gets_full_context():
+    """The fix must not silently shrink context on hardware we support.
+
+    KV is cheap for e4b (~0.33 GB at 32k), so every card at or above the 5.8 GB
+    floor should still get the full window. If this starts failing, either the
+    measured constant moved or a denser backbone entered the ladder.
+    """
+    for vram in (6.0, 8.0, 12.0, 23.0):
+        assert recommend_num_ctx(64.0, vram_gb=vram, model_tag="gemma4:e4b") == 32768
+
+
+def test_kv_constant_is_the_measured_one():
+    """Pinned so a future edit re-measures rather than guesses.
+
+    Rounded UP from the measured 0.0086: under-estimating means the runner
+    fails to start, which is worse than a slightly smaller window.
+    """
+    assert KV_GB_PER_1K_TOKENS == 0.010
+
+
+def test_unknown_model_tag_assumes_the_smallest_weights():
+    """An unknown tag must not crash or silently assume a huge model."""
+    assert recommend_num_ctx(64.0, vram_gb=23.0, model_tag="not-a-real-model") == 32768

@@ -455,6 +455,7 @@ class TestNegativeEnvVarRejection:
 # ---------------------------------------------------------------------------
 
 from resource_detection import (  # noqa: E402
+    DEFAULT_MODEL_RESERVE_GB,
     GEMMA4_VARIANTS,
     minimum_requirements_gb,
     recommend_base_model,
@@ -802,3 +803,46 @@ def test_kv_constant_is_the_measured_one():
 def test_unknown_model_tag_assumes_the_smallest_weights():
     """An unknown tag must not crash or silently assume a huge model."""
     assert recommend_num_ctx(64.0, vram_gb=23.0, model_tag="not-a-real-model") == 32768
+
+
+def test_reserve_covers_the_measured_guard_footprint():
+    """DEFAULT_MODEL_RESERVE_GB must cover the guard as actually configured.
+
+    Measured 2026-09-10: llama-guard3-cpu is 5.46 GB resident at
+    GUARD_NUM_CTX=8192, and 8.05 GB when it inherits the server-wide
+    OLLAMA_CONTEXT_LENGTH of 65536 — which it did until that was pinned. An
+    under-sized reserve is the DANGEROUS direction: it tells an operator their
+    box is supported when the safety classifier will not actually fit, and a
+    classifier that cannot stay resident makes the pipeline fail closed and
+    block children on harmless questions.
+
+    If GUARD_NUM_CTX is raised, the guard's footprint rises and this fails.
+    """
+    from safety.pipeline.classifier import GUARD_NUM_CTX
+
+    measured_guard_gb_at_8192 = 5.46
+    assert GUARD_NUM_CTX <= 8192, (
+        "guard context was raised; re-measure its resident size and raise "
+        "DEFAULT_MODEL_RESERVE_GB to match before changing this bound"
+    )
+    assert DEFAULT_MODEL_RESERVE_GB >= measured_guard_gb_at_8192, (
+        f"reserve {DEFAULT_MODEL_RESERVE_GB} GB does not cover the measured "
+        f"{measured_guard_gb_at_8192} GB guard"
+    )
+
+
+def test_guard_context_fits_the_longest_accepted_message():
+    """A truncated guard prompt classifies a PARTIAL message — a safety failure.
+
+    MAX_MESSAGE_LENGTH is 10000 chars. Measured worst case: 2470 prompt tokens
+    for a 9988-char message, plus 250 of num_predict.
+    """
+    from safety.pipeline.classifier import GUARD_NUM_CTX
+    from utils.input_validation import MAX_MESSAGE_LENGTH
+
+    pessimistic_tokens = MAX_MESSAGE_LENGTH / 2.5  # code / non-English
+    needed = pessimistic_tokens + 220 + 250        # + policy preamble + output
+    assert GUARD_NUM_CTX >= needed, (
+        f"guard context {GUARD_NUM_CTX} cannot hold the longest accepted "
+        f"message ({needed:.0f} tokens worst case) — it would be truncated"
+    )

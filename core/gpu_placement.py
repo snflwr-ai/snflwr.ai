@@ -39,12 +39,12 @@ is a child staring at an error.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
-import urllib.request
 from pathlib import Path
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +72,13 @@ def _resident_on_gpu(model_tag: str) -> bool:
     A model that is resident costs nothing to keep using — no swap, no eviction
     — so this case bypasses the cooldown entirely.
     """
-    req = urllib.request.Request(_OLLAMA.rstrip("/") + "/api/ps")
-    with urllib.request.urlopen(req, timeout=_PS_TIMEOUT_S) as resp:
-        data = json.loads(resp.read())
+    # httpx, not urllib.request.urlopen: urlopen honours whatever scheme the URL
+    # carries, so an OLLAMA_HOST_URL of file:///... would read a local file
+    # (bandit B310). httpx speaks HTTP only, and it is already this codebase's
+    # HTTP client everywhere else.
+    resp = httpx.get(_OLLAMA.rstrip("/") + "/api/ps", timeout=_PS_TIMEOUT_S)
+    resp.raise_for_status()
+    data = resp.json()
     base = model_tag.split(":")[0]
     for m in data.get("models", []):
         if m.get("name", "").split(":")[0] == base:

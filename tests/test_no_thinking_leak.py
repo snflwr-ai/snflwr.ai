@@ -1,11 +1,17 @@
 """
-Regression guards: Qwen3.5 thinking-mode leak.
+Regression guards: backbone thinking-mode leak.
 
 Background
 ----------
-Ollama 0.17+ auto-attaches `RENDERER qwen3.5` and `PARSER qwen3.5` to any
-model built on top of qwen3.5 (visible via `ollama show snflwr.ai
---modelfile`). The parser splits model output into a separate `thinking`
+Ollama 0.17+ auto-attaches a `RENDERER`/`PARSER` pair matching the base model
+to anything built on top of it (visible via `ollama show snflwr.ai
+--modelfile`).
+
+STILL LIVE ON GEMMA4 — do NOT delete these guards as legacy. Verified
+2026-09-10: `ollama show snflwr.ai --modelfile` reports `RENDERER gemma4` /
+`PARSER gemma4`, and `gemma4:e4b` declares a `thinking` capability. The family
+changed; the leak did not. These were originally written against the previous
+backbone family, which was removed from the product on 2026-09-10. The parser splits model output into a separate `thinking`
 field, which Open WebUI renders as a collapsible "Thinking for X seconds"
 block — exposing raw chain-of-thought ("Thinking Process:", "Wait, I need
 to reconsider", "Final Decision:") to whoever opens that block.
@@ -74,7 +80,7 @@ class TestSnflwrBackendDisablesThinking:
         Lock in api/routes/chat.py:474 → ollama_client.chat(..., think=False).
 
         Without this kwarg the response would include a `thinking` field
-        populated by Ollama's qwen3.5 parser, which the snflwr backend
+        populated by Ollama's auto-attached parser, which the snflwr backend
         does not currently strip (it only strips inline <think>...</think>
         blocks from the content string).
         """
@@ -148,7 +154,7 @@ class TestSnflwrBackendDisablesThinking:
             kwargs = mock_oc.chat.call_args.kwargs
             assert "think" in kwargs, (
                 "ollama_client.chat must be called with the `think` kwarg — "
-                "without it, Qwen3.5 thinking mode is enabled by default and "
+                "without it, backbone thinking mode is enabled by default and "
                 "the response includes a `thinking` field that leaks reasoning "
                 "to the UI."
             )
@@ -202,7 +208,7 @@ class TestModelfileObsoleteThinkingStopsRemoved:
     The Modelfile previously declared stop sequences for "Thinking Process:",
     "Thinking:", "Analyze the Request:", "Let me think", and "<think>" to
     suppress reasoning leaks. Those stops are inert under Ollama 0.17+
-    because the auto-attached qwen3.5 PARSER extracts thinking into a
+    because the auto-attached PARSER extracts thinking into a
     separate field before the Modelfile stops are evaluated. Worse, under
     some conditions the parser's content handoff causes the first content
     tokens to match one of these stops and the API returns an empty
@@ -230,7 +236,7 @@ class TestModelfileObsoleteThinkingStopsRemoved:
     ):
         assert obsolete_stop not in modelfile_source, (
             f"{obsolete_stop} is back in the Modelfile. Under Ollama 0.17+ "
-            f"this stop is inert (the qwen3.5 PARSER strips thinking out of "
+            f"this stop is inert (the auto-attached PARSER strips thinking out of "
             f"the content stream before stops are evaluated) and can cause "
             f"the API to return an empty response. Disable thinking via "
             f"`think: false` at the request layer instead."

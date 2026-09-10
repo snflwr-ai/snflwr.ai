@@ -60,7 +60,7 @@ enterprise/build.sh
 ```
 
 The build script detects your server hardware and prompts you to select:
-- **Chat model** — `gemma4:e4b` default backbone (small servers fall back to a qwen3.5 tier; `gemma4:31b` is an opt-in for stronger multi-step reasoning/math reliability)
+- **Chat model** — `gemma4:e4b` default backbone, sized on **VRAM when a GPU is present** (~6 GB VRAM is enough; the tutor is only ~3.3 GB resident) and on RAM otherwise (~15 GB); servers below the minimum are unsupported and the build refuses; `gemma4:31b` is an opt-in for stronger multi-step reasoning/math reliability)
 - **Safety classifier** (Meta Llama Guard) — `llama-guard3:8b` default, `llama-guard3:1b` small-hardware fallback
 
 > **VRAM sizing:** the chat model and the safety classifier are **co-resident**.

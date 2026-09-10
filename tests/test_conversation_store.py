@@ -316,8 +316,8 @@ class TestAddMessage:
     def test_profile_lookup_as_dict(self, store):
         s, db, enc, cfg = store
         db.execute_query.return_value = [{"profile_id": "prof-1"}]
-        msg = s.add_message("conv-1", "assistant", "response", model_used="qwen")
-        assert msg.model_used == "qwen"
+        msg = s.add_message("conv-1", "assistant", "response", model_used="gemma4")
+        assert msg.model_used == "gemma4"
 
     def test_profile_lookup_as_tuple(self, store):
         """Profile row returned as tuple — must not crash."""
@@ -1042,7 +1042,7 @@ class TestDataclassSerialisation:
             role="user",
             content="hello",
             timestamp=now,
-            model_used="qwen",
+            model_used="gemma4",
             response_time_ms=100,
             tokens_used=50,
             safety_filtered=False,
@@ -1051,7 +1051,7 @@ class TestDataclassSerialisation:
         assert d["message_id"] == "m1"
         assert d["role"] == "user"
         assert d["content"] == "hello"
-        assert d["model_used"] == "qwen"
+        assert d["model_used"] == "gemma4"
 
     def test_conversation_to_dict_includes_messages(self):
         now = datetime.now(timezone.utc)

@@ -11,7 +11,7 @@
 #   ./deploy.sh --no-browser     # headless (servers without display)
 #   ./deploy.sh --gpu            # force GPU mode (NVIDIA)
 #   ./deploy.sh --no-gpu         # force CPU mode
-#   ./deploy.sh --model <name>   # override the BASE model (e.g. qwen3.5:4b);
+#   ./deploy.sh --model <name>   # override the BASE model (e.g. gemma4:12b);
 #                                # the user-facing chat model is always snflwr.ai
 #   ./deploy.sh --port <port>    # override web UI port (default: 3000)
 #   ./deploy.sh --stop           # stop all services
@@ -286,11 +286,11 @@ fi
 
 # gemma4:e4b (~10 GB) is the default backbone as of 2026-06-17: it won the
 # tutoring-quality backbone bake-off outright (best overall, K-2, math, and
-# homework-integrity) at a fraction of the VRAM of the qwen3.5:27b/35b tiers,
+# homework-integrity) at a fraction of the VRAM of the larger dense tiers,
 # which couldn't even hold the production context on a 23 GB card.
 #
 # 2026-09-09: gemma4 is now the backbone on EVERY deployment, and only the SIZE
-# VARIANT adapts to the hardware. The old ladder dropped to qwen3.5 below 16GB,
+# VARIANT adapts to the hardware. The old ladder dropped to another family below 16GB,
 # which quietly gave a smaller machine a different tutor — different persona
 # adherence, different pedagogy, and none of the S9051B compliance work was
 # measured against it. One family everywhere means the behaviour transfers.
@@ -311,17 +311,37 @@ if [[ "${USE_GPU:-0}" == "1" ]] || command -v nvidia-smi >/dev/null 2>&1; then
                        | head -1 | awk '{printf "%.0f", $1/1024}')
     DETECTED_VRAM_GB=${DETECTED_VRAM_GB:-0}
 fi
-RECOMMENDED_MODEL=$(cd "$SCRIPT_DIR" 2>/dev/null; python3 -c "
-from resource_detection import recommend_base_model
-print(recommend_base_model(memory_gb=${TOTAL_RAM_GB}, vram_gb=${DETECTED_VRAM_GB}))
-" 2>/dev/null)
-# Never let a python hiccup silently produce an empty model name.
-if [[ -z "$RECOMMENDED_MODEL" ]]; then
-    RECOMMENDED_MODEL="gemma4:e2b"
-    warn "could not compute a backbone recommendation; using the safe floor $RECOMMENDED_MODEL"
+# recommend_base_model returns None when NOTHING supported fits. That is a hard
+# stop, checked BEFORE any multi-GB pull: there is no safe smaller model to fall
+# back to any more (gemma4:e2b was removed 2026-09-10 for measuring 9 points
+# below e4b overall and 7 below on homework integrity). Silently installing a
+# tutor we measured as worse at withholding homework answers is not an
+# acceptable substitute for telling the operator their box is too small.
+_UNSUPPORTED_MSG=""
+RECOMMENDED_MODEL=$(cd "$SCRIPT_DIR" 2>/dev/null && python3 - "$TOTAL_RAM_GB" "$DETECTED_VRAM_GB" <<'PYEOF' 2>/dev/null
+import sys
+from resource_detection import recommend_base_model, unsupported_hardware_message
+ram, vram = float(sys.argv[1]), float(sys.argv[2])
+model = recommend_base_model(memory_gb=ram, vram_gb=vram)
+if model is None:
+    print("UNSUPPORTED " + unsupported_hardware_message(ram, vram))
+else:
+    print(model)
+PYEOF
+)
+
+if [[ "$RECOMMENDED_MODEL" == UNSUPPORTED* ]]; then
+    _UNSUPPORTED_MSG="${RECOMMENDED_MODEL#UNSUPPORTED }"
+    RECOMMENDED_MODEL=""
+elif [[ -z "$RECOMMENDED_MODEL" ]]; then
+    # A python hiccup must not read as "unsupported" OR silently pick a model.
+    error "could not compute a backbone recommendation (is python3 available and resource_detection.py importable?)"
+    exit 1
 fi
 
-info "RAM: ${TOTAL_RAM_GB}GB, VRAM: ${DETECTED_VRAM_GB}GB -- recommended base model: $RECOMMENDED_MODEL"
+if [[ -n "$RECOMMENDED_MODEL" ]]; then
+    info "RAM: ${TOTAL_RAM_GB}GB, VRAM: ${DETECTED_VRAM_GB}GB -- recommended base model: $RECOMMENDED_MODEL"
+fi
 
 # --- Resolve final base model ------------------------------------------------
 # RESOLVED_MODEL holds the BASE model tag we'll pull. The user-facing
@@ -329,9 +349,15 @@ info "RAM: ${TOTAL_RAM_GB}GB, VRAM: ${DETECTED_VRAM_GB}GB -- recommended base mo
 if [[ -n "$OLLAMA_MODEL_ARG" ]]; then
     RESOLVED_MODEL="$OLLAMA_MODEL_ARG"
     info "Base model override: $RESOLVED_MODEL"
+    [[ -n "$_UNSUPPORTED_MSG" ]] && warn "$_UNSUPPORTED_MSG -- proceeding anyway because you named a model explicitly."
 elif [[ -f "$ENV_FILE" ]] && grep -q "^BASE_MODEL=" "$ENV_FILE"; then
     RESOLVED_MODEL=$(grep "^BASE_MODEL=" "$ENV_FILE" | cut -d= -f2)
     info "Base model from $ENV_FILE: $RESOLVED_MODEL"
+    [[ -n "$_UNSUPPORTED_MSG" ]] && warn "$_UNSUPPORTED_MSG -- proceeding anyway because $ENV_FILE pins BASE_MODEL."
+elif [[ -n "$_UNSUPPORTED_MSG" ]]; then
+    # Stop here, before pulling several GB of model onto a box that cannot serve it.
+    error "$_UNSUPPORTED_MSG"
+    exit 1
 else
     RESOLVED_MODEL="$RECOMMENDED_MODEL"
 fi
@@ -412,7 +438,7 @@ else
             echo "BASE_MODEL=${RESOLVED_MODEL}" >> "$ENV_FILE"
         fi
         # Pin OLLAMA_MODEL to snflwr.ai (older env files may still hold a raw
-        # qwen3.5 tag here from before the snflwr.ai wrapper existed)
+        # raw base-model tag here from before the snflwr.ai wrapper existed)
         if grep -q "^OLLAMA_MODEL=" "$ENV_FILE"; then
             sed -i "s|^OLLAMA_MODEL=.*|OLLAMA_MODEL=snflwr.ai|" "$ENV_FILE"
         else
@@ -560,6 +586,26 @@ fi
 # Substitute FROM line so the modelfile points at whatever base we resolved
 TMP_MODELFILE="$(mktemp)"
 sed "s|^FROM .*|FROM ${BASE_MODEL}|" "$MODELFILE_SRC" > "$TMP_MODELFILE"
+
+# gemma4:e4b ships `PARAMETER num_gpu 0` in its OWN manifest, and `FROM` inherits
+# it, so without this line the tutor runs on CPU even on a machine with a large
+# idle GPU — about 20x slower, and silent. Found 2026-09-09 on a 23GB card.
+#
+# The value is COMPUTED, never hardcoded: forcing all layers onto a card too
+# small for them means the runner will not start, and a slow tutor beats no
+# tutor. recommend_num_gpu() returns 0 whenever the fit is not comfortable.
+NUM_GPU_LAYERS=$(cd "$SCRIPT_DIR" 2>/dev/null; python3 -c "
+from resource_detection import recommend_num_gpu
+print(recommend_num_gpu('${BASE_MODEL}', vram_gb=${DETECTED_VRAM_GB:-0}))
+" 2>/dev/null)
+if [[ -n "$NUM_GPU_LAYERS" ]]; then
+    printf '\nPARAMETER num_gpu %s\n' "$NUM_GPU_LAYERS" >> "$TMP_MODELFILE"
+    if [[ "$NUM_GPU_LAYERS" == "0" ]]; then
+        info "tutor will run on CPU (no GPU detected, or too little VRAM for ${BASE_MODEL})"
+    else
+        info "tutor will run on the GPU (overriding the num_gpu 0 inherited from ${BASE_MODEL})"
+    fi
+fi
 
 if ! docker cp "$TMP_MODELFILE" snflwr-ollama:/tmp/snflwr.ai.modelfile; then
     rm -f "$TMP_MODELFILE"

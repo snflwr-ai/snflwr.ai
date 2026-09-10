@@ -245,7 +245,7 @@ Or use `START_SNFLWR.bat` instead.
 ./deploy.sh --stop                   # stop all services
 ./deploy.sh --update                 # pull latest updates
 ./deploy.sh --logs                   # tail logs
-./deploy.sh --model qwen3.5:4b      # use a smaller model
+./deploy.sh --model gemma4:12b      # use a smaller model
 ```
 
 </details>
@@ -282,7 +282,8 @@ The user-facing chat model is always **`snflwr.ai`** — what kids see in the
 Open WebUI dropdown. It is built locally by the install / deploy scripts as a
 base model whose size the installer chooses from your hardware. `deploy.sh`
 auto-selects by **system RAM** and tops out at **`gemma4:e4b`** (it won the June
-2026 tutoring bake-off); smaller systems fall back to the Qwen3.5 tiers. Kids
+2026 tutoring bake-off); systems below ~14 GB RAM / ~6 GB VRAM are unsupported
+and the install refuses rather than downgrading. Kids
 never see the raw base-model tag.
 
 **Backbone capability is a function of your hardware, not of "home vs
@@ -294,9 +295,7 @@ that's why each row's VRAM floor exceeds the model's own size):
 
 | Base model | Weights | Auto-select (RAM) | **GPU VRAM floor** (model + 5 GB guard + KV) | Notes |
 |---|---|---|---|---|
-| `qwen3.5:0.8b` | ~0.5 GB | < 6 GB | ~6 GB | Low-resource fallback |
-| `qwen3.5:2b` | ~1.3 GB | 6 GB+ | ~8 GB | Older laptops |
-| `qwen3.5:4b` | ~2.5 GB | 8 GB+ | ~10 GB | Fallback (gemma too large) |
+| `gemma4:12b` | ~7.6 GB | 14–15 GB | ~10 GB | Only when `e4b` will not fit |
 | **`gemma4:e4b`** | ~10 GB | 16 GB+ **(default)** | **~16 GB** | Default backbone; co-resides with the guard on a single consumer card (e.g. a 24 GB RTX 3090/4090) |
 | `gemma4:31b` | ~19 GB | opt-in only | **≥26 GB** *(19 GB model + 5 GB guard + KV; 28 GB+ comfortable, or run the guard on a 2nd GPU, freeing the 31b to ~22–24 GB on its own card)* | Stronger multi-step reasoning / math reliability than e4b. Opt in on capable hardware via `SNFLWR_ENABLE_GEMMA_31B` or `./deploy.sh --model gemma4:31b`. NOT auto-selected. |
 
@@ -404,7 +403,6 @@ Commercial licensing: licensing@snflwr.ai
 - [Ollama](https://ollama.com) — Local LLM inference
 - [Google DeepMind](https://deepmind.google/) — Gemma model family (gemma4:e4b, the default tutor backbone)
 - [Meta](https://ai.meta.com/) — Llama Guard safety classifier
-- [Qwen Team (Alibaba Cloud)](https://github.com/QwenLM) — Qwen3.5 model family (small-hardware fallback tier)
 - K-12 educators who provided feedback and testing
 
 ---

@@ -11,8 +11,9 @@ This script instead ASSEMBLES each candidate into a production-shaped tutor:
     FROM <candidate>
     SYSTEM <the real Snflwr_AI_Kids.modelfile system prompt>
     PARAMETER ...   <the production generation params>
-    # native chat template per model (we deliberately drop the qwen-specific
-    # TEMPLATE override so a non-qwen backbone like gemma uses its own tokens)
+    # native chat template per model (we deliberately drop the production
+    # Modelfile's TEMPLATE override so each backbone uses its OWN control
+    # tokens — a template baked for one family feeds the wrong ones to another)
 
 It bakes those assembled models off on the same dataset/scorers/judge, and ALSO
 records latency (tokens/s) and resident VRAM, so the winner is chosen on quality
@@ -53,8 +54,8 @@ GPU_TOTAL_GB = 23.0  # single card on this box
 
 
 def modelfile_body() -> str:
-    """The production Modelfile minus its FROM line and minus the qwen-specific
-    TEMPLATE block — i.e. the SYSTEM prompt + PARAMETERs we carry onto every
+    """The production Modelfile minus its FROM line and minus the backbone-
+    specific TEMPLATE block — i.e. the SYSTEM prompt + PARAMETERs we carry onto every
     candidate, letting each model keep its native chat template."""
     text = MODELFILE_SRC.read_text()
     # Drop the TEMPLATE """ ... """ block (non-greedy, across newlines).
@@ -70,30 +71,49 @@ def assembled_name(base: str) -> str:
 
 def build_assembled(base: str, container: str) -> str:
     """Create `snflwr-bk-<base>` in Ollama = FROM <base> + production body.
-    Returns the assembled model name. Raises on failure."""
+    Returns the assembled model name. Raises on failure.
+
+    `container` may be the literal "host" (or any name docker does not know), in
+    which case `ollama create` runs natively. This box moved Ollama OUT of a
+    container and onto the host, reached from the compose network by a socat
+    relay (snflwr-ollama-relay) — the `--container snflwr-ollama` default and the
+    docstring's 172.22.0.4 both predate that migration, so the docker path here
+    aborted at `docker cp: No such container`. (2026-09-09)"""
     name = assembled_name(base)
     content = f"FROM {base}\n\n{modelfile_body()}"
     tmp = Path(f"/tmp/{name}.modelfile")
     tmp.write_text(content)
-    subprocess.run(
-        ["docker", "cp", str(tmp), f"{container}:/tmp/{name}.modelfile"],
-        check=True,
-        capture_output=True,
-    )
-    proc = subprocess.run(
-        [
-            "docker",
-            "exec",
-            container,
-            "ollama",
-            "create",
-            name,
-            "-f",
-            f"/tmp/{name}.modelfile",
-        ],
-        capture_output=True,
-        text=True,
-    )
+
+    on_host = container in ("host", "", None) or subprocess.run(
+        ["docker", "inspect", str(container)], capture_output=True
+    ).returncode != 0
+
+    if on_host:
+        proc = subprocess.run(
+            ["ollama", "create", name, "-f", str(tmp)],
+            capture_output=True,
+            text=True,
+        )
+    else:
+        subprocess.run(
+            ["docker", "cp", str(tmp), f"{container}:/tmp/{name}.modelfile"],
+            check=True,
+            capture_output=True,
+        )
+        proc = subprocess.run(
+            [
+                "docker",
+                "exec",
+                container,
+                "ollama",
+                "create",
+                name,
+                "-f",
+                f"/tmp/{name}.modelfile",
+            ],
+            capture_output=True,
+            text=True,
+        )
     if proc.returncode != 0:
         raise RuntimeError(f"ollama create {name} failed:\n{proc.stderr}")
     return name

@@ -119,7 +119,7 @@ class AsyncOllamaClient:
         Generate completion asynchronously with circuit breaker protection.
 
         Args:
-            model: Model name (e.g., "qwen3.5:9b")
+            model: Model name (e.g., "gemma4:e4b")
             prompt: User prompt
             system: System prompt (optional)
             options: Model options (temperature, etc.)

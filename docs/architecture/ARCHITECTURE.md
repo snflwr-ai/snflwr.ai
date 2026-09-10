@@ -456,7 +456,7 @@ docker-compose up -d  # Start all services
 
 ### AI/ML
 - **LLM Provider:** Ollama
-- **Chat Model:** `snflwr.ai` — a local Ollama wrapper (`models/Snflwr_AI_Kids.modelfile`) over **gemma4:e4b** by default; small-RAM boxes fall back to a qwen3.5 tier, and a ≥26GB GPU can opt into gemma4:31b (`SNFLWR_ENABLE_GEMMA_31B`)
+- **Chat Model:** `snflwr.ai` — a local Ollama wrapper (`models/Snflwr_AI_Kids.modelfile`) over **gemma4:e4b** by default; boxes below ~14GB RAM / ~6GB VRAM are unsupported (the install refuses rather than downgrading), and a ≥26GB GPU can opt into gemma4:31b (`SNFLWR_ENABLE_GEMMA_31B`)
 - **Safety classifier:** llama-guard3:8b (fallback :1b)
 - **Inference:** HTTP API client
 

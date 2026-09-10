@@ -162,12 +162,26 @@ if "%OLLAMA_DEFAULT_MODEL%"=="" (
     for /f %%G in ('powershell -NoProfile -Command "[math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)"') do (
         set "RAM_GB=%%G"
     )
-    if !RAM_GB! GEQ 32 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:35b
-    ) else if !RAM_GB! GEQ 24 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:27b
-    ) else if !RAM_GB! GEQ 8 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:9b
-    ) else if !RAM_GB! GEQ 6 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:4b
-    ) else if !RAM_GB! GEQ 4 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:2b
-    ) else ( set OLLAMA_DEFAULT_MODEL=qwen3.5:0.8b
+    :: Ask resource_detection for the backbone -- the SAME ladder deploy.sh,
+    :: start_snflwr.sh and start_snflwr.ps1 use. Until 2026-09-10 this file had
+    :: its own hardcoded tiers from another model family and never selected
+    :: Windows installs ran a DIFFERENT tutor from every other platform, with
+    :: none of the persona / pedagogy / S9051B compliance work measured on it.
+    for /f "delims=" %%M in ('python -c "import sys;from resource_detection import recommend_base_model,unsupported_hardware_message;r=float(sys.argv[1]);m=recommend_base_model(memory_gb=r,vram_gb=0);print(m if m else 'UNSUPPORTED '+unsupported_hardware_message(r,0))" !RAM_GB! 2^>nul') do (
+        set "OLLAMA_DEFAULT_MODEL=%%M"
+    )
+    if "!OLLAMA_DEFAULT_MODEL!"=="" (
+        echo Could not compute a backbone recommendation ^(python / resource_detection.py^).
+        exit /b 1
+    )
+    echo !OLLAMA_DEFAULT_MODEL! | findstr /b "UNSUPPORTED" >nul
+    if !ERRORLEVEL! EQU 0 (
+        :: gemma4:e2b was removed 2026-09-10 for measuring 9 points below e4b
+        :: overall and 7 below on homework integrity. There is no safe smaller
+        :: backbone to fall back to, so refuse instead of downgrading silently.
+        echo !OLLAMA_DEFAULT_MODEL:UNSUPPORTED =!
+        echo Set BASE_MODEL to a tag to override deliberately.
+        exit /b 1
     )
     echo Detected !RAM_GB! GB RAM -- recommending !OLLAMA_DEFAULT_MODEL!
 )

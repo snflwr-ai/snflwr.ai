@@ -23,16 +23,19 @@ def _row(cid, band, subject, composite, probe=None):
 
 
 # Two cases per model: one 6-8 math (a known pain band), one homework probe.
+# `gemma4:e2b` below is NOT a shipped backbone (removed 2026-09-10). It is kept
+# here purely as a distinct third arm for the ranking maths, and its last place
+# happens to match how it actually measured.
 def _roster():
-    base = _result("qwen3.5:9b", [
+    base = _result("gemma4:e4b", [
         _row("c1", "6-8", "math", 60.0),
         _row("c2", "3-5", "math", 50.0, probe="homework_integrity"),
     ])
-    strong = _result("qwen3.5:35b-a3b", [
+    strong = _result("gemma4:12b", [
         _row("c1", "6-8", "math", 80.0),
         _row("c2", "3-5", "math", 90.0, probe="homework_integrity"),
     ])
-    edge = _result("gemma4:e4b", [
+    edge = _result("gemma4:e2b", [
         _row("c1", "6-8", "math", 55.0),
         _row("c2", "3-5", "math", 52.0, probe="homework_integrity"),
     ])
@@ -41,88 +44,88 @@ def _roster():
 
 class TestRankingAndDeltas:
     def test_ranks_by_overall_and_marks_baseline(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
         # Strong model (avg 85) ranks above baseline (avg 55) and edge (avg 53.5).
-        assert cmp["ranking"][0]["model"] == "qwen3.5:35b-a3b"
-        assert cmp["winner"] == "qwen3.5:35b-a3b"
-        assert any(r["is_baseline"] and r["model"] == "qwen3.5:9b" for r in cmp["ranking"])
+        assert cmp["ranking"][0]["model"] == "gemma4:12b"
+        assert cmp["winner"] == "gemma4:12b"
+        assert any(r["is_baseline"] and r["model"] == "gemma4:e4b" for r in cmp["ranking"])
 
     def test_delta_is_relative_to_baseline(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
         deltas = {r["model"]: r["delta_vs_baseline"] for r in cmp["ranking"]}
-        assert deltas["qwen3.5:9b"] == 0.0
-        assert deltas["qwen3.5:35b-a3b"] == 30.0   # 85 - 55
-        assert deltas["gemma4:e4b"] == -1.5        # 53.5 - 55
+        assert deltas["gemma4:e4b"] == 0.0
+        assert deltas["gemma4:12b"] == 30.0   # 85 - 55
+        assert deltas["gemma4:e2b"] == -1.5        # 53.5 - 55
 
     def test_baseline_defaults_to_first_model_when_unspecified(self):
         cmp = bakeoff.compare(_roster())
-        assert cmp["baseline"] == "qwen3.5:9b"
+        assert cmp["baseline"] == "gemma4:e4b"
 
     def test_unknown_baseline_falls_back_to_first(self):
         cmp = bakeoff.compare(_roster(), baseline="nope:latest")
-        assert cmp["baseline"] == "qwen3.5:9b"
+        assert cmp["baseline"] == "gemma4:e4b"
 
 
 class TestDimensionWinners:
     def test_per_band_winner_is_highest_scorer(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
-        assert cmp["by_band"]["winners"]["6-8"] == "qwen3.5:35b-a3b"
-        assert cmp["by_band"]["winners"]["3-5"] == "qwen3.5:35b-a3b"
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
+        assert cmp["by_band"]["winners"]["6-8"] == "gemma4:12b"
+        assert cmp["by_band"]["winners"]["3-5"] == "gemma4:12b"
 
     def test_per_subject_table_has_all_models(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
         assert set(cmp["by_subject"]["table"]["math"].keys()) == {
-            "qwen3.5:9b", "qwen3.5:35b-a3b", "gemma4:e4b"}
+            "gemma4:e4b", "gemma4:12b", "gemma4:e2b"}
 
 
 class TestMovers:
     def test_flags_homework_and_younger_band_as_pain_points(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
         pains = {(m["id"], m["challenger"]) for m in cmp["movers"] if m["pain_point"]}
         # Both cases (6-8 band, and 3-5 homework_integrity) are pain points.
-        assert ("c1", "qwen3.5:35b-a3b") in pains
-        assert ("c2", "qwen3.5:35b-a3b") in pains
+        assert ("c1", "gemma4:12b") in pains
+        assert ("c2", "gemma4:12b") in pains
 
     def test_mover_delta_sign_matches_improvement(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
         m = next(x for x in cmp["movers"]
-                 if x["id"] == "c2" and x["challenger"] == "qwen3.5:35b-a3b")
+                 if x["id"] == "c2" and x["challenger"] == "gemma4:12b")
         assert m["delta"] == 40.0  # 90 - 50, a big homework-integrity gain
         loss = next(x for x in cmp["movers"]
-                    if x["id"] == "c1" and x["challenger"] == "gemma4:e4b")
+                    if x["id"] == "c1" and x["challenger"] == "gemma4:e2b")
         assert loss["delta"] == -5.0
 
 
 class TestRecommendation:
     def test_recommends_switch_when_margin_cleared(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
         assert "Switch to" in cmp["recommendation"]
-        assert "qwen3.5:35b-a3b" in cmp["recommendation"]
+        assert "gemma4:12b" in cmp["recommendation"]
 
     def test_keeps_baseline_when_it_wins(self):
-        rows = [_result("qwen3.5:9b", [_row("c1", "6-8", "math", 90.0)]),
-                _result("gemma4:e4b", [_row("c1", "6-8", "math", 50.0)])]
-        cmp = bakeoff.compare(rows, baseline="qwen3.5:9b")
+        rows = [_result("gemma4:e4b", [_row("c1", "6-8", "math", 90.0)]),
+                _result("gemma4:e2b", [_row("c1", "6-8", "math", 50.0)])]
+        cmp = bakeoff.compare(rows, baseline="gemma4:e4b")
         assert "Keep" in cmp["recommendation"]
-        assert cmp["winner"] == "qwen3.5:9b"
+        assert cmp["winner"] == "gemma4:e4b"
 
     def test_lean_when_margin_too_small(self):
-        rows = [_result("qwen3.5:9b", [_row("c1", "6-8", "math", 80.0)]),
+        rows = [_result("gemma4:e4b", [_row("c1", "6-8", "math", 80.0)]),
                 _result("big:model", [_row("c1", "6-8", "math", 81.0)])]  # +1 < margin
-        cmp = bakeoff.compare(rows, baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(rows, baseline="gemma4:e4b")
         assert "Lean" in cmp["recommendation"]
         assert "judge noise" in cmp["recommendation"]
 
 
 class TestReport:
     def test_report_contains_recommendation_and_tables(self):
-        cmp = bakeoff.compare(_roster(), baseline="qwen3.5:9b")
+        cmp = bakeoff.compare(_roster(), baseline="gemma4:e4b")
         md = bakeoff.build_comparison_report(cmp)
         assert "# Tutoring-Quality Model Bake-off" in md
         assert "Recommendation:" in md
         assert "## Overall" in md
         assert "## By age band" in md
-        assert "qwen3.5:35b-a3b" in md
+        assert "gemma4:12b" in md
 
     def test_empty_results_is_graceful(self):
         cmp = bakeoff.compare([])

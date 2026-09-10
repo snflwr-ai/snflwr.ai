@@ -435,32 +435,66 @@ class TestNegativeEnvVarRejection:
 # varies by SIZE VARIANT instead, so "quantize for the hardware" means selecting
 # the largest variant that fits:
 #
-#     gemma4:e2b   7.2 GB
-#     gemma4:12b   7.6 GB      <- smaller than e4b despite the name; e2b/e4b are
-#     gemma4:e4b   9.6 GB         MatFormer variants, 12b is dense
+# Each variant carries TWO sizes, because what must fit differs by path and for
+# the MatFormer variants the two differ ~3x (measured 2026-09-10):
+#
+#                  resident VRAM   RAM footprint
+#     gemma4:e4b       3.3 GB          9.5 GB     <- best measured quality
+#     gemma4:12b       7.9 GB          7.6 GB     <- only fits the CPU 13.6-15.5 band
+#
+# gemma4:e2b was REMOVED 2026-09-10: 70.0 overall vs e4b's 79.0 and 74.9 vs 81.9
+# on homework integrity over 3 repeats — ~4x the harness's run-to-run noise. It
+# was the silent floor every small box fell back to, so the worst-case
+# deployment was the weakest at withholding homework answers. Under-spec boxes
+# now get None and an explicit unsupported-hardware error, never a quiet
+# downgrade.
 #
 # Selection is by the memory the model will actually live in — VRAM when there
-# is a usable GPU, otherwise RAM — minus a reserve for the KV cache and the
-# llama-guard safety classifier, which has to be resident too.
+# is a usable GPU, otherwise RAM — minus a reserve that ALSO differs by path
+# (the safety classifier is CPU-pinned, so it costs RAM, never VRAM).
 # ---------------------------------------------------------------------------
 
 from resource_detection import (  # noqa: E402
     GEMMA4_VARIANTS,
+    minimum_requirements_gb,
     recommend_base_model,
+    unsupported_hardware_message,
 )
 
 
 def test_every_variant_is_gemma4():
     """The whole point: one family everywhere."""
     assert GEMMA4_VARIANTS, "ladder must not be empty"
-    for tag, size in GEMMA4_VARIANTS:
+    for tag, vram_gb, ram_gb in GEMMA4_VARIANTS:
         assert tag.startswith("gemma4:"), f"{tag} is not gemma4"
-        assert size > 0
+        assert vram_gb > 0 and ram_gb > 0
 
 
-def test_ladder_is_ordered_largest_first():
-    sizes = [size for _tag, size in GEMMA4_VARIANTS]
-    assert sizes == sorted(sizes, reverse=True), "ladder must go largest -> smallest"
+def test_no_qwen_anywhere_in_the_ladder():
+    """Regression guard: qwen was removed from the product 2026-09-10.
+
+    A small box used to be handed a qwen3.5 tier — a DIFFERENT tutor that none
+    of the persona, pedagogy or S9051B compliance work was measured against.
+    """
+    for tag, _vram, _ram in GEMMA4_VARIANTS:
+        assert "qwen" not in tag.lower()
+
+
+def test_removed_e2b_is_not_selectable_at_any_size():
+    """e2b measured 9 points below e4b overall and 7 below on homework
+    integrity. It must not come back as a silent floor."""
+    for ram in (1, 4, 8, 12, 16, 32, 64, 512):
+        for vram in (0, 2, 6, 12, 24, 80):
+            assert recommend_base_model(memory_gb=ram, vram_gb=vram) != "gemma4:e2b"
+
+
+def test_ladder_is_ordered_by_preference():
+    """First that fits wins, so the best-measured variant must come first.
+
+    NOT ordered by size any more: on a GPU e4b is both better AND smaller
+    (3.3 vs 7.9 GB resident), so a size ordering would be actively wrong.
+    """
+    assert GEMMA4_VARIANTS[0][0] == "gemma4:e4b"
 
 
 def test_big_gpu_box_gets_the_validated_default():
@@ -469,47 +503,168 @@ def test_big_gpu_box_gets_the_validated_default():
     assert recommend_base_model(memory_gb=64, vram_gb=24) == "gemma4:e4b"
 
 
-def test_midsize_gpu_steps_down_rather_than_changing_family():
-    """Not enough room for e4b plus the classifier — still gemma4."""
-    picked = recommend_base_model(memory_gb=32, vram_gb=14)
+def test_midsize_box_steps_down_rather_than_changing_family():
+    """Not enough for e4b — step down inside gemma4, never to another family.
+
+    The step-down now lives on the RAM path only. On a GPU e4b is the SMALLEST
+    variant (3.3 GB resident), so it fits anything 12b would, and there is
+    nothing to step down to. On RAM e4b needs 15.5 GB and 12b only 13.6 GB, so
+    a 14 GB CPU box is the real step-down case.
+    """
+    picked = recommend_base_model(memory_gb=14, vram_gb=0)
+    assert picked == "gemma4:12b"
     assert picked.startswith("gemma4:")
-    assert picked != "gemma4:e4b"
 
 
-def test_small_gpu_gets_the_smallest_variant():
-    assert recommend_base_model(memory_gb=16, vram_gb=9) == "gemma4:e2b"
+def test_cpu_pinned_guard_is_not_charged_to_vram():
+    """Regression guard for the reserve split (2026-09-10).
+
+    The guard's ~4.9 GB comes out of RAM, never VRAM. Reunify the reserves and
+    the GPU cases under-select.
+    """
+    assert recommend_base_model(memory_gb=32, vram_gb=14) == "gemma4:e4b"
+    assert recommend_base_model(memory_gb=32, vram_gb=6) == "gemma4:e4b"
+    # RAM path: the guard really IS resident alongside, so 12 GB is too small.
+    assert recommend_base_model(memory_gb=12, vram_gb=0) is None
+
+
+def test_vram_is_sized_on_RESIDENT_not_manifest_size():
+    """e4b's manifest total is 9.6 GB but only 3.3 GB is resident on a GPU.
+
+    Sizing from the manifest told a 12 GB card it could not run e4b, which it
+    runs comfortably. If someone restores manifest sizes, this fails.
+    """
+    assert recommend_base_model(memory_gb=64, vram_gb=9) == "gemma4:e4b"
+    assert recommend_base_model(memory_gb=64, vram_gb=6) == "gemma4:e4b"
+
+
+def test_small_gpu_still_gets_the_best_variant():
+    """A 9 GB card runs e4b — it only needs 3.3 GB resident + 2.5 headroom."""
+    assert recommend_base_model(memory_gb=16, vram_gb=9) == "gemma4:e4b"
 
 
 def test_cpu_only_box_selects_on_ram():
     """No GPU: the model lives in RAM, so RAM is what decides."""
     assert recommend_base_model(memory_gb=64, vram_gb=0) == "gemma4:e4b"
-    assert recommend_base_model(memory_gb=12, vram_gb=0) == "gemma4:e2b"
+    assert recommend_base_model(memory_gb=14, vram_gb=0) == "gemma4:12b"
 
 
-def test_tiny_machine_still_gets_a_working_model():
-    """Never return None and never fall off the ladder — a Pi-class box gets the
-    smallest gemma4 rather than no tutor at all."""
-    assert recommend_base_model(memory_gb=4, vram_gb=0) == "gemma4:e2b"
-    assert recommend_base_model(memory_gb=1, vram_gb=0) == "gemma4:e2b"
+def test_under_spec_machine_is_REFUSED_not_downgraded():
+    """The product decision (2026-09-10): a box that cannot run a measured-safe
+    backbone gets an explicit refusal, NOT a quietly weaker tutor.
+
+    This test is the inverse of the one it replaces
+    (`test_tiny_machine_still_gets_a_working_model`), which asserted a Pi-class
+    box got e2b "rather than no tutor at all". That floor is exactly what we
+    removed: e2b was measurably worse at withholding homework answers, and
+    shipping it silently to the smallest deployments was the wrong trade for a
+    children's product.
+    """
+    assert recommend_base_model(memory_gb=4, vram_gb=0) is None
+    assert recommend_base_model(memory_gb=1, vram_gb=0) is None
+    assert recommend_base_model(memory_gb=12, vram_gb=0) is None
+    assert recommend_base_model(memory_gb=64, vram_gb=5) is None
+
+
+def test_unsupported_message_names_the_actual_requirement():
+    """Operators must be told the number, not just 'unsupported'."""
+    min_vram, min_ram = minimum_requirements_gb()
+    assert (min_vram, min_ram) == (5.8, 13.6)
+    msg = unsupported_hardware_message(memory_gb=4.0, vram_gb=0.0)
+    assert str(min_vram) in msg and str(min_ram) in msg
+    assert "unsupported hardware" in msg.lower()
 
 
 def test_gpu_is_preferred_over_ram_when_present():
-    """A big-RAM box with a small card must size for the CARD, because that is
-    where the model will actually be loaded."""
-    assert recommend_base_model(memory_gb=128, vram_gb=9) == "gemma4:e2b"
+    """A big-RAM box with a card sizes for the CARD, because that is where the
+    model will actually be loaded. A 5 GB card cannot host any variant, so it
+    is refused even with 128 GB of RAM."""
+    assert recommend_base_model(memory_gb=128, vram_gb=9) == "gemma4:e4b"
+    assert recommend_base_model(memory_gb=128, vram_gb=5) is None
 
 
-def test_reserve_accounts_for_the_safety_classifier():
-    """llama-guard must fit alongside. With the reserve removed, a 12GB card
-    would take e4b; with it, it must not — the classifier being evicted is what
-    makes the pipeline fail closed and block children."""
-    generous = recommend_base_model(memory_gb=32, vram_gb=12, reserve_gb=0.0)
-    realistic = recommend_base_model(memory_gb=32, vram_gb=12)
-    assert generous == "gemma4:e4b"
-    assert realistic != "gemma4:e4b"
+def test_reserve_accounts_for_the_safety_classifier_on_the_ram_path():
+    """llama-guard is CPU-pinned, so it must fit in RAM alongside the tutor.
+    With the reserve removed a 12 GB box would take e4b; with it, it must not —
+    the classifier being evicted is what makes the pipeline fail closed and
+    block children on harmless questions."""
+    generous = recommend_base_model(memory_gb=12, vram_gb=0, reserve_gb=0.0)
+    realistic = recommend_base_model(memory_gb=12, vram_gb=0)
+    assert generous == "gemma4:e4b"   # 9.5 GB footprint alone fits in 12 GB
+    assert realistic is None          # ...but not once the guard needs its 4.9
 
 
 def test_selection_is_deterministic():
     assert recommend_base_model(memory_gb=32, vram_gb=16) == recommend_base_model(
         memory_gb=32, vram_gb=16
     )
+
+
+# ---------------------------------------------------------------------------
+# GPU placement — gemma4:e4b ships `PARAMETER num_gpu 0` in its OWN manifest,
+# and every model built `FROM gemma4:e4b` inherits it silently.
+#
+# Found 2026-09-09 on a box with a free 23GB card: the tutor was running 100%
+# on CPU, which is roughly 20x slower and accounts for the 47-197s replies
+# measured earlier and blamed on other things. Nothing in this repo set that
+# pin and nothing in this repo overrode it.
+#
+# The override cannot simply be a hardcoded `num_gpu 99`. That forces every
+# layer onto the card, so a machine with a small GPU — which the variant ladder
+# still serves, because gemma4:e2b is the floor no matter how little VRAM there
+# is — would try to load 7.2GB into 4GB and fail to start at all. A tutor that
+# is slow beats a tutor that will not load.
+# ---------------------------------------------------------------------------
+
+
+class TestRecommendNumGpu:
+    def test_no_gpu_means_cpu(self):
+        from resource_detection import recommend_num_gpu
+
+        assert recommend_num_gpu("gemma4:e4b", vram_gb=0.0) == 0
+
+    def test_ample_vram_offloads_all_layers(self):
+        from resource_detection import recommend_num_gpu
+
+        assert recommend_num_gpu("gemma4:e4b", vram_gb=23.0) > 0
+
+    def test_gpu_too_small_for_the_variant_stays_on_cpu(self):
+        """The failure this guards: a card too small for the variant's RESIDENT
+        size. 12b needs 7.9 GB resident, so a 4 GB card must stay on CPU.
+
+        Was written against gemma4:e2b, removed from the product 2026-09-10.
+        """
+        from resource_detection import recommend_num_gpu
+
+        assert recommend_num_gpu("gemma4:12b", vram_gb=4.0) == 0
+
+    def test_removed_variant_is_never_offloaded(self):
+        """An unknown/removed tag returns 0 rather than guessing a size."""
+        from resource_detection import recommend_num_gpu
+
+        assert recommend_num_gpu("gemma4:e2b", vram_gb=24.0) == 0
+        assert recommend_num_gpu("qwen3.5:9b", vram_gb=24.0) == 0
+
+    def test_headroom_is_required_not_just_a_bare_fit(self):
+        """A variant that only fits with nothing left over must not be offloaded:
+        the KV cache and the runtime still need room, and a card packed to the
+        last byte evicts the safety classifier mid-request."""
+        from resource_detection import recommend_num_gpu
+
+        # e4b is 3.3 GB RESIDENT (not its 9.6 GB manifest total), so a bare fit
+        # is ~3.3 GB and the real bar is 3.3 + 2.5 headroom = 5.8 GB.
+        assert recommend_num_gpu("gemma4:e4b", vram_gb=4.0) == 0
+        assert recommend_num_gpu("gemma4:e4b", vram_gb=6.0) == 99
+
+    def test_unknown_tag_is_not_assumed_to_fit(self):
+        from resource_detection import recommend_num_gpu
+
+        assert recommend_num_gpu("some-other-model:latest", vram_gb=4.0) == 0
+
+    def test_the_measured_box(self):
+        """23GB card, e4b selected — the configuration that was silently on CPU."""
+        from resource_detection import recommend_base_model, recommend_num_gpu
+
+        tag = recommend_base_model(memory_gb=64.0, vram_gb=23.0)
+        assert tag == "gemma4:e4b"
+        assert recommend_num_gpu(tag, vram_gb=23.0) > 0

@@ -57,11 +57,9 @@ while [[ $# -gt 0 ]]; do
             echo "by docker/Dockerfile.ollama as a wrapper around the base below."
             echo ""
             echo "Base model tiers — gemma4:e4b is the default backbone; small"
-            echo "boxes fall back to a qwen3.5 tier (no gemma that small exists):"
+            echo "boxes below the minimum are UNSUPPORTED (no safe smaller backbone):"
             echo "  gemma4:e4b    ~10 GB runtime  Default — recommended backbone (16 GB+)"
-            echo "  qwen3.5:4b    ~3 GB runtime   Fallback — everyday use (8 GB+)"
-            echo "  qwen3.5:2b    ~2 GB runtime   Fallback — older laptops (6 GB+)"
-            echo "  qwen3.5:0.8b  ~1 GB runtime   Fallback — low-resource devices"
+            echo "  (below ~12 GB usable: unsupported — build will refuse)"
             echo ""
             echo "Safety classifier tiers (Meta Llama Guard):"
             echo "  llama-guard3:1b   ~2 GB runtime   Fast, good accuracy"
@@ -104,11 +102,19 @@ info "Docker Compose found: $($COMPOSE version 2>&1 | head -1)"
 
 # Detect NVIDIA GPU
 USE_GPU=false
+VRAM_GB=0
 if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "NVIDIA GPU")
     if docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu20.04 nvidia-smi &>/dev/null 2>&1; then
         USE_GPU=true
-        info "GPU detected: ${GPU_NAME} (nvidia-container-toolkit confirmed)"
+        # Capture VRAM, not just the name. Until 2026-09-10 this block detected a
+        # GPU purely to print it and to set --gpus, then sized the models on RAM
+        # anyway — so a GPU server was judged as if it were CPU-only and could be
+        # told it was unsupported while a perfectly capable card sat idle.
+        VRAM_GB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+                  | head -1 | awk '{printf "%d", $1/1024}')
+        VRAM_GB=${VRAM_GB:-0}
+        info "GPU detected: ${GPU_NAME} (${VRAM_GB} GB VRAM, nvidia-container-toolkit confirmed)"
     else
         warn "GPU detected (${GPU_NAME}) but nvidia-container-toolkit not configured — using CPU."
         warn "To enable: sudo apt install nvidia-container-toolkit && sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
@@ -133,9 +139,6 @@ SERVICES_OVERHEAD=4   # PostgreSQL, Redis, nginx, API server, Celery, OS
 
 chat_model_ram() {
     case $1 in
-        qwen3.5:0.8b) echo 1 ;;
-        qwen3.5:2b)   echo 2 ;;
-        qwen3.5:4b)   echo 3 ;;
         gemma4:e4b)   echo 10 ;;
         *)           echo 10 ;;
     esac
@@ -165,24 +168,47 @@ detect_ram_gb() {
     fi
 }
 
-# Recommend a (chat, safety) pair that fits within the RAM budget.
+# Recommend a (chat, safety) pair that fits the hardware budget — VRAM when
+# the tutor will live on a GPU, otherwise RAM.
 # Strategy: maximize chat model quality, then use the best safety model
 # that fits in the remaining budget.
 recommend_models() {
     local ram_gb=$1
+    local vram_gb=${2:-0}
     local budget=$(( ram_gb - SERVICES_OVERHEAD ))
 
-    # gemma4:e4b (~10 GB) is the backbone — it won the 2026-06-17 tutoring
-    # bake-off outright, beating the old qwen3.5:27b/35b tiers at a fraction of
-    # the VRAM, so there is no reason to offer a larger qwen. Pair it with the
-    # best safety model that fits; boxes too small for gemma fall back to a small
-    # qwen3.5 tier (no gemma that small exists).
+    # When the tutor will actually live on a GPU, size on VRAM. gemma4:e4b is
+    # 3.3 GB RESIDENT on a card (measured 2026-09-10) versus a 9.5 GB RAM
+    # footprint, and the safety classifier is CPU-pinned by design so it costs
+    # RAM, never VRAM. A 6 GB card therefore runs the BEST backbone; sizing that
+    # same machine on RAM would have called it unsupported.
+    if [ "${vram_gb:-0}" -ge 6 ]; then
+        # Guard still needs RAM alongside; keep a floor so we do not hand a
+        # GPU box an image whose classifier cannot stay resident.
+        if [ "$ram_gb" -ge 8 ]; then
+            local safety="llama-guard3:1b"
+            [ "$ram_gb" -ge 13 ] && safety="llama-guard3:8b"
+            echo "gemma4:e4b|${safety}"
+            return 0
+        fi
+    fi
+
+    # gemma4 is the ONLY backbone family. It won the 2026-06-17 tutoring bake-off
+    # outright at a fraction of the VRAM of the larger dense tiers, and re-measured
+    # 2026-09-10 over 3 repeats it remains the best quality-per-GB of the family.
+    #
+    # The small-box fallbacks were REMOVED 2026-09-10. They were a different model
+    # family, so a small enterprise image shipped a DIFFERENT tutor that none of
+    # the persona, pedagogy or S9051B compliance work had been measured against —
+    # and gemma4:e2b, the one in-family candidate, measured 9 points below e4b
+    # overall and 7 below on homework integrity. An image that cannot run a
+    # measured-safe tutor must fail to build, not build a weaker one silently.
     local chat safety
     if   [ "$budget" -ge 15 ]; then chat="gemma4:e4b";   safety="llama-guard3:8b"   # 10+5=15
     elif [ "$budget" -ge 12 ]; then chat="gemma4:e4b";   safety="llama-guard3:1b"   # 10+2=12
-    elif [ "$budget" -ge 5 ];  then chat="qwen3.5:4b";   safety="llama-guard3:1b"   # 3+2=5
-    elif [ "$budget" -ge 4 ];  then chat="qwen3.5:2b";   safety="llama-guard3:1b"   # 2+2=4
-    else                            chat="qwen3.5:0.8b";  safety="llama-guard3:1b"   # 1+2=3
+    else
+        echo "UNSUPPORTED|"
+        return 0
     fi
 
     echo "${chat}|${safety}"
@@ -198,7 +224,15 @@ if [ "$AUTO_SELECT" = true ]; then
         CHAT_MODEL="${CHAT_MODEL:-gemma4:e4b}"
         SAFETY_MODEL="${SAFETY_MODEL:-llama-guard3:1b}"
     else
-        PAIR=$(recommend_models "$RAM_GB")
+        PAIR=$(recommend_models "$RAM_GB" "$VRAM_GB")
+        if [ "${PAIR%%|*}" = "UNSUPPORTED" ] && [ -z "$CHAT_MODEL" ]; then
+            # No safe backbone fits. Fail the BUILD rather than bake a weaker
+            # tutor into an enterprise image that then ships to classrooms.
+            echo "ERROR: ${RAM_GB} GB RAM is below the minimum for a supported backbone" >&2
+            echo "       (need ~15 GB for gemma4:e4b + llama-guard3:8b, or ~12 GB with the 1b guard)." >&2
+            echo "       Set CHAT_MODEL=<tag> explicitly to override." >&2
+            exit 1
+        fi
         CHAT_MODEL="${CHAT_MODEL:-${PAIR%%|*}}"
         SAFETY_MODEL="${SAFETY_MODEL:-${PAIR##*|}}"
         info "Auto-selected for ${RAM_GB} GB RAM: ${CHAT_MODEL} + ${SAFETY_MODEL}"
@@ -216,12 +250,18 @@ if [ -z "$CHAT_MODEL" ]; then
     echo ""
 
     if [ "$RAM_GB" -gt 0 ]; then
-        PAIR=$(recommend_models "$RAM_GB")
+        PAIR=$(recommend_models "$RAM_GB" "$VRAM_GB")
         REC_CHAT="${PAIR%%|*}"
+        [ "$REC_CHAT" = "UNSUPPORTED" ] && REC_CHAT="(none — this server is below the minimum)"
         MODEL_BUDGET=$(( RAM_GB - SERVICES_OVERHEAD ))
         echo "   Detected server RAM:  ${RAM_GB} GB"
+        echo "   Detected GPU VRAM:    ${VRAM_GB} GB"
         echo "   Services overhead:    ~${SERVICES_OVERHEAD} GB (PostgreSQL, Redis, nginx, API, OS)"
-        echo "   Available for models: ~${MODEL_BUDGET} GB (chat + safety combined)"
+        if [ "${VRAM_GB:-0}" -ge 6 ]; then
+            echo "   Sizing on:            VRAM (the tutor will live on the GPU; ~3.3 GB resident)"
+        else
+            echo "   Sizing on:            RAM (~${MODEL_BUDGET} GB for chat + safety combined)"
+        fi
         echo "   Recommended base:     ${REC_CHAT}"
     else
         REC_CHAT="gemma4:e4b"
@@ -229,22 +269,22 @@ if [ -z "$CHAT_MODEL" ]; then
     fi
 
     echo ""
-    echo "   Available base models (gemma4:e4b default; small boxes fall back to qwen3.5):"
+    echo "   Available base models (gemma4 only — see note below):"
     echo "   ─────────────────────────────────────────────────────────"
     echo "    1) gemma4:e4b     ~10 GB runtime   Default — recommended (16 GB+)"
-    echo "    2) qwen3.5:4b     ~3 GB runtime    Fallback — everyday use (8 GB+)"
-    echo "    3) qwen3.5:2b     ~2 GB runtime    Fallback — older laptops (6 GB+)"
-    echo "    4) qwen3.5:0.8b   ~1 GB runtime    Fallback — low-resource"
+    echo "    2) gemma4:12b     ~8 GB runtime    Dense; only if e4b will not fit"
     echo "   ─────────────────────────────────────────────────────────"
+    echo "   Smaller tiers were removed 2026-09-10. They were a different model"
+    echo "   family (a DIFFERENT tutor, none of the compliance work measured on"
+    echo "   it), and the one small in-family option measured 9 points worse"
+    echo "   overall and 7 worse at withholding homework answers."
     echo ""
 
-    read -rp "   Select base model [1-4] or Enter for ${REC_CHAT}: " choice
+    read -rp "   Select base model [1-2] or Enter for ${REC_CHAT}: " choice
 
     case "${choice}" in
         1) CHAT_MODEL="gemma4:e4b" ;;
-        2) CHAT_MODEL="qwen3.5:4b" ;;
-        3) CHAT_MODEL="qwen3.5:2b" ;;
-        4) CHAT_MODEL="qwen3.5:0.8b" ;;
+        2) CHAT_MODEL="gemma4:12b" ;;
         "") CHAT_MODEL="$REC_CHAT" ;;
         *)
             warn "Invalid choice '${choice}'. Using ${REC_CHAT}"

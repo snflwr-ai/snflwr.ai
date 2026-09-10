@@ -18,7 +18,7 @@
 # Examples:
 #   scripts/guarded_upgrade.sh owui                 # OWU -> latest stable, guarded
 #   scripts/guarded_upgrade.sh ollama 0.30.10       # Ollama -> a specific tag
-#   scripts/guarded_upgrade.sh model qwen3.5:8b     # rebuild tutor model on a new base
+#   scripts/guarded_upgrade.sh model gemma4:e4b     # rebuild tutor model on a new base
 #   scripts/guarded_upgrade.sh owui --dry-run       # show target, change nothing
 #
 # Each component's smoke test verifies the integration most likely to break on

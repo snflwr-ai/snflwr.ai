@@ -511,7 +511,7 @@ class TestHappyPath:
         )
 
     def test_no_thinking_tags_in_response(self, student_accounts):
-        """Verify Qwen3.5 thinking tags don't leak into student responses."""
+        """Verify backbone thinking tags don't leak into student responses."""
         student = student_accounts[1]
         resp = _owu_chat(student["owu_token"], "Why is the sky blue?")
         content = resp.get("message", {}).get("content", "")

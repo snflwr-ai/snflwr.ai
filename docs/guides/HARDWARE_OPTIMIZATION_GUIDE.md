@@ -23,7 +23,8 @@ wraps and the **safety classifier** size.
 
 | Tier | RAM / VRAM | Tutor backbone | Safety classifier | Best for |
 |------|-----------|----------------|-------------------|----------|
-| **Fallback** | 6–12GB RAM, no/small GPU | a small **qwen3.5** tier (`qwen3.5:4b` → `2b` → `0.8b` by RAM) | `llama-guard3:1b` | old laptops, Chromebooks |
+| **Minimum** | 14–15GB RAM, no/small GPU | **`gemma4:12b`** (only when `e4b` will not fit) | `llama-guard3:1b` | smaller laptops |
+| **Unsupported** | <14GB RAM and <6GB VRAM | *(none — the install refuses)* | — | see note below |
 | **Standard (default)** | 16GB+ RAM, or any GPU | **gemma4:e4b** (~10GB) | `llama-guard3:8b` | all K-12, most families & schools |
 | **High-end (opt-in)** | GPU **≥26GB** VRAM | **gemma4:31b** (~19GB), via `SNFLWR_ENABLE_GEMMA_31B=true` | `llama-guard3:8b` | big single-GPU / multi-GPU servers |
 
@@ -44,8 +45,14 @@ Notes:
   ~22–24GB on its own card. This applies to **any** capable box — a high-end home
   rig opts up the same way an enterprise node does; it's hardware capability, not
   a "home vs enterprise" label.
-- The qwen tiers exist **only** as a low-RAM fallback for boxes that can't run
-  gemma4:e4b. They are not the primary backbone.
+- **There is no low-RAM fallback family any more.** The old small tiers came from
+  a different model family, which meant a small box ran a *different tutor* that
+  none of the persona, pedagogy or S9051B compliance work had been measured
+  against. The one small in-family candidate, `gemma4:e2b`, measured **70.0 vs
+  79.0** overall and **74.9 vs 81.9** on homework integrity across 3 repeat runs
+  — roughly 4x the harness's own run-to-run noise. Removed 2026-09-10: an
+  under-spec box is now told it is unsupported rather than quietly given the
+  weakest tutor at withholding homework answers.
 
 ---
 
@@ -53,8 +60,8 @@ Notes:
 
 `start_snflwr.sh` (and `install.py`) detect RAM/GPU and pick:
 
-- **Tutor backbone**: `gemma4:e4b` on ≥16GB RAM or any GPU; otherwise a qwen3.5
-  fallback sized to RAM. A GPU with ≥26GB VRAM **and** `SNFLWR_ENABLE_GEMMA_31B=true`
+- **Tutor backbone**: `gemma4:e4b` on ≥16GB RAM or ≥6GB VRAM; `gemma4:12b` on the
+  14–15GB RAM band; below that the install refuses. A GPU with ≥26GB VRAM **and** `SNFLWR_ENABLE_GEMMA_31B=true`
   selects `gemma4:31b`.
 - **Safety classifier**: `llama-guard3:8b` when there's headroom (GPU ≥16GB VRAM,
   or ≥24GB RAM); otherwise the faster `llama-guard3:1b`. The API prefers `:8b`
@@ -76,7 +83,7 @@ docker build -f docker/Dockerfile.ollama \
 
 # Low-RAM fallback tier
 docker build -f docker/Dockerfile.ollama \
-  --build-arg CHAT_MODEL=qwen3.5:4b \
+  --build-arg CHAT_MODEL=gemma4:12b \
   --build-arg SAFETY_MODEL=llama-guard3:1b \
   -t snflwr-ollama:fallback .
 ```
@@ -96,7 +103,7 @@ User question
     ↓
 check_input  → Safety classifier (llama-guard3:8b, or :1b on small hardware)
     ↓
-snflwr.ai tutor (gemma4:e4b default · gemma4:31b on ≥26GB GPU · qwen fallback on small RAM)
+snflwr.ai tutor (gemma4:e4b default · gemma4:31b on ≥26GB GPU · gemma4:12b on 14–15GB RAM)
     ↓
 check_output → Safety classifier (same model)
     ↓
@@ -127,8 +134,8 @@ def detect_tier():
         return 'high-end'
     if base.startswith('gemma4:e4b'):
         return 'standard'
-    if base.startswith('qwen3.5'):
-        return 'fallback'
+    if base.startswith('gemma4:12b'):
+        return 'minimum'
     return 'unknown'
 
 # Safety classifier (prefer :8b, fall back to :1b)
@@ -150,7 +157,7 @@ for your box):
 
 | Backbone | VRAM (GPU) | Per-turn latency | Notes |
 |----------|-----------|------------------|-------|
-| qwen3.5 fallback (0.8b–4b) | 1–4 GB | ~1–3 s | low-RAM only; lower tutoring quality |
+| `gemma4:12b` | ~7.9 GB | ~4 s | only when `e4b` will not fit; 1.6x slower than e4b |
 | **gemma4:e4b** | ~10 GB | ~4–5 s (GPU) | default; concurrency headroom alongside the 8b guard |
 | **gemma4:31b** | ~19 GB | ~8–15 s (GPU) | dense; ~half the throughput; needs ≥26GB with the guard |
 
@@ -185,7 +192,7 @@ Ollama model changes.
 
 1. The tutor backbone and the safety classifier are **sized to detected hardware**.
 2. **Default: `gemma4:e4b` + `llama-guard3:8b`** (≥16GB RAM or any GPU).
-3. **Low-RAM fallback:** a small `qwen3.5` tier + `llama-guard3:1b`.
+3. **Minimum supported:** `gemma4:12b` + `llama-guard3:1b` (14–15GB RAM). Below that: unsupported, install refuses.
 4. **Opt-in high-end:** `gemma4:31b` on a **≥26GB** GPU (so it co-resides with the
    8b guard) — for headroom on big hardware, not better tutoring quality.
 5. Same fail-closed safety pipeline and features on every tier.

@@ -4,7 +4,7 @@
 
 snflwr.ai uses two model families:
 
-- **Chat model** — `snflwr.ai`, the user-facing chat model. Built locally as a wrapper around a base model (`gemma4:e4b` by default on 16 GB+ systems; Qwen 3.5 tiers as fallback). Kids never see the raw base-model tag in the dropdown.
+- **Chat model** — `snflwr.ai`, the user-facing chat model. Built locally as a wrapper around a base model (`gemma4:e4b` by default; `gemma4:12b` on a narrow CPU-RAM band). Kids never see the raw base-model tag in the dropdown.
 - **Safety model** (Llama Guard 3) — content safety classification in the 5-stage safety pipeline
 
 ## Models
@@ -19,7 +19,7 @@ deploy time by all of:
 - `install.py` — interactive installer
 - `docker/Dockerfile.ollama` — enterprise tier (baked into the image)
 
-Each picks a base model sized to available RAM (`gemma4:e4b` on 16 GB+ systems, otherwise a Qwen 3.5 tier), then runs:
+Each picks a base model sized to available RAM via `resource_detection.recommend_base_model` (`gemma4:e4b` on 16 GB+ systems, `gemma4:12b` on 14-15 GB; below that the install is refused), then runs:
 
 ```
 ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile
@@ -35,9 +35,14 @@ and safety stop sequences.
 | Base model | Size | RAM | Use Case |
 |-------|------|-----|----------|
 | `gemma4:e4b` | ~10 GB | 16 GB+ | **Default — recommended backbone** |
-| `qwen3.5:4b` | ~2.5 GB | 8 GB+ | Fallback (gemma too large) |
-| `qwen3.5:2b` | ~1.3 GB | 6 GB+ | Fallback (older laptops) |
-| `qwen3.5:0.8b` | ~0.5 GB | 2 GB+ | Fallback (low-resource) |
+| `gemma4:12b` | ~7.6 GB | 14 GB+ | Only when `e4b` will not fit |
+
+Below ~14 GB RAM (or ~6 GB VRAM) the install is **refused**, not downgraded.
+The former small-model fallbacks were removed on 2026-09-10: they came from a
+different model family — a DIFFERENT tutor that none of the persona, pedagogy
+or S9051B compliance work had been measured against — and the one small
+in-family option, `gemma4:e2b`, measured 9 points below `e4b` overall and 7
+below on homework integrity across 3 repeat runs.
 
 ### Safety: Llama Guard 3 (configurable via `SAFETY_MODEL` build arg)
 

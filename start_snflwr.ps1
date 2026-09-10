@@ -160,24 +160,52 @@ if (-not $ollamaRunning) {
 # Determine the BASE model from env or hardware detection. The user-facing
 # chat model is always 'snflwr.ai', built locally below as a wrapper around
 # this base.
+# Detect VRAM up front so it is in scope for BOTH the ladder below and the
+# num_gpu override at the wrapper build — an explicit BASE_MODEL skips the
+# detection branch, and the tutor still has to be placed on the right device.
+$vramGB = 0
+try {
+    $vramRaw = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+    if ($vramRaw) { $vramGB = [math]::Floor([double]$vramRaw / 1024) }
+} catch { $vramGB = 0 }
+
 if ($env:BASE_MODEL) {
     $chatModel = $env:BASE_MODEL
 } elseif ($env:OLLAMA_DEFAULT_MODEL -and $env:OLLAMA_DEFAULT_MODEL -ne "snflwr.ai") {
-    # Legacy: env held a qwen3.5 tag directly
+    # Legacy: env held a raw base-model tag directly
     $chatModel = $env:OLLAMA_DEFAULT_MODEL
 } else {
-    # Detect RAM and recommend a base model
+    # Ask resource_detection for the backbone — the SAME ladder deploy.sh and
+    # start_snflwr.sh use. Until 2026-09-10 this file had its own hardcoded
+    # tiers from another model family and never selected gemma4 at all, so
+    # DIFFERENT tutor from every other platform: none of the persona, pedagogy
+    # or S9051B compliance work had been measured against what Windows shipped.
     $ramBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
     $ramGB = [math]::Round($ramBytes / 1GB)
 
-    $chatModel = if ($ramGB -ge 32) { "qwen3.5:35b" }
-                 elseif ($ramGB -ge 24) { "qwen3.5:27b" }
-                 elseif ($ramGB -ge 8)  { "qwen3.5:9b" }
-                 elseif ($ramGB -ge 6)  { "qwen3.5:4b" }
-                 elseif ($ramGB -ge 4)  { "qwen3.5:2b" }
-                 else                   { "qwen3.5:0.8b" }
+    $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }
+    $chatModel = (& $py -c @"
+import sys
+from resource_detection import recommend_base_model, unsupported_hardware_message
+ram, vram = float(sys.argv[1]), float(sys.argv[2])
+m = recommend_base_model(memory_gb=ram, vram_gb=vram)
+print(m if m else 'UNSUPPORTED ' + unsupported_hardware_message(ram, vram))
+"@ $ramGB $vramGB 2>$null)
 
-    Write-Host "Detected $ramGB GB RAM -> base model $chatModel" -ForegroundColor Green
+    if (-not $chatModel) {
+        Write-Host "Could not compute a backbone recommendation (python / resource_detection.py)." -ForegroundColor Red
+        exit 1
+    }
+    if ($chatModel -like "UNSUPPORTED*") {
+        # No safe smaller backbone exists to fall back to: gemma4:e2b was removed
+        # 2026-09-10 for measuring 9 points below e4b overall and 7 below on
+        # homework integrity. Refuse rather than quietly serve children from it.
+        Write-Host ($chatModel -replace '^UNSUPPORTED ', '') -ForegroundColor Red
+        Write-Host "Set BASE_MODEL=<tag> to override deliberately." -ForegroundColor Yellow
+        exit 1
+    }
+
+    Write-Host "Detected $ramGB GB RAM / $vramGB GB VRAM -> base model $chatModel" -ForegroundColor Green
 }
 
 # Export so the API server (and Open WebUI) talk to the snflwr.ai wrapper
@@ -205,6 +233,30 @@ if (Test-Path $modelfileSrc) {
     Write-Host "Building 'snflwr.ai' on top of '$chatModel'..." -ForegroundColor Green
     $tmpModelfile = [System.IO.Path]::GetTempFileName()
     (Get-Content $modelfileSrc) -replace '^FROM .*', "FROM $chatModel" | Set-Content $tmpModelfile
+
+    # gemma4 ships `PARAMETER num_gpu 0` in its OWN manifest and `FROM` inherits
+    # it, so without this the tutor runs on CPU even on a machine with a large
+    # idle GPU — roughly 20x slower, and silent. deploy.sh and start_snflwr.sh
+    # have overridden it since 2026-09-09; this path did NOT, so Windows users
+    # got a CPU-pinned tutor on a perfectly good card. Fixed 2026-09-10.
+    #
+    # COMPUTED, never hardcoded: forcing all layers onto a card too small for
+    # them means the runner will not start, and a slow tutor beats no tutor.
+    $pyBin = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }
+    $numGpu = (& $pyBin -c @"
+import sys
+from resource_detection import recommend_num_gpu
+print(recommend_num_gpu(sys.argv[1], vram_gb=float(sys.argv[2])))
+"@ $chatModel $vramGB 2>$null)
+    if ($numGpu) {
+        Add-Content -Path $tmpModelfile -Value "`nPARAMETER num_gpu $numGpu"
+        if ($numGpu -eq "0") {
+            Write-Host "Tutor will run on CPU (no GPU detected, or too little VRAM)." -ForegroundColor Yellow
+        } else {
+            Write-Host "Tutor will run on the GPU (overriding the inherited num_gpu 0)." -ForegroundColor Green
+        }
+    }
+
     ollama create snflwr.ai -f $tmpModelfile | Out-Null
     if ($LASTEXITCODE -eq 0) {
         Write-Host "'snflwr.ai' built successfully." -ForegroundColor Green

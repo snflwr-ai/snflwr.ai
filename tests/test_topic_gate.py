@@ -251,7 +251,7 @@ def test_prompt_treats_hard_academic_topics_as_in_scope():
 # Deterministic fast path
 #
 # Measured 2026-09-09 on this box: gemma4:e4b classifies correctly (algebra YES,
-# Romeo and Juliet YES, movie-night NO) but takes 4.9-20.6s. qwen3:0.6b answers
+# Romeo and Juliet YES, movie-night NO) but takes 4.9-20.6s. A 0.6b model answers
 # in ~0.3s but scored 0/8 — it emits `</think>` reasoning tokens and never a bare
 # verdict. Neither is usable as an unconditional blocking pre-check on a child's
 # turn, so obvious schoolwork resolves locally at zero latency and only ambiguous

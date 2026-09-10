@@ -368,7 +368,7 @@ class OllamaClient:
             messages: List of message dictionaries
             options: Optional model parameters
             stream: Whether to stream response
-            think: Enable/disable chain-of-thought thinking (Qwen3 models).
+            think: Enable/disable chain-of-thought thinking (backbones that support it).
                    Pass False to disable thinking mode and get faster responses.
 
         Returns:

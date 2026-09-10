@@ -112,7 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enterprise k8s hardening** — Ollama model `PersistentVolumeClaim` (no
   ~10–20GB re-pull on restart), daily backup CronJob, and load-balancer failover.
 - **Tutor backbone switched to `gemma4:e4b`** (won the June 2026 tutoring
-  bake-off); qwen3.5 tiers remain as the low-RAM fallback.
+  bake-off); low-RAM fallback tiers were later removed (2026-09-10).
 - **Guarded upgrade framework** — `./deploy.sh --upgrade <owui|ollama|model>`
   pulls, snapshots, smoke-tests, and auto-rolls-back per component. New scripts:
   `guarded_upgrade.sh`, `gh_latest_release.py`, `model_canary.py`,

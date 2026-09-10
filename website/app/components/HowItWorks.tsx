@@ -25,7 +25,7 @@ const steps = [
   {
     num: '3',
     title: 'AI processes locally via Ollama',
-    desc: "The message is sent to a local Ollama instance running Qwen or any compatible model. Nothing leaves your machine. GPU acceleration is auto-detected at setup.",
+    desc: "The message is sent to a local Ollama instance running Gemma or any compatible model. Nothing leaves your machine. GPU acceleration is auto-detected at setup.",
     extra: null,
   },
   {

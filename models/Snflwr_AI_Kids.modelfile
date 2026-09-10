@@ -564,9 +564,10 @@ Explain clearly. Let the student do the thinking.
 """
 
 # NO custom TEMPLATE: we deliberately let the base model use its OWN native
-# chat template. The previous qwen-specific `<|im_start|>` template here would
-# feed the wrong control tokens to a non-qwen backbone (e.g. gemma uses
-# `<start_of_turn>`), silently degrading output. Each base model's Modelfile
+# chat template. A template hardcoded for one model family (this file once
+# carried an `<|im_start|>`-style one) feeds the WRONG control tokens to a
+# backbone from another family — gemma4 uses `<start_of_turn>` — silently
+# degrading output. Each base model's Modelfile
 # ships the correct template/renderer/parser, and `FROM <base>` inherits them.
 # Validated by the 2026-06-17 backbone bake-off (evals/tutoring/backbone_bakeoff.py).
 
@@ -591,8 +592,9 @@ PARAMETER stop "User:"
 # NOTE: We previously listed "Thinking Process:" / "Thinking:" /
 # "Analyze the Request:" / "Let me think" / "<think>" here to suppress
 # reasoning leaks, but those stops are inert on Ollama 0.17+. Ollama
-# auto-attaches the base model's RENDERER + PARSER (e.g. `qwen3.5` on a
-# qwen base, the gemma parser on a gemma base) and the parser extracts
+# auto-attaches the base model's RENDERER + PARSER (verified 2026-09-10:
+# `ollama show snflwr.ai --modelfile` reports RENDERER/PARSER gemma4, and
+# gemma4:e4b declares a `thinking` capability) and the parser extracts
 # reasoning into a separate `thinking` field BEFORE the Modelfile stops
 # are evaluated — so a
 # "Thinking Process:" stop has nothing to match against in the `content`

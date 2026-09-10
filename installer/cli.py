@@ -78,7 +78,7 @@ def show_next_steps(config):
     if not check_ollama_installed():
         print("\nOllama Setup (required for AI):")
         print("   Visit https://ollama.com/download")
-        print("   Then run: ollama pull qwen3.5:9b\n")
+        print("   Then run: ollama pull gemma4:e4b\n")
 
     print("For Developers:")
     print("  API documentation: http://localhost:39150/docs")

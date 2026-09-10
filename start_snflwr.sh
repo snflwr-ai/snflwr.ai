@@ -283,8 +283,8 @@ else
     # gemma4:e4b (~10GB) is the default backbone as of 2026-06-17 — it won the
     # tutoring-quality bake-off outright (see evals/tutoring/backbone_bakeoff.py)
     # and is what deploy.sh, .env.example, and the modelfile use. Boxes too small
-    # for gemma fall back to the small qwen3.5 tiers (no tiny gemma exists, and a
-    # smaller model beats an OOM). Keep this aligned with deploy.sh.
+    # for gemma are UNSUPPORTED as of 2026-09-10 — there is no safe smaller
+    # backbone to fall back to. Keep this aligned with deploy.sh.
     #
     # OPT-IN high-end tier: a box with an ~18-20GB+ VRAM GPU can run gemma4:31b.
     # Kept OPT-IN (not default) for OPERATIONAL reasons (slower, dense ~19GB VRAM)
@@ -304,16 +304,38 @@ else
     # So 31b auto-enables only on a card with room for 31b + the full guard (≥~26GB,
     # or multi-GPU). On a single ≤24GB card, keep e4b (which leaves comfortable guard
     # headroom). Verified on the 23GB 3090 Ti: 31b + 8b guard do not co-reside.
+    # The ladder is NOT duplicated here any more. Until 2026-09-10 this file
+    # carried its own hardcoded tiers, including a different model family for
+    # small boxes, which had already drifted from deploy.sh and from
+    # resource_detection.GEMMA4_VARIANTS — three ladders, three answers for the
+    # same box. One source of truth now, unit-tested in
+    # tests/test_resource_detection.py.
     if [ "${SNFLWR_ENABLE_GEMMA_31B:-false}" = "true" ] && [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 26 ]; then
         CHAT_MODEL="gemma4:31b"
-    elif [ "$RAM_GB" -ge 16 ]; then
-        CHAT_MODEL="gemma4:e4b"
-    elif [ "$RAM_GB" -ge 8 ]; then
-        CHAT_MODEL="qwen3.5:4b"
-    elif [ "$RAM_GB" -ge 6 ]; then
-        CHAT_MODEL="qwen3.5:2b"
     else
-        CHAT_MODEL="qwen3.5:0.8b"
+        CHAT_MODEL=$(cd "$SCRIPT_DIR" 2>/dev/null && python3 - "$RAM_GB" "$VRAM_GB" <<'PYEOF' 2>/dev/null
+import sys
+from resource_detection import recommend_base_model, unsupported_hardware_message
+ram, vram = float(sys.argv[1] or 0), float(sys.argv[2] or 0)
+model = recommend_base_model(memory_gb=ram, vram_gb=vram)
+print(model if model else "UNSUPPORTED " + unsupported_hardware_message(ram, vram))
+PYEOF
+)
+        case "$CHAT_MODEL" in
+            UNSUPPORTED*)
+                # No safe smaller backbone exists to fall back to: gemma4:e2b was
+                # removed 2026-09-10 for measuring 9 points below e4b overall and
+                # 7 below on homework integrity. Refuse rather than quietly serve
+                # children from a tutor we measured as worse at its own job.
+                echo -e "${RED}${CHAT_MODEL#UNSUPPORTED }${NC}" >&2
+                echo -e "${YELLOW}Set BASE_MODEL=<tag> to override deliberately.${NC}" >&2
+                exit 1
+                ;;
+            "")
+                echo -e "${RED}Could not compute a backbone recommendation (python3 / resource_detection.py).${NC}" >&2
+                exit 1
+                ;;
+        esac
     fi
 
     if [ "$RAM_GB" -gt 0 ]; then
@@ -348,6 +370,16 @@ if [ -f "$MODELFILE_SRC" ]; then
     echo -e "${GREEN}Building 'snflwr.ai' on top of '${CHAT_MODEL}'...${NC}"
     TMP_MODELFILE="$(mktemp)"
     sed "s|^FROM .*|FROM ${CHAT_MODEL}|" "$MODELFILE_SRC" > "$TMP_MODELFILE"
+    # gemma4 ships `PARAMETER num_gpu 0` in its own manifest and FROM inherits
+    # it, so without this the tutor runs on CPU even with an idle GPU (~20x
+    # slower, silent). Computed, not hardcoded — see deploy.sh for why.
+    _VRAM_GB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+               | head -1 | awk '{printf "%.0f", $1/1024}')
+    _NUM_GPU=$(cd "$SCRIPT_DIR" 2>/dev/null; python3 -c "
+from resource_detection import recommend_num_gpu
+print(recommend_num_gpu('${CHAT_MODEL}', vram_gb=${_VRAM_GB:-0}))
+" 2>/dev/null)
+    [ -n "$_NUM_GPU" ] && printf '\nPARAMETER num_gpu %s\n' "$_NUM_GPU" >> "$TMP_MODELFILE"
     if ollama create snflwr.ai -f "$TMP_MODELFILE" >/dev/null 2>&1; then
         echo -e "${GREEN}'snflwr.ai' built successfully.${NC}"
     else

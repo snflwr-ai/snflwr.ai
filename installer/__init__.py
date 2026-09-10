@@ -43,6 +43,7 @@ from .firewall import (
 from .ollama_setup import (
     build_snflwr_wrapper,
     check_ollama_installed,
+    UnsupportedHardwareError,
     choose_model,
     ensure_ollama_running,
     install_ollama,
@@ -113,6 +114,7 @@ __all__ = [
     "ensure_ollama_running",
     "pull_default_model",
     "build_snflwr_wrapper",
+    "UnsupportedHardwareError",
     "choose_model",
     "setup_ollama",
     "setup_safety_model",

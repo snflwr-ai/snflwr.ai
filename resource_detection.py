@@ -145,21 +145,32 @@ def recommend_num_predict(memory_gb: float) -> int:
 #
 # gemma4 is the brain on EVERY deployment. Keeping one family everywhere means
 # the tutoring behaviour, the persona adherence and the S9051B compliance work
-# all transfer between machines; the previous ladder swapped to qwen3.5 below
-# 16GB, which quietly gave a small machine a different tutor that none of that
-# work had been measured against.
+# all transfer between machines; the previous ladder swapped to another model
+# family below 16GB, which quietly gave a small machine a different tutor that
+# none of that work had been measured against.
 #
 # gemma4 publishes no quant-suffixed tags — gemma4:e4b-q4_K_M and friends all
 # return 404 from the registry (checked 2026-09-09). It ships pre-quantized at
 # Q4_K_M and varies by SIZE VARIANT, so adapting to hardware means picking the
 # largest variant that fits rather than re-quantizing.
 #
-# Sizes are the real manifest totals, and they are NOT ordered by name: e2b and
-# e4b are MatFormer variants while 12b is dense, so 12b is smaller than e4b.
+# Each entry is (tag, resident_vram_gb, ram_footprint_gb). TWO sizes, because
+# what has to fit differs by where the model runs, and for the MatFormer
+# variants the two differ ~3x. Measured 2026-09-10 via /api/ps size_vram and
+# `ollama ps`, NOT taken from the manifest: e4b's manifest total is 9.6 GB but
+# only 3.3 GB is resident on a GPU (active params; the rest stays off-card).
+# Sizing a card from the manifest told a 12 GB box it could not run e4b, which
+# it runs comfortably. Ordered by PREFERENCE, not size — first that fits wins.
+#
+# gemma4:e2b was REMOVED 2026-09-10. Measured over 3 repeats it scored 70.0
+# overall vs e4b's 79.0 and 74.9 vs 81.9 on homework integrity — a gap ~4x the
+# harness's own run-to-run noise. It was the silent floor every small box fell
+# back to, so the product's worst-case deployment was its weakest at withholding
+# homework answers. A children's tutor that cannot tutor safely should not ship;
+# boxes below the floor now get an explicit unsupported-hardware error.
 GEMMA4_VARIANTS = [
-    ("gemma4:e4b", 9.6),  # the variant the tutoring + compliance evals ran on
-    ("gemma4:12b", 7.6),  # dense; smaller on disk than e4b despite the name
-    ("gemma4:e2b", 7.2),  # floor — always selectable so a tiny box still tutors
+    ("gemma4:e4b", 3.3, 9.5),  # best measured quality AND smallest on a GPU
+    ("gemma4:12b", 7.9, 7.6),  # only earns a slot on the CPU path (13.6-15.5 GB RAM)
 ]
 
 # Headroom that must remain free after the tutor is loaded:
@@ -170,25 +181,101 @@ GEMMA4_VARIANTS = [
 # "what is photosynthesis" were blocked and their parents alerted.
 DEFAULT_MODEL_RESERVE_GB = 6.0
 
+# Free VRAM that must remain after the tutor's weights are resident. Smaller
+# than DEFAULT_MODEL_RESERVE_GB because the safety classifier is CPU-pinned by
+# design (see the llama-guard3-cpu note in the GPU watchdog); what is reserved
+# here is the KV cache at the context sizes this product uses, plus runtime.
+GPU_HEADROOM_GB = 2.5
+
 
 def recommend_base_model(
     memory_gb: float,
     vram_gb: float = 0.0,
-    reserve_gb: float = DEFAULT_MODEL_RESERVE_GB,
+    reserve_gb: float | None = None,
 ) -> str:
-    """Largest gemma4 variant that fits the hardware, with room for the guard.
+    """Best gemma4 variant that fits the hardware, or None if none does.
 
     Selects on VRAM when a usable GPU is present, because that is where the
-    model will actually live; otherwise on RAM. Never returns None — the
-    smallest variant is the floor, so a constrained machine gets a working
-    tutor rather than no tutor.
+    model will actually live; otherwise on RAM, and compares against the size
+    that matters for that path (resident VRAM vs RAM footprint).
+
+    RETURNS None WHEN NOTHING FITS. It used to return the smallest variant as a
+    floor, so an under-spec box silently got a weaker tutor; since e2b measured
+    9 points below e4b and 7 below on homework integrity, that floor was
+    shipping a tutor we had measured as unsafe at its own job. Callers MUST
+    handle None by refusing to install and telling the operator the requirement
+    (see `minimum_requirements_gb`), never by substituting a smaller model.
+
+    The reserve DIFFERS BY BUDGET, because the safety classifier is CPU-pinned
+    (`llama-guard3-cpu`, `PARAMETER num_gpu 0`). Its ~4.9 GB comes out of RAM,
+    never VRAM. Charging the VRAM budget for a classifier that is not on the
+    card under-selects the backbone: a 14 GB card was handed `12b` when `e4b`
+    fits, and a 12 GB card `e2b` when `12b` fits. Passing `reserve_gb`
+    explicitly still overrides both. (2026-09-10)
     """
-    budget = vram_gb if vram_gb and vram_gb > 0 else memory_gb
+    on_gpu = bool(vram_gb and vram_gb > 0)
+    budget = vram_gb if on_gpu else memory_gb
+    if reserve_gb is None:
+        reserve_gb = GPU_HEADROOM_GB if on_gpu else DEFAULT_MODEL_RESERVE_GB
     usable = budget - reserve_gb
-    for tag, size in GEMMA4_VARIANTS:
-        if size <= usable:
+    for tag, vram_size, ram_size in GEMMA4_VARIANTS:
+        if (vram_size if on_gpu else ram_size) <= usable:
             return tag
-    return GEMMA4_VARIANTS[-1][0]
+    return None
+
+
+def minimum_requirements_gb() -> tuple[float, float]:
+    """(min VRAM, min RAM) for ANY supported backbone, incl. the reserves.
+
+    Single source of truth for the unsupported-hardware message, so deploy.sh,
+    start_snflwr.sh and the installer cannot drift from the ladder the way the
+    five hardcoded ladders did before 2026-09-10.
+    """
+    min_vram = min(v for _tag, v, _r in GEMMA4_VARIANTS) + GPU_HEADROOM_GB
+    min_ram = min(r for _tag, _v, r in GEMMA4_VARIANTS) + DEFAULT_MODEL_RESERVE_GB
+    return round(min_vram, 1), round(min_ram, 1)
+
+
+def unsupported_hardware_message(memory_gb: float, vram_gb: float = 0.0) -> str:
+    """One line explaining why this box cannot run a supported backbone."""
+    min_vram, min_ram = minimum_requirements_gb()
+    return (
+        f"unsupported hardware: detected {memory_gb:.1f}GB RAM / {vram_gb:.1f}GB VRAM; "
+        f"snflwr.ai needs at least {min_vram}GB VRAM (GPU) or {min_ram}GB RAM (CPU). "
+        "Smaller backbones were removed because they measured materially worse at "
+        "withholding homework answers, which is not something to ship quietly to children."
+    )
+
+
+# Layers to offload when the GPU is usable. 99 is the conventional "all of
+# them" sentinel — gemma4:e4b has far fewer.
+_ALL_LAYERS = 99
+
+def recommend_num_gpu(
+    model_tag: str,
+    vram_gb: float = 0.0,
+    headroom_gb: float = GPU_HEADROOM_GB,
+) -> int:
+    """Layers to offload to the GPU for `model_tag`, or 0 to stay on CPU.
+
+    Exists because gemma4:e4b ships `PARAMETER num_gpu 0` in its own manifest.
+    Anything built `FROM gemma4:e4b` inherits that pin silently, so the tutor
+    ran entirely on CPU on a box with a free 23GB card until 2026-09-09 — about
+    20x slower, and invisible unless you happen to read `ollama ps`.
+
+    Returns 0 rather than guessing whenever the model may not fit: an unknown
+    tag, no GPU, or a card without room for the weights plus `headroom_gb`.
+    The bad outcome being avoided is not slowness, it is a runner that fails to
+    start at all, which on a small-GPU machine would mean no tutor rather than a
+    slow one.
+    """
+    if not vram_gb or vram_gb <= 0:
+        return 0
+    sizes = {tag: vram for tag, vram, _ram in GEMMA4_VARIANTS}
+    size = sizes.get(model_tag)
+    if size is None:
+        return 0
+    return _ALL_LAYERS if vram_gb >= size + headroom_gb else 0
 
 
 def recommend_num_ctx(memory_gb: float) -> int:

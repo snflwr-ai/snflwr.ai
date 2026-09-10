@@ -1525,7 +1525,7 @@ class TestTagsModelVisibility:
     _ALL_MODELS = {
         "models": [
             {"name": "snflwr.ai:latest"},
-            {"name": "snflwr.ai:qwen-rollback"},
+            {"name": "snflwr.ai:previous-rollback"},
             {"name": "snflwr-bk-gemma4-e4b:latest"},
             {"name": "gemma4:e4b"},
         ]
@@ -1577,7 +1577,7 @@ class TestTagsModelVisibility:
         names = {m["name"] for m in resp.json()["models"]}
         assert names == {
             "snflwr.ai:latest",
-            "snflwr.ai:qwen-rollback",
+            "snflwr.ai:previous-rollback",
             "snflwr-bk-gemma4-e4b:latest",
             "gemma4:e4b",
         }
@@ -1602,7 +1602,7 @@ class TestTagsModelVisibility:
                 "models": [
                     {"name": "snflwr.ai"},
                     {"name": "snflwr.ai:latest"},
-                    {"name": "snflwr.ai:qwen-rollback"},
+                    {"name": "snflwr.ai:previous-rollback"},
                     {"name": "gemma4:e4b"},
                 ]
             }

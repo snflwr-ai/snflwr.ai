@@ -8,7 +8,7 @@ running the *same* dataset, scorers, and judge across several candidate models
 and laying the results side by side.
 
 It exists to settle the model-family question raised by the June 2026 research:
-the incumbent `qwen3.5:9b` over-writes for younger kids and leaks homework
+the pre-2026-06 incumbent over-wrote for younger kids and leaked homework
 answers, and leaderboards don't predict tutoring quality (problem-solving vs.
 pedagogy correlate only ~0.42). So we don't switch on faith — we bake off the
 incumbent against the upgrade candidates and let the age-band / homework-
@@ -16,12 +16,12 @@ integrity / off-topic scores decide.
 
 Usage:
   # Default bake-off: incumbent vs the two upgrade candidates, with the judge.
-  python -m evals.tutoring.bakeoff --judge qwen3.5:9b
+  python -m evals.tutoring.bakeoff --judge gemma4:e4b
 
   # Custom roster + baseline:
   python -m evals.tutoring.bakeoff \
-      --models qwen3.5:9b,qwen3.5:35b-a3b,gemma4:e4b \
-      --baseline qwen3.5:9b --judge qwen3.5:9b
+      --models gemma4:e4b,gemma4:12b \
+      --baseline gemma4:e4b --judge gemma4:e4b
 """
 
 import argparse
@@ -37,7 +37,8 @@ from evals.tutoring import judge as judge_mod
 
 # The default roster: incumbent first (it is also the default baseline), then
 # the two upgrade candidates surfaced by the model research.
-DEFAULT_MODELS = ["qwen3.5:9b", "qwen3.5:35b-a3b", "gemma4:e4b"]
+# gemma4 only as of 2026-09-10 — the product ships no other family.
+DEFAULT_MODELS = ["gemma4:e4b", "gemma4:12b"]
 
 # A challenger must beat the baseline by at least this many composite points to
 # count as a real, ship-worthy improvement rather than judge noise.

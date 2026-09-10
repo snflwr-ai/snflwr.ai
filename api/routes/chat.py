@@ -515,7 +515,7 @@ async def send_chat_message(
                 detail=f"AI model unavailable: {sanitize_log_value(err_msg)}",
             )
 
-        # Strip thinking tokens — qwen3.5 embeds <think>...</think> blocks in
+        # Strip thinking tokens — some backbones embed <think>...</think> blocks in
         # message.content. The Snflwr API returns a non-streaming response so
         # Open WebUI cannot collapse them into a "Thought for X seconds" section;
         # they render as italic inline text instead. Remove them here.

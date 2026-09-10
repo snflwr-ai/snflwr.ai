@@ -42,9 +42,8 @@ This creates:
 ```bash
 # Choose a base model based on your hardware (RAM):
 #  16 GB+ → gemma4:e4b       (default — recommended backbone)
-#   8 GB  → qwen3.5:4b       (fallback — gemma too large)
-#   6 GB  → qwen3.5:2b       (fallback — older laptops)
-#   2 GB  → qwen3.5:0.8b     (fallback — low-resource)
+#  14 GB  → gemma4:12b      (only when e4b will not fit)
+#  <14 GB  → UNSUPPORTED     (install refuses; no safe smaller backbone)
 ollama pull gemma4:e4b
 ```
 

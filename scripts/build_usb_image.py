@@ -340,10 +340,22 @@ REM ==========================================
 echo Detecting hardware...
 if "%OLLAMA_DEFAULT_MODEL%"=="" (
     for /f %%G in ('powershell -NoProfile -Command "[math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)"') do set "RAM_GB=%%G"
+    :: gemma4 only. The smaller tiers were removed 2026-09-10: they were a
+    :: different model family, so a small machine ran a DIFFERENT tutor that none
+    :: of the persona / pedagogy / S9051B compliance work was measured against.
+    :: There is no safe smaller in-family fallback either (gemma4:e2b measured 9
+    :: points below e4b overall, 7 below on homework integrity), so an under-spec
+    :: machine is told, not quietly downgraded.
     if !RAM_GB! GEQ 16 ( set OLLAMA_DEFAULT_MODEL=gemma4:e4b
-    ) else if !RAM_GB! GEQ 8 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:4b
-    ) else if !RAM_GB! GEQ 6 ( set OLLAMA_DEFAULT_MODEL=qwen3.5:2b
-    ) else ( set OLLAMA_DEFAULT_MODEL=qwen3.5:0.8b )
+    ) else if !RAM_GB! GEQ 14 ( set OLLAMA_DEFAULT_MODEL=gemma4:12b
+    ) else (
+        echo.
+        echo   This computer has !RAM_GB! GB RAM. snflwr.ai needs at least 14 GB.
+        echo   Smaller AI models were removed because they were measurably worse
+        echo   at refusing to just hand over homework answers.
+        echo.
+        exit /b 1
+    )
     echo Detected !RAM_GB! GB RAM -- using !OLLAMA_DEFAULT_MODEL!
 )
 echo Checking AI model...
@@ -549,10 +561,18 @@ if [ -z "$OLLAMA_DEFAULT_MODEL" ]; then
     else
         ram_gb=8
     fi
+    # gemma4 only — see the .bat note above. No safe smaller fallback exists,
+    # so an under-spec machine is told rather than quietly downgraded.
     if [ "$ram_gb" -ge 16 ]; then OLLAMA_DEFAULT_MODEL="gemma4:e4b"
-    elif [ "$ram_gb" -ge 8 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:4b"
-    elif [ "$ram_gb" -ge 6 ]; then OLLAMA_DEFAULT_MODEL="qwen3.5:2b"
-    else OLLAMA_DEFAULT_MODEL="qwen3.5:0.8b"; fi
+    elif [ "$ram_gb" -ge 14 ]; then OLLAMA_DEFAULT_MODEL="gemma4:12b"
+    else
+        echo ""
+        echo "  This computer has ${ram_gb} GB RAM. snflwr.ai needs at least 14 GB."
+        echo "  Smaller AI models were removed because they were measurably worse"
+        echo "  at refusing to just hand over homework answers."
+        echo ""
+        exit 1
+    fi
     echo "  Detected ${ram_gb} GB RAM -> using ${OLLAMA_DEFAULT_MODEL}"
 fi
 export OLLAMA_DEFAULT_MODEL

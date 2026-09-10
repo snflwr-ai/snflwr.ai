@@ -234,7 +234,7 @@ def block_message(age: Optional[int]) -> str:
 # Deterministic fast path
 #
 # Measured on this box 2026-09-09: gemma4:e4b classifies correctly (algebra YES,
-# Romeo and Juliet YES, movie-night NO) but takes 4.9-20.6s per call. qwen3:0.6b
+# Romeo and Juliet YES, movie-night NO) but takes 4.9-20.6s per call. A 0.6b model
 # answers in ~0.3s and scored 0/8 — it emits `</think>` reasoning tokens rather
 # than a bare verdict, and clamping num_predict truncates it before any answer.
 # Neither is viable as an unconditional blocking pre-check on a child's turn:

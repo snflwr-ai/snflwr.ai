@@ -191,7 +191,7 @@ def pull_default_model(model="gemma4:e4b"):
             ["ollama", "list"], capture_output=True, text=True, check=True
         )
         # Match the exact model name at the start of a line to avoid
-        # false positives like "qwen3.5:9b-instruct" matching "qwen3.5:9b"
+        # false positives like "gemma4:e4b-instruct" matching "gemma4:e4b"
         for line in result.stdout.splitlines():
             # ollama list output: "NAME  ID  SIZE  MODIFIED"
             line_model = line.split()[0] if line.strip() else ""
@@ -210,6 +210,20 @@ def pull_default_model(model="gemma4:e4b"):
         print_error(f"Failed to pull model '{model}'")
         print_info(f"You can retry later with: ollama pull {model}")
         return False
+
+
+def _detect_vram_gb() -> float:
+    """Total VRAM in GB via nvidia-smi, or 0.0 when there is no usable GPU."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return int(out.stdout.strip().splitlines()[0]) / 1024.0
+    except Exception:  # noqa: BLE001 - no GPU is a normal outcome, not an error
+        pass
+    return 0.0
 
 
 def build_snflwr_wrapper(base_model: str) -> bool:
@@ -249,6 +263,28 @@ def build_snflwr_wrapper(base_model: str) -> bool:
             rewritten_lines.append(line)
     rewritten = "\n".join(rewritten_lines) + "\n"
 
+    # gemma4 ships `PARAMETER num_gpu 0` in its OWN manifest and `FROM` inherits
+    # it, so without this the tutor runs on CPU even on a machine with a large
+    # idle GPU — roughly 20x slower, and completely silent. deploy.sh and
+    # start_snflwr.sh have overridden it since 2026-09-09; this path did NOT,
+    # so anyone installing via the Python installer got a CPU-pinned tutor on a
+    # perfectly good card. Fixed 2026-09-10.
+    #
+    # COMPUTED, never hardcoded: forcing all layers onto a card too small for
+    # them means the runner will not start, and a slow tutor beats no tutor.
+    # recommend_num_gpu() returns 0 whenever the fit is not comfortable.
+    try:
+        from resource_detection import recommend_num_gpu  # noqa: PLC0415
+
+        num_gpu = recommend_num_gpu(base_model, vram_gb=_detect_vram_gb())
+        rewritten += f"\nPARAMETER num_gpu {num_gpu}\n"
+        if num_gpu:
+            print_info("Tutor will run on the GPU (overriding the inherited num_gpu 0)")
+        else:
+            print_info("Tutor will run on CPU (no GPU detected, or too little VRAM)")
+    except Exception as exc:  # noqa: BLE001 - placement is an optimisation
+        print_warning(f"Could not compute GPU placement ({exc}); leaving the base default")
+
     import tempfile
 
     with tempfile.NamedTemporaryFile(
@@ -278,39 +314,36 @@ def build_snflwr_wrapper(base_model: str) -> bool:
             pass
 
 
+class UnsupportedHardwareError(RuntimeError):
+    """Raised when no supported backbone fits this machine.
+
+    Deliberately fatal rather than a downgrade: see choose_model.
+    """
+
+
 def choose_model(total_ram_gb: Optional[float] = None) -> str:
     """Choose a base model to build the snflwr.ai wrapper on, based on RAM.
 
-    Returns a base tag to pull. The default backbone is gemma4:e4b (won the
-    2026-06-17 tutoring-quality backbone bake-off; see
-    evals/tutoring/backbone_bakeoff.py); boxes too small for it fall back to
-    the small qwen3.5 tiers. The user-facing chat model is always 'snflwr.ai',
-    built as a wrapper around this base.
-    """
-    # Model options: tag, param count, approximate download size, minimum RAM.
-    # Ascending min_ram — the loop keeps the largest the box can run, so
-    # gemma4:e4b is the pick on any box with >= 16 GB.
-    models = [
-        ("qwen3.5:0.8b", "0.8B", "~0.5 GB download", 2),
-        ("qwen3.5:2b", "2B", "~1.3 GB download", 6),
-        ("qwen3.5:4b", "4B", "~2.5 GB download", 8),
-        ("gemma4:e4b", "E4B (MoE)", "~10 GB download", 16),
-    ]
+    Returns a base tag to pull, or raises UnsupportedHardwareError when the box
+    cannot run any supported backbone.
 
-    # Pick recommended model based on detected RAM
-    if total_ram_gb is not None:
-        recommended = "qwen3.5:0.8b"  # fallback
-        for tag, _, _, min_ram in models:
-            if total_ram_gb >= min_ram:
-                recommended = tag
-    else:
-        recommended = (
-            "gemma4:e4b"  # assumes a real (>=16 GB) box when RAM detection fails
-        )
+    Delegates to resource_detection.recommend_base_model so the installer, the
+    two shell entry points and the two Windows entry points all read ONE ladder.
+    Until 2026-09-10 each had its own, and they disagreed: this file dropped to
+    a different model family below 16 GB, which meant a small box installed a
+    DIFFERENT tutor that none of the persona, pedagogy or S9051B compliance work
+    had been measured against.
+
+    Checked BEFORE the pull on purpose: refusing after an ~8 GB download is a
+    worse experience than refusing up front.
+
+    The user-facing chat model is always 'snflwr.ai', a wrapper around this base.
+    """
 
     # Allow env var override. Accept either BASE_MODEL or a legacy
-    # OLLAMA_DEFAULT_MODEL pointing at a qwen3.5 tag (we ignore the new
-    # 'snflwr.ai' value here — that's the wrapper, not a base).
+    # OLLAMA_DEFAULT_MODEL pointing at a raw base tag (we ignore the new
+    # 'snflwr.ai' value here — that's the wrapper, not a base). An explicit
+    # override wins even on under-spec hardware: the operator asked for it.
     env_base = os.getenv("BASE_MODEL")
     if env_base:
         print_info(f"Using base model from BASE_MODEL: {env_base}")
@@ -320,25 +353,51 @@ def choose_model(total_ram_gb: Optional[float] = None) -> str:
         print_info(f"Using base model from OLLAMA_DEFAULT_MODEL: {env_model}")
         return env_model
 
+    from resource_detection import (  # noqa: PLC0415 - keep installer import-light
+        DEFAULT_MODEL_RESERVE_GB,
+        GEMMA4_VARIANTS,
+        minimum_requirements_gb,
+        recommend_base_model,
+        unsupported_hardware_message,
+    )
+
+    ram = total_ram_gb if total_ram_gb is not None else 0.0
+    recommended = recommend_base_model(memory_gb=ram, vram_gb=0.0) if ram else "gemma4:e4b"
+
+    if recommended is None:
+        # APPROACH C: refuse BEFORE the multi-GB pull, not after. There is no
+        # safe smaller backbone left to offer — gemma4:e2b was removed
+        # 2026-09-10 (70.0 vs 79.0 overall, 74.9 vs 81.9 on homework integrity
+        # over 3 repeats). Offering a menu here would just be offering the
+        # operator a tutor we already measured as worse at withholding homework
+        # answers, which is not a choice worth presenting for a children's app.
+        raise UnsupportedHardwareError(unsupported_hardware_message(ram, 0.0))
+
+    # RAM requirement per variant comes from the same table the ladder uses, so
+    # the menu can never advertise a threshold the selector disagrees with.
+    models = [
+        (tag, ram_gb + DEFAULT_MODEL_RESERVE_GB)
+        for tag, _vram_gb, ram_gb in GEMMA4_VARIANTS
+    ]
+
+    min_vram, min_ram = minimum_requirements_gb()
     print_info(
         "Choose a base model (gemma4:e4b is the recommended backbone;\n"
         "snflwr.ai is built as a wrapper on top of your choice):\n"
     )
 
-    for i, (tag, params, size, min_ram) in enumerate(models, 1):
-        rec = " ← recommended" if tag == recommended else ""
-        ram_note = f"needs ~{min_ram} GB RAM"
-        print(f"  {i}. {tag:<14} {params:>4} params   {size:<18} ({ram_note}){rec}")
+    for i, (tag, min_ram_for_tag) in enumerate(models, 1):
+        rec = " \u2190 recommended" if tag == recommended else ""
+        print(f"  {i}. {tag:<14} needs ~{min_ram_for_tag:.0f} GB RAM{rec}")
 
-    print(f"\n  s. Skip model download for now")
+    print("\n  s. Skip model download for now")
 
     if total_ram_gb is not None:
-        print(f"\n  Your system: {total_ram_gb:.0f} GB RAM")
+        print(f"\n  Your system: {total_ram_gb:.0f} GB RAM (minimum supported: {min_ram} GB)")
 
-    # Find the index of the recommended model (1-based)
     rec_idx = next(
-        (i for i, (tag, *_) in enumerate(models, 1) if tag == recommended),
-        4,  # fallback index if recommended not found
+        (i for i, (tag, _m) in enumerate(models, 1) if tag == recommended),
+        1,
     )
 
     while True:
@@ -350,11 +409,10 @@ def choose_model(total_ram_gb: Optional[float] = None) -> str:
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(models):
-                tag = models[idx][0]
-                min_ram = models[idx][3]
-                if total_ram_gb is not None and total_ram_gb < min_ram:
+                tag, min_ram_for_tag = models[idx]
+                if total_ram_gb is not None and total_ram_gb < min_ram_for_tag:
                     print_warning(
-                        f"Your system has {total_ram_gb:.0f} GB RAM but {tag} needs ~{min_ram} GB."
+                        f"Your system has {total_ram_gb:.0f} GB RAM but {tag} needs ~{min_ram_for_tag:.0f} GB."
                     )
                     if not ask_yes_no("Continue anyway?", default=False):
                         continue
@@ -409,8 +467,17 @@ This ensures all data stays on your device - nothing is sent to the cloud.
             print_success("Ollama setup complete")
             return existing_model
 
-    # Step 4: Choose and pull a base model
-    base_model = choose_model(total_ram_gb)
+    # Step 4: Choose and pull a base model.
+    # UnsupportedHardwareError is fatal by design (approach C, 2026-09-10): it
+    # fires BEFORE the multi-GB pull, and there is no safe smaller backbone to
+    # substitute. Catching it to install something smaller would reinstate
+    # exactly the silent downgrade we removed.
+    try:
+        base_model = choose_model(total_ram_gb)
+    except UnsupportedHardwareError as exc:
+        print_error(str(exc))
+        print_info("Set BASE_MODEL=<tag> to override deliberately.")
+        raise
     if not base_model:
         if existing_model:
             print_info(f"Keeping existing model: {existing_model}")
@@ -427,7 +494,7 @@ This ensures all data stays on your device - nothing is sent to the cloud.
         return base_model  # fall back to base so .env records something usable
 
     # Step 5: Build the snflwr.ai wrapper. This is what kids see in the
-    # Open WebUI dropdown — never the raw qwen3.5 tag.
+    # Open WebUI dropdown — never the raw base-model tag.
     if build_snflwr_wrapper(base_model):
         print_success("Ollama setup complete")
         return "snflwr.ai"

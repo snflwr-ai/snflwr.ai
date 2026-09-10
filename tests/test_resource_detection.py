@@ -794,8 +794,13 @@ def test_supported_gpu_hardware_still_gets_full_context():
 def test_kv_constant_is_the_measured_one():
     """Pinned so a future edit re-measures rather than guesses.
 
-    Rounded UP from the measured 0.0086: under-estimating means the runner
+    Rounded UP from the measured 0.0084: under-estimating means the runner
     fails to start, which is worse than a slightly smaller window.
+
+    Re-measured 2026-09-10 across three models (same model, two contexts, via
+    /api/ps): gemma4:e4b 0.0084, qwen3.8 0.0046, granite-worker 0.0068 GB/1k.
+    The tutor is the most expensive per token, so 0.010 is a safe ceiling for
+    the current ladder.
     """
     assert KV_GB_PER_1K_TOKENS == 0.010
 

@@ -346,6 +346,92 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\banorexia\b", "self-harm term (EN)"),
         (r"\bbulimia\b", "self-harm term (EN)"),
         (r"\bpurging\b", "self-harm term (EN)"),
+        # -- Ideation that names no method and no forbidden verb ------------
+        #
+        # Added 2026-09-09 after a sweep with the classifier off found the local
+        # rules catching 6 of 39 crisis phrasings. The misses were not exotic;
+        # they were the commonest register a distressed child actually uses,
+        # which contains none of the words above. All of these reached the tutor
+        # as ordinary questions.
+        #
+        # Each is anchored tightly enough that its benign neighbour does NOT
+        # match — see tests/test_self_harm_coverage.py, which carries two or
+        # more near-miss school sentences for every pattern here.
+        (r"\bwish\s*i\s*(was|were)\s*dead\b", "self-harm term (EN)"),
+        (
+            r"\bwish\s*i\s*(had\s*)?never\s*(been\s*born|existed)\b",
+            "self-harm term (EN)",
+        ),
+        (r"\bwish\s*i\s*(could|would)\s*(just\s*)?disappear\b", "self-harm term (EN)"),
+        (r"\bdon'?t\s*want\s*to\s*be\s*alive\b", "self-harm term (EN)"),
+        # "...to live" only when nothing follows that makes it a place or a
+        # manner: "I don't want to live in a big city" is a child's opinion.
+        (
+            r"\bdon'?t\s*want\s*to\s*live\b(?!\s*(in|on|at|with|near|by|like|there|here|next))",
+            "self-harm term (EN)",
+        ),
+        (r"\bnothing\s*to\s*live\s*for\b", "self-harm term (EN)"),
+        (r"\bno\s*point\s*(in|to)\s*(living|life)\b", "self-harm term (EN)"),
+        (
+            r"\b(isn\'?t|ain\'?t|not|never|aint)\s*worth\s*living\b",
+            "self-harm term (EN)",
+        ),
+        (
+            r"\b(nobody|no\s*one|noone)\s*would\s*(miss|notice)\s*me\b",
+            "self-harm term (EN)",
+        ),
+        # The self-removal clause is required. Without it this fires on
+        # "everyone would be happier if recess was longer".
+        (
+            r"\b(everyone|everybody|they|my\s*family|the\s*world)\s*(would|'d)\s*be\s*(happier|better\s*off|fine|ok(ay)?)\b[^.?!]{0,40}?(without\s*me|if\s*i\s*(wasn'?t|weren'?t|was\s*not|were\s*not)\s*(here|around|alive|born))",
+            "self-harm term (EN)",
+        ),
+        (r"\bbetter\s*off\s*without\s*me\b", "self-harm term (EN)"),
+        # "my/everyone's burden", never "the tax burden on families".
+        (
+            r"\bburden\s*(to|on)\s*(my|everyone|everybody|them|you)\b",
+            "self-harm term (EN)",
+        ),
+        # -- Self-injury beyond cutting -------------------------------------
+        # Present/continuous only: "I burned myself on the stove" is an accident
+        # report and a perfectly good question to ask a tutor.
+        (r"\bburn(s|ing)?\s*myself\b", "self-harm term (EN)"),
+        (r"\bscratch\w*\s*myself\s*(un)?til\s*(it\s*)?bleed", "self-harm term (EN)"),
+        (r"\bhurt\s*my\s*(own\s*)?body\b", "self-harm term (EN)"),
+        # Bare "cutting" needs the object excluded — children cut paper, class,
+        # hair and coupons far more often than themselves.
+        (
+            r"\b(been|keep|kept|start(ed)?)\s*cutting\b(?!\s*(?:paper|class|the|a|an|it|them|out|up|down|open|through|my\s*hair|corners|coupons|onions|construction)\b)",
+            "self-harm term (EN)",
+        ),
+        # -- Disordered eating as behaviour, not vocabulary -----------------
+        (
+            r"\bmak(e|ing)\s*myself\s*(throw\s*up|vomit|sick|puke)\b",
+            "self-harm term (EN)",
+        ),
+        (
+            r"\b(haven'?t|have\s*not|hasn'?t)\s*eaten\s*(in|for)\s*\w+\s*days?\b",
+            "self-harm term (EN)",
+        ),
+        (
+            r"\bstop\s*eating\b[^.?!]{0,40}?\bwithout\b[^.?!]{0,30}?\b(notic|know|find|see)",
+            "self-harm term (EN)",
+        ),
+        # -- Method-seeking. These were blocked as VIOLENCE, so the child got a
+        # refusal with no helpline and the parent alert named the wrong thing.
+        # SELF_HARM now takes precedence (see safety/patterns/compiled.py).
+        (
+            r"\b(easiest|best|fastest|quickest|painless|least\s*painful)\s*way\s*to\s*die\b",
+            "self-harm term (EN)",
+        ),
+        # Deliberately narrow: bare "kill themselves" is how a class discusses
+        # Romeo and Juliet. The asking frame is what distinguishes a child
+        # seeking a method from a child doing their English homework.
+        (
+            r"\bhow\s*(do|did|can|could|would)\s*(you|people|someone|somebody|kids|teens|i)\s*kill\s*(them|him|her|your|my)sel(f|ves)\b",
+            "self-harm term (EN)",
+        ),
+        (r"\bhow\s*many\s*pills\b", "self-harm term (EN)"),
         # -- Spanish --
         (r"\bsuicid(io|a|arme|arse)\b", "self-harm term (ES)"),
         (r"\bmatarme\b", "self-harm term (ES)"),
@@ -366,7 +452,11 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bquemar(me|se)\b", "self-harm term (ES)"),
         (r"\b(me\s*)?quiero\s*quemar(me)?\b", "self-harm term (ES)"),
         (r"\benvenenar(me|se)\b", "self-harm term (ES)"),
-        (r"\bhacerme\s*da[ñn]o\b", "self-harm term (ES)"),
+        # Clitic placement moves: "quiero hacerme dano" but also "me quiero
+        # hacer dano". The old pattern required the clitic to be attached to
+        # the infinitive, so the second, equally common form was missed.
+        (r"\bhacer(me|te|se|nos)?\s*da[ñn]o\b", "self-harm term (ES)"),
+        (r"\bdesaparecer\s*para\s*siempre\b", "self-harm term (ES)"),
         (r"\blastimarme\b", "self-harm term (ES)"),
         (r"\bme\s*quiero\s*morir\b", "self-harm term (ES)"),
         (r"\bno\s*sirvo\s*para\s*nada\b", "self-harm term (ES)"),

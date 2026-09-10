@@ -635,6 +635,37 @@ class _PatternMatcher:
                 folded_lower = _normalize_text(original)[0].lower()
             except Exception:
                 folded_lower = original_lower
+            # 2a-0. SELF_HARM RUNS FIRST.
+            #
+            # The prohibited-keyword loop below returns on its first hit, and
+            # "kill" is one of its keywords — so "how do people kill themselves"
+            # was blocked as VIOLENCE before any self-harm pattern was ever
+            # consulted. Blocking was right; the category was not. The child got
+            # a generic refusal with no helpline, and the incident escalated to
+            # the parent as violence.
+            #
+            # Making SELF_HARM the first thing checked in the whole pattern stage
+            # is the same rule stated in safety/patterns/compiled.py: a message
+            # that reads as both a crisis and something else is a crisis, because
+            # that is the reading whose error a child survives.
+            #
+            # No educational exemption is applied here, and it is not needed —
+            # these patterns are written narrowly enough to leave schoolwork
+            # alone (bare "kill themselves" is NOT one of them, precisely so a
+            # class can discuss Romeo and Juliet). tests/test_self_harm_
+            # coverage.py holds the near-miss sentences that keep it that way.
+            sh_pre_norm = re.sub(r"[_\-.]", " ", original_lower)
+            for regex, desc in _SHARED_COMPILED.get("SELF_HARM", ()):
+                if regex.search(original_lower) or regex.search(sh_pre_norm):
+                    return _block(
+                        Severity.MAJOR,
+                        Category.SELF_HARM,
+                        f"Shared pattern matched: {desc}",
+                        stage="pattern",
+                        keywords=(desc,),
+                        deferrable=False,
+                    )
+
             for pat, kw, category in self._prohibited_patterns:
                 matched = False
                 matched_plain = False

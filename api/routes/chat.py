@@ -18,6 +18,7 @@ from config import system_config
 
 _resources = _get_resource_profile()
 from api.middleware.auth import VerifySessionAccess, audit_log, get_current_session
+from core import gpu_placement
 from core.authentication import AuthSession, auth_manager
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_manager import ProfileManager
@@ -497,11 +498,14 @@ async def send_chat_message(
         success, response_text, metadata = ollama_client.chat(
             model=model_name,
             messages=messages,
-            options={
-                "temperature": 0.7,
-                "num_predict": _resources.num_predict,
-                "num_ctx": _resources.num_ctx,
-            },
+            options=gpu_placement.apply_to_options(
+                {
+                    "temperature": 0.7,
+                    "num_predict": _resources.num_predict,
+                    "num_ctx": _resources.num_ctx,
+                },
+                model_name,
+            ),
             think=False,
         )
 

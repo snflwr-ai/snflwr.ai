@@ -278,14 +278,74 @@ def recommend_num_gpu(
     return _ALL_LAYERS if vram_gb >= size + headroom_gb else 0
 
 
-def recommend_num_ctx(memory_gb: float) -> int:
-    """
-    Recommend Ollama context window size based on available RAM.
+# Measured KV-cache cost, GB per 1000 tokens of context, for the tutor backbone
+# on a GPU with OLLAMA_KV_CACHE_TYPE=q4_0 (2026-09-10, gemma4:e4b via /api/ps):
+#
+#     num_ctx  4096 -> 3.20 GB resident
+#     num_ctx 16384 -> 3.34 GB
+#     num_ctx 32768 -> 3.44 GB     => ~0.0086 GB per 1k tokens
+#
+# Rounded UP, because under-estimating means the runner fails to start. This is
+# cheap for e4b (elastic, few KV heads); it is NOT a universal constant — the
+# 17 GB brain on the same box costs ~0.04 GB/1k, roughly 4.6x more. If a denser
+# backbone is ever added to GEMMA4_VARIANTS, re-measure rather than reuse this.
+KV_GB_PER_1K_TOKENS = 0.010
 
-    Must be large enough to fit system prompt (~700 tokens) + conversation
-    history + a full response (num_predict tokens). Scales with RAM since
-    larger models loaded on bigger machines benefit from more context.
+# Room for the runner itself (weights + KV are counted separately).
+_GPU_RUNTIME_GB = 1.0
+
+_CTX_LADDER = (32768, 16384, 8192, 4096, 2048)
+
+
+def _detect_vram_gb_safe() -> float:
+    """Total VRAM in GB via nvidia-smi, or 0.0 when there is no usable GPU.
+
+    Fail-safe by design: any error means "no GPU", which routes sizing down the
+    RAM path rather than promising VRAM that may not exist.
     """
+    try:
+        import subprocess  # noqa: PLC0415 - keep module import-light
+
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return int(out.stdout.strip().splitlines()[0]) / 1024.0
+    except Exception:  # noqa: BLE001 - absence of a GPU is normal, not an error
+        pass
+    return 0.0
+
+
+def recommend_num_ctx(memory_gb: float, vram_gb: float = 0.0, model_tag: str | None = None) -> int:
+    """Context window sized to the memory the KV CACHE will actually occupy.
+
+    Must fit the system prompt (~700 tokens) + conversation history + a full
+    response (num_predict tokens).
+
+    Sizes on VRAM when the tutor will live on a GPU, because THAT is where the
+    KV cache goes. Keying this on RAM alone (as it did until 2026-09-10) hands a
+    box with 64 GB RAM and a small card a 32k context it has no VRAM to back —
+    the same dual-budget mistake that had the CPU-pinned safety classifier
+    charged against VRAM and the variant sizes read from manifest totals.
+
+    Non-binding for gemma4:e4b at present: 32k costs it only ~0.3 GB, well
+    inside GPU_HEADROOM_GB. It binds on a small card, on a denser backbone, or
+    if the ladder ever reaches gemma4's full 131k.
+    """
+    if vram_gb and vram_gb > 0:
+        weights = 0.0
+        if model_tag:
+            weights = {tag: v for tag, v, _r in GEMMA4_VARIANTS}.get(model_tag, 0.0)
+        if not weights:
+            weights = min(v for _t, v, _r in GEMMA4_VARIANTS)
+        budget_gb = vram_gb - weights - _GPU_RUNTIME_GB
+        for ctx in _CTX_LADDER:
+            if ctx / 1000.0 * KV_GB_PER_1K_TOKENS <= budget_gb:
+                return ctx
+        return _CTX_LADDER[-1]
+
+    # CPU path: the whole model and its KV cache live in RAM.
     if memory_gb >= 32:
         return 32768
     if memory_gb >= 16:
@@ -376,7 +436,7 @@ def detect_resources(data_dir: str = "/") -> ResourceProfile:
         postgres_min_connections=recommend_postgres_min_connections(cpus),
         redis_max_connections=recommend_redis_max_connections(cpus),
         num_predict=recommend_num_predict(mem_gb),
-        num_ctx=recommend_num_ctx(mem_gb),
+        num_ctx=recommend_num_ctx(mem_gb, vram_gb=_detect_vram_gb_safe()),
     )
 
     # Apply explicit env-var overrides (set by admin = always wins)

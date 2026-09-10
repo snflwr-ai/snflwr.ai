@@ -122,6 +122,19 @@ def _record_swap(now: float) -> None:
         logger.warning("gpu_placement: could not record swap time (%s)", exc)
 
 
+def _safe_tag(model_tag: str) -> str:
+    """Make a model tag safe to log.
+
+    The proxy passes the CLIENT-SUPPLIED ``body["model"]`` straight through to
+    placement, so this string is attacker-controlled. Logging it raw lets a
+    request forge log lines (CodeQL log-injection) — the same class as the
+    X-Request-ID log-forging closed in L1. Strip anything that could break out
+    of a single log record, and bound the length.
+    """
+    cleaned = "".join(c for c in str(model_tag) if c.isprintable() and c not in "\r\n")
+    return cleaned[:64] or "<unnamed>"
+
+
 def choose_num_gpu(model_tag: str, *, now: float | None = None) -> int:
     """Layers to offload for this turn: ALL_LAYERS (GPU) or CPU_ONLY.
 
@@ -139,12 +152,12 @@ def choose_num_gpu(model_tag: str, *, now: float | None = None) -> int:
             logger.debug(
                 "gpu_placement: within %.0fs cooldown, serving %s from CPU",
                 SWAP_COOLDOWN_S,
-                model_tag,
+                _safe_tag(model_tag),
             )
             return CPU_ONLY
 
         _record_swap(now)
-        logger.info("gpu_placement: claiming the GPU for %s", model_tag)
+        logger.info("gpu_placement: claiming the GPU for %s", _safe_tag(model_tag))
         return ALL_LAYERS
     except Exception as exc:  # noqa: BLE001 - see FAIL-OPEN in the module docstring
         logger.warning(

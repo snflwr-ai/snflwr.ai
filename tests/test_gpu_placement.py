@@ -135,3 +135,28 @@ class TestTransportInjection:
         t = self._t()
         body = b'{"messages":[]}'
         assert t._inject_gpu_placement("/api/chat", body) is body
+
+
+class TestLogInjection:
+    """The proxy passes CLIENT-SUPPLIED body["model"] into placement.
+
+    Flagged by CodeQL on this module. Same class as the X-Request-ID
+    log-forging closed in L1: a model name carrying a newline could forge log
+    records that a reader would take as separate, genuine events.
+    """
+
+    def test_newlines_cannot_forge_a_log_record(self):
+        out = gpu_placement._safe_tag("ok\nFAKE 2026-01-01 ERROR admin login")
+        assert "\n" not in out and "\r" not in out
+
+    def test_control_characters_are_stripped(self):
+        assert gpu_placement._safe_tag("a\x00\x1b[31mb") == "a[31mb"
+
+    def test_length_is_bounded(self):
+        assert len(gpu_placement._safe_tag("x" * 5000)) == 64
+
+    def test_empty_tag_is_still_identifiable(self):
+        assert gpu_placement._safe_tag("") == "<unnamed>"
+
+    def test_ordinary_tag_survives_unchanged(self):
+        assert gpu_placement._safe_tag("snflwr.ai") == "snflwr.ai"

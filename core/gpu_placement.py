@@ -57,9 +57,29 @@ CPU_ONLY = 0
 # services; higher = more turns served from CPU at the old latency.
 SWAP_COOLDOWN_S = float(os.getenv("SNFLWR_GPU_SWAP_COOLDOWN_S", "60"))
 
+
 # Where the last-swap timestamp lives. Deliberately a plain file: this is a hint,
 # not a lock, and it must survive a worker restart without a daemon.
-STATE_PATH = Path(os.getenv("SNFLWR_GPU_STATE", "/tmp/snflwr-gpu-last-swap"))
+#
+# Under APP_DATA_DIR, NOT /tmp. A predictable name in a world-writable directory
+# lets any local account pre-create or symlink it (bandit B108), and this file
+# steers placement — a planted timestamp could hold the tutor on CPU forever.
+# Same finding class as the notify spool. APP_DATA_DIR is the directory this app
+# already owns for state (the database lives there), so it inherits its perms.
+def _default_state_path() -> Path:
+    try:
+        from config import system_config  # noqa: PLC0415 - avoid an import cycle
+
+        return Path(system_config.APP_DATA_DIR) / "gpu-last-swap"
+    except Exception:  # noqa: BLE001 - config unavailable (tests, tooling)
+        return Path(__file__).resolve().parent.parent / "data" / "gpu-last-swap"
+
+
+# NB: check the env STRING before constructing a Path. `Path("")` is `Path(".")`,
+# which is truthy, so `Path(os.getenv(...)) or default` silently resolves to the
+# current directory instead of falling through to the default.
+_ENV_STATE = os.getenv("SNFLWR_GPU_STATE", "").strip()
+STATE_PATH = Path(_ENV_STATE) if _ENV_STATE else _default_state_path()
 
 _OLLAMA = os.getenv("OLLAMA_HOST_URL", "http://127.0.0.1:11434")
 # /api/ps measured at 0.3 ms locally, so this is affordable on the turn path.
@@ -95,6 +115,7 @@ def _last_swap_at() -> float:
 
 def _record_swap(now: float) -> None:
     try:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATE_PATH.write_text(str(now))
     except OSError as exc:
         # Losing the timestamp only weakens the damper; it must never fail a turn.

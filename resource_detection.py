@@ -292,10 +292,22 @@ def recommend_num_gpu(
 #     num_ctx 16384 -> 3.34 GB
 #     num_ctx 32768 -> 3.44 GB     => ~0.0086 GB per 1k tokens
 #
-# Rounded UP, because under-estimating means the runner fails to start. This is
-# cheap for e4b (elastic, few KV heads); it is NOT a universal constant — the
-# 17 GB brain on the same box costs ~0.04 GB/1k, roughly 4.6x more. If a denser
-# backbone is ever added to GEMMA4_VARIANTS, re-measure rather than reuse this.
+# Rounded UP, because under-estimating means the runner fails to start.
+#
+# CORRECTION 2026-09-10: an earlier version of this comment claimed a 17 GB
+# model on the same box cost "~0.04 GB/1k, roughly 4.6x more". Both the figure
+# and its DIRECTION were wrong — it came from attributing a model's whole
+# VRAM footprint to KV, and from an arithmetic slip that scaled by 1000 twice.
+# Re-measured properly, same model at two context sizes via /api/ps:
+#
+#     gemma4:e4b        4096 ->  32768   0.24 GB   => 0.0084 GB/1k
+#     qwen3.8 (17 GB)   8192 -> 114688   0.49 GB   => 0.0046 GB/1k
+#     granite-worker    8192 -> 262144   1.73 GB   => 0.0068 GB/1k
+#
+# The tutor is the MOST expensive per token of the three, not the cheapest, so
+# 0.010 remains a safe ceiling for the current ladder. It is still not a
+# universal constant: per-token cost is set by layers x KV heads x head dim, so
+# a denser backbone entering GEMMA4_VARIANTS must be re-measured, not assumed.
 KV_GB_PER_1K_TOKENS = 0.010
 
 # Room for the runner itself (weights + KV are counted separately).

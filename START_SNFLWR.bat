@@ -167,7 +167,12 @@ if "%OLLAMA_DEFAULT_MODEL%"=="" (
     :: its own hardcoded tiers from another model family and never selected
     :: Windows installs ran a DIFFERENT tutor from every other platform, with
     :: none of the persona / pedagogy / S9051B compliance work measured on it.
-    for /f "delims=" %%M in ('python -c "import sys;from resource_detection import recommend_base_model,unsupported_hardware_message;r=float(sys.argv[1]);m=recommend_base_model(memory_gb=r,vram_gb=0);print(m if m else 'UNSUPPORTED '+unsupported_hardware_message(r,0))" !RAM_GB! 2^>nul') do (
+    :: usebackq + backticks, NOT 'single quotes'. `for /f ... in ('cmd')` ends the
+    :: command at the first embedded single quote, and the Python below needs them
+    :: for its string literals — so the quoted form would have been truncated
+    :: before it ever ran. With usebackq the command is delimited by backticks and
+    :: inner single quotes are literal.
+    for /f "usebackq delims=" %%M in (`python -c "import sys;from resource_detection import recommend_base_model,unsupported_hardware_message;r=float(sys.argv[1]);m=recommend_base_model(memory_gb=r,vram_gb=0);print(m if m else 'UNSUPPORTED '+unsupported_hardware_message(r,0))" !RAM_GB! 2^>nul`) do (
         set "OLLAMA_DEFAULT_MODEL=%%M"
     )
     if "!OLLAMA_DEFAULT_MODEL!"=="" (

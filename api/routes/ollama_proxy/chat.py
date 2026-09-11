@@ -96,6 +96,14 @@ async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
             "think": False,
+            # temperature 0: this is a safety CLASSIFIER, not a generator, and it
+            # was the only one in the codebase running at the model default --
+            # core/topic_gate.py and safety/pipeline/classifier.py both pin their
+            # options. Measured effect on the 64-case set was nil (identical
+            # verdicts over 6 runs), but one verdict did flip between runs
+            # earlier in the same session, and a reveal check that can flip is a
+            # reveal check that can flip the wrong way.
+            "options": {"temperature": 0},
         }
     ).encode()
     upstream = await transport._forward_request(

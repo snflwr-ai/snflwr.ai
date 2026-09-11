@@ -492,16 +492,25 @@ def test_removed_e2b_is_not_selectable_at_any_size():
 def test_ladder_is_ordered_by_preference():
     """First that fits wins, so the best-measured variant must come first.
 
-    NOT ordered by size any more: on a GPU e4b is both better AND smaller
-    (3.3 vs 7.9 GB resident), so a size ordering would be actively wrong.
+    NOT ordered by size: 31b is the largest AND the best (88.8 vs e4b's 80.3
+    over 3 repeats), while e4b is smaller than 12b and beats it per GB. Size
+    ordering would be wrong in both directions.
+
+    Was `gemma4:e4b` until 2026-09-10, when a three-way sweep with repeats put
+    31b clearly ahead — see the gemma4:31b tier tests below.
     """
-    assert GEMMA4_VARIANTS[0][0] == "gemma4:e4b"
+    assert GEMMA4_VARIANTS[0][0] == "gemma4:31b"
 
 
-def test_big_gpu_box_gets_the_validated_default():
-    """A 24GB card: e4b, which is the variant all the tutoring and compliance
-    work was actually measured on."""
-    assert recommend_base_model(memory_gb=64, vram_gb=24) == "gemma4:e4b"
+def test_big_gpu_box_gets_the_best_measured_backbone():
+    """A 24 GB card: 31b, which measured +8.5 over e4b across 3 repeats.
+
+    This asserted `gemma4:e4b` until 2026-09-10 on the grounds that e4b was
+    "the variant all the tutoring and compliance work was measured on" — true,
+    but an argument from what had been TESTED, not from what was better. Once
+    31b was actually measured with repeats it won outside noise.
+    """
+    assert recommend_base_model(memory_gb=64, vram_gb=24) == "gemma4:31b"
 
 
 def test_midsize_box_steps_down_rather_than_changing_family():
@@ -663,11 +672,15 @@ class TestRecommendNumGpu:
         assert recommend_num_gpu("some-other-model:latest", vram_gb=4.0) == 0
 
     def test_the_measured_box(self):
-        """23GB card, e4b selected — the configuration that was silently on CPU."""
+        """23 GB card. Selects 31b since 2026-09-10; still must go on the GPU.
+
+        The point of this test is the PLACEMENT, not the tag: this is the
+        configuration that was silently running on CPU.
+        """
         from resource_detection import recommend_base_model, recommend_num_gpu
 
         tag = recommend_base_model(memory_gb=64.0, vram_gb=23.0)
-        assert tag == "gemma4:e4b"
+        assert tag == "gemma4:31b"
         assert recommend_num_gpu(tag, vram_gb=23.0) > 0
 
 
@@ -851,3 +864,45 @@ def test_guard_context_fits_the_longest_accepted_message():
         f"guard context {GUARD_NUM_CTX} cannot hold the longest accepted "
         f"message ({needed:.0f} tokens worst case) — it would be truncated"
     )
+
+
+# ---------------------------------------------------------------------------
+# gemma4:31b tier (added 2026-09-10 on measured evidence)
+#
+# Three repeats, 48 cases, all arms full-GPU, isolation audit passed:
+#   31b 88.8 (spread 1.4) · 12b 84.0 (spread 2.1) · e4b 80.3 (spread 1.2)
+# +8.5 over e4b clears the harness's own noise — the first backbone difference
+# in this project to do so. It costs 3.8x the latency and 6x the VRAM.
+# ---------------------------------------------------------------------------
+
+from resource_detection import _GPU_ONLY_VARIANTS  # noqa: E402
+
+
+class TestGemma31bTier:
+    def test_a_big_card_gets_the_best_measured_backbone(self):
+        assert recommend_base_model(memory_gb=64, vram_gb=23) == "gemma4:31b"
+
+    def test_a_card_too_small_for_31b_falls_to_e4b_not_to_nothing(self):
+        """19.4 GB resident + 2.5 headroom = 21.9 GB, so a 20 GB card cannot host it."""
+        assert recommend_base_model(memory_gb=64, vram_gb=20) == "gemma4:e4b"
+
+    def test_31b_is_NEVER_chosen_for_cpu_inference(self):
+        """A 19 GB dense model in RAM generates at a few tokens/second.
+
+        That is worse than not offering it, because it looks like it is working.
+        Partial offload is not an escape either: 63% of 31b on the card still
+        costs 4.4x versus full-GPU, measured.
+        """
+        assert "gemma4:31b" in _GPU_ONLY_VARIANTS
+        for ram in (24, 32, 64, 128, 512):
+            picked = recommend_base_model(memory_gb=ram, vram_gb=0)
+            assert picked != "gemma4:31b", f"{ram} GB RAM, no GPU -> {picked}"
+
+    def test_ladder_is_ordered_best_measured_first(self):
+        """First that fits wins, so the ordering IS the preference."""
+        assert [t for t, _v, _r in GEMMA4_VARIANTS][0] == "gemma4:31b"
+
+    def test_cpu_path_ordering_is_unaffected_by_the_new_tier(self):
+        assert recommend_base_model(memory_gb=64, vram_gb=0) == "gemma4:e4b"
+        assert recommend_base_model(memory_gb=14, vram_gb=0) == "gemma4:12b"
+        assert recommend_base_model(memory_gb=8, vram_gb=0) is None

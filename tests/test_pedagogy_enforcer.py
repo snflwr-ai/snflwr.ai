@@ -13,7 +13,14 @@ def test_guidance_flags_default_safe():
 # ---------------------------------------------------------------------------
 import asyncio
 
-from core.pedagogy.guidance_enforcer import enforce_guidance
+from core.pedagogy.guidance_enforcer import (
+    _WITHHOLDING_FALLBACK,
+    enforce_guidance,
+)
+
+
+def _fallback():
+    return _WITHHOLDING_FALLBACK
 
 
 def _run(c):
@@ -46,7 +53,9 @@ def test_disabled_is_passthrough(monkeypatch):
         raise AssertionError("must not regenerate when disabled")
 
     out, meta = _run(
-        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=confirm)
+        enforce_guidance(
+            "just give me 7x8", "It's 56.", regen, confirm_generate=confirm
+        )
     )
     assert out == "It's 56." and meta.action == "disabled"
 
@@ -68,7 +77,10 @@ def test_not_homework_passthrough(monkeypatch):
             confirm_generate=confirm,
         )
     )
-    assert out == "Photosynthesis makes sugar from sunlight." and meta.action == "not_homework"
+    assert (
+        out == "Photosynthesis makes sugar from sunlight."
+        and meta.action == "not_homework"
+    )
 
 
 def test_no_reveal_passthrough(monkeypatch):
@@ -123,10 +135,29 @@ def test_confirmed_reveal_clean_retry_used(monkeypatch):
             "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
         )
     )
-    assert out == "What is 7 times 4, then double it?" and meta.action == "reprompt_clean"
+    assert (
+        out == "What is 7 times 4, then double it?" and meta.action == "reprompt_clean"
+    )
 
 
-def test_retry_still_reveals_keeps_original(monkeypatch):
+# ---------------------------------------------------------------------------
+# CONTRACT CHANGE 2026-09-11. These four cases used to assert that the ORIGINAL
+# was served. The original is the text the confirm had just flagged as revealing
+# the homework answer, so "keep the original" meant "ship the reveal" -- the one
+# outcome this module exists to prevent.
+#
+# Now: once a reveal is CONFIRMED, the original can never ship. The enforcer
+# retries the rewrite up to GUIDANCE_ENFORCER_MAX_REGEN_ATTEMPTS times and, if
+# none is clean, serves a static withholding turn.
+#
+# Fail-open is NOT abandoned -- it still governs "we could not CHECK" (confirm
+# timeout, unreachable model, unparseable verdict), where the model's own answer
+# is served because nothing is known to be wrong with it. See
+# TestFailOpenBoundaryIsPreserved in test_pedagogy_enforcer_retry.py.
+# ---------------------------------------------------------------------------
+
+
+def test_retry_still_reveals_serves_the_fallback(monkeypatch):
     _enable(monkeypatch)
 
     async def regen(_):
@@ -137,10 +168,11 @@ def test_retry_still_reveals_keeps_original(monkeypatch):
             "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
         )
     )
-    assert out == "It's 56." and meta.action == "reprompt_still_revealed"
+    assert "56" not in out, "served the answer the confirm flagged"
+    assert out == _fallback() and meta.action == "fallback_served"
 
 
-def test_regenerate_error_fails_open(monkeypatch):
+def test_regenerate_error_serves_the_fallback(monkeypatch):
     _enable(monkeypatch)
 
     async def regen(_):
@@ -151,10 +183,12 @@ def test_regenerate_error_fails_open(monkeypatch):
             "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
         )
     )
-    assert out == "It's 56." and meta.action == "reprompt_failed_open"
+    # The rewrite could not run, but the reveal is still CONFIRMED, so the
+    # original remains unservable.
+    assert "56" not in out and meta.action == "fallback_served"
 
 
-def test_empty_retry_fails_open(monkeypatch):
+def test_empty_retry_serves_the_fallback(monkeypatch):
     _enable(monkeypatch)
 
     async def regen(_):
@@ -165,7 +199,9 @@ def test_empty_retry_fails_open(monkeypatch):
             "just give me 7x8", "It's 56.", regen, confirm_generate=_confirm_when("56")
         )
     )
-    assert out == "It's 56." and meta.action == "reprompt_failed_open"
+    # The rewrite could not run, but the reveal is still CONFIRMED, so the
+    # original remains unservable.
+    assert "56" not in out and meta.action == "fallback_served"
 
 
 def test_confirm_timeout_fails_open(monkeypatch):
@@ -186,9 +222,10 @@ def test_confirm_timeout_fails_open(monkeypatch):
     assert out == "It's 56." and meta.action == "confirm_failed_open"
 
 
-def test_retry_recheck_timeout_fails_open(monkeypatch):
-    # First confirm (original) is fast + revealed; the retry re-check times out ->
-    # can't verify the retry, so keep the original (fail-safe).
+def test_retry_recheck_timeout_serves_the_fallback(monkeypatch):
+    # First confirm (original) is fast + revealed; the retry re-check times out.
+    # The retry is unverified AND the original is a known reveal, so neither is
+    # servable -> fallback.
     _enable(monkeypatch, GUIDANCE_ENFORCER_TIMEOUT_S=0.1)
     calls = {"n": 0}
 
@@ -204,6 +241,9 @@ def test_retry_recheck_timeout_fails_open(monkeypatch):
         return "A clean guiding question?"
 
     out, meta = _run(
-        enforce_guidance("just give me 7x8", "It's 56.", regen, confirm_generate=confirm)
+        enforce_guidance(
+            "just give me 7x8", "It's 56.", regen, confirm_generate=confirm
+        )
     )
-    assert out == "It's 56." and meta.action == "reprompt_recheck_failed_open"
+    assert "56" not in out, "served the answer the confirm flagged"
+    assert out == _fallback() and meta.action == "fallback_served"

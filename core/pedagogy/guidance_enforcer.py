@@ -80,6 +80,16 @@ _META_COMMENTARY_RE = re.compile(
 )
 
 
+# Served when a reveal is confirmed and no rewrite could remove it. Static, so it
+# can never itself reveal. Deliberately age-neutral: it is a redirect, not an
+# explanation, so it reads acceptably from K-2 to 9-12.
+_WITHHOLDING_FALLBACK = (
+    "I want you to get this one yourself \u2014 that is how it sticks. "
+    "Which part is tricky? Tell me the step where it stops making sense and "
+    "we will work through that bit together."
+)
+
+
 def _looks_like_meta_commentary(text: str) -> bool:
     """True if the retry talks ABOUT the reply instead of tutoring the student."""
     return bool(_META_COMMENTARY_RE.search(text or ""))
@@ -89,6 +99,10 @@ def _looks_like_meta_commentary(text: str) -> bool:
 class EnforceMeta:
     action: str
     latency_ms: int = 0
+    # Rewrites tried before this outcome. Kept OUT of `action` on purpose: the
+    # action names are a stable vocabulary that the canary and the proxy trace
+    # both read, so the attempt count rides alongside rather than mangling them.
+    attempts: int = 0
 
 
 T = TypeVar("T")
@@ -167,39 +181,57 @@ async def enforce_guidance(
     if not verdict.revealed:
         return response, EnforceMeta("no_reveal")
 
-    # Single re-prompt — fail-open on timeout or any exception
-    try:
-        retry = await _await_with_retry(
-            lambda: regenerate(_NUDGE), budget=budget, deadline=deadline
-        )
-    except Exception:
-        logger.info("guidance re-prompt failed open")
-        return response, EnforceMeta("reprompt_failed_open")
+    # ---- A reveal is now CONFIRMED. From here the original must not ship. -----
+    #
+    # Up to MAX_REGEN_ATTEMPTS rewrites, each re-checked. Measured 2026-09-11:
+    # a single attempt repaired 4-5 of 8 real reveals across two identical runs
+    # (the regeneration is nondeterministic), leaving 3 of 4 residual failures as
+    # `reprompt_still_revealed` -- detection worked, the REWRITE did not. More
+    # attempts are the direct lever on that.
+    attempts = 0
+    for _ in range(max(1, settings.GUIDANCE_ENFORCER_MAX_REGEN_ATTEMPTS)):
+        if deadline.expired():
+            break
+        attempts += 1
+        try:
+            retry = await _await_with_retry(
+                lambda: regenerate(_NUDGE), budget=budget, deadline=deadline
+            )
+        except Exception:
+            logger.info("guidance re-prompt failed")
+            break
 
-    if not retry:
-        return response, EnforceMeta("reprompt_failed_open")
+        if not retry or _looks_like_meta_commentary(retry):
+            # A reply that talks about the reply is never servable; try again.
+            continue
 
-    # A retry that argues with the nudge is never servable. Keeping the original
-    # is the same fail-safe used everywhere else here.
-    if _looks_like_meta_commentary(retry):
-        logger.info("guidance retry was meta-commentary; keeping the original")
-        return response, EnforceMeta("reprompt_meta_commentary")
+        try:
+            retry_verdict = await _await_with_retry(
+                lambda: confirm_reveal(user_text, retry, confirm_generate),
+                budget=budget,
+                deadline=deadline,
+            )
+        except Exception:
+            logger.info("guidance retry re-check failed")
+            break
 
-    # Re-check the RETRY with the same strong confirm (not a blind heuristic), so a
-    # retry that still reveals in word form is caught rather than served. If we
-    # cannot verify the retry (timeout/error), keep the original — no change is the
-    # fail-safe (the original was already the model's own answer).
-    try:
-        retry_verdict = await _await_with_retry(
-            lambda: confirm_reveal(user_text, retry, confirm_generate),
-            budget=budget,
-            deadline=deadline,
-        )
-    except Exception:
-        logger.info("guidance retry re-check failed open")
-        return response, EnforceMeta("reprompt_recheck_failed_open")
+        if not retry_verdict.revealed:
+            return retry, EnforceMeta("reprompt_clean", attempts=attempts)
 
-    if not retry_verdict.revealed:
-        return retry, EnforceMeta("reprompt_clean")
-
-    return response, EnforceMeta("reprompt_still_revealed")
+    # Every rewrite failed, or we ran out of budget. The ORIGINAL IS KNOWN TO
+    # REVEAL -- the confirm said so -- so serving it is the one outcome this
+    # module exists to prevent. Serve a static withholding turn instead.
+    #
+    # This is NOT a retreat from fail-open. Fail-open governs the cases where we
+    # could not CHECK (timeout, unreachable model, unparseable verdict): there we
+    # still serve the model's own answer, because we do not know it is bad. Here
+    # we do know. The original docstring's reason for fail-open was that "a tutor
+    # that raises is a child staring at an error" -- a canned tutoring turn is not
+    # an error, so that reasoning does not extend to this branch.
+    #
+    # Cost: on a FALSE alarm whose rewrites all keep tripping the confirm, a child
+    # gets a generic prompt instead of a good answer. Measured false-alarm rate
+    # after #240 is 4 of 32 homework turns, and rewrites usually pass, so this is
+    # rare -- and the failure is a duller answer, never a handed-over one.
+    logger.info("guidance could not withhold the answer; serving the safe fallback")
+    return _WITHHOLDING_FALLBACK, EnforceMeta("fallback_served", attempts=attempts)

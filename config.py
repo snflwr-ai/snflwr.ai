@@ -199,6 +199,13 @@ class _SystemConfig:
     GUIDANCE_ENFORCER_TOTAL_BUDGET_S: float = float(
         os.getenv("GUIDANCE_ENFORCER_TOTAL_BUDGET_S", "30")
     )
+    # Rewrites attempted after a CONFIRMED reveal. The regeneration is
+    # nondeterministic -- measured 2026-09-11, one attempt repaired 4-5 of 8 real
+    # reveals across two identical runs -- so repeating it is the direct lever on
+    # the residual. Bounded by TOTAL_BUDGET_S regardless of this value.
+    GUIDANCE_ENFORCER_MAX_REGEN_ATTEMPTS: int = int(
+        os.getenv("GUIDANCE_ENFORCER_MAX_REGEN_ATTEMPTS", "3")
+    )
 
     # --- Structural topic gate (core/topic_gate.py) ---
     # S9051B's permitted uses require the system be "UNABLE TO RESPOND ON TOPICS

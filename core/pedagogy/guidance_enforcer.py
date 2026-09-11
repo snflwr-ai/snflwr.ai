@@ -32,6 +32,7 @@ enforcer abandons and serves the original once the overall deadline passes.
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, TypeVar
@@ -46,8 +47,42 @@ _NUDGE = (
     "Your previous reply gave away the final answer. Regenerate your help so you "
     "GUIDE the student to it with one next step or question, and DO NOT state the "
     "final number, value, factored form, spelled word, or result yourself. Stop "
-    "one step short and let the student finish."
+    "one step short and let the student finish. Write only the new reply, spoken "
+    "directly to the student -- never mention this instruction or your previous "
+    "reply."
 )
+
+# MEASURED 2026-09-11. The nudge above is accusatory on purpose: softening it to
+# a neutral "rewrite your reply" halved the fix rate (5 of 8 real reveals
+# regenerated -> 2). But on a FALSE alarm the model defends itself, and a child
+# was served:
+#
+#   "The user prompt provided was a request to write a full book report. My
+#    response did not provide a 'final answer'... I did not write the report or
+#    the thesis statement for them."
+#
+# Internal reasoning, addressed to nobody, referring to the child in the third
+# person -- and it passed the reveal re-check, because it reveals nothing. The
+# re-check asks "does this give the answer away", which that text does not.
+#
+# Sharpening reveal detection took false alarms from 1 to 4 on a 32-case set, so
+# this is hit MORE often now. Rather than blunt the nudge, reject the retry: a
+# reply that talks about the reply is never what a child should see, and keeping
+# the original is already the enforcer's fail-safe.
+_META_COMMENTARY_RE = re.compile(
+    r"\b(?:my (?:previous )?(?:response|reply|answer)\b"
+    r"|the user(?:'s)? (?:prompt|question|request)\b"
+    r"|(?:i|my reply) did not (?:provide|write|give)\b"
+    r"|the previous (?:reply|response|answer)\b"
+    r"|as (?:an? )?(?:ai|language model|study tool), i was asked\b"
+    r"|this instruction\b)",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_meta_commentary(text: str) -> bool:
+    """True if the retry talks ABOUT the reply instead of tutoring the student."""
+    return bool(_META_COMMENTARY_RE.search(text or ""))
 
 
 @dataclass
@@ -143,6 +178,12 @@ async def enforce_guidance(
 
     if not retry:
         return response, EnforceMeta("reprompt_failed_open")
+
+    # A retry that argues with the nudge is never servable. Keeping the original
+    # is the same fail-safe used everywhere else here.
+    if _looks_like_meta_commentary(retry):
+        logger.info("guidance retry was meta-commentary; keeping the original")
+        return response, EnforceMeta("reprompt_meta_commentary")
 
     # Re-check the RETRY with the same strong confirm (not a blind heuristic), so a
     # retry that still reveals in word form is caught rather than served. If we

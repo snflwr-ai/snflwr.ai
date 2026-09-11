@@ -168,10 +168,34 @@ def recommend_num_predict(memory_gb: float) -> int:
 # back to, so the product's worst-case deployment was its weakest at withholding
 # homework answers. A children's tutor that cannot tutor safely should not ship;
 # boxes below the floor now get an explicit unsupported-hardware error.
+# gemma4:31b ADDED 2026-09-10 on measured evidence, overturning the standing
+# "31b and e4b are near-tied" claim. Three repeats, 48 cases, all arms full-GPU:
+#
+#     gemma4:31b  88.8  (spread 1.4)   31.1 tok/s   19.4 GB resident
+#     gemma4:12b  84.0  (spread 2.1)   67.8 tok/s    7.9 GB
+#     gemma4:e4b  80.3  (spread 1.2)  108.3 tok/s    3.3 GB
+#
+# +8.5 over e4b against a largest spread of 1.4 — the first backbone difference
+# in this project to clear the harness's own run-to-run noise. The prior claim
+# (99.3 vs 98.5, "near-tied") came from a single 34-case judged run; 0.8 points
+# could never have resolved it. NB the homework-integrity subscore does NOT
+# support a claim either way: its spread (8.6) exceeds the gap (7.9) on only
+# 10 of 48 cases.
+#
+# It is FIRST because the list is ordered by preference and the quality win is
+# real — but it is GPU-ONLY (see _GPU_ONLY_VARIANTS): a 19 GB dense model on CPU
+# is unusable, and partial offload is not a middle ground (63% of it on the card
+# still costs 4.4x versus full-GPU).
 GEMMA4_VARIANTS = [
-    ("gemma4:e4b", 3.3, 9.5),  # best measured quality AND smallest on a GPU
-    ("gemma4:12b", 7.9, 7.6),  # only earns a slot on the CPU path (13.6-15.5 GB RAM)
+    ("gemma4:31b", 19.4, 19.0),  # best measured quality; GPU-only, 3.8x slower than e4b
+    ("gemma4:e4b", 3.3, 9.5),    # best quality-per-GB; the throughput choice
+    ("gemma4:12b", 7.9, 7.6),    # only earns a slot on the CPU path (13.6-15.5 GB RAM)
 ]
+
+# Variants that must NEVER be chosen for CPU inference. A 19 GB dense model in
+# RAM generates at a few tokens/second — worse than no tutor, because it looks
+# like it is working. The RAM path skips these entirely.
+_GPU_ONLY_VARIANTS = frozenset({"gemma4:31b"})
 
 # Headroom that must remain free after the tutor is loaded:
 #   ~5.5 GB  llama-guard3-cpu, the safety classifier, which has to be resident too
@@ -226,6 +250,8 @@ def recommend_base_model(
         reserve_gb = GPU_HEADROOM_GB if on_gpu else DEFAULT_MODEL_RESERVE_GB
     usable = budget - reserve_gb
     for tag, vram_size, ram_size in GEMMA4_VARIANTS:
+        if not on_gpu and tag in _GPU_ONLY_VARIANTS:
+            continue
         if (vram_size if on_gpu else ram_size) <= usable:
             return tag
     return None

@@ -260,9 +260,19 @@ def main():
     ap.add_argument("--judge", help="Ollama judge model (omit to skip the LLM judge)")
     ap.add_argument("--out", default="tutoring_eval_report.md")
     ap.add_argument("--json-out", default="tutoring_eval_report.json")
+    ap.add_argument(
+        "--dataset",
+        default=str(DATASET),
+        help=(
+            "Case file to score (default: dataset.yaml). Use this to score a "
+            "focused probe set -- e.g. homework_integrity.yaml -- WITHOUT "
+            "growing dataset.yaml, which would break comparability with the "
+            "48-case composite tracked against the judged baseline."
+        ),
+    )
     args = ap.parse_args()
 
-    cases = load_dataset()
+    cases = load_dataset(Path(args.dataset))
 
     # Resolve responses: pre-recorded file, or live model query.
     recorded = {}

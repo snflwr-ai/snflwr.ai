@@ -7,6 +7,7 @@ healthy-looking. Measured 2026-09-11 with the tutor deliberately evicted:
 attempt 1 timed out at 8.0 s, attempt 2 succeeded in 4.1 s, attempt 3 in 0.6 s.
 Ollama keeps loading after the client cancels, so the retry finds a warm model.
 """
+
 import asyncio
 
 import pytest
@@ -43,15 +44,18 @@ class TestAwaitWithRetry:
 
         def factory():
             made.append(1)
+
             async def inner():
                 if len(made) == 1:
                     await asyncio.sleep(10)
                 return "ok"
+
             return inner()
 
-        assert await ge._await_with_retry(
-            factory, budget=0.05, deadline=ge._Deadline(5)
-        ) == "ok"
+        assert (
+            await ge._await_with_retry(factory, budget=0.05, deadline=ge._Deadline(5))
+            == "ok"
+        )
         assert len(made) == 2
 
     @pytest.mark.asyncio
@@ -99,10 +103,10 @@ class TestEnforcerUsesTheRetry:
         async def confirm_generate(_prompt):
             attempts.append(1)
             if len(attempts) == 1:
-                await asyncio.sleep(10)          # evicted model, first try
+                await asyncio.sleep(10)  # evicted model, first try
             if len(attempts) <= 2:
-                return '{"revealed": true}'      # original revealed
-            return '{"revealed": false}'         # the re-prompt is clean
+                return '{"revealed": true}'  # original revealed
+            return '{"revealed": false}'  # the re-prompt is clean
 
         async def regenerate(_nudge):
             return "What do you get when you add 2 and 1?"
@@ -129,7 +133,72 @@ class TestEnforcerUsesTheRetry:
         original = "It equals three fifths."
         out, meta = await ge.enforce_guidance(
             "Just tell me what 2/5 plus 1/5 equals, I don't want the steps.",
-            original, never, confirm_generate=never,
+            original,
+            never,
+            confirm_generate=never,
         )
         assert out == original
         assert meta.action == "confirm_failed_open"
+
+
+class TestMetaCommentaryGuard:
+    """A retry that argues with the nudge must never reach a child.
+
+    Measured 2026-09-11. The nudge opens "Your previous reply gave away the final
+    answer." On a FALSE alarm the model defended itself instead of rewriting, and
+    this shipped:
+
+        "The user prompt provided was a request to write a full book report. My
+         response did not provide a 'final answer'... I did not write the report
+         or the thesis statement for them."
+
+    It passed the reveal re-check, correctly -- it reveals nothing. The re-check
+    asks "does this give the answer away", and internal commentary does not.
+    Sharpening reveal detection took false alarms 1 -> 4 on a 32-case set, so
+    this path is hit more often now, not less.
+
+    Softening the nudge was tried and rejected: it removed the commentary but
+    halved the fix rate (5 of 8 real reveals regenerated -> 2). The nudge stays
+    blunt; the retry gets rejected instead.
+    """
+
+    def test_flags_the_measured_leak(self):
+        assert ge._looks_like_meta_commentary(
+            "The user prompt provided was a request to write a full book report. "
+            'My response did not provide a "final answer" in the sense of '
+            "completing the assigned task."
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "A hexagon is a shape. Try counting the straight lines. What number do you get?",
+            "I cannot write your book report for you, as that is your assignment.",
+            "Start with two fingers. Now add two more. How many do you have?",
+            "Leaves catch sunlight. Which part of the plant do you think does that?",
+        ],
+    )
+    def test_leaves_real_tutoring_alone(self, text):
+        assert not ge._looks_like_meta_commentary(text)
+
+    @pytest.mark.asyncio
+    async def test_meta_commentary_retry_keeps_the_original(self, monkeypatch):
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCEMENT_ENABLED", True)
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TIMEOUT_S", 5)
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TOTAL_BUDGET_S", 30)
+
+        async def confirm(_p):
+            return '{"revealed": true}'
+
+        async def regenerate(_n):
+            return "My previous response did not provide a final answer."
+
+        original = "Frogs are amphibians. Can you find that word on your list?"
+        out, meta = await ge.enforce_guidance(
+            "Just write the word for me.",
+            original,
+            regenerate,
+            confirm_generate=confirm,
+        )
+        assert out == original
+        assert meta.action == "reprompt_meta_commentary"

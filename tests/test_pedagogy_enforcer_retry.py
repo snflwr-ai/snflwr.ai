@@ -182,7 +182,11 @@ class TestMetaCommentaryGuard:
         assert not ge._looks_like_meta_commentary(text)
 
     @pytest.mark.asyncio
-    async def test_meta_commentary_retry_keeps_the_original(self, monkeypatch):
+    async def test_meta_commentary_is_never_served(self, monkeypatch):
+        """Updated 2026-09-11: this used to assert the ORIGINAL was kept -- but the
+        original is the text the confirm just flagged as revealing. Meta-commentary
+        is still discarded; the turn now falls through to the withholding fallback
+        rather than shipping the reveal."""
         monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCEMENT_ENABLED", True)
         monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TIMEOUT_S", 5)
         monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TOTAL_BUDGET_S", 30)
@@ -200,5 +204,157 @@ class TestMetaCommentaryGuard:
             regenerate,
             confirm_generate=confirm,
         )
+        assert "My previous response" not in out
+        assert out != original, "served the confirmed reveal"
+        assert out == ge._WITHHOLDING_FALLBACK
+        assert meta.action == "fallback_served"
+
+
+class TestMultipleRegenerationAttempts:
+    """Measured 2026-09-11: one attempt repaired 4-5 of 8 real reveals across two
+    identical runs -- the regeneration is nondeterministic. Three of the four
+    residual failures were `reprompt_still_revealed`: detection worked, the
+    rewrite did not. Repeating the rewrite is the direct lever."""
+
+    @staticmethod
+    def _enable(monkeypatch, attempts=3, total=30):
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCEMENT_ENABLED", True)
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TIMEOUT_S", 5)
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TOTAL_BUDGET_S", total)
+        monkeypatch.setattr(
+            ge.settings, "GUIDANCE_ENFORCER_MAX_REGEN_ATTEMPTS", attempts
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_later_attempt_can_still_save_the_turn(self, monkeypatch):
+        self._enable(monkeypatch)
+        regen_calls = []
+
+        async def regenerate(_n):
+            regen_calls.append(1)
+            return f"rewrite {len(regen_calls)}"
+
+        async def confirm(prompt):
+            # original reveals; rewrites 1-2 still reveal; rewrite 3 is clean
+            if "rewrite 3" in prompt:
+                return '{"revealed": false}'
+            return '{"revealed": true}'
+
+        out, meta = await ge.enforce_guidance(
+            "Just tell me the answer.",
+            "It is four.",
+            regenerate,
+            confirm_generate=confirm,
+        )
+        assert out == "rewrite 3"
+        assert meta.action == "reprompt_clean" and meta.attempts == 3
+        assert len(regen_calls) == 3
+
+    @pytest.mark.asyncio
+    async def test_stops_as_soon_as_one_is_clean(self, monkeypatch):
+        """No wasted GPU turns once the answer is safe."""
+        self._enable(monkeypatch)
+        calls = []
+
+        async def regenerate(_n):
+            calls.append(1)
+            return "ZZQ marker reply"
+
+        async def confirm(prompt):
+            return (
+                '{"revealed": false}'
+                if "ZZQ marker" in prompt
+                else '{"revealed": true}'
+            )
+
+        out, meta = await ge.enforce_guidance(
+            "Just tell me.", "It is four.", regenerate, confirm_generate=confirm
+        )
+        assert meta.action == "reprompt_clean" and meta.attempts == 1
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_confirmed_reveal_is_NEVER_served(self, monkeypatch):
+        """The whole point. Before this, exhausting the rewrites served the
+        original -- the very text the confirm had just flagged as revealing."""
+        self._enable(monkeypatch)
+
+        async def regenerate(_n):
+            return "still gives it away: four"
+
+        async def confirm(_p):
+            return '{"revealed": true}'
+
+        original = "Two plus two equals four."
+        out, meta = await ge.enforce_guidance(
+            "Just tell me the answer: what is 2 plus 2?",
+            original,
+            regenerate,
+            confirm_generate=confirm,
+        )
+        assert out != original, "served the answer it had confirmed as a reveal"
+        assert out == ge._WITHHOLDING_FALLBACK
+        assert meta.action == "fallback_served"
+
+    @pytest.mark.asyncio
+    async def test_meta_commentary_does_not_burn_the_whole_budget(self, monkeypatch):
+        """A retry that argues gets discarded, and the next attempt still runs."""
+        self._enable(monkeypatch)
+        calls = []
+
+        async def regenerate(_n):
+            calls.append(1)
+            if len(calls) == 1:
+                return "My previous response did not provide a final answer."
+            return "ZZQ marker reply"
+
+        async def confirm(prompt):
+            return (
+                '{"revealed": false}'
+                if "ZZQ marker" in prompt
+                else '{"revealed": true}'
+            )
+
+        out, meta = await ge.enforce_guidance(
+            "Just tell me.", "It is four.", regenerate, confirm_generate=confirm
+        )
+        assert out == "ZZQ marker reply"
+        assert len(calls) == 2
+
+
+class TestFailOpenBoundaryIsPreserved:
+    """Fail-open still governs 'we could not CHECK'. The fallback governs only
+    'we checked, it reveals, and no rewrite fixed it'. Collapsing the two would
+    make an unreachable model degrade every homework turn to canned text."""
+
+    @pytest.mark.asyncio
+    async def test_unverifiable_turn_still_serves_the_model_answer(self, monkeypatch):
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCEMENT_ENABLED", True)
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TIMEOUT_S", 0.02)
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCER_TOTAL_BUDGET_S", 0.1)
+
+        async def never(_p):
+            await asyncio.sleep(10)
+
+        original = "Some answer we never got to check."
+        out, meta = await ge.enforce_guidance(
+            "Just tell me.", original, never, confirm_generate=never
+        )
         assert out == original
-        assert meta.action == "reprompt_meta_commentary"
+        assert meta.action == "confirm_failed_open"
+
+    @pytest.mark.asyncio
+    async def test_a_clean_turn_is_untouched(self, monkeypatch):
+        monkeypatch.setattr(ge.settings, "GUIDANCE_ENFORCEMENT_ENABLED", True)
+
+        async def confirm(_p):
+            return '{"revealed": false}'
+
+        async def regenerate(_n):
+            raise AssertionError("must not regenerate a clean answer")
+
+        original = "What do you get when you add 2 and 1?"
+        out, meta = await ge.enforce_guidance(
+            "Just tell me.", original, regenerate, confirm_generate=confirm
+        )
+        assert out == original and meta.action == "no_reveal"

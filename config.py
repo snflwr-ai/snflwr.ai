@@ -192,6 +192,13 @@ class _SystemConfig:
     GUIDANCE_ENFORCER_TIMEOUT_S: float = float(
         os.getenv("GUIDANCE_ENFORCER_TIMEOUT_S", "8")
     )
+    # Overall wall-clock bound for one enforcement pass. Each of the three steps
+    # retries once on timeout (a co-tenant can evict the tutor mid-turn and a
+    # 19 GB reload exceeds the per-step budget), so six attempts could otherwise
+    # reach 48 s. A child must not wait that long: past this, serve the original.
+    GUIDANCE_ENFORCER_TOTAL_BUDGET_S: float = float(
+        os.getenv("GUIDANCE_ENFORCER_TOTAL_BUDGET_S", "30")
+    )
 
     # --- Structural topic gate (core/topic_gate.py) ---
     # S9051B's permitted uses require the system be "UNABLE TO RESPOND ON TOPICS

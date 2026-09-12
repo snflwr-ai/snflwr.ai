@@ -191,6 +191,9 @@ def test_submodules_imported_from_partially_copied_packages_are_shipped():
         # backup-cron sidecar. Its `|| echo` swallows a missing file, and the
         # heartbeat keeps the healthcheck green, so absence is invisible.
         "scripts/backup_database.py",
+        # Both are executed inside the container by deploy.sh on every deploy.
+        "scripts/preflight_db_key.py",
+        "scripts/postdeploy_smoke.py",
         # Seeds the proxy credential and the required disclosure banner.
         "scripts/owui_connect.py",
     ],

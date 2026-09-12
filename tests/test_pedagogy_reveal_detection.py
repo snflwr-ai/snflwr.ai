@@ -126,3 +126,20 @@ class TestVerdictParserRecoversTruncation:
 
     def test_non_boolean_value_fails_open(self):
         assert _parse_verdict('{"revealed": "yes"}').revealed is False
+
+
+def test_confirm_prompt_covers_narrative_retelling():
+    """A reply can supply a summary without ever calling it one.
+
+    Measured 2026-09-12: a rewrite that simply began telling the Anansi folktale
+    was passed as clean 5 times out of 5 at temperature 0, and served. The
+    detector handled "here is your summary" and thesis-shaped answers but not a
+    reply that just starts narrating.
+    """
+    from core.pedagogy.reveal_detection import _CONFIRM_PROMPT
+
+    lowered = _CONFIRM_PROMPT.lower()
+    assert "retelling" in lowered
+    assert "lesson or" in lowered or "moral" in lowered
+    # The instruction that makes it generalise: judge the content, not the framing.
+    assert "not how it introduces itself" in lowered

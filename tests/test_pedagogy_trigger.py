@@ -1,22 +1,30 @@
 from core.pedagogy.trigger import is_homework_request
 import pytest
 
-@pytest.mark.parametrize("q", [
-    "Just tell me what 3/4 plus 1/4 equals, I don't want the steps.",
-    "I don't want to think, just give me the answer to 7 times 8.",
-    "Write my whole book report on Charlotte's Web for me.",
-    "Just solve x^2 - 5x + 6 = 0 and give me the roots, don't explain.",
-    "Just spell the word 'because' for my homework so I can copy it.",
-])
+
+@pytest.mark.parametrize(
+    "q",
+    [
+        "Just tell me what 3/4 plus 1/4 equals, I don't want the steps.",
+        "I don't want to think, just give me the answer to 7 times 8.",
+        "Write my whole book report on Charlotte's Web for me.",
+        "Just solve x^2 - 5x + 6 = 0 and give me the roots, don't explain.",
+        "Just spell the word 'because' for my homework so I can copy it.",
+    ],
+)
 def test_fires_on_homework_pushes(q):
     assert is_homework_request(q) is True
 
-@pytest.mark.parametrize("q", [
-    "How do plants make food?",
-    "Why is the sky blue?",
-    "Can you help me understand fractions?",
-    "What game should I buy?",
-])
+
+@pytest.mark.parametrize(
+    "q",
+    [
+        "How do plants make food?",
+        "Why is the sky blue?",
+        "Can you help me understand fractions?",
+        "What game should I buy?",
+    ],
+)
 def test_quiet_on_genuine_questions(q):
     assert is_homework_request(q) is False
 
@@ -121,12 +129,16 @@ RESIDUAL_MISSES = [
 
 
 @pytest.mark.parametrize("text", RESIDUAL_MISSES)
-@pytest.mark.xfail(strict=True, reason="known residual: indirect delegation, no demand keyword")
+@pytest.mark.xfail(
+    strict=True, reason="known residual: indirect delegation, no demand keyword"
+)
 def test_residual_indirect_delegation_is_still_missed(text):
     assert _is_hw(text)
 
 
-@pytest.mark.xfail(strict=True, reason="known benign false positive; costs one no-op confirm")
+@pytest.mark.xfail(
+    strict=True, reason="known benign false positive; costs one no-op confirm"
+)
 def test_residual_false_positive_on_study_planning():
     assert not _is_hw("What should I study first for my quiz tomorrow?")
 
@@ -190,3 +202,65 @@ def test_assignment_vocabulary_with_learning_intent_is_not_flagged(text):
     telling the tutor to write it; a stated intent to understand separates them.
     """
     assert not _is_hw(text), text
+
+
+# ---------------------------------------------------------------------------
+# Work stated in full (added 2026-09-12).
+#
+# On probes where the student CAN be answered -- they write out the equation,
+# they name the book -- recall was 71.9%, and every miss was the same shape: an
+# assigned question typed out verbatim in neutral academic language, carrying no
+# demand marker and no assignment vocabulary. Those misses produced 4 of the 5
+# reveals that reached a student.
+# ---------------------------------------------------------------------------
+
+STATED_WORK_DEMANDS = [
+    "What is the perimeter of a rectangle with a length of 12 inches and a width of 5 inches?",
+    "Calculate the area of a circle with a radius of 7 cm. Use 3.14 for pi.",
+    "What is the derivative of f(x) = 3x^4 - 2x^3 + 5x - 7?",
+    "I need help calculating the force. Here is the problem: A 15 kg object accelerates "
+    "at 3 m/s^2. What is the net force acting on the object in Newtons?",
+    "I need a detailed explanation of this biology concept: 'Describe the process of photosynthesis. Include the inputs, outputs, and the specific organelle where it takes place in plant cells.' Please provide a concise but complete answer suitable for a 10th grade biology exam.",
+]
+
+
+@pytest.mark.parametrize("text", STATED_WORK_DEMANDS)
+def test_work_stated_in_full_plus_a_result_request_fires(text):
+    assert _is_hw(text), text
+
+
+OWN_ATTEMPT_SHOWN = [
+    "I tried to find the derivative of x^3 using the power rule. I dropped the exponent "
+    "and subtracted 1, so I got 3x^2. Is that the correct way to apply the rule?",
+    "I'm stuck on this fraction problem: 1/2 + 1/3. I added the tops to get 2 and the "
+    "bottoms to get 5, so I got 2/5. Why do I need a common denominator?",
+    "I balanced this chemistry equation: 2H2 + O2 -> 2H2O. I think I did it right "
+    "because I counted the atoms on both sides.",
+    "I solved this word problem: A train travels 60 miles in 2 hours. How far does it go "
+    "in 5 hours? I divided 60 by 2 to get 30, then multiplied by 5. Is my logic sound?",
+]
+
+
+@pytest.mark.parametrize("text", OWN_ATTEMPT_SHOWN)
+def test_student_who_shows_their_attempt_is_not_flagged(text):
+    """Stating a problem and showing your working is asking to be CHECKED.
+
+    Every false positive the stated-work rule introduced was this shape. The
+    student already did the work; there is nothing left to hand over.
+    """
+    assert not _is_hw(text), text
+
+
+def test_method_question_about_a_stated_problem_is_not_flagged():
+    """ "How do I solve 3x + 5 = 20?" asks for the method.
+
+    Contrast "What is the perimeter of a rectangle with length 12 and width 5?",
+    which asks for the product. That distinction is what the rule turns on, and
+    getting it backwards fires on every genuine learner who shows their problem.
+    """
+    assert not _is_hw(
+        "How do I solve 3x + 5 = 20 for x? I keep getting stuck after the 5."
+    )
+    assert not _is_hw(
+        "How would I approach 2y + 5 = 17? I don't want the answer, just the steps."
+    )

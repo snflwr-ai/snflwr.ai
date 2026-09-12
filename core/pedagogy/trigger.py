@@ -178,7 +178,8 @@ _DELIVERABLE = (
     r"(?:essay|paragraphs?|reports?|papers?|thesis(?: statement)?|topic sentences?|"
     r"conclusions?|summary|summaries|sentences?|answers?|introductions?|intros?|"
     r"analysis|responses?|reflections?|entry|entries|scripts?|outlines?|letters?|"
-    r"speech|captions?|translations?|journals?|worksheets?|homework|assignments?)"
+    r"speech|captions?|translations?|journals?|worksheets?|homework|assignments?|"
+    r"(?:chemical |balanced |net ionic )equations?)"
 )
 # Verbs that mean "produce it", in the tenses students actually type.
 _PRODUCE = (
@@ -249,6 +250,71 @@ _DEMAND = [
     r"(put|write) (it|that|them) on my (sheet|paper|worksheet|homework)",
 ]
 
+
+# ---------------------------------------------------------------------------
+# Tier 1b: the student STATES the work in full and asks for its result.
+#
+# Measured 2026-09-12 on probes where the student can actually be answered
+# (states the equation, names the book), trigger recall was 71.9% and every miss
+# shared one shape: an assigned question typed out VERBATIM, in neutral academic
+# language. "What is the derivative of f(x) = 3x^4 - 2x^3 + 5x - 7?" carries no
+# demand marker and no assignment vocabulary -- it is indistinguishable, as text,
+# from a textbook question. Those misses produced 4 of the 5 reveals that reached
+# a student.
+#
+# Firing here is cheap and firing wrongly is cheaper than missing: the trigger
+# only decides whether to CHECK the answer. A genuine learner who states their
+# problem gets a guiding answer, which passes the confirm unchanged. The cost of
+# a false fire is one ~0.9s check; the cost of a miss is a child handed the
+# answer to their homework.
+# ---------------------------------------------------------------------------
+
+# The turn contains the actual work, not a reference to work the tutor cannot see.
+_STATED_WORK = re.compile(
+    r"\bhere is (the|my|this) (problem|question|equation|paragraph|experiment|data|prompt)\b"
+    # "this statistics problem:", "this reaction:", "this paragraph:" -- the colon
+    # introduces the work itself rather than pointing at something unseen.
+    r"|\bthis (\w+ ){0,2}(problem|question|reaction|passage|paragraph|equation|"
+    r"sentence|phrase|concept|prompt)\s*[:\"\u201c']"
+    # a chemical reaction written out in words
+    r"|\b\w+ reacts with \b"
+    # any quoted block of real length -- the student has pasted their own text or
+    # the assignment's text into the turn
+    r"|[\"\u201c\u2018][^\"\u201d\u2019]{25,}[\"\u201d\u2019]"
+    # a pasted assignment prompt, in quotes, carrying an assignment imperative
+    r"|[\"\u201c\u2018']\s*(describe|analyz|analys|explain|compare|discuss|evaluate|"
+    r"identify|summariz|summaris|outline|write|argue)[^\"\u201d\u2019']{15,}"
+    # a mathematical expression: 3x^4, 2y + 5 = 17, 456 * 23, f(x)
+    r"|\b[a-z]?\(?[a-z]\)?\s*[\^]\s*\d"
+    r"|\d\s*[-+*/^=]\s*\d"
+    r"|\b\d+\s*(kg|cm|mm|km|ml|m/s|g\b|inches|inch|feet|miles|hours|minutes|seconds|"
+    r"degrees|moles?|grams?)\b",
+    re.IGNORECASE,
+)
+
+# The student has already attempted it and wants their work checked. This is the
+# single shape that every false positive from the stated-work rule shared, and it
+# is the opposite of a demand: the work exists, they want to know if it is right.
+_OWN_ATTEMPT = re.compile(
+    r"\bi (tried|solved|calculated|computed|wrote|added|subtracted|multiplied|divided|"
+    r"moved|dropped|put|got|balanced|factored|graphed|converted|drew|measured|set up|"
+    r"think the answer|believe the answer|came up with|already (did|solved|tried))\b"
+    r"|\bi think i (did|got) (it|this|that) right\b"
+    r"|\bi did (it|this) (right|correctly)\b"
+    r"|\bmy (answer|work|attempt|solution|reasoning|calculation)\b"
+    r"|\bhere is my (work|answer|attempt|solution|draft)\b"
+    r"|\bis (this|that|my answer|my work) (right|correct|ok)\b",
+    re.IGNORECASE,
+)
+
+# ...and asks for the RESULT of it.
+_RESULT_REQUEST = re.compile(
+    r"\bwhat (is|are|was|were) the\b"
+    r"|\b(calculate|compute|determine|find|solve|provide|state|list|rewrite|translate)\b"
+    r"|\bhow (many|much|far|long|fast)\b",
+    re.IGNORECASE,
+)
+
 # ---------------------------------------------------------------------------
 # Tier 2: assignment context AND a bare imperative/answer demand. Neither half
 # is sufficient -- a worksheet mention alone is not a homework REQUEST, and a
@@ -283,6 +349,10 @@ _LEARNING_INTENT = re.compile(
     r"did i do (this|it|that) right|what am i missing|"
     r"conceptual explanation|step-by-step logic|the logic behind|"
     r"give me a hint|just a hint|where (do i|to) start|how do i start|"
+    # "How do I solve 3x + 5 = 20?" asks for the METHOD. Contrast "What is the
+    # perimeter of a rectangle with length 12 and width 5?", which asks for the
+    # PRODUCT -- that distinction is what the stated-work rule turns on.
+    r"how (do|would|can|should) i\b|"
     r"point me in the right direction|walk me through|"
     r"am i on the right track)\b",
     re.IGNORECASE,
@@ -311,6 +381,15 @@ def is_homework_request(user_text: str) -> bool:
     # product, however much assignment vocabulary it happens to carry.
     if _LEARNING_INTENT.search(text):
         return False
+    # Work stated in full plus a request for its result -- but only when the
+    # student has NOT shown an attempt of their own. Sits below the learning-intent
+    # veto on purpose: stating a problem and asking to understand it is tutoring.
+    if (
+        _STATED_WORK.search(text)
+        and _RESULT_REQUEST.search(text)
+        and not _OWN_ATTEMPT.search(text)
+    ):
+        return True
     if any(p.search(text) for p in _COMPILED_SOFT):
         return True
     # Context alone never fires; it must be paired with a demand.

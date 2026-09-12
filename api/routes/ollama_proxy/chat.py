@@ -642,11 +642,21 @@ async def proxy_chat(
                         fwd_headers,
                     )
 
+                _gate_generate = None
+                if system_config.GUIDANCE_GATE_MODEL:
+                    # A SMALL model: this runs on every turn, so its cost lands
+                    # on non-homework turns too (~0.44s measured on e4b).
+                    async def _gate_generate(prompt: str) -> str:  # noqa: F811
+                        return await _pedagogy_oneshot(
+                            prompt, system_config.GUIDANCE_GATE_MODEL, fwd_headers
+                        )
+
                 new_text, meta = await enforce_guidance(
                     user_question,
                     assistant_text,
                     _regenerate,
                     confirm_generate=_confirm_generate,
+                    gate_generate=_gate_generate,
                 )
                 _revet: Optional[str] = None
                 if new_text != assistant_text and isinstance(

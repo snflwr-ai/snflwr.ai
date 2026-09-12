@@ -66,6 +66,8 @@ services:
       # Pedagogy guidance-enforcer (homework-integrity): regenerate once to withhold
       # a revealed answer. Runs the confirm on every homework turn; fail-open.
       - GUIDANCE_ENFORCEMENT_ENABLED=${GUIDANCE_ENFORCEMENT_ENABLED:-false}
+      - GUIDANCE_GATE_MODEL=${GUIDANCE_GATE_MODEL:-}
+      - GUIDANCE_GATE_TIMEOUT_S=${GUIDANCE_GATE_TIMEOUT_S:-6}
       - GUIDANCE_ENFORCER_CONFIRM_MODEL=${GUIDANCE_ENFORCER_CONFIRM_MODEL:-}
       - GUIDANCE_ENFORCER_TIMEOUT_S=${GUIDANCE_ENFORCER_TIMEOUT_S:-8}
       # Database - SQLite, no external dependency

@@ -35,9 +35,10 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Awaitable, Callable, TypeVar
+from typing import Awaitable, Callable, Optional, TypeVar
 
 from config import system_config as settings
+from core.pedagogy.input_gate import asks_for_assigned_work
 from core.pedagogy.reveal_detection import confirm_reveal
 from core.pedagogy.trigger import is_homework_request
 
@@ -152,12 +153,21 @@ async def enforce_guidance(
     regenerate: Callable[[str], Awaitable[str]],
     *,
     confirm_generate: Callable[[str], Awaitable[str]],
+    gate_generate: Optional[Callable[[str], Awaitable[str]]] = None,
 ) -> tuple[str, EnforceMeta]:
     """Return (final_response, meta). Fail-OPEN on every error path."""
     if not settings.GUIDANCE_ENFORCEMENT_ENABLED:
         return response, EnforceMeta("disabled")
 
-    if not is_homework_request(user_text):
+    # The LLM gate's verdict decides when it can answer; the regex is the
+    # fallback for when it cannot. They are deliberately NOT OR'd together --
+    # measured on a sealed set, OR gives the best recall (93.1%) and the worst
+    # false-positive rate (21.1%), failing the bar fixed before the run.
+    gate_verdict: Optional[bool] = None
+    if gate_generate is not None:
+        gate_verdict = await asks_for_assigned_work(user_text, gate_generate)
+    triggered = is_homework_request(user_text) if gate_verdict is None else gate_verdict
+    if not triggered:
         return response, EnforceMeta("not_homework")
 
     budget = settings.GUIDANCE_ENFORCER_TIMEOUT_S

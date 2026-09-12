@@ -20,7 +20,9 @@ if os.getenv("SNFLWR_SKIP_DOTENV", "").lower() not in ("1", "true"):
         if _env_production.exists():
             load_dotenv(_env_production)
         if _env_default.exists():
-            load_dotenv(_env_default, override=False)  # won't override production values
+            load_dotenv(
+                _env_default, override=False
+            )  # won't override production values
     except ImportError:
         pass  # python-dotenv not installed, rely on system env vars
 
@@ -185,6 +187,12 @@ class _SystemConfig:
         "GUIDANCE_ENFORCEMENT_ENABLED", "false"
     ).lower() in ("1", "true", "yes")
     # "" -> use the active tutor model for the confirm/re-prompt calls.
+    # Model for the LLM input gate. Empty = disabled, and the trigger behaves
+    # exactly as it does today (regex only). A SMALL model belongs here: the
+    # gate runs on every turn, so its latency lands on non-homework turns too.
+    GUIDANCE_GATE_MODEL: str = os.getenv("GUIDANCE_GATE_MODEL", "")
+    GUIDANCE_GATE_TIMEOUT_S: float = float(os.getenv("GUIDANCE_GATE_TIMEOUT_S", "6"))
+
     GUIDANCE_ENFORCER_CONFIRM_MODEL: str = os.getenv(
         "GUIDANCE_ENFORCER_CONFIRM_MODEL", ""
     )
@@ -214,8 +222,10 @@ class _SystemConfig:
     # to schoolwork only, which is a product decision, and it will refuse some
     # oddly-phrased academic questions. Measure the false-refusal rate with
     # evals/tutoring/topic_gate_canary.py before switching it on.
-    TOPIC_GATE_ENABLED: bool = (
-        os.getenv("TOPIC_GATE_ENABLED", "false").lower() in ("1", "true", "yes")
+    TOPIC_GATE_ENABLED: bool = os.getenv("TOPIC_GATE_ENABLED", "false").lower() in (
+        "1",
+        "true",
+        "yes",
     )
     # "" -> reuse OLLAMA_DEFAULT_MODEL, i.e. the already-loaded tutor. Loading a
     # separate classifier is not viable: the box already holds the tutor plus
@@ -229,9 +239,9 @@ class _SystemConfig:
     # production with nothing to notice. This is the runtime net, reusing the
     # same screen the eval uses. OFF by default; fail-open by design (a missed
     # "great job" is a blemish, a refused answer is a broken tutor).
-    SYCOPHANCY_CHECK_ENABLED: bool = (
-        os.getenv("SYCOPHANCY_CHECK_ENABLED", "false").lower() in ("1", "true", "yes")
-    )
+    SYCOPHANCY_CHECK_ENABLED: bool = os.getenv(
+        "SYCOPHANCY_CHECK_ENABLED", "false"
+    ).lower() in ("1", "true", "yes")
     SYCOPHANCY_CHECK_TIMEOUT_S: float = float(
         os.getenv("SYCOPHANCY_CHECK_TIMEOUT_S", "8")
     )

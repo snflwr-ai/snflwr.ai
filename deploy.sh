@@ -470,6 +470,14 @@ info "Port ${RESOLVED_PORT} (Web UI) is available."
 # --- Build snflwr-api image --------------------------------------------------
 section "Building images"
 
+# Tag the image that is serving RIGHT NOW, before the build overwrites :latest.
+# Taken after the build this would tag the new image and be worthless.
+if docker image inspect snflwr-api:latest >/dev/null 2>&1; then
+    ROLLBACK_TAG="rollback-$(date +%Y%m%d-%H%M%S)"
+    docker tag snflwr-api:latest "snflwr-api:$ROLLBACK_TAG" 2>/dev/null \
+        && info "Rollback image tagged: snflwr-api:$ROLLBACK_TAG"
+fi
+
 info "Building snflwr-api image (first build takes ~2 min)..."
 docker build \
     -f docker/Dockerfile \
@@ -478,6 +486,34 @@ docker build \
     --quiet \
     && info "snflwr-api image ready." \
     || { error "Image build failed. Run with DOCKER_BUILDKIT=1 for verbose output."; exit 1; }
+
+# --- Preflight: can this config actually open the database? -------------------
+# On 2026-09-12 a deploy that pointed the home stack at .env (the DEV config,
+# which targets a plaintext dev database under a different key) replaced the
+# healthy container and only then discovered it could not read production. The
+# app's fail-closed checks were correct; they simply run too late to help.
+# Verify the same thing first, in a throwaway container that writes nothing.
+section "Preflight"
+
+DATA_VOLUME="${DATA_VOLUME:-compose_snflwr-home-data}"
+if docker volume inspect "$DATA_VOLUME" >/dev/null 2>&1; then
+    info "Checking that $ENV_FILE opens the production database..."
+    if docker run --rm \
+        --env-file "$ENV_FILE" \
+        -e PREFLIGHT_ENV_LABEL="$ENV_FILE" \
+        -v "$DATA_VOLUME":/realdata:ro \
+        snflwr-api:latest \
+        python scripts/preflight_db_key.py --db /realdata/snflwr.db
+    then
+        info "Database credentials verified."
+    else
+        error "Preflight FAILED — refusing to touch the running container."
+        error "The currently deployed service is untouched and still serving."
+        exit 1
+    fi
+else
+    info "No $DATA_VOLUME volume yet — first deploy, nothing to verify."
+fi
 
 # --- Start or update services ------------------------------------------------
 section "Starting services"
@@ -517,6 +553,20 @@ while [[ "$(docker inspect snflwr-api --format '{{.State.Health.Status}}' 2>/dev
 done
 echo ""
 info "API is healthy."
+
+# --- Post-deploy: does the RUNNING container have what we just built? ---------
+# Healthy only means it answers /health. It does not mean the image carries the
+# fix that motivated the deploy -- after PR #243 the live container served the
+# OLD homework gate while every artefact in the repo said otherwise.
+info "Verifying shipped safety behaviour in the running container..."
+if docker exec snflwr-api python scripts/postdeploy_smoke.py; then
+    info "Shipped behaviour verified."
+else
+    error "The running container does NOT have the expected safety behaviour."
+    error "It is healthy but serving the wrong code. Roll back with:"
+    error "  docker tag snflwr-api:<rollback-tag> snflwr-api:latest && ./deploy.sh"
+    exit 1
+fi
 
 printf "  Waiting for Open WebUI"
 ELAPSED=0

@@ -72,6 +72,21 @@ COPY --chown=snflwr:snflwr scripts/owui_connect.py ./scripts/owui_connect.py
 # healthcheck green. Guarded now by tests/test_image_completeness.py.
 COPY --chown=snflwr:snflwr scripts/backup_database.py ./scripts/backup_database.py
 
+# Run by deploy.sh, inside the container, on every deploy:
+#   preflight_db_key.py  before `up -d`, to prove the configured DB credentials
+#                        actually open the target database while the healthy
+#                        container is still serving. A deploy that pointed the
+#                        home stack at .env instead of .env.home took production
+#                        down on 2026-09-12; the app's own checks were correct
+#                        but ran only at startup, after the container was gone.
+#   postdeploy_smoke.py  after health, to prove the RUNNING container carries the
+#                        behaviour that was just built.
+# Both are useless if they are not in the image, and their absence would look
+# like a failing deploy rather than a missing file. Guarded by
+# tests/test_image_completeness.py.
+COPY --chown=snflwr:snflwr scripts/preflight_db_key.py ./scripts/preflight_db_key.py
+COPY --chown=snflwr:snflwr scripts/postdeploy_smoke.py ./scripts/postdeploy_smoke.py
+
 # Entrypoint (runs as root, fixes volume ownership, then drops to snflwr)
 COPY docker/entrypoint.sh /usr/local/bin/snflwr-entrypoint.sh
 RUN chmod +x /usr/local/bin/snflwr-entrypoint.sh

@@ -37,6 +37,10 @@ assigned (a summary, thesis, topic sentence, conclusion, or translation). It is
 still YES when the request is polite, when it is framed as wanting "an example"
 or something to "check against", and when the student also asks for the steps.
 
+A direct instruction to PROVIDE, STATE, NAME, LIST or WRITE OUT specific content
+the assignment calls for is YES, and stays YES when the student also asks for
+clarification or explanation alongside it.
+
 Answer NO when the student wants to UNDERSTAND: asking why or how something
 works, asking for a hint or where to start, asking what a concept means, or
 showing their own attempt and asking whether it is right or where they went

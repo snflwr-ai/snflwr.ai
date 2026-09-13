@@ -552,7 +552,11 @@ async def proxy_chat(
     # sequence is re-emitted as a single chunk carrying the final text.
     _streamed = bool(stream)
     upstream = None
-    upstream_json = None
+    # Untyped JSON either way: `.json()` on the non-streaming path returns Any, and
+    # the streamed path builds the same shape by hand. Annotated so the streamed
+    # literal does not give it a concrete type the isinstance guards below cannot
+    # narrow through on re-index.
+    upstream_json: Any = None
     if _streamed:
         try:
             collected: list[bytes] = []

@@ -73,3 +73,18 @@ async def test_gate_verdict_is_used_and_regex_is_not_consulted(monkeypatch):
     )
     assert meta.action == "not_homework"
     assert out == "some reply"
+
+
+def test_gate_prompt_covers_a_direct_instruction_to_supply_content():
+    """ "Provide a line-by-line translation", "state the formula" -- both slipped.
+
+    Measured on a sealed set: these two were the gate's only misses, and they
+    share a shape rather than being two unrelated phrasings, which is why this is
+    a class clause and not two patterns.
+    """
+    from core.pedagogy.input_gate import GATE_PROMPT
+
+    lowered = GATE_PROMPT.lower()
+    for verb in ("provide", "state", "name", "list", "write out"):
+        assert verb in lowered, verb
+    assert "clarification or explanation alongside" in lowered

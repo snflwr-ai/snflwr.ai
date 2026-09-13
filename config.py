@@ -198,14 +198,17 @@ class _SystemConfig:
     )
     # Per-step fail-open budget (seconds) for confirm and for re-prompt.
     GUIDANCE_ENFORCER_TIMEOUT_S: float = float(
-        os.getenv("GUIDANCE_ENFORCER_TIMEOUT_S", "8")
+        # 8s timed out a confirm that needed 9.3s on a 1.2k-char answer and
+        # fail-opened a reveal the detector HAD identified correctly. Measured
+        # 2026-09-12: confirms on long answers run 3.8-9.3s on the 31b backbone.
+        os.getenv("GUIDANCE_ENFORCER_TIMEOUT_S", "15")
     )
     # Overall wall-clock bound for one enforcement pass. Each of the three steps
     # retries once on timeout (a co-tenant can evict the tutor mid-turn and a
     # 19 GB reload exceeds the per-step budget), so six attempts could otherwise
     # reach 48 s. A child must not wait that long: past this, serve the original.
     GUIDANCE_ENFORCER_TOTAL_BUDGET_S: float = float(
-        os.getenv("GUIDANCE_ENFORCER_TOTAL_BUDGET_S", "30")
+        os.getenv("GUIDANCE_ENFORCER_TOTAL_BUDGET_S", "40")
     )
     # Rewrites attempted after a CONFIRMED reveal. The regeneration is
     # nondeterministic -- measured 2026-09-11, one attempt repaired 4-5 of 8 real

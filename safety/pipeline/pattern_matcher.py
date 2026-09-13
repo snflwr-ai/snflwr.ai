@@ -125,6 +125,27 @@ class _PatternMatcher:
 
     _SUBSTR_PREFIX_CACHE: dict = {}
 
+    @staticmethod
+    def _is_word_boundary_artefact(folded: str, start: int, end: int) -> bool:
+        r"""True when a separator-tolerant match only matched by eating a SPACE
+        between two ordinary words, and then stopped inside the second one.
+
+        Measured 2026-09-13: "It feels a bit choppy" was blocked as
+        "Substring evasion detected: profanity" because the matcher joins letters
+        with ``[\W_]*``, so `bitch` matches across "a **bit ch**oppy". A child
+        asking for feedback on their own paragraph could not send that sentence.
+
+        Real evasion separates letters INSIDE one word ("b i t c h", "b.i.t.c.h")
+        and so ends at a word boundary. A match that swallowed a space and then
+        halts mid-word is two innocent words colliding. Matches with no
+        whitespace are untouched, so murder->murderer still works.
+        """
+        span = folded[start:end]
+        if not any(ch.isspace() for ch in span):
+            return False
+        after = folded[end : end + 1]
+        return bool(after) and (after.isalnum() or after == "_")
+
     @classmethod
     def _substr_prefix_pattern(cls, substr: str):
         """Leading-boundary, separator/leet-tolerant PREFIX matcher for a
@@ -779,6 +800,10 @@ class _PatternMatcher:
                     )
                     for substr, desc in substr_list:
                         m = self._substr_prefix_pattern(substr).search(folded_lower)
+                        if m and self._is_word_boundary_artefact(
+                            folded_lower, m.start(), m.end()
+                        ):
+                            continue
                         if m and not any(s <= m.start() < e for s, e in allow_spans):
                             # Plain-text (matches the un-folded original) violence
                             # topic word (genocide/massacre/murder) → defer to
@@ -792,8 +817,21 @@ class _PatternMatcher:
                                 f"Substring evasion detected: {desc}",
                                 stage="pattern",
                                 keywords=(substr,),
+                                # A PLAIN (un-obfuscated) term inside an
+                                # educational frame defers to the classifier
+                                # instead of hard-blocking. Measured: "the
+                                # suicides in Romeo and Juliet for my essay" was
+                                # blocked outright even though
+                                # _has_educational_context() returned True,
+                                # because self-harm is not a DEFERRABLE_CAT.
+                                # Deferral is fail-CLOSED -- an unavailable
+                                # classifier honours the block -- so this widens
+                                # who adjudicates, never what is allowed.
                                 deferrable=bool(plain)
-                                and category_enum in self._DEFERRABLE_CATS,
+                                and (
+                                    category_enum in self._DEFERRABLE_CATS
+                                    or self._has_educational_context(original_lower)
+                                ),
                             )
 
             # 3. PII patterns (MAJOR, checked on original text)

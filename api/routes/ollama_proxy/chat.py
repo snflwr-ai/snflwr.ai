@@ -478,6 +478,11 @@ async def proxy_chat(
                             model, _fallback_for(res)
                         )
                         return
+                    # The tag only ever leads the reply, so this first flush is
+                    # the one that can carry it. Later flushes need no rewrite.
+                    collected = blocks._strip_age_scaffolding_from_ndjson_chunks(
+                        collected
+                    )
                     for c in collected[flushed:]:
                         yield c
                     flushed = len(collected)
@@ -578,6 +583,11 @@ async def proxy_chat(
         _trace["blocked"] = False
         _trace["safety"] = {"blocked_layer": None}
         _emit_trace()
+        # Drop scaffolding the model narrated into its own first line. Applied to
+        # the emitted bytes AND to the recorded turn, so next turn's replayed
+        # history does not teach the model that the tag belongs in an answer.
+        collected = blocks._strip_age_scaffolding_from_ndjson_chunks(collected)
+        assistant_text = blocks._extract_text_from_ndjson_chunks(collected)
         # Remember this exchange so the client may replay it next turn.
         history_ledger.record_turn(profile_id, messages[-1], assistant_text)
         return Response(
@@ -799,6 +809,21 @@ async def proxy_chat(
                 _trace["escalation"] = {"signal": _sig, "blocked": False}
         except Exception as exc:  # a child's answer matters more than the record
             logger.warning("escalation signal failed (continuing): %s", exc)
+
+    # Last edit to the child-facing text: drop a leading age-range tag the model
+    # narrated into its own reply. Deliberately after the enforcer, the
+    # sycophancy screen and the crisis suffix -- it is the text that actually
+    # ships that has to be clean, and a rewrite can reintroduce the tag.
+    if isinstance(upstream_json, dict) and isinstance(
+        upstream_json.get("message"), dict
+    ):
+        from core.response_scaffolding import strip_scaffolding
+
+        _before = upstream_json["message"].get("content") or ""
+        _after = strip_scaffolding(_before)
+        if _after != _before:
+            upstream_json["message"]["content"] = _after
+            _pedagogy_modified = True
 
     _trace["blocked"] = False
     _trace["safety"] = {"blocked_layer": None}

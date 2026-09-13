@@ -161,6 +161,47 @@ async def _await_with_retry(
         return await asyncio.wait_for(make_awaitable(), timeout=left)
 
 
+# Terminal punctuation that ends a servable reply. Includes the closers a
+# sentence can end inside: a quoted line, a parenthetical, a bold run.
+_SENTENCE_END = re.compile(r"[.!?](?=[\s\"'\)\*\]]*\Z)")
+# A sentence boundary anywhere in the text: terminal punctuation followed by
+# whitespace. "0.5 plus" is not a boundary because the dot is followed by a
+# digit, which is why the lookahead requires space rather than any non-digit.
+_SENTENCE_BOUNDARY = re.compile(r"[.!?][\"'\)\*\]]*(?=\s)")
+
+# A trim must leave a real tutoring turn behind. Below either floor the rewrite
+# is mostly incomplete sentence, and a truncated-but-whole answer beats a stub.
+_TRIM_MIN_CHARS = 80
+_TRIM_MIN_RATIO = 0.6
+
+
+def _repair_truncation(text: str) -> str:
+    """Trim a rewrite that stopped mid-sentence back to its last complete one.
+
+    Measured on sealed set 10 (2026-09-13): **4 of 12 rewrites (33%)** ended
+    mid-word -- one simply stopped on "Similarly,". Not a token budget:
+    ``num_predict`` is 4096+ while the cut replies ran 570-812 characters and
+    uncut ones reached 1120, so the model emits a stop early on the second
+    generation. This cannot be prevented from here, but a child should not be
+    shown the dangling fragment.
+
+    Only ever REMOVES text, and runs AFTER the reveal re-check, so it cannot
+    turn a cleared reply into a revealing one.
+    """
+    if not text:
+        return text
+    body = text.rstrip()
+    if not body or _SENTENCE_END.search(body):
+        return text  # already ends cleanly
+    matches = list(_SENTENCE_BOUNDARY.finditer(body))
+    if not matches:
+        return text
+    trimmed = body[: matches[-1].end()].rstrip()
+    if len(trimmed) < _TRIM_MIN_CHARS or len(trimmed) < _TRIM_MIN_RATIO * len(body):
+        return text
+    return trimmed
+
+
 async def enforce_guidance(
     user_text: str,
     response: str,
@@ -240,7 +281,11 @@ async def enforce_guidance(
             break
 
         if not retry_verdict.revealed:
-            return retry, EnforceMeta("reprompt_clean", attempts=attempts)
+            # Trim a dangling final fragment. After the re-check on purpose:
+            # trimming only removes text, so the cleared verdict still holds.
+            return _repair_truncation(retry), EnforceMeta(
+                "reprompt_clean", attempts=attempts
+            )
 
     # Every rewrite failed, or we ran out of budget. The ORIGINAL IS KNOWN TO
     # REVEAL -- the confirm said so -- so serving it is the one outcome this

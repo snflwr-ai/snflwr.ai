@@ -89,7 +89,10 @@ _HOMEWORK_OBJECT = re.compile(
     re.IGNORECASE,
 )
 
-_AGE_PREFIX = re.compile(r"^\[Student age range:[^\]]*\]\s*")
+# Single owner: core.response_scaffolding. This module reads the tag off the
+# reply so the refusal patterns below see the answer, not the scaffolding;
+# the proxy strips the same tag from what the child is served.
+from core.response_scaffolding import AGE_SCAFFOLD_PREFIX as _AGE_PREFIX
 
 
 def escalation_signal(user_text: str, reply: str, is_homework: bool) -> Optional[str]:

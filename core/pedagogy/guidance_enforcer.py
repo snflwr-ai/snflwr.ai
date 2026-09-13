@@ -47,7 +47,21 @@ logger = logging.getLogger(__name__)
 _NUDGE = (
     "Your previous reply gave away the final answer. Regenerate your help so you "
     "GUIDE the student to it with one next step or question, and DO NOT state the "
-    "final number, value, factored form, spelled word, or result yourself. Stop "
+    "final number, value, factored form, spelled word, or result yourself. "
+    # The list above is numeric and word-shaped, which leaves the model with no
+    # target to stop short of when the assignment is a DEFINITION, a COMPARISON,
+    # a LIST or a TRANSLATION. Measured on sealed set 9: every one of the five
+    # turns that exhausted its rewrites and fell back to static text was this
+    # class, and the rewrites kept supplying the content because nothing told
+    # them what to withhold.
+    "When the assignment is to DEFINE, COMPARE, LIST, NAME, TRANSLATE, DERIVE or "
+    "EXPLAIN something, the thing to withhold is THAT: do not give the definition, "
+    "the comparison, the list, the name, the translation, the derivation or the "
+    "explanation itself. Give the surrounding facts, the way in, or a worked "
+    "example on DIFFERENT material, and ask the student to supply the item. "
+    "Naming a related fact they must still use is fine; handing them the item is "
+    "not. "
+    "Stop "
     "one step short and let the student finish. Write only the new reply, spoken "
     "directly to the student -- never mention this instruction or your previous "
     "reply."

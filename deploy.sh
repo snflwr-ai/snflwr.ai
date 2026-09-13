@@ -627,12 +627,31 @@ else
                 docker exec snflwr-ollama ollama pull "$SAFETY_BASE" \
                     || warn "Base '$SAFETY_BASE' pull failed; CPU variant cannot be built."
             fi
-            if printf 'FROM %s\nPARAMETER num_gpu 0\nPARAMETER temperature 0\n' "$SAFETY_BASE" \
-                    | docker exec -i snflwr-ollama ollama create "$SAFETY_MODEL" -f - >/dev/null 2>&1; then
+            # `ollama create -f -` (Modelfile on stdin) is NOT supported -- it
+            # fails with "no Modelfile or safetensors files found". Write a real
+            # file into the container and pass its PATH, the same way the tutor
+            # build below does. This was silently broken: the create failed, the
+            # classifier fell back to the GPU base via _find_model(), and safety
+            # kept working while quietly losing the eviction-immunity that is the
+            # entire point of the CPU pin.
+            _guard_mf="$(mktemp)"
+            printf 'FROM %s\nPARAMETER num_gpu 0\nPARAMETER temperature 0\n' \
+                "$SAFETY_BASE" > "$_guard_mf"
+            docker cp "$_guard_mf" snflwr-ollama:/tmp/safety-cpu.modelfile >/dev/null 2>&1
+            rm -f "$_guard_mf"
+            docker exec snflwr-ollama ollama create "$SAFETY_MODEL" \
+                -f /tmp/safety-cpu.modelfile >/dev/null 2>&1 || true
+            # Verify by PRESENCE, not by exit code: the failing form above still
+            # printed progress and the error only reached stderr, which was
+            # discarded -- so the build looked like it had merely "warned".
+            if docker exec snflwr-ollama ollama list 2>/dev/null \
+                    | awk 'NR>1 {print $1}' | grep -Fxq "$SAFETY_MODEL"; then
                 info "Safety model '$SAFETY_MODEL' built (CPU-pinned) — semantic classifier enabled."
             else
-                warn "Could not build '$SAFETY_MODEL'; falling back to '$SAFETY_BASE'."
-                warn "Set SAFETY_MODEL=$SAFETY_BASE to silence this."
+                warn "Could not build '$SAFETY_MODEL'."
+                warn "The classifier will FALL BACK to '$SAFETY_BASE' on the GPU,"
+                warn "which is evictable and cold-loads for ~2m27s after an eviction."
+                warn "Set SAFETY_MODEL=$SAFETY_BASE to make that explicit."
             fi
             ;;
         *)

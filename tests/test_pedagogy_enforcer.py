@@ -221,7 +221,14 @@ def test_confirm_timeout_fails_open(monkeypatch):
             "just give me 7x8", "It's 56.", regen, confirm_generate=slow_confirm
         )
     )
-    assert out == "It's 56." and meta.action == "confirm_failed_open"
+    # FAIL CLOSED. This used to assert that "It's 56." -- the answer to the
+    # homework question -- was served because the check timed out. Set 11 measured
+    # that happening for real: a worksheet asking for the parts of a flower got the
+    # complete assigned answer because nothing checked it.
+    # The adjacent branch (retries exhausted) already served the fallback, so
+    # serving the raw answer in the LESS informed case was incoherent.
+    assert out != "It's 56."
+    assert meta.action == "confirm_failed_closed"
 
 
 def test_retry_recheck_timeout_serves_the_fallback(monkeypatch):

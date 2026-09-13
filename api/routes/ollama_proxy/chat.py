@@ -420,7 +420,26 @@ async def proxy_chat(
     # enforcer can run — requires adding the hook to the buffered-stream path too.
     # Deferred: home deployment uses stream=False; only a small fraction of student
     # turns are homework pushes. Implement after the non-streaming path is validated.
-    if stream and system_config.CHAT_STREAMING_ENABLED:
+    # A homework turn cannot use the progressive path: that path flushes the first
+    # sentence to the child before the answer is complete, so the enforcer -- which
+    # needs the WHOLE answer and may rewrite it -- has nothing it can still change.
+    # Buffer those turns instead and let them fall through to the shared pipeline.
+    #
+    # Decided with the cheap regex trigger rather than the LLM gate on purpose: the
+    # gate would add a model call to EVERY turn before a single token is generated.
+    # The asymmetry favours over-buffering -- a wrongly buffered turn costs only
+    # progressive rendering, while a wrongly streamed homework turn costs
+    # enforcement entirely.
+    _buffer_for_enforcer = False
+    if stream and system_config.GUIDANCE_ENFORCEMENT_ENABLED:
+        try:
+            from core.pedagogy.trigger import is_homework_request
+
+            _buffer_for_enforcer = bool(is_homework_request(user_question))
+        except Exception as exc:  # never let this decide a turn by raising
+            logger.warning("homework pre-check failed (streaming anyway): %s", exc)
+
+    if stream and system_config.CHAT_STREAMING_ENABLED and not _buffer_for_enforcer:
         # Hold-back streaming: flush each part only AFTER check_output has vetted
         # the text-so-far, so the child never receives an un-vetted token. Two
         # checkpoints (first sentence, then the remainder at stream end) keep it
@@ -517,7 +536,28 @@ async def proxy_chat(
 
         return StreamingResponse(_holdback_stream(), media_type="application/x-ndjson")
 
-    if stream:
+    # ---- Buffered streaming: gather the whole answer, then share ONE pipeline ----
+    #
+    # Open WebUI sends stream=True BY DEFAULT -- its /api/chat payload model
+    # declares `stream: bool | None = True` and forwards it. Until this change both
+    # streaming branches returned before the pedagogy block, so a streamed turn
+    # NEVER REACHED THE ENFORCER and homework protection was inert for the real
+    # client. Every reveal figure ever measured came from the non-streaming path.
+    #
+    # There is no latency cost here: this branch already collected every chunk
+    # before returning a byte, so the child was waiting for the whole answer
+    # regardless. What changes is that the answer now goes through the same
+    # output-safety, enforcer, sycophancy, crisis-suffix and escalation stages a
+    # non-streaming turn does. The enforcer may rewrite it, so the original chunk
+    # sequence is re-emitted as a single chunk carrying the final text.
+    _streamed = bool(stream)
+    upstream = None
+    # Untyped JSON either way: `.json()` on the non-streaming path returns Any, and
+    # the streamed path builds the same shape by hand. Annotated so the streamed
+    # literal does not give it a concrete type the isinstance guards below cannot
+    # narrow through on re-index.
+    upstream_json: Any = None
+    if _streamed:
         try:
             collected: list[bytes] = []
             async for chunk in transport._stream_chunks_from_ollama(
@@ -531,90 +571,51 @@ async def proxy_chat(
                 status_code=503,
                 content={"detail": "Ollama backend unreachable"},
             )
+        # Token counts live on the final chunk; carry them so a streamed turn
+        # reports usage the same way a buffered one does.
+        _stream_usage = None
+        for _line in b"".join(collected).splitlines():
+            _line = _line.strip()
+            if not _line:
+                continue
+            try:
+                _obj = _json.loads(_line)
+            except (ValueError, _json.JSONDecodeError):
+                continue
+            if isinstance(_obj, dict) and _obj.get("done"):
+                _stream_usage = _usage_from(_obj)
+        upstream_json = {
+            "model": model,
+            "done": True,
+            "message": {
+                "role": "assistant",
+                "content": blocks._extract_text_from_ndjson_chunks(collected),
+            },
+        }
+        if _stream_usage:
+            upstream_json["prompt_eval_count"] = _stream_usage["input"]
+            upstream_json["eval_count"] = _stream_usage["output"]
 
-        # Output safety pipeline runs on the full assembled assistant message.
-        # Fail-closed: any unsafe content replaces the stream with a single
-        # safe-fallback NDJSON chunk so harmful text never reaches the child.
-        assistant_text = blocks._extract_text_from_ndjson_chunks(collected)
+    else:
         try:
-            from safety.pipeline import safety_pipeline
-
-            out_result = safety_pipeline.check_output(
-                text=assistant_text,
-                age=age,
-                profile_id=profile_id,
-                context=user_question,
+            upstream = await transport._forward_request(
+                "POST",
+                "/api/chat",
+                content=body_bytes,
+                headers=fwd_headers,
             )
-        except Exception as exc:
-            logger.error(
-                "check_output raised on streaming path: %s", exc, exc_info=True
-            )
-            block_msg = "I'm unable to process that request right now."
-            _trace["safety"] = {"blocked_layer": "output"}
+        except httpx.ConnectError:
+            _trace["safety"] = {"blocked_layer": "error"}
             _emit_trace()
-            return Response(
-                content=blocks._ollama_block_stream_bytes(model, block_msg),
-                media_type="application/x-ndjson",
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Ollama backend unreachable"},
             )
 
-        if not out_result.is_safe:
-            block_msg = (
-                out_result.modified_content
-                or safety_pipeline.get_safe_response(out_result)
-                or "I'm not able to share that. Let's try something else!"
-            )
-            logger.info(
-                "Output safety blocked streamed response for profile %s (category=%s)",
-                profile_id,
-                out_result.category,
-            )
-            blocks._record_safety_incident(profile_id, out_result, assistant_text)
-            _trace["safety"] = {
-                "category": str(out_result.category),
-                "severity": str(out_result.severity),
-                "blocked_layer": "output",
-            }
-            _emit_trace()
-            return Response(
-                content=blocks._ollama_block_stream_bytes(model, block_msg),
-                media_type="application/x-ndjson",
-            )
-
-        _trace["blocked"] = False
-        _trace["safety"] = {"blocked_layer": None}
-        _emit_trace()
-        # Drop scaffolding the model narrated into its own first line. Applied to
-        # the emitted bytes AND to the recorded turn, so next turn's replayed
-        # history does not teach the model that the tag belongs in an answer.
-        collected = blocks._strip_age_scaffolding_from_ndjson_chunks(collected)
-        assistant_text = blocks._extract_text_from_ndjson_chunks(collected)
-        # Remember this exchange so the client may replay it next turn.
-        history_ledger.record_turn(profile_id, messages[-1], assistant_text)
-        return Response(
-            content=b"".join(collected),
-            media_type="application/x-ndjson",
-        )
-
-    try:
-        upstream = await transport._forward_request(
-            "POST",
-            "/api/chat",
-            content=body_bytes,
-            headers=fwd_headers,
-        )
-    except httpx.ConnectError:
-        _trace["safety"] = {"blocked_layer": "error"}
-        _emit_trace()
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Ollama backend unreachable"},
-        )
-
-    # Output safety pipeline on the non-streaming response.
-    try:
-        upstream_json = upstream.json()
-    except (ValueError, _json.JSONDecodeError):
-        upstream_json = None
+        try:
+            upstream_json = upstream.json()
+        except (ValueError, _json.JSONDecodeError):
+            upstream_json = None
 
     # Bound unconditionally so the response-serialization branch below can read it
     # on every path (incl. non-dict upstream_json). Set True only if the pedagogy
@@ -639,7 +640,7 @@ async def proxy_chat(
             block_msg = "I'm unable to process that request right now."
             _trace["safety"] = {"blocked_layer": "output"}
             _emit_trace()
-            return JSONResponse(content=blocks._ollama_block_response(model, block_msg))
+            return _gate_block(model, block_msg, stream=_streamed)
 
         if not out_result.is_safe:
             block_msg = (
@@ -659,10 +660,12 @@ async def proxy_chat(
                 "blocked_layer": "output",
             }
             _emit_trace()
-            return JSONResponse(content=blocks._ollama_block_response(model, block_msg))
+            return _gate_block(model, block_msg, stream=_streamed)
 
         # ---- Pedagogy post-processor (fail-OPEN, homework-integrity only) --------
-        # Runs only on this buffered non-streaming path; gated off by default.
+        # Runs on EVERY buffered turn -- streamed and non-streamed alike. It used
+        # to run only on the non-streaming path, which meant it never ran for the
+        # real client at all (Open WebUI defaults stream=True).
         # Never blocks a turn: the outer except logs and serves the original text.
         if system_config.GUIDANCE_ENFORCEMENT_ENABLED:
             try:
@@ -833,7 +836,7 @@ async def proxy_chat(
     # `message.thinking` (blank render) and the raw chain-of-thought is unvetted
     # content that must never reach a child. `content` is untouched. (Streaming
     # paths strip per-line in transport._stream_chunks_from_ollama.)
-    out_content = upstream.content
+    out_content = upstream.content if upstream is not None else b""
     if isinstance(upstream_json, dict) and isinstance(
         upstream_json.get("message"), dict
     ):
@@ -841,7 +844,7 @@ async def proxy_chat(
         # Re-serialize when the enforcer rewrote the content OR when we need to
         # strip the model's reasoning field (OWUI >=0.10 blank-renders it and
         # chain-of-thought must never reach a child unvetted).
-        if "thinking" in msg or _pedagogy_modified:
+        if "thinking" in msg or _pedagogy_modified or _streamed:
             msg.pop("thinking", None)
             out_content = _json.dumps(upstream_json).encode()
     # Remember this exchange so the client may replay it next turn. Record the
@@ -854,6 +857,22 @@ async def proxy_chat(
         ):
             _delivered = upstream_json["message"].get("content", assistant_text)
         history_ledger.record_turn(profile_id, messages[-1], _delivered)
+
+    # A streamed request must get NDJSON back. The enforcer may have rewritten the
+    # answer, so the buffered chunk sequence no longer matches what should ship --
+    # re-emit the final text as one chunk rather than replaying stale chunks.
+    if _streamed:
+        _final = ""
+        if isinstance(upstream_json, dict) and isinstance(
+            upstream_json.get("message"), dict
+        ):
+            _final = upstream_json["message"].get("content") or ""
+        return Response(
+            content=blocks._ollama_stream_bytes_for_text(
+                model, _final, _usage_from(upstream_json)
+            ),
+            media_type="application/x-ndjson",
+        )
     return Response(
         content=out_content,
         status_code=upstream.status_code,

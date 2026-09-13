@@ -240,8 +240,25 @@ async def enforce_guidance(
             deadline=deadline,
         )
     except Exception:
-        logger.info("guidance confirm failed open")
-        return response, EnforceMeta("confirm_failed_open")
+        # FAIL CLOSED, not open. Measured on sealed set 11: 2 of 179 turns hit this,
+        # and one of them (a worksheet asking the student to list the parts of a
+        # flower) served the complete assigned answer because nothing checked it.
+        #
+        # The original fail-open reasoning was "we do not know the answer is bad, and
+        # a tutor that raises is a child staring at an error". The first half no
+        # longer holds here: we are on this path only because the gate already ruled
+        # the turn a homework demand, so the prior is that an unchecked answer is
+        # exactly the thing to withhold. The second half never applied -- a canned
+        # tutoring turn is not an error, which is the same reasoning the exhausted-
+        # retries branch below already uses.
+        #
+        # Cost is bounded and measured: fail-open fired on 1.1% of turns, so routing
+        # those to the fallback moves the fallback rate ~4.1% -> ~5.2%, inside the
+        # 10% bar. The failure mode becomes a duller answer instead of a revealed one.
+        logger.info(
+            "guidance confirm unavailable; withholding rather than serving unchecked"
+        )
+        return _WITHHOLDING_FALLBACK, EnforceMeta("confirm_failed_closed")
 
     if not verdict.revealed:
         return response, EnforceMeta("no_reveal")

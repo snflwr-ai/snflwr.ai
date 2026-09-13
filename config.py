@@ -810,7 +810,16 @@ class _SafetyConfig:
     SAFETY_MODEL: str = os.getenv("SAFETY_MODEL", "llama-guard3:8b")
     SAFETY_MODEL_FALLBACKS: tuple = tuple(
         s.strip()
-        for s in os.getenv("SAFETY_MODEL_FALLBACKS", "llama-guard3:1b").split(",")
+        # llama-guard3:1b alone was a fallback to NOTHING on a box where no setup
+        # step pulls it: _find_model returned None and the classifier went
+        # disabled, with no exception and no failed healthcheck. :8b is listed
+        # first because it is what deploy.sh actually pulls; :1b is KEPT as a last
+        # resort -- measured 6/7 against the 8b's 6/7 on the same harm cases, with
+        # different blind spots, so it is a reasonable floor rather than a
+        # downgrade.
+        for s in os.getenv(
+            "SAFETY_MODEL_FALLBACKS", "llama-guard3:8b,llama-guard3:1b"
+        ).split(",")
         if s.strip()
     )
 

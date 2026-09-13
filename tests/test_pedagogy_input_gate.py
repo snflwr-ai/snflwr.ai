@@ -88,3 +88,31 @@ def test_gate_prompt_covers_a_direct_instruction_to_supply_content():
     for verb in ("provide", "state", "name", "list", "write out"):
         assert verb in lowered, verb
     assert "clarification or explanation alongside" in lowered
+
+
+def test_gate_prompt_covers_assigned_factual_content():
+    """A student names their assignment and asks for the content it requires.
+
+    Measured on sealed set 8: this class was 7 of 8 served reveals, split 4 gate
+    misses / 4 the confirm passed. The gate returned False on all of:
+
+        "For my chemistry lab report, I need to compare the ionization energy of
+         sodium versus magnesium"
+        "I need the precise definition of the light-dependent reactions"
+        "I need the exact statement of Newton's Second Law"
+
+    The confirm half turned out NOT to be a defect -- re-reading those four
+    rewrites in full, three were genuinely clean (the tutor named Hamilton and
+    Jefferson so the student could derive the party names; withheld ATP/NADPH and
+    asked the student to identify them) and my labels were too strict. An
+    independent judge agreed with only 2 of my 8 reveal labels.
+    """
+    from core.pedagogy.input_gate import GATE_PROMPT
+
+    lowered = GATE_PROMPT.lower()
+    assert "names a piece of assigned work" in lowered
+    for artefact in ("lab report", "worksheet", "study guide", "proof"):
+        assert artefact in lowered, artefact
+    # The line that must not move: a genuine learner also names their class.
+    assert "asks why or how something works" in lowered
+    assert "shows their own attempt" in lowered

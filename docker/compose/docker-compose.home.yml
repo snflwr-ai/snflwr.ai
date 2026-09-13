@@ -69,7 +69,10 @@ services:
       - GUIDANCE_GATE_MODEL=${GUIDANCE_GATE_MODEL:-}
       - GUIDANCE_GATE_TIMEOUT_S=${GUIDANCE_GATE_TIMEOUT_S:-6}
       - GUIDANCE_ENFORCER_CONFIRM_MODEL=${GUIDANCE_ENFORCER_CONFIRM_MODEL:-}
-      - GUIDANCE_ENFORCER_TIMEOUT_S=${GUIDANCE_ENFORCER_TIMEOUT_S:-8}
+      # Keep in step with config.py's default -- compose's own default wins
+      # over the code's, so a stale value here silently reverts the setting.
+      # Guarded by tests/test_compose_defaults_match_config.py
+      - GUIDANCE_ENFORCER_TIMEOUT_S=${GUIDANCE_ENFORCER_TIMEOUT_S:-15}
       # Database - SQLite, no external dependency
       - DB_TYPE=sqlite
       - SNFLWR_DATA_DIR=/app/data

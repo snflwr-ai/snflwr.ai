@@ -180,6 +180,29 @@ async def proxy_chat(
     # it unpinned, losing the tutor Modelfile's system/safety prompt (#190). The
     # safety pipeline still runs regardless, so this is defense-in-depth. Coerce
     # any out-of-set model to the default tutor before any downstream use.
+    # ---- Suppress extended thinking on the STUDENT path --------------------
+    # gemma4 is a reasoning model. With thinking enabled it spends its budget on
+    # `message.thinking` and returns a much shorter `message.content` -- and
+    # sometimes NO content at all. The proxy strips `thinking` before serving
+    # (it is unvetted chain-of-thought that must never reach a child), so an
+    # all-thinking reply reaches the child as an EMPTY BUBBLE.
+    #
+    # Measured 2026-09-13 against the deployed tutor, 4 ordinary prompts:
+    #   "What is 2 plus 2?"                    -> 233 chars content
+    #   "3x + 7 = 22, what is x?"              -> 436 chars content
+    #   "summary of chapter 1 of Gatsby"       ->   0 chars content, 2247 thinking
+    #   "Why is the sky blue?"                 ->   0 chars content, 2293 thinking
+    # Half of them answered a child with nothing.
+    #
+    # The admin bypass above has set `think: False` since it was written, for the
+    # same rendering reason. The student path never did -- so the one audience
+    # that cannot work around a blank answer was the only one exposed to it, and
+    # every tutoring measurement taken with `think: False` described the ADMIN
+    # generation shape rather than the child's.
+    if body.get("think") is not False:
+        body["think"] = False
+        body_bytes = _json.dumps(body).encode()
+
     if model not in access._student_visible_models():
         pinned = system_config.OLLAMA_DEFAULT_MODEL or "snflwr.ai"
         if model:

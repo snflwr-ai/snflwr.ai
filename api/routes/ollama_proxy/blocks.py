@@ -116,6 +116,51 @@ def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
         )
 
 
+def _record_disclosure_incident(
+    profile_id, kind: str, matched: str, content_snippet: str
+) -> None:
+    """Escalate a child's risk DISCLOSURE without blocking their turn.
+
+    Distinct from _record_safety_incident, which is only reached when a message is
+    blocked. A disclosure must not be blocked -- the tutor already redirects 15 of
+    17 such turns to a trusted adult, and canned text would be worse -- but it must
+    still reach escalation.py so a parent is told. Measured before this existed:
+    1 of 12 disclosures escalated, and analytics carries no transcript, so the rest
+    were invisible to every adult permanently.
+
+    Severity is MAJOR for ideation and predatory contact so the parent alert fires;
+    escalation.py routes major/critical. Fail-safe: any error is swallowed, because
+    a failure here must never cost the child their answer.
+    """
+    try:
+        from safety.incident_logger import incident_logger
+
+        severity = (
+            "major"
+            if kind in ("suicidal_ideation", "predatory_contact")
+            else "moderate"
+        )
+        incident_logger.log_incident(
+            profile_id=profile_id or "unknown",
+            session_id=None,
+            incident_type=f"disclosure_{kind}",
+            severity=severity,
+            content_snippet=(content_snippet or "")[:200],
+            metadata={
+                "source": "ollama_proxy",
+                "stage": "disclosure_detector",
+                "disclosure_kind": kind,
+                "matched": matched,
+                # The turn was NOT blocked; the child received the tutor's reply.
+                "blocked": False,
+            },
+        )
+    except Exception as exc:  # never let escalation break the child's response
+        logger.error(
+            "Failed to record disclosure incident (non-fatal): %s", exc, exc_info=True
+        )
+
+
 def _extract_text_from_ndjson_chunks(chunks: list[bytes]) -> str:
     """Concatenate the ``message.content`` fields from a list of Ollama NDJSON chunks."""
     parts: list[str] = []

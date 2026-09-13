@@ -329,6 +329,34 @@ async def proxy_chat(
         _emit_trace()
         return _gate_block(model, block_msg, stream=stream)
 
+    # ---- Risk DISCLOSURE: escalate without blocking -------------------------
+    # `is_safe` was one boolean doing two jobs -- "replace this reply" and "tell
+    # an adult". A harmful content REQUEST needs both. A child DISCLOSING risk
+    # needs only the second: measured, the tutor already redirects 15 of 17 such
+    # turns to a trusted adult, so replacing its reply with canned text would make
+    # the child's experience worse. Because the two were coupled, only 1 of 12
+    # disclosures ever reached escalation.py, and nothing else shows conversation
+    # content to a parent.
+    #
+    # This records the incident and lets the turn proceed untouched.
+    _disclosure = None
+    if result.is_safe:
+        try:
+            from safety.disclosure_detector import detect_disclosure
+
+            _disclosure = detect_disclosure(text)
+            if _disclosure is not None:
+                blocks._record_disclosure_incident(
+                    profile_id, _disclosure.kind, _disclosure.matched, text
+                )
+                _trace["disclosure"] = {
+                    "kind": _disclosure.kind,
+                    "escalated": True,
+                    "blocked": False,
+                }
+        except Exception as exc:  # never let escalation break a child's turn
+            logger.warning("disclosure detection failed (continuing): %s", exc)
+
     if not result.is_safe:
         block_message = (
             result.modified_content
@@ -729,6 +757,48 @@ async def proxy_chat(
                 _pedagogy_modified = True
         except Exception as exc:  # fail-open
             logger.warning("sycophancy screen errored (fail-open): %s", exc)
+
+    # Append a crisis resource for a disclosure. APPENDED, never substituted: the
+    # tutor's own reply already redirects the child to a trusted adult in 15 of 17
+    # measured cases, and replacing it would be a downgrade. 0 of those 17 named a
+    # resource, and "talk to a counsellor" alone is incomplete for ideation.
+    if _disclosure is not None:
+        try:
+            from safety.disclosure_detector import crisis_suffix
+
+            _suffix = crisis_suffix(_disclosure.kind)
+            if _suffix and isinstance(upstream_json.get("message"), dict):
+                _body = upstream_json["message"].get("content") or ""
+                if _body and _suffix.strip() not in _body:
+                    upstream_json["message"]["content"] = _body + _suffix
+        except Exception as exc:  # the reply matters more than the suffix
+            logger.warning("crisis suffix append failed: %s", exc)
+
+    # ---- Escalate on the tutor's OWN refusal ---------------------------------
+    # Input classification of what a child says measured 12.5% on bullying
+    # requests and 38.5% on risk disclosures. The MODEL is the effective safety
+    # layer -- it refused 8 of 8 bullying requests and redirected 15 of 17
+    # disclosures -- and its replies come from a stable system prompt, so that
+    # distribution is narrow enough for patterns: 94.1% and 87.5%, with 0 of 61
+    # homework refusals and 0 of 37 genuine turns falsely escalated.
+    #
+    # Never blocks and never alters the reply. The child already has a good
+    # answer; this exists so an adult finds out.
+    if _disclosure is None:
+        try:
+            from safety.escalation_signals import escalation_signal
+
+            _served = ""
+            if isinstance(upstream_json.get("message"), dict):
+                _served = upstream_json["message"].get("content") or ""
+            _sig = escalation_signal(
+                text, _served, bool(_trace.get("pedagogy", {}).get("action"))
+            )
+            if _sig:
+                blocks._record_disclosure_incident(profile_id, _sig, _sig, text)
+                _trace["escalation"] = {"signal": _sig, "blocked": False}
+        except Exception as exc:  # a child's answer matters more than the record
+            logger.warning("escalation signal failed (continuing): %s", exc)
 
     _trace["blocked"] = False
     _trace["safety"] = {"blocked_layer": None}

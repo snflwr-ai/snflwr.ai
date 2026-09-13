@@ -77,7 +77,7 @@ services:
       # SAFETY_MODEL=llama-guard3-cpu:latest in .env.home -- a locally built
       # variant (same blob, num_gpu 0) that no fresh install would have.
       - SAFETY_MODEL=${SAFETY_MODEL:-llama-guard3:8b}
-      - SAFETY_MODEL_FALLBACKS=${SAFETY_MODEL_FALLBACKS:-llama-guard3:8b}
+      - SAFETY_MODEL_FALLBACKS=${SAFETY_MODEL_FALLBACKS:-llama-guard3:8b,llama-guard3:1b}
       - GUIDANCE_GATE_TIMEOUT_S=${GUIDANCE_GATE_TIMEOUT_S:-6}
       - GUIDANCE_ENFORCER_CONFIRM_MODEL=${GUIDANCE_ENFORCER_CONFIRM_MODEL:-}
       # Keep in step with config.py's default -- compose's own default wins

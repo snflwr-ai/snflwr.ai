@@ -41,6 +41,23 @@ A direct instruction to PROVIDE, STATE, NAME, LIST or WRITE OUT specific content
 the assignment calls for is YES, and stays YES when the student also asks for
 clarification or explanation alongside it.
 
+When the student NAMES a piece of assigned work -- a lab report, essay, worksheet,
+problem set, study guide question, quiz table, proof -- and then asks for the
+CONTENT that work requires, that is YES. It stays YES when the wording is polite
+and when the verb sounds educational:
+
+  "For my chemistry lab report, I need to compare the ionization energy of
+   sodium versus magnesium"                                         -> YES
+  "I need the precise definition of the light-dependent reactions"  -> YES
+  "I need the exact statement of Newton's Second Law"               -> YES
+  "I need to prove the diagonals of a rhombus bisect at right angles" -> YES
+
+The line is WHAT is being asked for, not how politely:
+  asks for the CONTENT itself                                       -> YES
+  asks WHY or HOW something works, with no deliverable named        -> NO
+  shows their own attempt and asks whether it is right              -> NO
+  asks for the first step, a hint, or where to start                -> NO
+
 Answer NO when the student wants to UNDERSTAND: asking why or how something
 works, asking for a hint or where to start, asking what a concept means, or
 showing their own attempt and asking whether it is right or where they went

@@ -613,12 +613,56 @@ if docker exec snflwr-ollama ollama list 2>/dev/null \
         | awk 'NR>1 {print $1}' | grep -Fxq "$SAFETY_MODEL"; then
     info "Safety model '$SAFETY_MODEL' already downloaded."
 else
-    info "Downloading safety model '$SAFETY_MODEL' (enables the semantic safety layer)..."
-    if docker exec snflwr-ollama ollama pull "$SAFETY_MODEL"; then
-        info "Safety model '$SAFETY_MODEL' ready — semantic classifier enabled."
+    # A "-cpu" variant is BUILT from its public base, not pulled -- `ollama pull
+    # llama-guard3-cpu` fails because no such public model exists. CPU-pinning the
+    # classifier keeps it off a card that holds only one big model, so it is never
+    # evicted by the tutor; measured 1.9s vs 1.8s, and the GPU build cold-loads for
+    # 2m27s after an eviction.
+    case "$SAFETY_MODEL" in
+        *-cpu|*-cpu:*)
+            SAFETY_BASE="$(printf '%s' "$SAFETY_MODEL" | sed 's/-cpu.*$//'):8b"
+            info "Safety model '$SAFETY_MODEL' is a local CPU-pinned variant; building from '$SAFETY_BASE'."
+            if ! docker exec snflwr-ollama ollama list 2>/dev/null \
+                    | awk 'NR>1 {print $1}' | grep -Fxq "$SAFETY_BASE"; then
+                docker exec snflwr-ollama ollama pull "$SAFETY_BASE" \
+                    || warn "Base '$SAFETY_BASE' pull failed; CPU variant cannot be built."
+            fi
+            if printf 'FROM %s\nPARAMETER num_gpu 0\nPARAMETER temperature 0\n' "$SAFETY_BASE" \
+                    | docker exec -i snflwr-ollama ollama create "$SAFETY_MODEL" -f - >/dev/null 2>&1; then
+                info "Safety model '$SAFETY_MODEL' built (CPU-pinned) — semantic classifier enabled."
+            else
+                warn "Could not build '$SAFETY_MODEL'; falling back to '$SAFETY_BASE'."
+                warn "Set SAFETY_MODEL=$SAFETY_BASE to silence this."
+            fi
+            ;;
+        *)
+            info "Downloading safety model '$SAFETY_MODEL' (enables the semantic safety layer)..."
+            if docker exec snflwr-ollama ollama pull "$SAFETY_MODEL"; then
+                info "Safety model '$SAFETY_MODEL' ready — semantic classifier enabled."
+            else
+                warn "Safety model pull failed — semantic classifier will stay disabled."
+                warn "Deterministic safety stages still protect; re-run to retry the pull."
+            fi
+            ;;
+    esac
+fi
+
+# Pull the homework-GATE model. Nothing used to fetch this, so a fresh box with
+# GUIDANCE_GATE_MODEL set had no such model: the gate could not answer, fell back
+# to the regex, and the measured 96.9% recall quietly became the regex's 65-74%.
+# A small model belongs here -- it runs on EVERY turn.
+if [[ -n "${GUIDANCE_GATE_MODEL:-}" ]]; then
+    if docker exec snflwr-ollama ollama list 2>/dev/null \
+            | awk 'NR>1 {print $1}' | grep -Fxq "$GUIDANCE_GATE_MODEL"; then
+        info "Homework-gate model '$GUIDANCE_GATE_MODEL' already present."
     else
-        warn "Safety model pull failed — semantic classifier will stay disabled."
-        warn "Deterministic safety stages still protect; re-run to retry the pull."
+        info "Downloading homework-gate model '$GUIDANCE_GATE_MODEL'..."
+        if docker exec snflwr-ollama ollama pull "$GUIDANCE_GATE_MODEL"; then
+            info "Homework-gate model ready."
+        else
+            warn "Gate model pull failed — the homework gate will fall back to the regex,"
+            warn "which measured 65-74% recall against the gate's 96.9%. Re-run to retry."
+        fi
     fi
 fi
 

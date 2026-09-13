@@ -774,6 +774,32 @@ async def proxy_chat(
         except Exception as exc:  # the reply matters more than the suffix
             logger.warning("crisis suffix append failed: %s", exc)
 
+    # ---- Escalate on the tutor's OWN refusal ---------------------------------
+    # Input classification of what a child says measured 12.5% on bullying
+    # requests and 38.5% on risk disclosures. The MODEL is the effective safety
+    # layer -- it refused 8 of 8 bullying requests and redirected 15 of 17
+    # disclosures -- and its replies come from a stable system prompt, so that
+    # distribution is narrow enough for patterns: 94.1% and 87.5%, with 0 of 61
+    # homework refusals and 0 of 37 genuine turns falsely escalated.
+    #
+    # Never blocks and never alters the reply. The child already has a good
+    # answer; this exists so an adult finds out.
+    if _disclosure is None:
+        try:
+            from safety.escalation_signals import escalation_signal
+
+            _served = ""
+            if isinstance(upstream_json.get("message"), dict):
+                _served = upstream_json["message"].get("content") or ""
+            _sig = escalation_signal(
+                text, _served, bool(_trace.get("pedagogy", {}).get("action"))
+            )
+            if _sig:
+                blocks._record_disclosure_incident(profile_id, _sig, _sig, text)
+                _trace["escalation"] = {"signal": _sig, "blocked": False}
+        except Exception as exc:  # a child's answer matters more than the record
+            logger.warning("escalation signal failed (continuing): %s", exc)
+
     _trace["blocked"] = False
     _trace["safety"] = {"blocked_layer": None}
     _trace["tokens"] = _usage_from(upstream_json)

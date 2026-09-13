@@ -230,12 +230,19 @@ class TestPedagogyProxyHook:
         # Enforcer did not run — exactly one Ollama call
         assert mock_fwd.call_count == 1
 
-    def test_stream_on_skips_enforcer(self):
-        """stream=True + CHAT_STREAMING_ENABLED=True → enforcer never runs.
+    def test_stream_on_runs_the_enforcer_for_a_homework_turn(self):
+        """stream=True + CHAT_STREAMING_ENABLED=True → the enforcer STILL runs.
 
-        The pedagogy block lives only on the buffered non-streaming path. When
-        streaming is enabled the proxy takes the hold-back streaming branch and
-        must never reach the guidance-enforcement block.
+        This test previously asserted the OPPOSITE, encoding a deferred TODO as
+        intended behaviour: "the enforcer must never reach the streaming branch".
+        That was the defect, not the design. Open WebUI's /api/chat payload model
+        declares `stream: bool | None = True` and forwards it, so stream=True is
+        the default shape of a real request -- meaning homework protection was
+        inert for every child using the product, and every reveal figure ever
+        measured came from a path nothing actually used.
+
+        A homework turn is now buffered so the enforcer can see the whole answer.
+        The sibling test below keeps ordinary turns streaming progressively.
         """
         import asyncio
         from fastapi.testclient import TestClient
@@ -295,9 +302,10 @@ class TestPedagogyProxyHook:
         assert resp.headers["content-type"].startswith("application/x-ndjson"), (
             f"Expected streaming response, got: {resp.headers['content-type']!r}"
         )
-        # Enforcer must not have run
-        assert mock_enforce.call_count == 0, (
-            f"enforce_guidance called {mock_enforce.call_count} time(s); expected 0"
+        # The enforcer MUST have run: this is a homework demand.
+        assert mock_enforce.call_count == 1, (
+            f"enforce_guidance called {mock_enforce.call_count} time(s); expected 1 "
+            "- a streamed homework turn escaped the enforcer"
         )
 
     def test_flag_on_unsafe_rewrite_discarded_original_served(self):

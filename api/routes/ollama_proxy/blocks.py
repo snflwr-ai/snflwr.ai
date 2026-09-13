@@ -187,6 +187,27 @@ def _ollama_block_stream_bytes(model: str, block_message: str) -> bytes:
     return chunk.encode()
 
 
+def _ollama_stream_bytes_for_text(
+    model: str, text: str, usage: dict | None = None
+) -> bytes:
+    """Build a single-chunk NDJSON body carrying a normal assistant reply.
+
+    A streamed turn is buffered whole so the pedagogy enforcer can run on it, and
+    the enforcer may REWRITE the answer -- at which point the original chunk
+    sequence no longer matches what should be served. Re-emitting one chunk keeps
+    the wire format the client expects while carrying the final text.
+
+    Distinct from ``_ollama_block_stream_bytes`` only in intent: that one serves a
+    safety block, this one serves the tutor's own answer, and keeping them apart
+    stops a reader mistaking a normal reply for a blocked one.
+    """
+    payload = _ollama_block_response(model, text)
+    if usage:
+        payload["prompt_eval_count"] = usage.get("input", 0)
+        payload["eval_count"] = usage.get("output", 0)
+    return (_json.dumps(payload) + "\n").encode()
+
+
 def _strip_thinking_from_ndjson_line(line: bytes) -> bytes:
     """Return one Ollama NDJSON *line* with any ``message.thinking`` removed.
 

@@ -137,8 +137,10 @@ class TestEnforcerUsesTheRetry:
             never,
             confirm_generate=never,
         )
-        assert out == original
-        assert meta.action == "confirm_failed_open"
+        # Fail CLOSED: the original is "It equals three fifths." -- the answer
+        # itself. An unverifiable homework turn withholds rather than serving it.
+        assert out != original
+        assert meta.action == "confirm_failed_closed"
 
 
 class TestMetaCommentaryGuard:
@@ -340,8 +342,8 @@ class TestFailOpenBoundaryIsPreserved:
         out, meta = await ge.enforce_guidance(
             "Just tell me.", original, never, confirm_generate=never
         )
-        assert out == original
-        assert meta.action == "confirm_failed_open"
+        assert out != original
+        assert meta.action == "confirm_failed_closed"
 
     @pytest.mark.asyncio
     async def test_a_clean_turn_is_untouched(self, monkeypatch):

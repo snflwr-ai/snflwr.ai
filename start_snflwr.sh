@@ -401,8 +401,16 @@ fi
 # It co-resides with the answer model via OLLAMA_MAX_LOADED_MODELS set above.
 if [ "${ENABLE_SAFETY_MODEL:-false}" = "true" ]; then
     if [ -z "${SAFETY_MODEL:-}" ]; then
+        # Measured 2026-09-12: a CPU-pinned llama-guard3 is the SAME weights as
+        # the GPU build (identical blob digest, only num_gpu differs) at 1.9s vs
+        # 1.8s, and it uses no VRAM at all -- so the old VRAM branch, which
+        # downgraded small boxes to the weaker :1b, is the wrong axis. It also
+        # cannot be evicted by the tutor, after which the GPU build cold-loads
+        # for 2m27s. :1b remains a last resort and is NOT pulled by default.
         if { [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 16 ]; } || [ "$RAM_GB" -ge 24 ]; then
             SAFETY_MODEL="llama-guard3:8b"
+        elif [ "$RAM_GB" -ge 12 ]; then
+            SAFETY_MODEL="llama-guard3-cpu:latest"
         else
             SAFETY_MODEL="llama-guard3:1b"
         fi

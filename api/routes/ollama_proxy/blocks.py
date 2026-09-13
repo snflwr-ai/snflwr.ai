@@ -221,6 +221,55 @@ def _strip_thinking_from_ndjson_line(line: bytes) -> bytes:
     return _json.dumps(obj).encode()
 
 
+def _strip_age_scaffolding_from_ndjson_chunks(chunks: list[bytes]) -> list[bytes]:
+    """Return ``chunks`` with a leading age-range tag removed from the assembled
+    assistant content.
+
+    The streaming paths re-emit the upstream NDJSON bytes verbatim, so the only
+    place to remove narrated scaffolding is in the chunks themselves. The tag is
+    always at the very start of the reply but may be split across several
+    chunks, so the assembled text decides how many characters to drop and the
+    leading chunks are then rewritten in order.
+
+    Lines that don't parse are passed through untouched and still consume no
+    budget, matching ``_strip_thinking_from_ndjson_line``: this never fails
+    closed on content, it only declines to edit shape it doesn't recognise.
+    """
+    from core.response_scaffolding import leading_scaffolding_len
+
+    text = _extract_text_from_ndjson_chunks(chunks)
+    remaining = leading_scaffolding_len(text)
+    # `strip_scaffolding` keeps a tag-only reply rather than emptying it; mirror
+    # that here so the two helpers cannot disagree about the same message.
+    if not remaining or not text[remaining:].strip():
+        return chunks
+
+    out: list[bytes] = []
+    for line in chunks:
+        if remaining <= 0:
+            out.append(line)
+            continue
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        try:
+            obj = _json.loads(stripped)
+        except (_json.JSONDecodeError, ValueError):
+            out.append(line)
+            continue
+        msg = obj.get("message") if isinstance(obj, dict) else None
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, str) or not content:
+            out.append(line)
+            continue
+        drop = min(remaining, len(content))
+        msg["content"] = content[drop:]
+        remaining -= drop
+        out.append(_json.dumps(obj).encode() + b"\n")
+    return out
+
+
 def _first_checkpoint_ready(text: str) -> bool:
     """True once enough answer text has accumulated to run the first check_output:
     a sentence boundary (after a little content) or the char cap."""

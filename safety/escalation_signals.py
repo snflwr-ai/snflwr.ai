@@ -33,8 +33,14 @@ from typing import Optional
 # This catches bullying dressed as coursework ("...for my English assignment"),
 # which a homework-gate exclusion would wrongly filter out.
 _PERSON_HARM = re.compile(
-    r"(?:targets?|insults?|mean|hurtful|hurt|embarrass|humiliat)\w*\s+"
-    r"(?:to\s+|toward\s+)?(?:another|other|someone|people|person|them)",
+    # harm word ... object, allowing a few words between: "insults or content
+    # used to belittle others", "scripts intended to cause distress or harm to
+    # others", "insults or help you put someone else down".
+    r"(?:target|insult|mean|hurtful|hurt|embarrass|humiliat|belittle|bully|"
+    r"distress|put\s+\w+\s+down|make\s+\w+\s+cry)\w*"
+    r"(?:[^.!?\n]{0,40}?)\s(?:another|other|others|someone|somebody|people|person|"
+    r"them|him|her|classmate)\b"
+    r"|(?:insults?|nicknames?)\s+(?:or\s+\w+\s+)?(?:meant|intended|used)\s+to\b",
     re.IGNORECASE,
 )
 
@@ -49,9 +55,37 @@ _CARE_REDIRECT = re.compile(
 
 # A bare refusal. Ambiguous on its own -- the tutor refuses homework with the same
 # words -- so it only counts when the turn is not a homework request.
+# STRUCTURAL, not an enumerated verb list. The tutor's system prompt supplies the
+# template family -- "I can't help with that", "I can't collect or share that",
+# "I can't help make anything dangerous" -- and the model generalises the verb
+# freely: provide, create, write, assist, put. Enumerating help/write/assist
+# missed 6 of 16 refusals under multi-turn pressure, because a pushed-back child
+# gets "I cannot PROVIDE insults" where the first turn said "I cannot WRITE
+# content that targets another person". That inverted the coverage against the
+# persistent child, who is the one a parent should hear about.
 _GENERIC_REFUSAL = re.compile(
-    r"\b(?:i can(?:'|no)?t help|i cannot help|i can(?:'|no)?t write|i cannot write"
-    r"|not able to help|i can(?:'|no)?t assist)\b",
+    r"\b(?:i can(?:'|no)?t\s+\w+|i am not able to|i'?m not able to"
+    r"|i won'?t\s+\w+|i will not\s+\w+)",
+    re.IGNORECASE,
+)
+
+# Being UNABLE is not refusing. "I can't see your worksheet" and "I don't have
+# access to your book" are the tutor lacking information, not declining to act,
+# and they must not reach a parent as a safety event.
+_INABILITY = re.compile(
+    r"\bi can(?:'|no)?t\s+(?:see|tell|access|read|view|open|find)\b"
+    r"|\bi (?:don'?t|do not) have (?:your|access)",
+    re.IGNORECASE,
+)
+
+# The refusal's OBJECT identifies it as schoolwork. Checked instead of trusting
+# the homework gate alone: the gate misses turns, and two such misses turned
+# "I cannot provide the final value directly because this is a school task"
+# into a safety escalation to a parent.
+_HOMEWORK_OBJECT = re.compile(
+    r"\b(?:the final (?:answer|value|number|solution|result|equation|paragraph)"
+    r"|your (?:essay|paper|report|summary|assignment|homework|thesis|conclusion)"
+    r"|assigned work|school task|for your assignment|the answer for)\b",
     re.IGNORECASE,
 )
 
@@ -73,6 +107,8 @@ def escalation_signal(user_text: str, reply: str, is_homework: bool) -> Optional
         return "refused_harm_to_person"
     if _CARE_REDIRECT.search(body):
         return "redirected_to_care_adult"
+    if _INABILITY.search(body) or _HOMEWORK_OBJECT.search(body):
+        return None
     if _GENERIC_REFUSAL.search(body) and not is_homework:
         return "refused_non_homework"
     return None

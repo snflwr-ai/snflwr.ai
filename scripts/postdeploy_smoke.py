@@ -53,6 +53,49 @@ CASES = [
 ]
 
 
+def _check_safety_model_is_the_configured_one() -> list:
+    """The configured SAFETY_MODEL must be the one actually resolved.
+
+    `_find_model()` falls back silently: when the configured model is absent it
+    picks the first available fallback, logs nothing at WARNING, and the
+    classifier reports itself available. That is how `llama-guard3-cpu:latest`
+    ran for a full deploy cycle without existing -- content safety kept working
+    on the evictable GPU base, losing the eviction-immunity the CPU pin exists
+    to provide. A silent downgrade of a safety component must fail LOUDLY.
+    """
+    # An import or resolution error FAILS rather than warns. A guard that
+    # downgrades itself to a warning when its own target is renamed is the same
+    # silent pass it exists to catch -- the first draft of this check did
+    # exactly that against a wrong class name and reported OK.
+    try:
+        # `safety_config` is the object the classifier itself reads -- comparing
+        # against any other config object measures the wrong thing.
+        from config import safety_config
+        from safety.pipeline.classifier import _SemanticClassifier
+    except Exception as exc:
+        print(f"  [FAIL] safety model check could not run ({exc})")
+        return ["safety model check broken"]
+
+    configured = getattr(safety_config, "SAFETY_MODEL", "")
+    try:
+        resolved = _SemanticClassifier()._find_model()
+    except Exception as exc:
+        print(f"  [FAIL] safety model resolution raised ({exc})")
+        return ["safety model resolution error"]
+
+    if resolved is None:
+        print(f"  [FAIL] safety model: configured={configured!r} resolved=NONE")
+        return ["safety model unavailable"]
+    if resolved != configured:
+        print(
+            f"  [FAIL] safety model: configured={configured!r} "
+            f"but SILENTLY FELL BACK to {resolved!r}"
+        )
+        return ["safety model fell back"]
+    print(f"  [ok ] safety model: {resolved} (configured, not a fallback)")
+    return []
+
+
 def main() -> int:
     try:
         from core.pedagogy.trigger import is_homework_request, normalize
@@ -74,6 +117,8 @@ def main() -> int:
         print(f"  [{mark}] {label}: triggered={actual} expected={expected}")
         if actual != expected:
             failures.append(label)
+
+    failures.extend(_check_safety_model_is_the_configured_one())
 
     if failures:
         print(

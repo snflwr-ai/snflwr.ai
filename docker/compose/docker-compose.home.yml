@@ -67,6 +67,17 @@ services:
       # a revealed answer. Runs the confirm on every homework turn; fail-open.
       - GUIDANCE_ENFORCEMENT_ENABLED=${GUIDANCE_ENFORCEMENT_ENABLED:-false}
       - GUIDANCE_GATE_MODEL=${GUIDANCE_GATE_MODEL:-}
+      # Content-safety classifier. CPU-pinned by default: same weights as the
+      # GPU build (identical blob digest, only num_gpu differs) and measured at
+      # 1.9s vs 1.8s, but immune to being evicted by the tutor or IronClaw's
+      # brain -- after which the GPU build cold-loads for 2m27s on a path that
+      # decides whether a child's message is about self-harm.
+      # Names must match `ollama list` EXACTLY: _find_model does `in names`.
+      # Default is the PUBLIC build so a fresh deployment works. This box sets
+      # SAFETY_MODEL=llama-guard3-cpu:latest in .env.home -- a locally built
+      # variant (same blob, num_gpu 0) that no fresh install would have.
+      - SAFETY_MODEL=${SAFETY_MODEL:-llama-guard3:8b}
+      - SAFETY_MODEL_FALLBACKS=${SAFETY_MODEL_FALLBACKS:-llama-guard3:8b}
       - GUIDANCE_GATE_TIMEOUT_S=${GUIDANCE_GATE_TIMEOUT_S:-6}
       - GUIDANCE_ENFORCER_CONFIRM_MODEL=${GUIDANCE_ENFORCER_CONFIRM_MODEL:-}
       # Keep in step with config.py's default -- compose's own default wins

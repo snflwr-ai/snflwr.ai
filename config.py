@@ -810,7 +810,10 @@ class _SafetyConfig:
     SAFETY_MODEL: str = os.getenv("SAFETY_MODEL", "llama-guard3:8b")
     SAFETY_MODEL_FALLBACKS: tuple = tuple(
         s.strip()
-        for s in os.getenv("SAFETY_MODEL_FALLBACKS", "llama-guard3:1b").split(",")
+        # llama-guard3:1b is NOT pulled by any setup step here, so it was a
+        # fallback to nothing: _find_model returned None and the classifier went
+        # disabled. llama-guard3:8b is the build that actually exists.
+        for s in os.getenv("SAFETY_MODEL_FALLBACKS", "llama-guard3:8b").split(",")
         if s.strip()
     )
 

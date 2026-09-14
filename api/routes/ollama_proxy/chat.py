@@ -103,7 +103,20 @@ async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
             # verdicts over 6 runs), but one verdict did flip between runs
             # earlier in the same session, and a reveal check that can flip is a
             # reveal check that can flip the wrong way.
-            "options": {"temperature": 0},
+            #
+            # num_gpu 0: CPU-PINNED ON PURPOSE, same reasoning that pins
+            # llama-guard3-cpu. The placement policy prefers the GPU for any
+            # model not already resident, so on a card that holds one big model
+            # this classifier competed with the co-tenant brain -- and lost.
+            # Measured 2026-09-13 with IronClaw's 17.8 GB model resident:
+            #
+            #     GPU-preferring   verdict WRONG (load failed, 500)   29.3 s
+            #     num_gpu 0        verdict CORRECT                    13.6 s cold
+            #                                                          0.8 s warm
+            #
+            # A classifier trades a little latency for never being evicted. Here
+            # it does not even cost latency: 0.8 s warm beats the GPU path.
+            "options": {"temperature": 0, "num_gpu": 0},
         }
     ).encode()
     upstream = await transport._forward_request(

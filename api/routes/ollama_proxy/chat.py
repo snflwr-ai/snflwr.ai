@@ -702,7 +702,14 @@ async def proxy_chat(
                 async def _confirm_generate(prompt: str) -> str:
                     return await _pedagogy_oneshot(
                         prompt,
-                        system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL or model,
+                        # CONFIRM_MODEL -> GATE_MODEL -> tutor. The tutor is
+                        # LAST: running the confirm on it inherits the tutor's
+                        # system prompt, whose brevity rules truncate the JSON
+                        # verdict to `{"` and fail open on every reveal
+                        # (measured 0/20 recall vs 13/20 on the base model).
+                        system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL
+                        or system_config.GUIDANCE_GATE_MODEL
+                        or model,
                         fwd_headers,
                     )
 

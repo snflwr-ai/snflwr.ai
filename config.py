@@ -193,6 +193,27 @@ class _SystemConfig:
     GUIDANCE_GATE_MODEL: str = os.getenv("GUIDANCE_GATE_MODEL", "")
     GUIDANCE_GATE_TIMEOUT_S: float = float(os.getenv("GUIDANCE_GATE_TIMEOUT_S", "6"))
 
+    # Model for the reveal CONFIRM. Empty here does NOT mean "use the tutor":
+    # the resolution order in the proxy is CONFIRM_MODEL -> GATE_MODEL -> tutor,
+    # and the tutor is the last resort precisely because it is the dangerous one.
+    #
+    # A safety CLASSIFIER must not run on the tutor model, because it then
+    # inherits the tutor's SYSTEM PROMPT. Measured 2026-09-13 on 20 known
+    # reveals from a sealed set:
+    #
+    #     confirm on snflwr.ai (tutor)   recall  0/20 =   0%   <- non-functional
+    #     confirm on gemma4:e4b (base)   recall 13/20 =  65%
+    #
+    # The tutor persona caps answer length hard ("LENGTH IS A HARD LIMIT ...
+    # write LESS"), so the confirm emitted the two characters `{"` and stopped.
+    # Unparseable -> fail open -> EVERY reveal served. No error, healthy
+    # container, and the only visible symptom was a reveal rate that had
+    # quadrupled.
+    #
+    # It broke when an unrelated PR added a paragraph to the Modelfile. That is
+    # the real lesson: while the check follows the backbone, ANY prompt edit can
+    # silently disable it. The base model is the same weights without the
+    # persona, so pinning costs no extra VRAM.
     GUIDANCE_ENFORCER_CONFIRM_MODEL: str = os.getenv(
         "GUIDANCE_ENFORCER_CONFIRM_MODEL", ""
     )

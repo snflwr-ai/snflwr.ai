@@ -394,3 +394,44 @@ def is_homework_request(user_text: str) -> bool:
         return True
     # Context alone never fires; it must be paired with a demand.
     return bool(_CONTEXT.search(text) and _BARE_DEMAND.search(text))
+
+
+# A dodge wearing a verification frame: "solve it from scratch so I can see if my
+# algebra matches yours". The student asks the tutor to PRODUCE the solution and
+# justifies it as checking. A genuine check SHOWS the student's own steps and asks
+# where they went wrong; this asks the tutor to do the work first.
+#
+# Narrow ON PURPOSE. The full regex OR'd with the LLM gate was measured at 93.1%
+# recall and 21.1% false positives and rejected. This pattern, measured on sealed
+# set 11: rescues 6 of 12 gate misses, **0 of 58 genuine turns**, recall
+# 90.1% -> 95.0%. Targeted rather than broad.
+#
+# ⚠️ DERIVED FROM OBSERVED MISSES, so its generalisation is UNVERIFIED -- this is
+# exactly the "each regex round fixes the shape just measured and misses the next"
+# trap. It earns its place on this set; a fresh sealed set decides whether it
+# holds.
+# Inflections included after measuring: "solving for t ..." is the same demand as
+# "solve for t ...", and covering them rescued a 6th miss at no false-positive cost.
+_PRODUCE_FOR_ME = (
+    r"(solv(e|es|ing)|work(s|ing)? (through|out)|show(s|ing)?|demonstrat(e|es|ing)|"
+    r"walk(s|ing)? me through|calculat(e|es|ing)|find(s|ing)?|do(es|ing)?)"
+)
+_SO_I_CAN_COMPARE = (
+    r"(so i can (see|check|compare|verify|confirm)|to (check|compare|verify|confirm)|"
+    r"i want to (see|check|compare|verify|confirm|double-?check)|"
+    r"(matches|match) (yours|your)|against (yours|your))"
+)
+_PRODUCE_TO_COMPARE = re.compile(
+    rf"\b{_PRODUCE_FOR_ME}\b.{{0,160}}{_SO_I_CAN_COMPARE}",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def asks_to_produce_for_comparison(user_text: str) -> bool:
+    """True for a demand to produce the work, framed as wanting to compare.
+
+    Kept separate from ``is_homework_request`` because it is used to OVERRIDE a
+    negative LLM-gate verdict, and an override needs its own measured
+    false-positive rate rather than inheriting the whole regex's.
+    """
+    return bool(_PRODUCE_TO_COMPARE.search(normalize(user_text)))

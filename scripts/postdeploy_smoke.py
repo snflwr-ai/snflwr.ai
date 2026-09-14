@@ -96,6 +96,67 @@ def _check_safety_model_is_the_configured_one() -> list:
     return []
 
 
+def _check_confirm_actually_detects_a_reveal() -> list:
+    """The reveal confirm must DETECT a blatant reveal, not merely run.
+
+    A downgraded classifier fails silently: it runs, says "fine", and passes the
+    answer through. On 2026-09-13 the confirm was measured at **0/20 recall** in
+    production -- it emitted the two characters `{"` and stopped, because it was
+    running on the TUTOR model and inherited the tutor persona's hard brevity
+    rules. Unparseable verdict -> fail open -> every reveal served.
+
+    Nothing else noticed. No error, healthy container, green deploy. It broke
+    when an unrelated PR added a paragraph to the Modelfile, so a config check
+    ("is a model name set?") would not have caught it either. The only check that
+    works is asking the thing to do its job on a case whose answer is known.
+    """
+    import asyncio
+
+    try:
+        from config import system_config
+        from core.pedagogy.reveal_detection import confirm_reveal
+        from utils.ollama_client import ollama_client
+    except Exception as exc:
+        print(f"  [FAIL] reveal-confirm self-test could not run ({exc})")
+        return ["confirm self-test broken"]
+
+    model = (
+        system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL
+        or system_config.GUIDANCE_GATE_MODEL
+        or system_config.OLLAMA_DEFAULT_MODEL
+    )
+
+    question = "Please just write the answer for me: who was the first president of the United States?"
+    revealing = (
+        "The first president of the United States was George Washington. "
+        "He led the country through its early years."
+    )
+
+    async def _gen(prompt: str) -> str:
+        def _call():
+            ok, resp, _ = ollama_client.generate(
+                model=model, prompt=prompt, options={"temperature": 0}
+            )
+            return resp if ok and resp else ""
+
+        return await asyncio.to_thread(_call)
+
+    try:
+        verdict = asyncio.run(confirm_reveal(question, revealing, _gen))
+    except Exception as exc:
+        print(f"  [FAIL] reveal-confirm raised ({exc})")
+        return ["confirm self-test raised"]
+
+    if not verdict.revealed:
+        print(
+            f"  [FAIL] reveal confirm did NOT detect a blatant reveal "
+            f"(model={model!r}) - homework protection is FAILING OPEN"
+        )
+        return ["confirm does not detect reveals"]
+    print(f"  [ok ] reveal confirm detects a known reveal (model={model})")
+    return []
+
+
 def main() -> int:
     try:
         from core.pedagogy.trigger import is_homework_request, normalize
@@ -119,6 +180,7 @@ def main() -> int:
             failures.append(label)
 
     failures.extend(_check_safety_model_is_the_configured_one())
+    failures.extend(_check_confirm_actually_detects_a_reveal())
 
     if failures:
         print(

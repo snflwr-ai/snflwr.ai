@@ -114,6 +114,7 @@ def _check_confirm_actually_detects_a_reveal() -> list:
 
     try:
         from config import system_config
+        from core.pedagogy import PEDAGOGY_CLASSIFIER_OPTIONS
         from core.pedagogy.reveal_detection import confirm_reveal
         from utils.ollama_client import ollama_client
     except Exception as exc:
@@ -134,8 +135,15 @@ def _check_confirm_actually_detects_a_reveal() -> list:
 
     async def _gen(prompt: str) -> str:
         def _call():
+            # EXACTLY what production sends. The first version of this check
+            # reconstructed the options by hand and omitted the CPU pin, so it
+            # exercised a path production does not take -- it failed while
+            # production was fine, the mirror image of a guard that passes while
+            # production is broken.
             ok, resp, _ = ollama_client.generate(
-                model=model, prompt=prompt, options={"temperature": 0}
+                model=model,
+                prompt=prompt,
+                options=dict(PEDAGOGY_CLASSIFIER_OPTIONS),
             )
             return resp if ok and resp else ""
 

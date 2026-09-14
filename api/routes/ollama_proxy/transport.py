@@ -199,6 +199,34 @@ async def _stream_chunks_from_ollama(body: bytes, headers: dict):
         await client.aclose()
         ollama_circuit.record_failure(exc)
         raise
+
+    # Same GPU-OOM fallback as _forward_request, repeated HERE because this
+    # helper builds its own request and so bypasses that choke point -- which is
+    # exactly how the first version of this fix missed the STUDENT path and
+    # covered only the one children do not use.
+    #
+    # A 500 arrives before any chunk, so the retry is clean: nothing has been
+    # yielded yet and the caller cannot tell the difference.
+    if resp.status_code == 500:
+        try:
+            await resp.aread()
+        except Exception:  # noqa: BLE001 - an unreadable body is not a known OOM
+            pass
+        if _looks_like_gpu_oom(resp):
+            logger.warning(
+                "transport: GPU out of memory on the stream; retrying on CPU"
+            )
+            await resp.aclose()
+            retry_req = client.build_request(
+                "POST", url, content=_force_cpu(body), headers=headers
+            )
+            try:
+                resp = await client.send(retry_req, stream=True)
+            except httpx.TransportError as exc:
+                await client.aclose()
+                ollama_circuit.record_failure(exc)
+                raise
+
     ollama_circuit.record_success()
     buffer = b""
     try:

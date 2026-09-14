@@ -47,6 +47,43 @@ def _inject_gpu_placement(path: str, content):
         return content
 
 
+# Ollama's 500 body when a model cannot be placed on the GPU. Two daemons share
+# this card (snflwr's, container-internal, and a host-level co-tenant), and
+# NEITHER can see the other's models in /api/ps -- so fit cannot be predicted,
+# only detected.
+_GPU_OOM_MARKERS = (
+    "cudaMalloc failed",
+    "out of memory",
+    "unable to allocate",
+    "failed to allocate",
+    "llama-server process has terminated",
+)
+
+
+def _looks_like_gpu_oom(resp: httpx.Response) -> bool:
+    """True when a 500 is the card being full rather than a real backend fault."""
+    if resp.status_code != 500:
+        return False
+    try:
+        body = resp.text[:2000].lower()
+    except Exception:  # noqa: BLE001 - a body we cannot read is not a known OOM
+        return False
+    return any(m.lower() in body for m in _GPU_OOM_MARKERS)
+
+
+def _force_cpu(content):
+    """Rewrite an outgoing body to pin ``num_gpu`` to 0."""
+    try:
+        body = _json.loads(content)
+        if not isinstance(body, dict):
+            return content
+        opts = body.get("options")
+        body["options"] = {**(opts if isinstance(opts, dict) else {}), "num_gpu": 0}
+        return _json.dumps(body).encode()
+    except Exception:  # noqa: BLE001
+        return content
+
+
 async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     """Send *method* + *path* to the real Ollama backend and return the raw response.
 
@@ -70,6 +107,31 @@ async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
         ollama_circuit.record_failure(exc)
         raise
     ollama_circuit.record_success()
+
+    # The card is shared with a co-tenant ollama daemon that this one cannot see.
+    # When the co-tenant holds the GPU, a load here dies with
+    #   cudaMalloc failed: out of memory
+    # and ollama answers 500. Measured 2026-09-14: the child then received a
+    # canned "I need to rephrase my response", because the safety classifier --
+    # correctly failing closed on an empty body -- had nothing to check.
+    #
+    # Fit cannot be PREDICTED (neither daemon's /api/ps shows the other's
+    # models), so it is DETECTED: retry once pinned to the CPU. A slower answer
+    # beats no answer, and this is the same trade already made for the safety
+    # classifier.
+    if _looks_like_gpu_oom(resp) and "content" in kwargs:
+        logger.warning("transport: GPU out of memory for %s; retrying on CPU", path)
+        retry_kwargs = dict(kwargs)
+        retry_kwargs["content"] = _force_cpu(kwargs["content"])
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT)
+            ) as client:
+                resp = await client.request(method, url, **retry_kwargs)
+        except httpx.TransportError as exc:
+            ollama_circuit.record_failure(exc)
+            raise
+        ollama_circuit.record_success()
     return resp
 
 

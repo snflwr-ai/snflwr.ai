@@ -90,6 +90,10 @@ async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
     Called by the pedagogy enforcer's ``_confirm_generate`` closure. Fail-open:
     callers (inside ``confirm_reveal``) catch all exceptions from this helper.
     """
+    # Imported here, like enforce_guidance below, to keep core.pedagogy off this
+    # module's import path at load time.
+    from core.pedagogy import PEDAGOGY_CLASSIFIER_OPTIONS
+
     payload = _json.dumps(
         {
             "model": model,
@@ -116,7 +120,7 @@ async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
             #
             # A classifier trades a little latency for never being evicted. Here
             # it does not even cost latency: 0.8 s warm beats the GPU path.
-            "options": {"temperature": 0, "num_gpu": 0},
+            "options": dict(PEDAGOGY_CLASSIFIER_OPTIONS),
         }
     ).encode()
     upstream = await transport._forward_request(

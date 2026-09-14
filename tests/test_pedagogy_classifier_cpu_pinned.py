@@ -56,3 +56,29 @@ async def test_placement_injection_respects_the_explicit_pin():
     body = json.dumps({"model": "gemma4:e4b", "options": {"num_gpu": 0}}).encode()
     out = json.loads(transport._inject_gpu_placement("/api/chat", body))
     assert out["options"]["num_gpu"] == 0
+
+
+def test_the_selftest_and_production_cannot_drift():
+    """The deploy-time self-test must send what production sends.
+
+    A guard that tests different options than production is not a guard: it can
+    fail while production is fine, or pass while production is broken. Both
+    happened in one session, so the options live in ONE place and this asserts
+    both call sites read it.
+    """
+    import inspect
+
+    from core.pedagogy import PEDAGOGY_CLASSIFIER_OPTIONS
+    import scripts.postdeploy_smoke as smoke
+    from api.routes.ollama_proxy import chat as chat_mod
+
+    assert PEDAGOGY_CLASSIFIER_OPTIONS["num_gpu"] == 0
+    assert PEDAGOGY_CLASSIFIER_OPTIONS["temperature"] == 0
+
+    for mod, name in ((chat_mod, "_pedagogy_oneshot"),
+                      (smoke, "_check_confirm_actually_detects_a_reveal")):
+        src = inspect.getsource(getattr(mod, name))
+        assert "PEDAGOGY_CLASSIFIER_OPTIONS" in src, (
+            f"{name} builds classifier options by hand instead of using the "
+            "shared constant; it will drift from production"
+        )

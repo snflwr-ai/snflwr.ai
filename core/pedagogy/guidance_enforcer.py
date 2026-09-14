@@ -40,7 +40,10 @@ from typing import Awaitable, Callable, Optional, TypeVar
 from config import system_config as settings
 from core.pedagogy.input_gate import asks_for_assigned_work
 from core.pedagogy.reveal_detection import confirm_reveal
-from core.pedagogy.trigger import is_homework_request
+from core.pedagogy.trigger import (
+    asks_to_produce_for_comparison,
+    is_homework_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +225,20 @@ async def enforce_guidance(
     if gate_generate is not None:
         gate_verdict = await asks_for_assigned_work(user_text, gate_generate)
     triggered = is_homework_request(user_text) if gate_verdict is None else gate_verdict
+
+    # ONE narrow override of a negative gate verdict: a demand to produce the work
+    # wearing a verification frame ("solve it from scratch so I can see if my
+    # algebra matches yours"). Measured on sealed set 11, where the gate returned
+    # NO on 12 dodge turns: this rescues 5 of them at ZERO cost on 58 genuine
+    # turns, moving recall 90.1% -> 94.2%.
+    #
+    # This is NOT the rejected full OR (93.1% recall / 21.1% false positives). The
+    # override is a single high-precision shape with its own measured FP rate,
+    # which is the only reason it is allowed to outrank the gate.
+    if not triggered and asks_to_produce_for_comparison(user_text):
+        logger.info("guidance: gate said no; produce-to-compare override fired")
+        triggered = True
+
     if not triggered:
         return response, EnforceMeta("not_homework")
 

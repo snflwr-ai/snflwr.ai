@@ -165,6 +165,71 @@ def _check_confirm_actually_detects_a_reveal() -> list:
     return []
 
 
+def _check_ollama_can_still_reach_the_gpu() -> list:
+    """Load a TINY model pinned to the GPU and check it actually landed there.
+
+    Measured 2026-09-14: snflwr-ollama lost its GPU handle (`nvidia-smi` inside it
+    failed with "Failed to initialize NVML: Unknown Error"). Every model then
+    served from CPU -- the tutor went from 0.4s warm to ~250s -- while the
+    container stayed healthy and ollama answered normally. Nothing alerted, and
+    hours were spent blaming co-tenant contention and placement policy before
+    anyone checked whether the GPU was reachable AT ALL.
+
+    Asking whether the TUTOR is GPU-resident does not work: it is evicted between
+    turns under memory pressure, and a CPU-resident tutor is CORRECT when the card
+    is genuinely full. So this probes the capability directly with a ~400 MB model
+    pinned to the GPU, which fits even on a nearly-full card. If THAT lands on the
+    CPU, the container cannot use the GPU at all.
+
+    A warning, not a failure: a box with no GPU is a supported configuration.
+    """
+    try:
+        import httpx
+
+        from config import system_config
+
+        url = (system_config.OLLAMA_PROXY_TARGET or "http://ollama:11434").rstrip("/")
+        tags = httpx.get(url + "/api/tags", timeout=10).json()
+        names = [m.get("name", "") for m in tags.get("models", [])]
+        probe = next(
+            (n for n in names if n.startswith(("qwen2.5:0.5b", "llama-guard3:1b"))),
+            None,
+        )
+        if probe is None:
+            print("  [warn] no small probe model available; GPU check skipped")
+            return []
+        httpx.post(
+            url + "/api/chat",
+            json={
+                "model": probe,
+                "stream": False,
+                "keep_alive": "60s",
+                "options": {"num_gpu": 999, "num_predict": 1, "temperature": 0},
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            timeout=300,
+        )
+        ps = httpx.get(url + "/api/ps", timeout=10).json()
+    except Exception as exc:
+        print(f"  [warn] GPU reachability check could not run ({exc})")
+        return []
+
+    base = probe.split(":")[0]
+    for m in ps.get("models", []):
+        if m.get("name", "").split(":")[0] == base:
+            if (m.get("size_vram") or 0) > 0:
+                print(f"  [ok ] ollama can place models on the GPU (probe: {probe})")
+            else:
+                print(
+                    "  [warn] a GPU-pinned 400MB probe landed on the CPU -- "
+                    "snflwr-ollama may have lost its GPU handle. Check "
+                    "`docker exec snflwr-ollama nvidia-smi -L`, then restart it."
+                )
+            return []
+    print("  [warn] GPU probe model did not stay resident; check skipped")
+    return []
+
+
 def main() -> int:
     try:
         from core.pedagogy.trigger import is_homework_request, normalize
@@ -189,6 +254,7 @@ def main() -> int:
 
     failures.extend(_check_safety_model_is_the_configured_one())
     failures.extend(_check_confirm_actually_detects_a_reveal())
+    failures.extend(_check_ollama_can_still_reach_the_gpu())
 
     if failures:
         print(

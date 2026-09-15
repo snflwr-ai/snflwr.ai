@@ -585,6 +585,40 @@ echo ""
 # --- Pull base model + build snflwr.ai wrapper -------------------------------
 section "AI model"
 
+# ---- The ollama container can silently LOSE its GPU ---------------------------
+# Measured 2026-09-14: `nvidia-smi` inside snflwr-ollama failed with
+#   Failed to initialize NVML: Unknown Error
+# while the container reported healthy and ollama answered requests normally. Every
+# model then served from CPU. The tutor went from 0.4 s warm to ~250 s, with no
+# error anywhere, and hours were spent blaming co-tenant contention and placement
+# policy before anyone checked whether the GPU was reachable AT ALL.
+#
+# This is NOT the same as "the GPU is busy". A full card is handled by the CPU
+# fallback in the transport and is correct behaviour. This checks the narrower,
+# silent case: the HOST has a GPU but the CONTAINER cannot see one.
+#
+# A `docker restart snflwr-ollama` restores it, which is why the remedy is printed
+# rather than the deploy just dying.
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+    if docker exec snflwr-ollama nvidia-smi -L >/dev/null 2>&1; then
+        info "GPU visible inside snflwr-ollama."
+    else
+        warn "HOST HAS A GPU BUT snflwr-ollama CANNOT SEE IT."
+        warn "Every model will serve from CPU (~250s per tutor turn) with no error."
+        warn "Attempting an automatic restart of snflwr-ollama..."
+        docker restart snflwr-ollama >/dev/null 2>&1 || true
+        sleep 15
+        if docker exec snflwr-ollama nvidia-smi -L >/dev/null 2>&1; then
+            info "GPU access restored by restarting snflwr-ollama."
+        else
+            error "snflwr-ollama still cannot see the GPU after a restart."
+            error "The tutor will run on CPU. Check the NVIDIA container runtime:"
+            error "  docker exec snflwr-ollama nvidia-smi -L"
+            error "  docker inspect snflwr-ollama --format '{{.HostConfig.DeviceRequests}}'"
+        fi
+    fi
+fi
+
 # BASE_MODEL is the actual base-model weight file. WRAPPED_MODEL is the
 # user-facing chat model — built locally as a wrapper around the base.
 BASE_MODEL="${BASE_MODEL:-${RESOLVED_MODEL}}"

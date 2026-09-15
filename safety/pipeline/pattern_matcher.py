@@ -555,6 +555,30 @@ class _PatternMatcher:
 
     # -- Shared bilingual patterns (from safety.patterns) ----------------------
 
+    # ---- Letter-spaced evasion -------------------------------------------
+    # "you are a b i t c h" reached a child unblocked while "you are a bitch"
+    # was caught. The shared bilingual patterns are plain \bword\b regexes
+    # matched against the ORIGINAL and a pre-normalised form; neither collapses
+    # separators. The structure-preserving fold does collapse them, but it also
+    # merges the preceding article -- "a b i t c h" -> "abitch" -- so even a
+    # word-boundary match fails on it.
+    #
+    # So: find runs of 3+ single letters separated by whitespace, which is not a
+    # shape that occurs in ordinary prose, and join them. Matching is then done
+    # by SEARCH rather than word boundary, because a deliberately letter-spaced
+    # run is already evasion -- there is no innocent reading of "b i t c h".
+    #
+    # A child spelling a word out ("how do you spell c a t") collapses to "cat"
+    # and matches nothing, which is the intended no-op.
+    _LETTER_RUN_RE = re.compile(r"\b(?:[a-z]\s+){2,}[a-z]\b", re.IGNORECASE)
+
+    @classmethod
+    def _collapse_letter_runs(cls, text: str) -> str:
+        """Join runs of 3+ whitespace-separated single letters."""
+        return cls._LETTER_RUN_RE.sub(
+            lambda m: re.sub(r"\s+", "", m.group(0)), text or ""
+        )
+
     _SHARED_CAT_MAP = {
         "HATE_SPEECH": Category.HATE_SPEECH,
         "SEXUAL_CONTENT": Category.SEXUAL,
@@ -741,11 +765,37 @@ class _PatternMatcher:
                 mm.span() for mm in self._SUBSTR_ALLOWLIST_RE.finditer(pre_norm)
             ]
 
+            # Letter-spaced evasion: "b i t c h" -> "bitch". Deliberately
+            # separate from the other forms because a run of single letters is
+            # itself the evasion signal, so this form is searched WITHOUT the
+            # word-boundary requirement that the spacing is designed to defeat.
+            # Each collapsed run is matched on its OWN, and only as the WHOLE
+            # run or its SUFFIX -- never an interior substring. Searching the
+            # collapsed text freely reintroduced the Scunthorpe problem at once:
+            # "write a b o u t the water cycle" collapses to "about" and matched
+            # a slur pattern inside it. A suffix match still catches the real
+            # shape, where the run swallows a preceding article:
+            # "a b i t c h" -> "abitch" ENDS WITH the keyword.
+            collapsed_runs = [
+                re.sub(r"\s+", "", mm.group(0))
+                for mm in self._LETTER_RUN_RE.finditer(original_lower)
+            ]
+
             for shared_cat, patterns in _SHARED_COMPILED.items():
                 category_enum = self._SHARED_CAT_MAP.get(shared_cat, Category.VIOLENCE)
                 for regex, desc in patterns:
                     hit_orig = regex.search(original_lower)
                     hit_pre = regex.search(pre_norm)
+                    if not (hit_orig or hit_pre) and collapsed_runs:
+                        bare = regex.pattern.replace(r"\b", "")
+                        for run in collapsed_runs:
+                            try:
+                                m = re.search(bare + r"$", run, re.IGNORECASE)
+                            except re.error:
+                                break
+                            if m:
+                                hit_orig = m
+                                break
                     if hit_orig or hit_pre:
                         # Skip innocent homographs (Van Dyke, spice, …)
                         if hit_orig and any(

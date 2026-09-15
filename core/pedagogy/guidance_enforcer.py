@@ -70,6 +70,57 @@ _NUDGE = (
     "reply."
 )
 
+# ---- Deliverable-specific technique ------------------------------------------
+# Measured on sealed set 11, by batch, share of turns that produced GOOD tutoring
+# (not a reveal, not the canned fallback):
+#
+#   prose 91%   K-2 91%   maths-direct 90%   maths-worked 75%   polite 85%
+#   science 62%   language/history 58%   **assigned FACTS 33%**
+#
+# The rewrite works where something can be SUBSTITUTED -- different numbers, a
+# different book. It collapses when the assigned item IS a fact: there is nothing
+# to swap in, and "give the surrounding facts" is too abstract to act on. That
+# class is 4 reveals + 4 fallbacks + 4 good out of 12.
+#
+# The model CAN do it: asked to define osmosis it once taught semipermeable
+# membranes and concentration gradients and asked the student to combine them.
+# It just does not do it reliably from a general instruction. So the technique is
+# named concretely, per deliverable type, with a worked example of the MOVE.
+#
+# Three attempts at rewording the single general nudge moved nothing (and a
+# stricter detector made it worse: 62.5% fallback, p=0.0005). This is a routing
+# change, not more prose.
+_FACTUAL_ASK = re.compile(
+    r"\b(define|definition of|what is the definition|list|name the|identify|"
+    r"state the|give the (name|list)|properties of|characteristics of|"
+    r"compare|contrast|difference(s)? between|causes of|parts of|"
+    r"products of|elements of|steps of|stages of)\b",
+    re.IGNORECASE,
+)
+
+_FACTUAL_TECHNIQUE = (
+    "THIS ASSIGNMENT ASKS FOR A FACT THE STUDENT MUST PRODUCE -- a definition, a "
+    "list, a comparison, a name. There is nothing to substitute, so use this move "
+    "instead: name the two or three CONCEPTS the answer is built from, explain "
+    "THOSE, and ask the student to combine them. "
+    "Asked to define osmosis: explain what a semipermeable membrane is and what a "
+    "concentration gradient is, then ask what water does when those two meet -- "
+    "without ever saying the word 'osmosis' in a definition. "
+    "Asked to list the four biomes: say that biomes are grouped by rainfall and "
+    "temperature, and ask which extremes of each the student can think of -- "
+    "without naming any biome. "
+    "Never state the item itself, and a question at the END does not make it "
+    "acceptable to have stated it first. "
+)
+
+
+def nudge_for(user_text: str) -> str:
+    """The rewrite instruction, specialised to what the assignment asks for."""
+    if _FACTUAL_ASK.search(user_text or ""):
+        return _NUDGE + _FACTUAL_TECHNIQUE
+    return _NUDGE
+
+
 # MEASURED 2026-09-11. The nudge above is accusatory on purpose: softening it to
 # a neutral "rewrite your reply" halved the fix rate (5 of 8 real reveals
 # regenerated -> 2). But on a FALSE alarm the model defends itself, and a child
@@ -294,7 +345,9 @@ async def enforce_guidance(
         attempts += 1
         try:
             retry = await _await_with_retry(
-                lambda: regenerate(_NUDGE), budget=budget, deadline=deadline
+                lambda: regenerate(nudge_for(user_text)),
+                budget=budget,
+                deadline=deadline,
             )
         except Exception:
             logger.info("guidance re-prompt failed")

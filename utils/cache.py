@@ -680,8 +680,11 @@ class RedisCache:
             }
 
         except RedisError as e:
+            # The result is served by the admin health endpoint: return a fixed
+            # message and keep the exception text (hosts, ports) in the log.
+            logger.warning(f"Redis health check failed: {sanitize_log_value(e)}")
             result["healthy"] = False
-            result["error"] = str(e)
+            result["error"] = "Redis health check failed"
 
         return result
 

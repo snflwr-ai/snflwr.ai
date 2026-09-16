@@ -566,10 +566,13 @@ class TestHealthCheckDetailed:
         assert "degraded" in result
 
     def test_detailed_returns_error_on_redis_ping_failure(self, mock_cache):
-        mock_cache._client.ping.side_effect = RedisError("ping failed")
+        mock_cache._client.ping.side_effect = RedisError(
+            "Error 111 connecting to redis-internal.local:6379"
+        )
         result = mock_cache.health_check_detailed()
         assert result["healthy"] is False
-        assert "error" in result
+        assert result["error"] == "Redis health check failed"
+        assert "redis-internal" not in json.dumps(result)
 
     def test_detailed_reports_degraded_mode_when_set(self):
         import time

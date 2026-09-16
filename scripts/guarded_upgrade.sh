@@ -36,7 +36,8 @@ ENV_FILE="$REPO_DIR/.env.home"
 COMPOSE_BASE="$REPO_DIR/docker/compose/docker-compose.home.yml"
 COMPOSE_GPU="$REPO_DIR/docker/compose/docker-compose.gpu.yml"
 SMOKE_TIMEOUT=180
-DB_BACKUP="${TMPDIR:-/tmp}/snflwr-owui-webui.db.pre-upgrade.bak"
+# Timestamped so a second run can never overwrite the rollback point of the first.
+DB_BACKUP="${TMPDIR:-/tmp}/snflwr-owui-webui.db.pre-upgrade.$(date +%Y%m%d-%H%M%S).bak"
 DB_IN_CONTAINER="/app/backend/data/webui.db"
 MODEL_BACKUP_TAG="snflwr.ai:preupgrade-bak"
 
@@ -141,13 +142,29 @@ owui_resolve_target() {
     fi
 }
 owui_pull() { docker pull "ghcr.io/open-webui/open-webui:$1"; }
+# webui.db is SQLite in WAL mode. A bare `docker cp` of the main file misses
+# writes still in webui.db-wal, and copying it back over a volume that holds a
+# newer image's -wal/-shm corrupts it (that is how the home stack's webui.db
+# became malformed). scripts/owui_db_snapshot.py does both safely, inside the
+# Open WebUI image, and refuses to start an upgrade on a database that is
+# already damaged: the new image would crash in its migrations.
+owui_db_tool() {  # owui_db_tool CMD ARGS... (runs in the live container)
+    docker cp "$SCRIPT_DIR/owui_db_snapshot.py" snflwr-frontend:/tmp/owui_db_snapshot.py >/dev/null 2>&1 \
+        && docker exec snflwr-frontend python /tmp/owui_db_snapshot.py "$@"
+}
 owui_snapshot() {
     PREV_OWU="$(owui_current)"
-    if docker cp "snflwr-frontend:${DB_IN_CONTAINER}" "$DB_BACKUP" >/dev/null 2>&1; then
-        info "Backed up webui.db (rollback point)."
+    if ! owui_db_tool check "$DB_IN_CONTAINER"; then
+        err "webui.db fails its integrity check. Upgrading would crash Open WebUI's"
+        err "migrations. Repair the database first; no changes were made."
+        exit 1
+    fi
+    if owui_db_tool snapshot "$DB_IN_CONTAINER" /tmp/webui.db.pre-upgrade \
+        && docker cp snflwr-frontend:/tmp/webui.db.pre-upgrade "$DB_BACKUP" >/dev/null 2>&1; then
+        info "Backed up webui.db (rollback point: $DB_BACKUP)."
     else
-        warn "Could not back up webui.db — rollback will restore the image only."
-        DB_BACKUP=""
+        err "Could not take a verified webui.db snapshot; not upgrading without a rollback point."
+        exit 1
     fi
 }
 owui_apply() { set_env_var OWU_IMAGE_TAG "$1"; compose up -d open-webui >/dev/null 2>&1; reseed_owui; }
@@ -162,12 +179,20 @@ owui_smoke() {
 owui_restore() {
     set_env_var OWU_IMAGE_TAG "$PREV_OWU"
     # A newer OWU runs Alembic migrations an older image can't read; put the
-    # pre-upgrade DB back before the old image starts.
+    # pre-upgrade DB back before the old image starts. `up --no-start` replaces
+    # the newer container, so nothing is writing while the file is swapped, and
+    # the restore drops the newer image's -wal/-shm with it.
     if [[ -n "$DB_BACKUP" && -f "$DB_BACKUP" ]]; then
         compose up -d --no-start open-webui >/dev/null 2>&1 || true
-        docker cp "$DB_BACKUP" "snflwr-frontend:${DB_IN_CONTAINER}" >/dev/null 2>&1 \
-            && info "Restored pre-upgrade webui.db." \
-            || warn "Could not restore webui.db."
+        if docker run --rm --volumes-from snflwr-frontend \
+                -v "$DB_BACKUP:/restore/webui.db.bak:ro" \
+                -v "$SCRIPT_DIR/owui_db_snapshot.py:/restore/owui_db_snapshot.py:ro" \
+                --entrypoint python "ghcr.io/open-webui/open-webui:$PREV_OWU" \
+                /restore/owui_db_snapshot.py restore /restore/webui.db.bak "$DB_IN_CONTAINER"; then
+            info "Restored pre-upgrade webui.db."
+        else
+            warn "Could not restore webui.db (backup kept at $DB_BACKUP)."
+        fi
     fi
     owui_apply "$PREV_OWU"
 }

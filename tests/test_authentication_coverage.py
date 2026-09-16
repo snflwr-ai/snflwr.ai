@@ -398,7 +398,8 @@ class TestAuthenticateParent:
         with patch.object(auth_manager.db, "execute_query", return_value=[]):
             success, result = auth_manager.authenticate_parent("nobody", "pass")
         assert success is False
-        assert result == "User not found"
+        # Must be indistinguishable from a wrong password (account enumeration).
+        assert result == "Invalid username or password"
 
     def test_malformed_db_row(self, auth_manager):
         """Row with None parent_id should return system error."""

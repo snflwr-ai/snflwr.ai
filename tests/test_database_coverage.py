@@ -76,20 +76,23 @@ class TestRedactSensitiveSql:
 
 
 class TestRedactSensitiveParams:
-    """Test parameter redaction."""
+    """Failed-write logging must describe params without revealing them."""
 
-    def test_redacts_long_token(self):
+    def test_never_logs_values(self):
         from storage.database import _redact_sensitive_params
-        long_token = "a" * 50
-        result = _redact_sensitive_params((long_token, "short"))
-        assert "[REDACTED-TOKEN]" in result
-        assert "short" in result
 
-    def test_keeps_short_params(self):
+        params = ("parent@example.com", "Emma Rose Carter", "2016-04-02", "a" * 50, 42)
+        result = _redact_sensitive_params(params)
+        for value in ("parent@example.com", "Emma", "2016-04-02", "a" * 50, "42"):
+            assert value not in result
+        assert result == "(str, str, str, str, int)"
+
+    def test_keeps_arity_and_types_for_debugging(self):
         from storage.database import _redact_sensitive_params
-        result = _redact_sensitive_params(("user1", 42))
-        assert "user1" in result
-        assert "42" in result
+
+        assert _redact_sensitive_params(("user1", 42, None, 1.5, b"x")) == (
+            "(str, int, NoneType, float, bytes)"
+        )
 
     def test_empty_params(self):
         from storage.database import _redact_sensitive_params
@@ -100,14 +103,6 @@ class TestRedactSensitiveParams:
         from storage.database import _redact_sensitive_params
         result = _redact_sensitive_params(None)
         assert result == str(None)
-
-    def test_keeps_token_with_spaces(self):
-        """Strings with spaces are not redacted even if long."""
-        from storage.database import _redact_sensitive_params
-        long_with_spaces = "this is a long string with spaces" + " " * 20
-        result = _redact_sensitive_params((long_with_spaces,))
-        # Has spaces so should NOT be redacted
-        assert "[REDACTED-TOKEN]" not in result
 
 
 class TestTransactionContextManager:
@@ -657,14 +652,14 @@ class TestRedactSensitiveSqlMoreCases:
         result = _redact_sensitive_sql(query)
         assert "supersecret" not in result
 
-    def test_string_with_space_not_redacted_in_params(self):
+    def test_sentence_param_is_not_logged(self):
         from storage.database import _redact_sensitive_params
-        # A string with spaces should not be redacted even if > 40 chars
         val = "this is a normal sentence that is over forty characters long"
         result = _redact_sensitive_params((val,))
-        assert "[REDACTED-TOKEN]" not in result
+        assert "sentence" not in result
 
-    def test_int_param_not_redacted(self):
+    def test_int_param_value_not_logged(self):
         from storage.database import _redact_sensitive_params
         result = _redact_sensitive_params((12345,))
-        assert "12345" in result
+        assert "12345" not in result
+        assert result == "(int)"

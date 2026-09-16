@@ -82,7 +82,7 @@ class RedisCache:
 
         if not self.enabled:
             logger.warning(
-                "Redis caching is disabled - authentication rate limiting will be unavailable"
+                "Redis caching is disabled - rate limits use the local shared SQLite store"
             )
             # Typed as ``Any``: redis-py types its sync client methods as
             # returning ``Awaitable[Any] | Any`` (to share stubs with the async

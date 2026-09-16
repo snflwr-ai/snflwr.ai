@@ -12,6 +12,7 @@ argon2-cffi==25.1.0           # Password hashing (Argon2)
 # HTTP & API
 requests==2.33.0              # HTTP client (CVE-2024-47081, CVE-2026-25645 fix)
 urllib3==2.7.0                # HTTP library (CVE-2025-66471, CVE-2026-21441 fix)
+idna==3.19                    # transitive (httpx/requests/anyio); CVE-2026-45409 (fixed 3.15). Pinned so the floor holds
 
 # Web Framework
 fastapi==0.135.1              # API framework (starlette CVE-2025-54121, CVE-2025-62727 fix)

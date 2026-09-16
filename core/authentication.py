@@ -98,6 +98,7 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin, _Password
         self.db = db_manager
         self.storage_path = storage_path
         self.ph = PasswordHasher()
+        self._dummy_hash: Optional[str] = None
         self._session_lock = threading.RLock()  # Thread-safe access
         self._redis = None
         self._fallback_sessions = {}  # In-memory fallback if Redis unavailable
@@ -184,6 +185,13 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin, _Password
 
         return True, parent_id
 
+    def _timing_dummy_hash(self) -> str:
+        """An Argon2 hash with this hasher's parameters, so a login for an unknown
+        account costs the same verify as one for a real account."""
+        if self._dummy_hash is None:
+            self._dummy_hash = self.ph.hash("snflwr-timing-equalizer-not-a-password")
+        return self._dummy_hash
+
     def authenticate_parent(
         self, username: str, password: str
     ) -> Tuple[bool, Optional[Any]]:
@@ -192,7 +200,15 @@ class AuthenticationManager(SessionCacheMixin, EmailVerificationMixin, _Password
             (username,),
         )
         if not rows:
-            return False, "User not found"
+            # Same message AND similar cost as a wrong password. Returning "User not
+            # found" let anyone test whether a parent's email has an account (seen
+            # live 2026-09-16), and skipping Argon2 made the miss measurably faster,
+            # so the message alone would still leak it through timing.
+            try:
+                self.ph.verify(self._timing_dummy_hash(), password or "")
+            except Exception:  # expected: the dummy never matches
+                pass
+            return False, "Invalid username or password"
 
         row = rows[0]
 

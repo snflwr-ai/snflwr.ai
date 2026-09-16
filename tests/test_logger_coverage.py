@@ -459,8 +459,9 @@ class TestMaskEmail:
     def test_crlf_in_domain_cannot_forge_a_log_line(self):
         from utils.logger import mask_email
 
-        masked = mask_email("x@evil.com\n2026-01-01 CRITICAL forged\r")
-        assert "\n" not in masked and "\r" not in masked
+        for addr in ("x@evil.com\n2026-01-01 CRITICAL forged\r", "\nforged@evil.com"):
+            masked = mask_email(addr)
+            assert "\n" not in masked and "\r" not in masked
 
     def test_no_at_sign(self):
         from utils.logger import mask_email

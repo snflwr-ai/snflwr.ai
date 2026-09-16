@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 def _mask(addr: str) -> str:
     """Keep the domain, hide the mailbox: log lines are not a place for PII."""
     local, _, domain = (addr or "").partition("@")
-    # The domain is still caller-supplied: strip CR/LF so it cannot forge log lines.
-    domain = domain.replace("\r", "").replace("\n", "")
-    return f"{local[:1]}***@{domain}" if domain else "***"
+    masked = f"{local[:1]}***@{domain}" if domain else "***"
+    # Both halves are still caller-supplied: strip CR/LF so they cannot forge log lines.
+    return masked.replace("\r", "").replace("\n", "")
 
 
 def send_code(to_email: str, code: str) -> None:

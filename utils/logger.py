@@ -570,9 +570,9 @@ def mask_email(email: str) -> str:
     if not email or "@" not in email:
         return "***"
     local, domain = email.rsplit("@", 1)
-    # The domain is still caller-supplied: strip CR/LF so it cannot forge log lines.
-    domain = domain.replace("\r", "").replace("\n", "")
-    return f"{local[0]}***@{domain}" if local else f"***@{domain}"
+    masked = f"{local[0]}***@{domain}" if local else f"***@{domain}"
+    # Both halves are still caller-supplied: strip CR/LF so they cannot forge log lines.
+    return masked.replace("\r", "").replace("\n", "")
 
 
 def sanitize_log_value(value) -> str:

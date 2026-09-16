@@ -44,6 +44,11 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && gosu nobody true \
     && rclone version  # smoke-test gosu + rclone binaries
 
+# The runtime never installs packages: dependencies arrive hash-verified from the
+# builder stage. The base image's own pip (25.0.1) carried four open CVEs, so it
+# is removed rather than kept current in an image that has no use for it.
+RUN python -m pip uninstall -y pip && ! python -m pip --version 2>/dev/null
+
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash snflwr
 

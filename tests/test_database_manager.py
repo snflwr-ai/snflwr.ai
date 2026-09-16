@@ -55,12 +55,12 @@ class TestRedaction:
         sql = "SELECT * FROM accounts"
         assert _redact_sensitive_sql(sql) == sql
 
-    def test_redact_long_tokens_in_params(self):
+    def test_params_logged_by_type_not_value(self):
         params = ("short", "a" * 50, "normal value")
         result = _redact_sensitive_params(params)
-        assert "[REDACTED-TOKEN]" in result
-        assert "short" in result
-        assert "normal value" in result
+        assert result == "(str, str, str)"
+        assert "short" not in result
+        assert "normal value" not in result
 
     def test_redact_none_params(self):
         assert _redact_sensitive_params(None) == str(None)

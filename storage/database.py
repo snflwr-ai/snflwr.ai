@@ -38,16 +38,16 @@ def _redact_sensitive_sql(query: str) -> str:
 
 
 def _redact_sensitive_params(params: Tuple) -> str:
-    """Redact params tuple for logging — hide long token-like strings."""
+    """Describe query params for logging by type only, never by value.
+
+    Write params carry parent emails, child names and dates of birth. Redacting
+    only long token-like strings still logged every one of those whenever a
+    write failed, so the log gets the shape needed to debug an arity or type
+    mismatch and nothing a person could be identified by.
+    """
     if not params:
         return str(params)
-    redacted = []
-    for p in params:
-        if isinstance(p, str) and len(p) > 40 and " " not in p:
-            redacted.append("[REDACTED-TOKEN]")
-        else:
-            redacted.append(p)
-    return str(tuple(redacted))
+    return "(" + ", ".join(type(p).__name__ for p in params) + ")"
 
 
 class DatabaseManager:

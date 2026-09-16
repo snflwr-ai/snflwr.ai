@@ -491,10 +491,10 @@ async def detailed_health(session: AuthSession = Depends(require_admin)):
                 "status": "disabled",
             }
     except Exception as e:
-        logger.warning(f"Could not check Redis health: {e}")
+        logger.warning(f"Could not check Redis health: {sanitize_log_value(e)}")
         health_status["components"]["redis"] = {
             "status": "unknown",
-            "error": sanitize_log_value(str(e)),
+            "error": "Redis check failed",
         }
 
     # Safety monitoring

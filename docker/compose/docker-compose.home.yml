@@ -273,6 +273,13 @@ services:
           echo "[backup-cron] running backup at $$(date -u +%FT%TZ)"
           python /app/scripts/backup_database.py backup \
             || echo "[backup-cron] backup FAILED (exit $$?) — see logs / heartbeat"
+          # Retention purges and parents' daily safety digests are Celery beat
+          # tasks, and this deploy runs no beat/worker/Redis -- they never ran.
+          # Run the beat schedule without a broker, AFTER the backup so any
+          # deletion follows a fresh snapshot.
+          echo "[backup-cron] running maintenance at $$(date -u +%FT%TZ)"
+          python /app/scripts/run_maintenance.py \
+            || echo "[backup-cron] maintenance had FAILURES (exit $$?) — see logs"
         done
     volumes:
       - snflwr-home-data:/app/data

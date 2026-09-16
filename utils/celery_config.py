@@ -227,8 +227,11 @@ def handle_task_failure(
             "task_id": task_id,
             "task_name": task_name,
             "exception": str(exception),
-            "args": args,
-            "kwargs": kwargs,
+            # NOT "args": that is a reserved LogRecord attribute, and the
+            # collision raised KeyError here -- so the dead-letter routing and
+            # alerting below never ran for any permanently failed task.
+            "task_args": args,
+            "task_kwargs": kwargs,
             "failure_count": failure_count,
         },
     )
@@ -246,7 +249,11 @@ def handle_task_failure(
             "traceback": str(einfo) if einfo else None,
         }
         store_failed_task.delay(dead_letter_payload)
-    except (ConnectionError, OSError, RedisError) as e:
+    except Exception as e:  # best-effort: must never block the alert below
+        # With no broker kombu raises its own OperationalError (after ~20s of
+        # retries), which the old (ConnectionError, OSError, RedisError) clause
+        # did not catch -- so the failure alert was skipped exactly when there
+        # is no queue to fall back on.
         logger.exception(f"Failed to send task to dead letter queue: {e}")
 
     # Alert if failure threshold exceeded

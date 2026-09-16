@@ -315,6 +315,59 @@ class SnflwrFormatter(logging.Formatter):
         return formatted
 
 
+try:  # POSIX advisory locks; the Windows USB build runs a single process
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - exercised only on Windows
+    _fcntl = None  # type: ignore[assignment]
+
+
+class ProcessSafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """RotatingFileHandler that several PROCESSES can share.
+
+    The stdlib handler rotates by renaming files from inside whichever process
+    crosses maxBytes, with no coordination. api.server runs 4 workers and the backup
+    sidecar shares the data volume, so on the live box (2026-09-16) rollovers
+    cascaded: snflwr.json.log.1-.5 were all one identical 82 KB fragment, the real
+    history was gone, and doRollover raised FileNotFoundError when a sibling had
+    already renamed the file.
+
+    Every emit takes an exclusive flock on ``<file>.lock``; inside it, a stream whose
+    file was rotated away by another process is reopened before writing, and the
+    rollover check and rename happen under the same lock. Without fcntl it behaves
+    exactly like the stdlib handler.
+    """
+
+    def __init__(self, filename, *args, **kwargs):
+        super().__init__(filename, *args, **kwargs)
+        self._lock_path = os.fspath(filename) + ".lock"
+
+    def _stream_is_stale(self) -> bool:
+        if self.stream is None:
+            return True
+        try:
+            on_disk = os.stat(self.baseFilename)
+        except FileNotFoundError:
+            return True
+        return os.fstat(self.stream.fileno()).st_ino != on_disk.st_ino
+
+    def emit(self, record):
+        if _fcntl is None:
+            return super().emit(record)
+        try:
+            with open(self._lock_path, "a") as lock:
+                _fcntl.flock(lock, _fcntl.LOCK_EX)
+                try:
+                    if self._stream_is_stale():
+                        if self.stream is not None:
+                            self.stream.close()
+                        self.stream = self._open()
+                    super().emit(record)  # rollover check + write, under the lock
+                finally:
+                    _fcntl.flock(lock, _fcntl.LOCK_UN)
+        except Exception:
+            self.handleError(record)
+
+
 class SafetyLogger:
     """Special logger for child safety incidents"""
 
@@ -492,7 +545,7 @@ class LoggerManager:
 
         # File handler with rotation (standard format)
         max_bytes = system_config.LOG_MAX_SIZE_MB * 1024 * 1024
-        file_handler = logging.handlers.RotatingFileHandler(
+        file_handler = ProcessSafeRotatingFileHandler(
             self.log_dir / "snflwr.log",
             maxBytes=max_bytes,
             backupCount=system_config.LOG_BACKUP_COUNT,
@@ -505,7 +558,7 @@ class LoggerManager:
         app_logger.addHandler(file_handler)
 
         # JSON-structured log file for log aggregation systems
-        json_handler = logging.handlers.RotatingFileHandler(
+        json_handler = ProcessSafeRotatingFileHandler(
             self.log_dir / "snflwr.json.log",
             maxBytes=max_bytes,
             backupCount=system_config.LOG_BACKUP_COUNT,
@@ -518,7 +571,7 @@ class LoggerManager:
         app_logger.addHandler(json_handler)
 
         # Error-specific handler (JSON format for analysis)
-        error_handler = logging.handlers.RotatingFileHandler(
+        error_handler = ProcessSafeRotatingFileHandler(
             self.log_dir / "errors.log",
             maxBytes=max_bytes,
             backupCount=system_config.LOG_BACKUP_COUNT,

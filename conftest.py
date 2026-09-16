@@ -16,6 +16,9 @@ import pytest
 # covered directly by tests/test_encrypted_db_adapter.py, and the real encrypted
 # init path is covered by the Database Schema Validation CI job (init_db.py).
 os.environ.setdefault("DB_ENCRYPTION_ENABLED", "false")
+# Rate-limit counters default to a shared SQLite file in production; keep test
+# sessions hermetic (tests that need the shared store pass an explicit path).
+os.environ.setdefault("SNFLWR_RATE_LIMIT_DB", "memory")
 
 # Ensure the Open WebUI backend is importable during tests
 ROOT = os.path.dirname(__file__)

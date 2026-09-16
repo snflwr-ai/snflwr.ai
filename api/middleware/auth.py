@@ -605,8 +605,11 @@ class SqliteRateLimiter:
         cutoff = now - window_seconds
         cache_key = f"{limit_type}:{key}"
 
-        conn = sqlite3.connect(self._db_path)
+        conn = sqlite3.connect(self._db_path, timeout=5, isolation_level=None)
         try:
+            # IMMEDIATE takes the write lock before counting; otherwise two worker
+            # processes can both read count == limit-1 and both insert.
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 "DELETE FROM rate_limits WHERE key = ? AND timestamp < ?",
                 (cache_key, cutoff),
@@ -618,15 +621,21 @@ class SqliteRateLimiter:
             count = row[0] if row else 0
 
             if count >= max_requests:
-                conn.commit()
+                conn.execute("COMMIT")
                 return False
 
             conn.execute(
                 "INSERT INTO rate_limits (key, timestamp) VALUES (?, ?)",
                 (cache_key, now),
             )
-            conn.commit()
+            conn.execute("COMMIT")
             return True
+        except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+            raise
         finally:
             conn.close()
 

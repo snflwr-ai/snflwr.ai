@@ -227,7 +227,22 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"WebSocket Pub/Sub not started: {e}")
     else:
-        logger.warning("Redis is DISABLED - authentication rate limiting unavailable")
+        # Rate limiting is NOT unavailable without Redis: auth limits use a SQLite
+        # store shared by every worker (utils/rate_limiter). The old message said
+        # "unavailable", which sent operators chasing a non-problem while hiding
+        # the real one (limits were per-process).
+        from utils.rate_limiter import _local_limiter
+
+        if _local_limiter._db_path:
+            logger.info(
+                "Redis is disabled - rate limits use the shared SQLite store "
+                "(single host; enable Redis for multi-host deployments)"
+            )
+        else:
+            logger.warning(
+                "Redis is disabled AND the shared rate-limit store is unavailable - "
+                "rate limits are PER WORKER PROCESS (effective limit x workers)"
+            )
 
     logger.info(f"Host: {system_config.API_HOST}:{system_config.API_PORT}")
     logger.info(f"Database: {system_config.DATABASE_TYPE}")

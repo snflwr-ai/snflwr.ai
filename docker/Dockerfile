@@ -71,6 +71,10 @@ COPY --chown=snflwr:snflwr scripts/owui_connect.py ./scripts/owui_connect.py
 # sidecar's `|| echo` swallowed the error while its heartbeat kept the
 # healthcheck green. Guarded now by tests/test_image_completeness.py.
 COPY --chown=snflwr:snflwr scripts/backup_database.py ./scripts/backup_database.py
+# Run daily by the same sidecar, after the backup: executes the Celery beat
+# schedule (retention purges, parents' safety digests) without a broker, because
+# the home deploy runs no beat/worker/Redis and those jobs otherwise never run.
+COPY --chown=snflwr:snflwr scripts/run_maintenance.py ./scripts/run_maintenance.py
 
 # Run by deploy.sh, inside the container, on every deploy:
 #   preflight_db_key.py  before `up -d`, to prove the configured DB credentials

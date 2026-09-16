@@ -528,7 +528,7 @@ def cleanup_analytics(self) -> int:
 
         delete_query = f"""
             DELETE FROM learning_analytics
-            WHERE timestamp < datetime('now', '-{int(retention_days)} days')
+            WHERE date < date('now', '-{int(retention_days)} days')
         """
 
         result = _db.execute_write(delete_query)

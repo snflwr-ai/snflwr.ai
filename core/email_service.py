@@ -629,7 +629,7 @@ class EmailService:
             logger.error(
                 "Parental consent email to %s NOT sent: email (SMTP) is disabled. "
                 "Under-13 consent cannot proceed — set SMTP_ENABLED=true.",
-                to_email,
+                mask_email(to_email),
             )
             return False
 

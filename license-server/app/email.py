@@ -6,10 +6,18 @@ from email.message import EmailMessage
 logger = logging.getLogger(__name__)
 
 
+def _mask(addr: str) -> str:
+    """Keep the domain, hide the mailbox: log lines are not a place for PII."""
+    local, _, domain = (addr or "").partition("@")
+    return f"{local[:1]}***@{domain}" if domain else "***"
+
+
 def send_code(to_email: str, code: str) -> None:
     host = os.getenv("LS_SMTP_HOST", "")
     if not host:
-        logger.warning("LS_SMTP_HOST unset — not sending code to %s (dev mode)", to_email)
+        logger.warning(
+            "LS_SMTP_HOST unset — not sending code to %s (dev mode)", _mask(to_email)
+        )
         return
     msg = EmailMessage()
     msg["Subject"] = "Your snflwr.ai sign-in code"

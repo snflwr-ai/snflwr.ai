@@ -15,7 +15,7 @@ unknown/None age falls through to the (itself fail-closed) safety pipeline.
 
 from typing import Optional
 
-from utils.logger import get_logger
+from utils.logger import get_logger, sanitize_log_value
 
 logger = get_logger(__name__)
 
@@ -54,8 +54,8 @@ def coppa_consent_block_reason(
     except Exception as exc:  # fail closed for under-13 (see gate_age check below)
         logger.warning(
             "COPPA gate lookup failed for %s — failing closed if under-13: %s",
-            profile_id,
-            exc,
+            sanitize_log_value(profile_id),
+            sanitize_log_value(exc),
         )
 
     # isinstance guard: a non-int age (malformed row) is treated as unknown and
@@ -63,7 +63,7 @@ def coppa_consent_block_reason(
     if isinstance(gate_age, int) and gate_age < 13 and not coppa_verified:
         logger.info(
             "COPPA gate blocked under-13 profile %s (consent not verified)",
-            profile_id,
+            sanitize_log_value(profile_id),
         )
         return COPPA_BLOCK_MESSAGE
     return None

@@ -11,7 +11,7 @@ from api.middleware.auth import require_admin
 from config import system_config
 from core.authentication import AuthSession
 from storage.db_adapters import DB_ERRORS
-from utils.logger import sanitize_log_value
+from utils.logger import mask_email, sanitize_log_value
 
 from ._common import (
     _PROFILE_UPDATE_COLUMNS,
@@ -172,7 +172,7 @@ async def bulk_import_students(
                 ),
             )
         except DB_ERRORS as e:
-            logger.error(f"DB error creating profile for {s.email!r}: {e}")
+            logger.error(f"DB error creating profile for {mask_email(s.email)}: {e}")
             failed.append(
                 {"email": s.email, "error": "Database error creating profile"}
             )

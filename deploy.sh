@@ -617,6 +617,17 @@ if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
             error "  docker inspect snflwr-ollama --format '{{.HostConfig.DeviceRequests}}'"
         fi
     fi
+
+    # The check above runs ONCE, at deploy time. The loss it catches recurs: on
+    # 2026-09-16 apt-daily-upgrade ran `systemctl daemon-reload` at 06:57 and the
+    # tutor served from CPU for ~6 hours afterwards. scripts/gpu_watchdog.sh heals
+    # it, but only start_snflwr.sh ever started it -- a docker deploy had none.
+    # Schedule it here. SNFLWR_GPU_WATCHDOG=off opts out (and removes the entry).
+    if bash "$SCRIPT_DIR/scripts/install_gpu_watchdog.sh"; then
+        info "GPU watchdog scheduled (every 2 min) -- logs/gpu_watchdog.log"
+    else
+        warn "Could not schedule the GPU watchdog; a mid-life GPU loss will not self-heal."
+    fi
 fi
 
 # BASE_MODEL is the actual base-model weight file. WRAPPED_MODEL is the

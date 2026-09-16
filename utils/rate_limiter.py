@@ -8,9 +8,10 @@ and must work correctly in multi-instance deployments.
 """
 
 import os
+import sqlite3
 import time
 from datetime import datetime
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from utils.cache import cache
 from utils.logger import get_logger
@@ -36,10 +37,70 @@ class LocalRateLimiter:
     than no protection at all.
     """
 
-    def __init__(self):
+    def __init__(self, db_path: Optional[str] = None):
         self._windows: dict = {}  # {window_key: [timestamp, ...]}
         self._lock = __import__("threading").Lock()
         self._warned: set = set()  # Track which keys we've warned about
+        # With a db_path, counts live in SQLite and are SHARED by every process
+        # using the file. api.server runs 4 workers: per-process counters let a
+        # 5/min login limit admit ~20 guesses/min (measured on the live box
+        # 2026-09-16, 401s and 429s interleaving as requests hit different
+        # workers). Without one, behaviour is the original in-memory limiter.
+        self._db_path = db_path
+        if db_path:
+            try:
+                os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+                with sqlite3.connect(db_path, timeout=5) as conn:
+                    conn.execute(
+                        "CREATE TABLE IF NOT EXISTS shared_rate_limits "
+                        "(key TEXT NOT NULL, ts REAL NOT NULL)"
+                    )
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_shared_rate_limits_key "
+                        "ON shared_rate_limits (key, ts)"
+                    )
+            except (sqlite3.Error, OSError) as exc:
+                logger.error(
+                    "Shared rate-limit store unavailable (%s); limits are "
+                    "PER-PROCESS until this is fixed",
+                    exc,
+                )
+                self._db_path = None
+
+    def _check_shared(
+        self, window_key: str, max_requests: int, window_seconds: int, now: float
+    ) -> Tuple[bool, int, Optional[float]]:
+        """Atomic sliding-window check across processes. Returns
+        (allowed, count_before, oldest_ts_in_window)."""
+        conn = sqlite3.connect(self._db_path, timeout=5, isolation_level=None)
+        try:
+            # IMMEDIATE takes the write lock BEFORE counting: without it two
+            # workers can both read count == limit-1 and both insert.
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "DELETE FROM shared_rate_limits WHERE key = ? AND ts <= ?",
+                (window_key, now - window_seconds),
+            )
+            count, oldest = conn.execute(
+                "SELECT COUNT(*), MIN(ts) FROM shared_rate_limits WHERE key = ?",
+                (window_key,),
+            ).fetchone()
+            allowed = count < max_requests
+            if allowed:
+                conn.execute(
+                    "INSERT INTO shared_rate_limits (key, ts) VALUES (?, ?)",
+                    (window_key, now),
+                )
+            conn.execute("COMMIT")
+            return allowed, count, oldest
+        except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+            raise
+        finally:
+            conn.close()
 
     def check_rate_limit(
         self,
@@ -50,6 +111,30 @@ class LocalRateLimiter:
     ) -> Tuple[bool, dict]:
         current_time = time.time()
         window_key = f"{limit_type}:{identifier}"
+
+        if self._db_path:
+            try:
+                allowed, count, oldest = self._check_shared(
+                    window_key, max_requests, window_seconds, current_time
+                )
+                remaining = max(0, max_requests - count - (1 if allowed else 0))
+                if not allowed and oldest is not None:
+                    retry_after = max(0, int((oldest + window_seconds) - current_time))
+                    reset_time = oldest + window_seconds
+                else:
+                    retry_after = 0
+                    reset_time = current_time + window_seconds
+                return allowed, {
+                    "remaining": remaining,
+                    "reset_time": datetime.fromtimestamp(reset_time).isoformat(),
+                    "retry_after": retry_after,
+                    "limit": max_requests,
+                    "window": window_seconds,
+                    "backend": "sqlite",
+                }
+            except sqlite3.Error as exc:
+                # Degrade to per-process counting rather than no limit at all.
+                logger.error("Shared rate-limit check failed (%s); using memory", exc)
 
         with self._lock:
             # Lazy cleanup: remove expired entries
@@ -119,8 +204,23 @@ class LocalRateLimiter:
             del self._windows[k]
 
 
-# Module-level local fallback instance
-_local_limiter = LocalRateLimiter()
+def _shared_db_path() -> Optional[str]:
+    """rate_limits.db next to the app data, so every worker process shares it.
+    SNFLWR_RATE_LIMIT_DB overrides; SNFLWR_RATE_LIMIT_DB=memory disables."""
+    override = os.getenv("SNFLWR_RATE_LIMIT_DB")
+    if override:
+        return None if override == "memory" else override
+    try:
+        from config import system_config
+
+        return str(system_config.APP_DATA_DIR / "rate_limits.db")
+    except Exception:  # config unavailable (tooling contexts)
+        return None
+
+
+# Module-level fallback instance: shared across processes when the data dir is
+# writable, per-process otherwise.
+_local_limiter = LocalRateLimiter(db_path=_shared_db_path())
 
 
 class RateLimiter:

@@ -16,15 +16,18 @@ import pytest
 # covered directly by tests/test_encrypted_db_adapter.py, and the real encrypted
 # init path is covered by the Database Schema Validation CI job (init_db.py).
 os.environ.setdefault("DB_ENCRYPTION_ENABLED", "false")
+# Rate-limit counters default to a shared SQLite file in production; keep test
+# sessions hermetic (tests that need the shared store pass an explicit path).
+os.environ.setdefault("SNFLWR_RATE_LIMIT_DB", "memory")
 
 # Ensure the Open WebUI backend is importable during tests
 ROOT = os.path.dirname(__file__)
-OPEN_WEBUI_BACKEND = os.path.join(ROOT, 'frontend', 'open-webui', 'backend')
+OPEN_WEBUI_BACKEND = os.path.join(ROOT, "frontend", "open-webui", "backend")
 if os.path.isdir(OPEN_WEBUI_BACKEND) and OPEN_WEBUI_BACKEND not in sys.path:
     sys.path.insert(0, OPEN_WEBUI_BACKEND)
 
 # Also add its parent so that test helpers under `test` package are importable
-OPEN_WEBUI_ROOT = os.path.join(ROOT, 'frontend', 'open-webui')
+OPEN_WEBUI_ROOT = os.path.join(ROOT, "frontend", "open-webui")
 if os.path.isdir(OPEN_WEBUI_ROOT) and OPEN_WEBUI_ROOT not in sys.path:
     sys.path.insert(0, OPEN_WEBUI_ROOT)
 
@@ -40,12 +43,16 @@ def _can_import(module_name: str) -> bool:
         return False
 
 
-has_redis = _can_import('redis')
-has_httpx = _can_import('httpx')
-has_pydantic = _can_import('pydantic')
-has_schedule = _can_import('schedule')
+has_redis = _can_import("redis")
+has_httpx = _can_import("httpx")
+has_pydantic = _can_import("pydantic")
+has_schedule = _can_import("schedule")
 
 requires_redis = pytest.mark.skipif(not has_redis, reason="redis package not installed")
 requires_httpx = pytest.mark.skipif(not has_httpx, reason="httpx package not installed")
-requires_pydantic = pytest.mark.skipif(not has_pydantic, reason="pydantic package not installed")
-requires_schedule = pytest.mark.skipif(not has_schedule, reason="schedule package not installed")
+requires_pydantic = pytest.mark.skipif(
+    not has_pydantic, reason="pydantic package not installed"
+)
+requires_schedule = pytest.mark.skipif(
+    not has_schedule, reason="schedule package not installed"
+)

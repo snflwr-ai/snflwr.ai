@@ -16,6 +16,7 @@ interval has elapsed since its last SUCCESSFUL run (state in
 Exit status is non-zero if any due entry failed, so the sidecar log shows it.
 """
 
+import importlib
 import json
 import os
 import sys
@@ -50,9 +51,12 @@ def _interval_seconds(schedule) -> float:
 
 
 def run(now: datetime | None = None, state_path: Path | None = None) -> int:
-    import tasks.background_tasks  # noqa: F401  (registers the tasks)
-    from utils.celery_config import celery_app
-    from utils.logger import get_logger
+    # Imported dynamically on purpose: scripts/ is type-checked in its own mypy
+    # invocation, and statically importing tasks.background_tasks (which imports
+    # scripts.backup_database) makes mypy see that file under two module names.
+    celery_app = importlib.import_module("utils.celery_config").celery_app
+    importlib.import_module("tasks.background_tasks")  # registers the tasks
+    get_logger = importlib.import_module("utils.logger").get_logger
 
     log = get_logger("maintenance")
     now = now or datetime.now(timezone.utc)

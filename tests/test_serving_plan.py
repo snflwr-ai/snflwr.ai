@@ -44,11 +44,11 @@ class TestEngineSelection:
         assert "vllm" in plan.reason.lower()
 
     def test_non_linux_never_selects_vllm(self, monkeypatch):
-        plan = _plan(monkeypatch, vram=24.0, vllm=True, linux=False)
+        plan = _plan(monkeypatch, vram=48.0, vllm=True, linux=False)
         assert plan.engine == "ollama"
 
     def test_no_nvidia_gpu_never_selects_vllm(self, monkeypatch):
-        plan = _plan(monkeypatch, vram=24.0, vllm=True, nvidia=False)
+        plan = _plan(monkeypatch, vram=48.0, vllm=True, nvidia=False)
         assert plan.engine == "ollama"
 
     def test_env_override_forces_ollama(self, monkeypatch):
@@ -57,6 +57,26 @@ class TestEngineSelection:
 
     def test_env_override_forces_vllm(self, monkeypatch):
         plan = _plan(monkeypatch, vram=24.0, vllm=False, engine_env="vllm",
+                     allow_unverified="1")
+        assert plan.engine == "vllm"
+
+
+class TestVLLMFitsBeforeItIsChosen:
+    """Measured 2026-09-17: every 4-bit build of the 31b backbone is ~19-21 GB, so
+    vLLM OOMs at load on a 24 GB card even when the server is reachable."""
+
+    def test_a_24gb_card_is_not_offered_vllm(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=24.0, vllm=True, allow_unverified="1")
+        assert plan.engine == "ollama"
+        assert "vram" in plan.reason.lower() or "gb" in plan.reason.lower()
+
+    def test_a_48gb_card_is(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=48.0, vllm=True, allow_unverified="1")
+        assert plan.engine == "vllm"
+
+    def test_an_explicit_override_still_wins(self, monkeypatch):
+        """An operator benchmarking on small hardware is allowed to try."""
+        plan = _plan(monkeypatch, vram=24.0, vllm=True, engine_env="vllm",
                      allow_unverified="1")
         assert plan.engine == "vllm"
 

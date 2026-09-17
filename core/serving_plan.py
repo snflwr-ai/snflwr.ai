@@ -84,6 +84,9 @@ _VLLM_KV_PER_SLOT_GB = 2.5
 _VLLM_WEIGHTS_GB = 20.0  # 4-bit 31b-class weights as served by vLLM
 _VLLM_RUNTIME_GB = 2.0
 _VLLM_MAX_SLOTS = 64
+# Weights + runtime + one usable slot. Below this vLLM loads and then OOMs:
+# measured 2026-09-17 on a 23 GB card, 60 MB free when it died.
+_VLLM_MIN_VRAM_GB = _VLLM_WEIGHTS_GB + _VLLM_RUNTIME_GB + _VLLM_KV_PER_SLOT_GB
 _VLLM_GPU_MEMORY_UTILIZATION = 0.90
 
 _DEFAULT_VLLM_URL = "http://vllm:8000"
@@ -235,6 +238,14 @@ def _choose_engine(vram_gb: float) -> tuple[str, str]:
         return "ollama", "vllm needs Linux; falling back to ollama"
     if not _has_nvidia_gpu() or vram_gb <= 0:
         return "ollama", "no usable NVIDIA GPU for vllm; falling back to ollama"
+    if vram_gb < _VLLM_MIN_VRAM_GB:
+        # A reachable vLLM on too small a card is still a dead end: it cannot hold
+        # the weights AND a working KV cache. Every community 4-bit build of this
+        # backbone measured 19-21 GB (it is multimodal; parts stay unquantised).
+        return "ollama", (
+            f"vllm needs >= {_VLLM_MIN_VRAM_GB:.0f} GB VRAM for this backbone, "
+            f"found {vram_gb:.1f} GB; falling back to ollama"
+        )
     if not _vllm_reachable():
         return (
             "ollama",

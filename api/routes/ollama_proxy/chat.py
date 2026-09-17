@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from api.middleware.auth import get_current_session, is_genuine_admin
 from api.routes.ollama_proxy import (
     access,
+    admission,
     blocks,
     guards,
     history_ledger,
@@ -21,7 +22,7 @@ from api.routes.ollama_proxy import (
     transport,
 )
 from config import safety_config, system_config
-from core import topic_gate
+from core import serving_plan, topic_gate
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_gate import no_profile_block_reason
@@ -49,6 +50,26 @@ def _gate_block(model: str, message: str, *, stream: bool) -> Response:
             media_type="application/x-ndjson",
         )
     return JSONResponse(content=blocks._ollama_block_response(model, message))
+
+
+# Load must never reach a child as a worse answer. Measured 2026-09-17: at 20
+# concurrent students on one card, 40 of 60 replies became the canned withholding
+# fallback because the reveal confirm spent its 30 s budget QUEUED. The tutor was
+# fine; the queue was not. So over-capacity turns say so, plainly, and are not
+# recorded in the history ledger.
+_BUSY_MESSAGE = (
+    "Lots of learners are asking questions right now, so I could not get to "
+    "yours. Please send it again in a moment."
+)
+
+# Hardware below the quality floor does not tutor with a smaller model: e4b and
+# 12b never met the tutoring bars (4-13 wrong replies per 121 against a bar of 6,
+# or acceptable correctness only by stonewalling 38 times), so the honest answer
+# is that this machine cannot run the tutor.
+_UNSUPPORTED_MESSAGE = (
+    "The tutor is not available on this computer right now. Ask a grown-up to "
+    "check the snflwr.ai setup guide for the hardware it needs."
+)
 
 
 async def _pedagogy_reissue(
@@ -129,7 +150,7 @@ async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
     return upstream.json().get("message", {}).get("content", "")
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[Depends(admission.inference_slot)])
 async def proxy_chat(
     request: Request,
     session: AuthSession = Depends(get_current_session),
@@ -253,6 +274,17 @@ async def proxy_chat(
     )
     if _reason:
         return _gate_block(model, _reason, stream=stream)
+
+    # ---- Quality floor (students only) ----------------------------------
+    # Scaling DOWN with the hardware must not mean tutoring worse. Sealed run
+    # 2026-09-17: only the 31b backbone met the tutoring bars; e4b and 12b
+    # measured 4-13 wrong replies per 121 against a bar of 6 (and the one shape
+    # that fixed correctness stonewalled 38 times). A box that cannot run a
+    # certified backbone says so instead of serving an uncertified one.
+    _plan = serving_plan.get_plan()
+    if not _plan.tutoring_enabled:
+        logger.warning("Tutoring disabled by serving plan: %s", _plan.reason)
+        return _gate_block(model, _UNSUPPORTED_MESSAGE, stream=stream)
 
     # Student path — run safety pipeline
     profile_id = await profile._get_profile_for_user(user_id)

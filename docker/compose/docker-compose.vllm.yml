@@ -1,0 +1,61 @@
+# vLLM serving profile — the batching engine for GPU deployments.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
+#
+# Requires: NVIDIA Container Toolkit and a GPU with room for the tutor weights
+# plus per-request working memory (see docs/architecture/inference-engines.md).
+#
+# WHY: measured 2026-09-17 on a 23 GB card, Ollama served ~5.7 messages/min and
+# three concurrent students however many were waiting, because it runs one
+# request at a time. vLLM batches requests and caches the shared 7,696-token
+# system prompt across students.
+#
+# The tutor stays OFF on this engine until a sealed tutoring run certifies it
+# (or SNFLWR_ALLOW_UNVERIFIED_ENGINE=1 is set deliberately, for benchmarking):
+# vLLM serves different weight formats than Ollama's 4-bit files, so the sealed
+# result does not carry over. The app enforces this; see core/serving_plan.py.
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: snflwr-vllm
+    restart: unless-stopped
+    ipc: host                     # vLLM needs shared memory for its workers
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - vllm_models:/root/.cache/huggingface
+    command:
+      - --model=${VLLM_MODEL:-snflwr-31b}
+      - --served-model-name=${VLLM_SERVED_NAME:-snflwr.ai-31b}
+      - --max-model-len=${VLLM_MAX_MODEL_LEN:-16384}
+      - --max-num-seqs=${VLLM_MAX_NUM_SEQS:-8}
+      - --gpu-memory-utilization=${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+      - --disable-log-requests     # children's questions are never logged
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8000/v1/models',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s          # a cold 20 GB model load is minutes, not seconds
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  snflwr-api:
+    environment:
+      INFERENCE_ENGINE: ${INFERENCE_ENGINE:-auto}
+      VLLM_BASE_URL: http://vllm:8000
+      INFERENCE_QUEUE_WAIT_S: ${INFERENCE_QUEUE_WAIT_S:-20}
+    depends_on:
+      vllm:
+        condition: service_healthy
+
+volumes:
+  vllm_models:

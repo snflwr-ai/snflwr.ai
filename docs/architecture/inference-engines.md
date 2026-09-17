@@ -83,7 +83,14 @@ docker compose -f docker/compose/docker-compose.yml \
 ```
 
 The compose file passes the plan's engine arguments (`--max-model-len`,
-`--max-num-seqs`, `--gpu-memory-utilization`). Before serving children from a
+`--max-num-seqs`, `--gpu-memory-utilization`) and pins `--no-enable-log-requests`,
+because a request body is a child's question: request logging must never be left
+to an upstream default.
+
+vLLM needs roughly 32 GB of GPU memory for this backbone. Measured 2026-09-17,
+every 4-bit build of the 31b model is 19-21 GB, because the model is multimodal
+and parts stay unquantised, so a 24 GB card runs out of memory while loading.
+Those boxes stay on Ollama, and the plan says so in its reason. Before serving children from a
 vLLM deployment, run the tutoring comparison described in
 `docs/development/` and record the result — until then the plan keeps tutoring
 off on that engine.

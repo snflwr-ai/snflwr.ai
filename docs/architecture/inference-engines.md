@@ -90,10 +90,11 @@ to an upstream default.
 vLLM needs roughly 32 GB of GPU memory for this backbone. Measured 2026-09-17,
 every 4-bit build of the 31b model is 19-21 GB, because the model is multimodal
 and parts stay unquantised, so a 24 GB card runs out of memory while loading.
-Those boxes stay on Ollama, and the plan says so in its reason. Before serving children from a
-vLLM deployment, run the tutoring comparison described in
-`docs/development/` and record the result — until then the plan keeps tutoring
-off on that engine.
+Those boxes stay on Ollama, and the plan says so in its reason.
+
+Before any child is served from a vLLM deployment, run the tutoring comparison
+against the certified Ollama baseline and record the result. Until that passes,
+the plan keeps tutoring off on that engine.
 
 ## Adding an engine
 

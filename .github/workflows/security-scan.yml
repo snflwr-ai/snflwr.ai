@@ -157,6 +157,15 @@ jobs:
   codeql-analysis:
     name: CodeQL Security Analysis
     runs-on: ubuntu-latest
+    # Non-blocking since 2026-09-18. CodeQL and SARIF upload are free on PUBLIC
+    # repositories; on a private one they need GitHub Advanced Security. This
+    # repo went private, so without a GHAS licence the upload step fails and
+    # every PR carries a red check that says nothing about the code.
+    # continue-on-error keeps the analysis running (so it starts working again
+    # the moment GHAS is enabled) without gating merges on a licensing state.
+    # It is deliberately still in security-summary's needs list: if it ever goes
+    # green again we want the summary to reflect that.
+    continue-on-error: true
 
     steps:
     - name: Checkout code
@@ -198,8 +207,14 @@ jobs:
         needs.dependency-scan.result == 'failure' ||
         needs.code-security-scan.result == 'failure' ||
         needs.secret-scan.result == 'failure' ||
-        needs.docker-security.result == 'failure' ||
-        needs.codeql-analysis.result == 'failure'
+        needs.docker-security.result == 'failure'
+        # codeql-analysis is deliberately NOT in this gate. It carries
+        # continue-on-error (see the job), which already reports success, but
+        # relying on that subtlety to keep a merge unblocked is the kind of thing
+        # that breaks silently when someone removes the flag. Stated outright
+        # instead: CodeQL needs GitHub Advanced Security on a private repo, and
+        # a licensing state must not fail a code review. Put it back the day GHAS
+        # is enabled.
       run: |
         echo "::error::One or more security scans failed. See summary above."
         exit 1

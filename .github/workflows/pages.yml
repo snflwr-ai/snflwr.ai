@@ -1,10 +1,12 @@
 name: Deploy Docs to GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
+  # Automatic triggers removed 2026-09-18. GitHub Pages is unavailable for a
+  # PRIVATE repository on a free organisation plan, so every docs/** push ran
+  # this job only to fail at the deploy step. The site was already returning 404
+  # with no custom domain, so nothing was being served to lose.
+  # Kept, not deleted: re-enable the push trigger if the org upgrades or the
+  # repo goes public again.
   workflow_dispatch:
 
 permissions:

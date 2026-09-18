@@ -56,7 +56,7 @@ export default function CTA() {
               transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.4, delay: 0.1 }}
               className="text-xs font-bold uppercase tracking-[0.15em] text-amber-500 mb-5"
             >
-              Open Source · AGPL-3.0
+              © 2026 snflwr.ai
             </motion.p>
 
             <motion.h2

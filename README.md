@@ -27,7 +27,7 @@
 <p align="center">
   <!-- Static -->
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue" alt="Python 3.10 | 3.11 | 3.12" />
-  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0" />
+  <img src="https://img.shields.io/badge/license-Proprietary-lightgrey" alt="Proprietary" />
   <img src="https://img.shields.io/badge/tests-3500%2B-brightgreen" alt="3500+ Tests" />
   <img src="https://img.shields.io/badge/coverage-88%25-brightgreen" alt="88% Coverage" />
   <img src="https://img.shields.io/badge/COPPA%2FFERPA-designed-green" alt="COPPA/FERPA" />
@@ -389,7 +389,9 @@ We welcome contributions in safety filter accuracy, multi-language support, edge
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE) — use, modify, and distribute freely. Network service deployments must share source under the same license.
+Proprietary — see [LICENSE](LICENSE). All rights reserved; no use, copying, modification or distribution except under a written agreement with snflwr.ai.
+
+Versions published between 2026-02-27 and 2026-09-18 were released under AGPL-3.0, and copies obtained in that window remain governed by AGPL-3.0.
 
 The Open WebUI frontend has its own license: [frontend/open-webui/LICENSE](frontend/open-webui/LICENSE).
 

@@ -25,7 +25,13 @@ from config import system_config
 from core.inference import modelfile
 from core.inference import ollama_shape as shape
 from core.inference.admission import Admission
-from core.inference.base import ChatChunk, ChatRequest, ChatResult, DriverHealth
+from core.inference.base import (
+    ChatChunk,
+    ChatRequest,
+    ChatResult,
+    DriverHealth,
+    InferenceDriver,
+)
 from core.inference.ollama_driver import OllamaDriver
 from core.inference.vllm_driver import VLLMDriver
 from core.serving_plan import ServingPlan, get_plan
@@ -146,6 +152,7 @@ class InferenceClient:
 def build_client(refresh: bool = False) -> InferenceClient:
     """Construct the client this deployment's hardware calls for."""
     plan = get_plan(refresh=refresh)
+    driver: InferenceDriver
     if plan.engine == "vllm":
         spec = modelfile.get()
         driver = VLLMDriver(

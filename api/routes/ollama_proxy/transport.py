@@ -112,8 +112,8 @@ async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     # /api/chat is the only path with an OpenAI equivalent; /api/tags, /api/show
     # and the rest stay on Ollama, which is also where model metadata lives.
     if path == "/api/chat" and "content" in kwargs and _engine_is_vllm():
-        client = inference_client.get_client()
-        payload = await client.chat_ollama_bytes(
+        engine_client = inference_client.get_client()
+        payload = await engine_client.chat_ollama_bytes(
             kwargs["content"], timeout_s=_OLLAMA_READ_TIMEOUT
         )
         return httpx.Response(
@@ -208,8 +208,8 @@ async def _stream_chunks_from_ollama(body: bytes, headers: dict):
     from api.routes.ollama_proxy.blocks import _strip_thinking_from_ndjson_line
 
     if _engine_is_vllm():
-        client = inference_client.get_client()
-        async for line in client.stream_ollama_ndjson(
+        engine_client = inference_client.get_client()
+        async for line in engine_client.stream_ollama_ndjson(
             body, timeout_s=_OLLAMA_READ_TIMEOUT
         ):
             yield line

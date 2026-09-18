@@ -16,6 +16,20 @@ from core.inference.admission import Admission
 from core.inference.base import EngineOverloaded
 
 
+async def _until(condition, timeout_s: float = 5.0):
+    """Wait for a condition instead of guessing at a sleep.
+
+    Every timing-based version of these tests passed locally and flaked on a
+    slower CI runner; the bound keeps a real regression from hanging the job."""
+    waited = 0.0
+    while waited < timeout_s:
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+        waited += 0.01
+    raise AssertionError("condition never became true")
+
+
 @pytest.mark.asyncio
 class TestCapacity:
     async def test_requests_within_capacity_run_concurrently(self):
@@ -48,31 +62,41 @@ class TestCapacity:
 
     async def test_waiting_longer_than_the_deadline_is_overloaded(self):
         adm = Admission(max_concurrent=1, queue_wait_s=0.05, max_queue=10)
+        release = asyncio.Event()
 
         async def hog():
             async with adm.slot():
-                await asyncio.sleep(0.3)
+                await release.wait()
 
         task = asyncio.create_task(hog())
-        await asyncio.sleep(0.01)
+        await _until(lambda: adm.stats()["in_flight"] == 1)
         with pytest.raises(EngineOverloaded):
             async with adm.slot():
                 pass
+        release.set()
         await task
 
     async def test_a_full_queue_rejects_immediately(self):
+        """Deterministic: hold the slot open with an event rather than a sleep,
+        and wait for the queue to actually be full before asserting. The timing
+        version of this test passed locally and failed on a slower CI runner."""
         adm = Admission(max_concurrent=1, queue_wait_s=5.0, max_queue=1)
+        release = asyncio.Event()
 
         async def hog():
             async with adm.slot():
-                await asyncio.sleep(0.2)
+                await release.wait()
 
-        tasks = [asyncio.create_task(hog()), asyncio.create_task(hog())]
-        await asyncio.sleep(0.02)
+        holder = asyncio.create_task(hog())
+        waiter = asyncio.create_task(hog())
+        await _until(lambda: adm.stats()["in_flight"] == 1 and adm.stats()["waiting"] == 1)
+
         with pytest.raises(EngineOverloaded):
             async with adm.slot():
                 pass
-        await asyncio.gather(*tasks)
+
+        release.set()
+        await asyncio.gather(holder, waiter)
 
 
 @pytest.mark.asyncio
@@ -103,16 +127,18 @@ class TestReentrancy:
 class TestObservability:
     async def test_stats_expose_depth_and_rejections(self):
         adm = Admission(max_concurrent=1, queue_wait_s=0.01, max_queue=10)
+        release = asyncio.Event()
 
         async def hog():
             async with adm.slot():
-                await asyncio.sleep(0.15)
+                await release.wait()
 
         task = asyncio.create_task(hog())
-        await asyncio.sleep(0.01)
+        await _until(lambda: adm.stats()["in_flight"] == 1)
         with pytest.raises(EngineOverloaded):
             async with adm.slot():
                 pass
+        release.set()
         await task
         stats = adm.stats()
         assert stats["max_concurrent"] == 1

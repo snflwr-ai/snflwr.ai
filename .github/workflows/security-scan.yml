@@ -2,8 +2,14 @@ name: Security Scanning
 
 on:
   schedule:
-    # Run daily at 2 AM UTC
-    - cron: '0 2 * * *'
+    # Weekly, was nightly (0 2 * * *). The full scan is ~7-8 job-minutes;
+    # nightly cost ~230 minutes a month of a 2,000-minute private-repo
+    # allowance -- over a tenth of the budget re-scanning a tree that
+    # often had not changed since the last run. Every push to main and
+    # every PR still runs it, so a code change is never unscanned; this
+    # schedule only exists to catch newly-published CVEs in unchanged
+    # dependencies, and a week is a reasonable latency for that.
+    - cron: '0 2 * * 1'
   push:
     branches: [ main ]
   pull_request:

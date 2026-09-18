@@ -10,6 +10,12 @@ on:
     paths:
       - 'enterprise/k8s/**'
 
+# Supersede an in-flight run when a branch is pushed again. Without this,
+# superseded runs kept going and still billed minutes.
+concurrency:
+  group: k8s-manifests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Validate enterprise/k8s manifests

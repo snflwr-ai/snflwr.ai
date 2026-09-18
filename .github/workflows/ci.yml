@@ -2,9 +2,32 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop, "claude/*" ]
+    # "claude/*" removed 2026-09-18. A push to a branch that already has a PR
+    # fired BOTH this push run and the pull_request run -- the full suite twice
+    # for one commit. PRs are the review surface; main and develop keep a push
+    # trigger so a merge is still validated on the branch it landed on.
+    branches: [ main, develop ]
+    paths-ignore:
+      # A change that touches ONLY these cannot alter Python behaviour, and the
+      # suite is 59% of all CI time. paths-ignore skips the run only when EVERY
+      # changed file matches, so a mixed PR still runs everything.
+      # The website has no Python tests covering it; it is built separately.
+      - '**.md'
+      - 'docs/**'
+      - 'website/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [ main, develop ]
+    # Duplicated deliberately: GitHub Actions does not support YAML
+    # anchors, so the &docs_only/*docs_only form this started as would
+    # not parse on the runner. Keep the two lists identical.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'website/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
 
 permissions:
   contents: read

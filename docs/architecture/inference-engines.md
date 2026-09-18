@@ -98,6 +98,7 @@ comparing it to the certified baseline.
 | `INFERENCE_REMOTE_URL` | unset | offload inference to a tutor server (see below) |
 | `INFERENCE_REMOTE_TOKEN` | unset | bearer credential this box presents to that server |
 | `INFERENCE_SERVER_TOKEN` | unset | set on the SERVER: the credential it accepts from clients |
+| `INFERENCE_REMOTE_PLAN_TTL_S` | `300` | how often a remote's plan is re-verified |
 
 `auto` picks vLLM only when the box runs Linux, has an NVIDIA GPU, and a vLLM
 server answers `/v1/models`. Anything else uses Ollama.
@@ -143,13 +144,26 @@ This protects against misconfiguration and silent downgrade. It does **not**
 protect against a hostile server, which still does the generating — run the
 tutor server yourself, or choose who does.
 
-### Known limit: the check is at plan time, not per turn
+### Re-verification
 
-The client verifies the remote's plan when it computes its own — at startup, or
-on an explicit re-detect. A remote that is reconfigured to an uncertified
-backbone *after* that keeps receiving turns until the client's plan is
-refreshed. Restart the client (or re-detect) after changing what a tutor server
-serves. A periodic re-verify is not built yet.
+A remote plan describes *another* machine's configuration, which someone can
+change without telling this box. So a remote plan is re-verified every
+`INFERENCE_REMOTE_PLAN_TTL_S` seconds (default 300): the next turn after the TTL
+expires re-fetches the remote's plan and re-applies the certified check. A server
+repointed at an uncertified backbone stops receiving turns within that window
+rather than at the next restart.
+
+Local plans are **not** re-checked — they describe this box's own hardware, which
+does not change underneath a running process, and a re-check would put a
+detection probe on a child's turn for nothing.
+
+If the re-verify cannot *reach* the remote, the last verified plan is kept. Being
+unable to ask is not evidence that the answer changed, and failing closed on a
+network blip would tell a child the tutor is "not available on this computer"
+when the truth is "try again in a moment" — which is what the normal
+engine-unreachable path already says when the turn itself fails.
+
+Cost: one small plan fetch on one turn every five minutes.
 
 ### Transport
 

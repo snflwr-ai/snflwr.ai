@@ -139,6 +139,7 @@ from api.routes import (
     chat,
     dashboard,
     health,
+    inference,
     metrics,
     parental_consent,
     profiles,
@@ -163,6 +164,7 @@ app.include_router(
 app.include_router(dashboard.router, tags=["dashboard"])
 app.include_router(admin_dashboard.router, tags=["admin-dashboard"])
 app.include_router(thin_client.router, prefix="/api/thin-client", tags=["thin-client"])
+app.include_router(inference.router, prefix="/api/inference", tags=["inference"])
 app.include_router(billing.router, prefix="/api/billing", tags=["billing"])
 
 # Operational endpoints (health/metrics) and system endpoints (root, favicon,

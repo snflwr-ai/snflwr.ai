@@ -95,9 +95,61 @@ comparing it to the certified baseline.
 | `INFERENCE_NUM_CTX` | probed at install | context window, capped at the validated maximum |
 | `TUTOR_MODELFILE_PATH` | `models/Snflwr_AI_Kids.modelfile` | persona and sampling source |
 | `SNFLWR_ALLOW_UNVERIFIED_ENGINE` | unset | allow tutoring on an uncertified engine |
+| `INFERENCE_REMOTE_URL` | unset | offload inference to a tutor server (see below) |
+| `INFERENCE_REMOTE_TOKEN` | unset | bearer credential this box presents to that server |
+| `INFERENCE_SERVER_TOKEN` | unset | set on the SERVER: the credential it accepts from clients |
 
 `auto` picks vLLM only when the box runs Linux, has an NVIDIA GPU, and a vLLM
 server answers `/v1/models`. Anything else uses Ollama.
+
+## Remote mode: offloading inference to a tutor server
+
+A box that cannot serve a certified backbone does not have to go without a
+tutor. Setting `INFERENCE_REMOTE_URL` points it at another snflwr install that
+has the GPU, and **local hardware detection is skipped entirely** — a machine
+with no GPU must not be asked about a remote one.
+
+**Only inference turns cross the network.** Accounts, conversation history,
+parental controls, the safety pipeline, COPPA handling and the guidance enforcer
+all stay on the local box. The remote sees a prompt and returns text.
+
+On the client:
+
+```bash
+INFERENCE_REMOTE_URL=https://tutor.school.example
+INFERENCE_REMOTE_TOKEN=<credential issued by the server operator>
+```
+
+On the tutor server:
+
+```bash
+INFERENCE_SERVER_TOKEN=<the same credential>
+```
+
+A server with no `INFERENCE_SERVER_TOKEN` is not offering remote inference and
+answers `404`.
+
+### What the client checks before it will tutor
+
+The client fetches `GET /api/inference/plan` and verifies the advertised
+`(engine, model, num_ctx)` against **its own** certified table. If the remote
+serves an uncertified model or engine, or a context window above the validated
+ceiling, the client refuses to tutor and says why in health. The check lives on
+the client on purpose: a server that has been misconfigured or quietly
+downgraded must not be able to hand a child a weaker tutor than the one that
+passed the sealed run.
+
+This protects against misconfiguration and silent downgrade. It does **not**
+protect against a hostile server, which still does the generating — run the
+tutor server yourself, or choose who does.
+
+### Transport
+
+Plain HTTP is allowed only to loopback. Any other host must be `https`, and the
+client refuses to start otherwise: a bearer credential and a child's text are
+crossing that link. Capacity belongs to the server — the client uses the slot
+count the server advertises and maps its `429`/`503` onto the normal "ask me
+again in a moment" busy message.
 
 ## Running vLLM
 

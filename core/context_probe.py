@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import json
 import logging
-import urllib.parse
 import urllib.request
 from typing import Iterable, Optional, Protocol
+
+from core.endpoint_url import validate_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +60,12 @@ class OllamaContextEngine:
     """Loads a model at a given window and checks that it answers."""
 
     def __init__(self, base_url: str):
-        # urlopen will follow file:// and other schemes as happily as http, and
-        # this URL comes from configuration. Reject anything that is not an
-        # HTTP(S) engine endpoint here, once, so the call site cannot be steered
-        # into reading a local file by a mistyped or hostile OLLAMA_BASE_URL.
-        scheme = urllib.parse.urlparse(base_url).scheme.lower()
-        if scheme not in ("http", "https"):
-            raise ValueError(
-                f"engine URL must be http or https, got {scheme or 'no'} scheme"
-            )
+        # urlopen follows file:// as happily as http, and this URL comes from
+        # configuration -- see core.endpoint_url. Checked once, here, so the
+        # call site cannot be steered into reading a local file by a mistyped
+        # or hostile OLLAMA_BASE_URL. The probe talks to an engine on this box,
+        # so cleartext loopback is fine and TLS is not required.
+        validate_endpoint(base_url)
         self._base_url = base_url.rstrip("/")
 
     def try_context(

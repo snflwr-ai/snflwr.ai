@@ -26,12 +26,16 @@ learns nothing about this machine.
 from __future__ import annotations
 
 import hmac
+import json
 import os
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from api.routes.ollama_proxy import admission
 from core import serving_plan
+from core.inference import client as inference_client
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -110,3 +114,69 @@ async def get_inference_plan(
         max_concurrent=plan.max_concurrent_requests,
         sealed_on=sealed_on,
     )
+
+
+# --------------------------------------------------------------------------
+# The turn route.
+#
+# THIS DELIBERATELY BYPASSES THE PEDAGOGY STACK. The client box already ran the
+# safety pipeline, the topic gate, COPPA, the history ledger and the guidance
+# enforcer before it got here -- that is the whole point of phase 2's split, and
+# the reason the student's data never leaves that box. Running any of it again
+# here would double-moderate the turn and, worse, would treat the client
+# enforcer's own gate / confirm / rewrite sub-calls as fresh student turns.
+#
+# So this endpoint is an ENGINE, not a tutor: bytes in, bytes out, at the same
+# Ollama-shaped contract `core.inference.client` speaks everywhere. What makes
+# it safe is not pipeline depth, it is that only a holder of
+# INFERENCE_SERVER_TOKEN can reach it.
+# --------------------------------------------------------------------------
+
+_TURN_TIMEOUT_S = 600.0
+
+
+def _require_servable_plan() -> None:
+    """A server that cannot tutor locally must not serve turns remotely."""
+    plan = serving_plan.get_plan()
+    if not plan.tutoring_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"this server is not serving a tutor: {plan.reason}",
+        )
+
+
+@router.post(
+    "/chat",
+    dependencies=[
+        # Auth first: an unauthenticated caller must not consume a slot.
+        Depends(require_inference_client),
+        # Then capacity. This is the SERVER's admission gate -- the client does
+        # not serialize, so this is the only thing standing between a classroom
+        # of thin clients and an overloaded card. It is a dependency rather than
+        # a block in the handler so that teardown runs after a streamed response
+        # has been fully sent, not when the handler returns.
+        Depends(admission.inference_slot),
+    ],
+)
+async def serve_turn(request: Request):
+    """Serve one Ollama-shaped turn for a remote snflwr client."""
+    _require_servable_plan()
+    body = await request.body()
+    try:
+        parsed = json.loads(body)
+        stream = (
+            bool(parsed.get("stream", False)) if isinstance(parsed, dict) else False
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="body must be JSON"
+        ) from None
+
+    engine_client = inference_client.get_client()
+    if stream:
+        return StreamingResponse(
+            engine_client.stream_ollama_ndjson(body, timeout_s=_TURN_TIMEOUT_S),
+            media_type="application/x-ndjson",
+        )
+    payload = await engine_client.chat_ollama_bytes(body, timeout_s=_TURN_TIMEOUT_S)
+    return JSONResponse(content=json.loads(payload))

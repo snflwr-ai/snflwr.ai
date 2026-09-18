@@ -59,6 +59,10 @@ from core.inference.ollama_driver import OllamaDriver
 logger = logging.getLogger(__name__)
 
 PLAN_PATH = "/api/inference/plan"
+# The turn route on the tutor server. NOT "/api/chat": on a snflwr box that is
+# the session-authenticated student API, not an engine endpoint.
+CHAT_PATH = "/api/inference/chat"
+HEALTH_PATH = "/api/inference/plan"
 PLAN_TIMEOUT_S = 10.0
 
 
@@ -93,8 +97,15 @@ class RemoteDriver:
         self._token = token
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         self._client = client or httpx.AsyncClient(headers=headers)
-        # The wire format is identical, so the Ollama driver does the talking.
-        self._inner = OllamaDriver(base_url=self._base_url, client=self._client)
+        # The wire format is identical, so the Ollama driver does the talking --
+        # pointed at the tutor server's engine-shaped routes rather than at
+        # Ollama's own.
+        self._inner = OllamaDriver(
+            base_url=self._base_url,
+            client=self._client,
+            chat_path=CHAT_PATH,
+            health_path=HEALTH_PATH,
+        )
 
     @property
     def has_token(self) -> bool:
@@ -102,7 +113,13 @@ class RemoteDriver:
         return bool(self._token)
 
     async def fetch_plan(self) -> RemotePlan:
-        """Ask the remote what it serves. Unverified -- the caller judges it."""
+        """Ask the remote what it serves. Unverified -- the caller judges it.
+
+        `core.serving_plan._fetch_remote_plan` does the same fetch synchronously,
+        because `compute_plan()` runs at startup outside an event loop. The two
+        parse the same payload and must stay in step; if a third caller appears,
+        that is the moment to extract one parser rather than keep a third copy.
+        """
         try:
             resp = await self._client.get(
                 f"{self._base_url}{PLAN_PATH}", timeout=PLAN_TIMEOUT_S
@@ -143,14 +160,19 @@ class RemoteDriver:
         return self._inner.stream(req, timeout_s=timeout_s)
 
     async def health(self) -> DriverHealth:
+        """Reachability via the plan endpoint -- the tutor server has no
+        `/api/tags`, and an authenticated 200 there proves both that the server
+        is up and that our credential still works."""
         return await self._inner.health()
 
     def capabilities(self) -> Capabilities:
         """The remote's engine does the batching; this side only forwards.
 
-        `max_slots` is filled from the advertised plan by the serving plan, not
-        guessed here -- see `core.serving_plan`. Reporting 0 means "the engine
-        schedules, do not serialize locally", the same convention vLLM uses.
+        `max_slots=0` describes THIS driver, which imposes no limit of its own.
+        The concurrency actually applied lives in the plan: `client.build_client`
+        gates remote turns through the local `Admission` at the slot count the
+        server advertised, so this box is a good citizen rather than unbounded,
+        while the server keeps the final say via 429/503.
         """
         return Capabilities(
             batching=True,

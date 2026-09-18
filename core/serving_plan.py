@@ -334,6 +334,17 @@ def _fetch_remote_plan(base_url: str, token: str) -> Optional[dict]:
 
     Unverified on purpose: `_remote_plan()` judges it against the certified
     table. This function only performs the fetch.
+
+    Synchronous because `compute_plan()` runs at startup outside an event loop.
+    `RemoteDriver.fetch_plan` is the async twin and parses the same payload; the
+    two must stay in step.
+
+    KNOWN LIMIT -- the certification check happens when the plan is computed, not
+    per turn. A remote reconfigured to an uncertified backbone afterwards keeps
+    receiving turns until something refreshes the plan. That is the same shape as
+    a safety classifier silently following a backbone swap, and the fix is a
+    periodic re-verify; it is not built yet, and is recorded here rather than
+    left for someone to discover.
     """
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:

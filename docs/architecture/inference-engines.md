@@ -143,6 +143,14 @@ This protects against misconfiguration and silent downgrade. It does **not**
 protect against a hostile server, which still does the generating — run the
 tutor server yourself, or choose who does.
 
+### Known limit: the check is at plan time, not per turn
+
+The client verifies the remote's plan when it computes its own — at startup, or
+on an explicit re-detect. A remote that is reconfigured to an uncertified
+backbone *after* that keeps receiving turns until the client's plan is
+refreshed. Restart the client (or re-detect) after changing what a tutor server
+serves. A periodic re-verify is not built yet.
+
 ### Transport
 
 Plain HTTP is allowed only to loopback. Any other host must be `https`, and the

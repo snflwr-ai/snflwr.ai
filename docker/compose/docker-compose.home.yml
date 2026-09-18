@@ -84,6 +84,27 @@ services:
       # over the code's, so a stale value here silently reverts the setting.
       # Guarded by tests/test_compose_defaults_match_config.py
       - GUIDANCE_ENFORCER_TIMEOUT_S=${GUIDANCE_ENFORCER_TIMEOUT_S:-15}
+      # --- Inference engine / serving plan -------------------------------
+      # These MUST be passed through. The installer probes the context window
+      # and writes INFERENCE_NUM_CTX to the env file, and the serving plan reads
+      # it from the PROCESS environment -- so a value that stops at the env file
+      # is a measurement nobody acts on. Verified 2026-09-18 on the reference
+      # box: the probe found 24576, the env file said 24576, and the container
+      # served 16384 because none of these were here.
+      - INFERENCE_NUM_CTX=${INFERENCE_NUM_CTX:-}
+      - INFERENCE_ENGINE=${INFERENCE_ENGINE:-auto}
+      - INFERENCE_VRAM_GB=${INFERENCE_VRAM_GB:-}
+      - INFERENCE_MAX_CONCURRENT=${INFERENCE_MAX_CONCURRENT:-}
+      - INFERENCE_QUEUE_WAIT_S=${INFERENCE_QUEUE_WAIT_S:-20}
+      - INFERENCE_MAX_QUEUE=${INFERENCE_MAX_QUEUE:-64}
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-http://vllm:8000}
+      - VLLM_MODEL=${VLLM_MODEL:-}
+      # Remote inference (phase 2). Unset on a normal box; setting the URL makes
+      # this install offload turns to a certified tutor server, and setting the
+      # SERVER token makes this box serve them.
+      - INFERENCE_REMOTE_URL=${INFERENCE_REMOTE_URL:-}
+      - INFERENCE_REMOTE_TOKEN=${INFERENCE_REMOTE_TOKEN:-}
+      - INFERENCE_SERVER_TOKEN=${INFERENCE_SERVER_TOKEN:-}
       # Database - SQLite, no external dependency
       - DB_TYPE=sqlite
       - SNFLWR_DATA_DIR=/app/data

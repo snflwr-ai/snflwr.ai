@@ -130,6 +130,23 @@ services:
       # bridge, profile sync, family provisioning). OWUI is reachable on the
       # compose network at snflwr-frontend:8080; OPEN_WEBUI_URL stays browser-facing.
       - OPEN_WEBUI_INTERNAL_URL=${OPEN_WEBUI_INTERNAL_URL:-http://snflwr-frontend:8080}
+      # --- Inference engine / serving plan -------------------------------
+      # Must be passed through: the installer probes the context window and
+      # writes INFERENCE_NUM_CTX to the env file, and the serving plan reads the
+      # PROCESS environment. A value that stops at the env file is a measurement
+      # nobody acts on (verified 2026-09-18: probe 24576, env 24576, container
+      # served 16384 because these were missing).
+      - INFERENCE_NUM_CTX=${INFERENCE_NUM_CTX:-}
+      - INFERENCE_ENGINE=${INFERENCE_ENGINE:-auto}
+      - INFERENCE_VRAM_GB=${INFERENCE_VRAM_GB:-}
+      - INFERENCE_MAX_CONCURRENT=${INFERENCE_MAX_CONCURRENT:-}
+      - INFERENCE_QUEUE_WAIT_S=${INFERENCE_QUEUE_WAIT_S:-20}
+      - INFERENCE_MAX_QUEUE=${INFERENCE_MAX_QUEUE:-64}
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-http://vllm:8000}
+      - VLLM_MODEL=${VLLM_MODEL:-}
+      - INFERENCE_REMOTE_URL=${INFERENCE_REMOTE_URL:-}
+      - INFERENCE_REMOTE_TOKEN=${INFERENCE_REMOTE_TOKEN:-}
+      - INFERENCE_SERVER_TOKEN=${INFERENCE_SERVER_TOKEN:-}
       - DB_TYPE=postgresql
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

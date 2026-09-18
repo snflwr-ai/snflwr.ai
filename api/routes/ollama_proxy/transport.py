@@ -19,6 +19,37 @@ logger = get_logger(__name__)
 _OLLAMA_READ_TIMEOUT = 300.0  # seconds — matches OLLAMA_TIMEOUT default
 
 
+def _inject_context_length(path: str, content):
+    """Serve the context window the serving plan certifies.
+
+    The sealed tutoring run was measured at num_ctx 16384. The Modelfile pins
+    8192, and nothing in the request path set it, so a deployment would quietly
+    serve a DIFFERENT configuration than the one that passed -- and at 8192 the
+    7,696-token system prompt leaves ~500 tokens, which is how enforcement
+    rewrites came to end mid-sentence (done_reason=length).
+
+    Fail-open: any problem leaves the body untouched.
+    """
+    if path not in ("/api/chat", "/api/generate") or not content:
+        return content
+    try:
+        plan = serving_plan.get_plan()
+        if not plan.tutoring_enabled or plan.num_ctx <= 0:
+            return content
+        body = _json.loads(content)
+        if not isinstance(body, dict):
+            return content
+        opts = body.get("options")
+        opts = dict(opts) if isinstance(opts, dict) else {}
+        # An explicit per-request value wins: the eval harnesses set their own.
+        opts.setdefault("num_ctx", plan.num_ctx)
+        body["options"] = opts
+        return _json.dumps(body).encode()
+    except Exception as exc:  # noqa: BLE001 - never fail a child's turn over this
+        logger.warning("transport: context-length injection skipped (%s)", exc)
+        return content
+
+
 def _inject_gpu_placement(path: str, content):
     """Add ``options.num_gpu`` to an outgoing /api/chat or /api/generate body.
 
@@ -123,7 +154,9 @@ async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     if not ollama_circuit.can_execute():
         raise httpx.ConnectError("Ollama circuit breaker open")
     if "content" in kwargs:
-        kwargs["content"] = _inject_gpu_placement(path, kwargs["content"])
+        kwargs["content"] = _inject_gpu_placement(
+            path, _inject_context_length(path, kwargs["content"])
+        )
     url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}{path}"
     try:
         async with httpx.AsyncClient(
@@ -225,7 +258,9 @@ async def _stream_chunks_from_ollama(body: bytes, headers: dict):
     req = client.build_request(
         "POST",
         url,
-        content=_inject_gpu_placement("/api/chat", body),
+        content=_inject_gpu_placement(
+            "/api/chat", _inject_context_length("/api/chat", body)
+        ),
         headers=headers,
     )
     try:
@@ -301,7 +336,9 @@ async def _stream_chat_from_ollama(
         req = client.build_request(
             "POST",
             url,
-            content=_inject_gpu_placement("/api/chat", body),
+            content=_inject_gpu_placement(
+                "/api/chat", _inject_context_length("/api/chat", body)
+            ),
             headers=headers,
         )
         resp = await client.send(req, stream=True)

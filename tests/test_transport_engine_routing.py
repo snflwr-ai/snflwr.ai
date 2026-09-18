@@ -115,3 +115,42 @@ class TestOllamaRoutingIsUnchanged:
             await transport._forward_request("POST", "/api/chat", content=_body())
         sent.assert_awaited()
         assert "/api/chat" in str(sent.await_args.args[1])
+
+
+class TestCertifiedContextWindow:
+    """The sealed run was measured at num_ctx 16384; the Modelfile pins 8192.
+
+    Serving 8192 would leave ~500 tokens after the 7,696-token system prompt,
+    which is how enforcement rewrites came to end mid-sentence. A deployment
+    must serve the window that was certified, not the one the model file
+    happens to carry.
+    """
+
+    def test_chat_bodies_carry_the_plans_context_window(self):
+        with patch("core.serving_plan.get_plan", return_value=_plan("ollama")):
+            out = transport._inject_context_length("/api/chat", _body())
+        assert json.loads(out)["options"]["num_ctx"] == 16384
+
+    def test_an_explicit_request_value_wins(self):
+        """The eval harnesses set their own; they must not be overridden."""
+        body = json.dumps({"model": "m", "messages": [], "options": {"num_ctx": 4096}}).encode()
+        with patch("core.serving_plan.get_plan", return_value=_plan("ollama")):
+            out = transport._inject_context_length("/api/chat", body)
+        assert json.loads(out)["options"]["num_ctx"] == 4096
+
+    def test_nothing_is_injected_when_tutoring_is_disabled(self):
+        disabled = serving_plan.ServingPlan(
+            engine="ollama", tutor_model=None, quality_tier="unsupported",
+            tutoring_enabled=False, num_ctx=0, max_concurrent_requests=1, reason="test",
+        )
+        with patch("core.serving_plan.get_plan", return_value=disabled):
+            out = transport._inject_context_length("/api/chat", _body())
+        assert "options" not in json.loads(out)
+
+    def test_other_paths_are_untouched(self):
+        with patch("core.serving_plan.get_plan", return_value=_plan("ollama")):
+            assert transport._inject_context_length("/api/tags", _body()) == _body()
+
+    def test_a_broken_plan_leaves_the_body_alone(self):
+        with patch("core.serving_plan.get_plan", side_effect=RuntimeError("boom")):
+            assert transport._inject_context_length("/api/chat", _body()) == _body()

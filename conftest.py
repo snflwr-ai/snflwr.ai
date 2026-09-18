@@ -20,6 +20,24 @@ os.environ.setdefault("DB_ENCRYPTION_ENABLED", "false")
 # sessions hermetic (tests that need the shared store pass an explicit path).
 os.environ.setdefault("SNFLWR_RATE_LIMIT_DB", "memory")
 
+# ---------------------------------------------------------------------------
+# Serving plan: give the suite a deployment that is allowed to tutor.
+# ---------------------------------------------------------------------------
+# core.serving_plan refuses to tutor unless the model that will be SERVED is one
+# a sealed run certified, and it reads the card with nvidia-smi. CI has no GPU
+# and no configured model, so every proxy test would otherwise receive the
+# "tutor unavailable" block instead of a tutoring turn -- 61 of them did, which
+# is how this fixture came to exist.
+#
+# Declaring the card is enough: with no model pinned, the floor selects the
+# largest certified backbone that fits, which is the certified reference
+# deployment. Deliberately NOT setting OLLAMA_DEFAULT_MODEL -- that value also
+# drives which models a student may see and which model the reveal confirm
+# resolves to, and pinning it here broke four unrelated tests.
+# The floor itself is exercised directly, with its own stubs, in
+# tests/test_serving_plan.py and tests/test_proxy_admission.py.
+os.environ.setdefault("INFERENCE_VRAM_GB", "24")
+
 # Ensure the Open WebUI backend is importable during tests
 ROOT = os.path.dirname(__file__)
 OPEN_WEBUI_BACKEND = os.path.join(ROOT, 'frontend', 'open-webui', 'backend')

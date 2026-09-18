@@ -147,8 +147,33 @@ def _has_nvidia_gpu() -> bool:
         return False
 
 
+def _configured_tutor_model() -> str:
+    """The model this deployment is set up to serve, from the same config the app uses."""
+    try:
+        from config import system_config
+
+        return (
+            os.getenv("OLLAMA_DEFAULT_MODEL")
+            or getattr(system_config, "OLLAMA_DEFAULT_MODEL", "")
+            or ""
+        ).strip()
+    except Exception:  # noqa: BLE001
+        return (os.getenv("OLLAMA_DEFAULT_MODEL") or "").strip()
+
+
 def _detect_vram_gb() -> float:
-    """Total VRAM of the largest visible GPU, or 0.0."""
+    """Total VRAM of the largest visible GPU, or 0.0.
+
+    Returns 0.0 inside the API container, which has no nvidia-smi and no GPU
+    device: the card belongs to the ollama container. That is why a VRAM of 0
+    must NOT by itself mean "this box cannot tutor" -- see compute_plan.
+    """
+    env = os.getenv("INFERENCE_VRAM_GB")
+    if env:
+        try:
+            return float(env)
+        except ValueError:
+            logger.warning("Ignoring non-numeric INFERENCE_VRAM_GB=%r", env)
     if not shutil.which("nvidia-smi"):
         return 0.0
     try:
@@ -272,6 +297,76 @@ def compute_plan() -> ServingPlan:
     engine, engine_reason = _choose_engine(vram_gb)
 
     if engine == "ollama":
+        # THE FLOOR MUST JUDGE WHAT WILL ACTUALLY BE SERVED. The proxy pins every
+        # student turn to OLLAMA_DEFAULT_MODEL, so checking "does a certified
+        # model fit this card" would pass a box that is configured to serve an
+        # uncertified one -- which is exactly the deployment this product had
+        # (e4b configured, 31b fitting) when the floor was written.
+        configured = _configured_tutor_model()
+        if configured:
+            match = next(
+                (
+                    e
+                    for e in CERTIFIED_BACKBONES
+                    if e.engine == "ollama" and e.model == configured
+                ),
+                None,
+            )
+            if match is None:
+                return ServingPlan(
+                    engine="ollama",
+                    tutor_model=None,
+                    quality_tier="unsupported",
+                    tutoring_enabled=False,
+                    num_ctx=0,
+                    max_concurrent_requests=1,
+                    reason=(
+                        f"{engine_reason}; the configured model {configured} has no "
+                        "sealed tutoring run -- set OLLAMA_DEFAULT_MODEL to a "
+                        "certified backbone"
+                    ),
+                    vram_gb=vram_gb,
+                    memory_gb=memory_gb,
+                )
+            if 0 < vram_gb < match.vram_gb + GPU_RESERVE_GB:
+                return ServingPlan(
+                    engine="ollama",
+                    tutor_model=None,
+                    quality_tier="unsupported",
+                    tutoring_enabled=False,
+                    num_ctx=0,
+                    max_concurrent_requests=1,
+                    reason=(
+                        f"{engine_reason}; {match.model} needs "
+                        f"{match.vram_gb + GPU_RESERVE_GB:.1f} GB VRAM, "
+                        f"found {vram_gb:.1f} GB"
+                    ),
+                    vram_gb=vram_gb,
+                    memory_gb=memory_gb,
+                )
+            slots = _env_int("INFERENCE_MAX_CONCURRENT") or 1
+            seen = (
+                f"{vram_gb:.1f} GB VRAM"
+                if vram_gb > 0
+                else "GPU not visible from this container"
+            )
+            return ServingPlan(
+                engine="ollama",
+                tutor_model=match.model,
+                quality_tier="certified",
+                tutoring_enabled=True,
+                num_ctx=match.num_ctx,
+                max_concurrent_requests=slots,
+                reason=(
+                    f"{engine_reason}; serving the configured {match.model} "
+                    f"(certified {match.sealed_on}; {seen})"
+                ),
+                vram_gb=vram_gb,
+                memory_gb=memory_gb,
+            )
+
+        # Nothing configured: fall back to the largest certified backbone the
+        # card can hold, which is what a fresh install gets.
         certified = _certified_for("ollama", vram_gb)
         if certified is None:
             return ServingPlan(
@@ -282,9 +377,9 @@ def compute_plan() -> ServingPlan:
                 num_ctx=0,
                 max_concurrent_requests=1,
                 reason=(
-                    f"{engine_reason}; no certified backbone fits "
-                    f"{vram_gb:.1f} GB VRAM (needs "
-                    f"{CERTIFIED_BACKBONES[0].vram_gb + GPU_RESERVE_GB:.1f} GB) — "
+                    f"{engine_reason}; no model configured and no certified backbone "
+                    f"fits {vram_gb:.1f} GB VRAM (needs "
+                    f"{CERTIFIED_BACKBONES[0].vram_gb + GPU_RESERVE_GB:.1f} GB) -- "
                     "tutoring disabled rather than served by an uncertified model"
                 ),
                 vram_gb=vram_gb,

@@ -18,7 +18,8 @@ from core import serving_plan
 
 
 def _plan(monkeypatch, *, vram=0.0, memory=32.0, engine_env=None, vllm=False,
-          linux=True, nvidia=True, allow_unverified=None):
+          linux=True, nvidia=True, allow_unverified=None, configured=None):
+    monkeypatch.setattr(serving_plan, "_configured_tutor_model", lambda: configured or "")
     monkeypatch.setattr(serving_plan, "_detect_vram_gb", lambda: vram)
     monkeypatch.setattr(serving_plan, "_detect_memory_gb", lambda: memory)
     monkeypatch.setattr(serving_plan, "_vllm_reachable", lambda: vllm)
@@ -115,6 +116,38 @@ class TestQualityFloor:
         assert "unverified" in plan.reason.lower()
 
 
+class TestGpuInvisibleFromTheApiContainer:
+    """The API container has no nvidia-smi: the card belongs to the ollama
+    container. A VRAM reading of 0 there must not take a working tutor offline,
+    so the quality floor falls back to the model the deployment is CONFIGURED to
+    serve -- which is the thing the floor actually cares about."""
+
+    def test_configured_certified_model_keeps_tutoring_on(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=0.0, memory=62.0, configured="snflwr.ai-31b")
+        assert plan.tutoring_enabled is True
+        assert plan.tutor_model == "snflwr.ai-31b"
+        assert "not visible" in plan.reason
+
+    def test_configured_uncertified_model_still_refuses(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=0.0, memory=62.0, configured="snflwr.ai")  # e4b
+        assert plan.tutoring_enabled is False
+        assert "no sealed tutoring run" in plan.reason
+
+    def test_no_configured_model_refuses(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=0.0, memory=62.0, configured=None)
+        assert plan.tutoring_enabled is False
+
+    def test_an_operator_can_declare_vram_explicitly(self, monkeypatch):
+        monkeypatch.setenv("INFERENCE_VRAM_GB", "48")
+        monkeypatch.setattr(serving_plan, "_vllm_reachable", lambda: True)
+        monkeypatch.setattr(serving_plan, "_is_linux", lambda: True)
+        monkeypatch.setattr(serving_plan, "_has_nvidia_gpu", lambda: True)
+        monkeypatch.setenv("SNFLWR_ALLOW_UNVERIFIED_ENGINE", "1")
+        monkeypatch.setattr(serving_plan, "_detect_memory_gb", lambda: 62.0)
+        plan = serving_plan.compute_plan()
+        assert plan.engine == "vllm"
+
+
 class TestContextAndConcurrency:
     def test_31b_keeps_the_sealed_context_window(self, monkeypatch):
         plan = _plan(monkeypatch, vram=24.0)
@@ -184,3 +217,24 @@ class TestCertifiedTable:
         certified = {e.model for e in serving_plan.CERTIFIED_BACKBONES}
         assert "snflwr.ai" not in certified  # e4b
         assert "snflwr.ai-12b" not in certified
+
+
+class TestFloorJudgesWhatIsServed:
+    """The proxy pins every student turn to OLLAMA_DEFAULT_MODEL. A floor that
+    only asked "does a certified model FIT?" would pass the deployment this
+    product actually had: e4b configured on a card big enough for 31b."""
+
+    def test_uncertified_configured_model_disables_tutoring_even_on_a_big_card(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=24.0, configured="snflwr.ai")
+        assert plan.tutoring_enabled is False
+        assert "no sealed tutoring run" in plan.reason
+
+    def test_certified_configured_model_is_served(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=24.0, configured="snflwr.ai-31b")
+        assert plan.tutoring_enabled is True
+        assert plan.tutor_model == "snflwr.ai-31b"
+
+    def test_certified_model_that_cannot_fit_is_refused(self, monkeypatch):
+        plan = _plan(monkeypatch, vram=12.0, configured="snflwr.ai-31b")
+        assert plan.tutoring_enabled is False
+        assert "needs" in plan.reason

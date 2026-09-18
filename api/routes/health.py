@@ -216,6 +216,35 @@ async def health_check_detailed(session=Depends(require_admin)):
         }
         unhealthy_count += 1
 
+    # Serving plan: which engine and backbone this hardware actually runs, and
+    # whether the backbone is one a sealed tutoring run certified. An operator
+    # seeing "tutoring: off" needs the REASON in the same place, not in a log.
+    try:
+        from core import serving_plan
+        from core.inference import client as inference_client
+
+        plan = serving_plan.get_plan()
+        health["checks"]["serving_plan"] = {
+            "status": "healthy" if plan.tutoring_enabled else "degraded",
+            "engine": plan.engine,
+            "tutor_model": plan.tutor_model,
+            "quality_tier": plan.quality_tier,
+            "tutoring_enabled": plan.tutoring_enabled,
+            "num_ctx": plan.num_ctx,
+            "max_concurrent_requests": plan.max_concurrent_requests,
+            "reason": plan.reason,
+            "admission": inference_client.get_client().admission.stats(),
+        }
+        if not plan.tutoring_enabled:
+            unhealthy_count += 1
+    except Exception as e:  # noqa: BLE001 - health must never raise
+        logger.exception(f"Serving plan unavailable in health check: {e}")
+        health["checks"]["serving_plan"] = {
+            "status": "unhealthy",
+            "error": "serving plan unavailable",
+        }
+        unhealthy_count += 1
+
     # Safety monitoring status
     health["checks"]["safety_monitoring"] = {
         "status": "enabled" if system_config.ENABLE_SAFETY_MONITORING else "disabled"

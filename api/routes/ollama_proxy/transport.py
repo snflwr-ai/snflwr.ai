@@ -9,7 +9,8 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import system_config
-from core import gpu_placement
+from core import gpu_placement, serving_plan
+from core.inference import client as inference_client
 from utils.circuit_breaker import ollama_circuit
 from utils.logger import get_logger
 
@@ -84,6 +85,21 @@ def _force_cpu(content):
         return content
 
 
+def _engine_is_vllm() -> bool:
+    """True when the serving plan puts an OpenAI-protocol engine behind us.
+
+    Kept as a function (not a module constant) so a re-detect takes effect and
+    so tests can substitute the plan. Fail-safe: any error means "carry on with
+    Ollama", which is the path every existing test and the sealed tutoring
+    result were measured on.
+    """
+    try:
+        return serving_plan.get_plan().engine == "vllm"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("transport: serving plan unavailable (%s); using ollama", exc)
+        return False
+
+
 async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     """Send *method* + *path* to the real Ollama backend and return the raw response.
 
@@ -93,6 +109,17 @@ async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     records success and each transport error records failure, so the breaker
     actually reflects backend health (and self-heals via its half-open probe).
     """
+    # /api/chat is the only path with an OpenAI equivalent; /api/tags, /api/show
+    # and the rest stay on Ollama, which is also where model metadata lives.
+    if path == "/api/chat" and "content" in kwargs and _engine_is_vllm():
+        engine_client = inference_client.get_client()
+        payload = await engine_client.chat_ollama_bytes(
+            kwargs["content"], timeout_s=_OLLAMA_READ_TIMEOUT
+        )
+        return httpx.Response(
+            200, content=payload, headers={"content-type": "application/json"}
+        )
+
     if not ollama_circuit.can_execute():
         raise httpx.ConnectError("Ollama circuit breaker open")
     if "content" in kwargs:
@@ -179,6 +206,14 @@ async def _stream_chunks_from_ollama(body: bytes, headers: dict):
     downstream vetting and text extraction are unaffected.
     """
     from api.routes.ollama_proxy.blocks import _strip_thinking_from_ndjson_line
+
+    if _engine_is_vllm():
+        engine_client = inference_client.get_client()
+        async for line in engine_client.stream_ollama_ndjson(
+            body, timeout_s=_OLLAMA_READ_TIMEOUT
+        ):
+            yield line
+        return
 
     if not ollama_circuit.can_execute():
         raise httpx.ConnectError("Ollama circuit breaker open")

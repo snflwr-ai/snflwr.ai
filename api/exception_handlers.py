@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -74,8 +74,34 @@ async def generic_exception_handler(request, exc):
     )
 
 
+async def inference_busy_handler(request: Request, exc: Exception) -> Response:
+    """Render "no capacity right now" in the shape the client asked for.
+
+    A busy box is an operational fact, not a teaching moment: this must never be
+    the homework-withholding fallback, and the turn is not recorded as served.
+    """
+    from api.routes.ollama_proxy import blocks
+
+    model = getattr(exc, "model", "") or "snflwr.ai"
+    stream = bool(getattr(exc, "stream", False))
+    message = (
+        "Lots of learners are asking questions right now, so I could not get to "
+        "yours. Please send it again in a moment."
+    )
+    logger.warning("Inference busy — served a wait message instead of a tutor turn")
+    if stream:
+        return Response(
+            content=blocks._ollama_block_stream_bytes(model, message),
+            media_type="application/x-ndjson",
+        )
+    return JSONResponse(content=blocks._ollama_block_response(model, message))
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register the module's exception handlers on the given app."""
     app.exception_handler(RequestValidationError)(validation_exception_handler)
     app.exception_handler(HTTPException)(http_exception_handler)
+    from api.routes.ollama_proxy.admission import InferenceBusy
+
+    app.exception_handler(InferenceBusy)(inference_busy_handler)
     app.exception_handler(Exception)(generic_exception_handler)

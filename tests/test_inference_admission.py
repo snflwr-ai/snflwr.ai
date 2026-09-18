@@ -100,6 +100,25 @@ class TestCapacity:
 
 
 @pytest.mark.asyncio
+class TestQueueDepthMeansQueued:
+    async def test_taking_a_free_slot_does_not_count_as_waiting(self):
+        """Counting the acquirer as queued made a queue of 1 reject the very next
+        caller while a slot was free (CI, 2026-09-18)."""
+        adm = Admission(max_concurrent=1, queue_wait_s=1.0, max_queue=1)
+        release = asyncio.Event()
+
+        async def hog():
+            async with adm.slot():
+                await release.wait()
+
+        holder = asyncio.create_task(hog())
+        await _until(lambda: adm.stats()["in_flight"] == 1)
+        assert adm.stats()["waiting"] == 0
+        release.set()
+        await holder
+
+
+@pytest.mark.asyncio
 class TestReentrancy:
     async def test_nested_calls_in_one_turn_share_the_slot(self):
         """A homework turn makes 3-5 model calls (gate, draft, confirm, rewrite).

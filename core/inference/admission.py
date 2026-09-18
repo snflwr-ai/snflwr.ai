@@ -90,7 +90,13 @@ class Admission:
                 _DEPTH.reset(token)
             return
 
-        if self._max_queue and self._waiting >= self._max_queue:
+        # "Waiting" must mean GENUINELY QUEUED. Counting a caller that is about
+        # to acquire a free slot inflated the depth for a moment, and with a
+        # queue limit of 1 the next caller was rejected as full while capacity
+        # was in fact available -- a race this machine always won and CI lost.
+        contended = self._sem.locked()
+
+        if contended and self._max_queue and self._waiting >= self._max_queue:
             self._rejected += 1
             logger.warning(
                 "inference admission: queue full (%d waiting, %d in flight)",
@@ -99,7 +105,8 @@ class Admission:
             )
             raise EngineOverloaded("inference queue is full")
 
-        self._waiting += 1
+        if contended:
+            self._waiting += 1
         started = time.perf_counter()
         try:
             await asyncio.wait_for(self._sem.acquire(), timeout=self._queue_wait_s)
@@ -116,7 +123,8 @@ class Admission:
                 f"no inference capacity within {self._queue_wait_s:.0f}s"
             ) from exc
         finally:
-            self._waiting -= 1
+            if contended:
+                self._waiting -= 1
 
         waited = time.perf_counter() - started
         self._wait_time_total += waited

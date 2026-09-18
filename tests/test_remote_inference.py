@@ -207,3 +207,127 @@ class TestFetchPlan:
         with pytest.raises(InferenceError, match="did not return an object"):
             await driver.fetch_plan()
         await driver.aclose()
+
+
+class TestRemotePlansAreReVerified:
+    """A remote plan describes ANOTHER machine's configuration, and someone can
+    change it without telling us. Checking once at startup means a server
+    reconfigured to an uncertified backbone keeps receiving children's turns
+    until something restarts us -- the same shape as a safety classifier
+    silently following a backbone swap.
+
+    Local plans are deliberately NOT re-checked: they describe this box's own
+    hardware, which does not change underneath a running process.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear(self, monkeypatch):
+        monkeypatch.setattr(serving_plan, "_PLAN", None)
+        monkeypatch.setattr(serving_plan, "_PLAN_AT", 0.0)
+
+    def _serve(self, monkeypatch, advertised, clock):
+        monkeypatch.setattr(serving_plan, "_fetch_remote_plan", lambda u, t: advertised())
+        monkeypatch.setattr(serving_plan.time, "monotonic", clock)
+        monkeypatch.setenv("INFERENCE_REMOTE_URL", "https://tutor.example")
+        monkeypatch.setenv("INFERENCE_REMOTE_TOKEN", "t")
+
+    def test_within_the_ttl_the_remote_is_not_asked_again(self, monkeypatch):
+        calls = []
+
+        def advertised():
+            calls.append(1)
+            return CERTIFIED
+
+        now = [0.0]
+        self._serve(monkeypatch, advertised, lambda: now[0])
+        assert serving_plan.get_plan().tutoring_enabled is True
+        now[0] = 10.0
+        serving_plan.get_plan()
+        assert len(calls) == 1
+
+    def test_after_the_ttl_a_downgraded_remote_stops_being_used(self, monkeypatch):
+        state = {"plan": CERTIFIED}
+        now = [0.0]
+        self._serve(monkeypatch, lambda: state["plan"], lambda: now[0])
+        assert serving_plan.get_plan().tutoring_enabled is True
+
+        # Someone repoints the tutor server at a backbone that never passed.
+        state["plan"] = {**CERTIFIED, "model": "snflwr.ai"}
+        now[0] = serving_plan.REMOTE_PLAN_TTL_S + 1
+        plan = serving_plan.get_plan()
+        assert plan.tutoring_enabled is False
+        assert "no sealed tutoring run" in plan.reason
+
+    def test_an_unreachable_remote_keeps_the_last_verified_plan(self, monkeypatch):
+        """A blip is not evidence the remote changed. Taking the tutor down here
+        would show a child 'not available on this computer' for what is really
+        'try again in a moment'."""
+        state = {"plan": CERTIFIED}
+        now = [0.0]
+        self._serve(monkeypatch, lambda: state["plan"], lambda: now[0])
+        assert serving_plan.get_plan().tutoring_enabled is True
+
+        state["plan"] = None  # fetch failed
+        now[0] = serving_plan.REMOTE_PLAN_TTL_S + 1
+        plan = serving_plan.get_plan()
+        assert plan.tutoring_enabled is True, "a blip took the tutor offline"
+        assert plan.tutor_model == "snflwr.ai-31b"
+
+    def test_a_remote_that_comes_back_certified_is_used_again(self, monkeypatch):
+        state = {"plan": CERTIFIED}
+        now = [0.0]
+        self._serve(monkeypatch, lambda: state["plan"], lambda: now[0])
+        serving_plan.get_plan()
+        state["plan"] = {**CERTIFIED, "model": "snflwr.ai"}
+        now[0] = serving_plan.REMOTE_PLAN_TTL_S + 1
+        assert serving_plan.get_plan().tutoring_enabled is False
+        state["plan"] = CERTIFIED
+        now[0] = 2 * serving_plan.REMOTE_PLAN_TTL_S + 2
+        assert serving_plan.get_plan().tutoring_enabled is True
+
+    def test_a_refusal_is_not_mistaken_for_a_blip(self, monkeypatch):
+        """The distinction the whole design rests on: 'we could not ask' must not
+        look like 'we asked and the answer was not certified'."""
+        now = [0.0]
+        self._serve(monkeypatch, lambda: {**CERTIFIED, "model": "nope"}, lambda: now[0])
+        plan = serving_plan.get_plan()
+        assert plan.remote_reachable is True
+        assert plan.tutoring_enabled is False
+
+        monkeypatch.setattr(serving_plan, "_fetch_remote_plan", lambda u, t: None)
+        serving_plan._PLAN = None
+        blip = serving_plan.get_plan()
+        assert blip.remote_reachable is False
+
+    def test_a_local_plan_is_never_re_verified(self, monkeypatch):
+        """Local hardware does not change underneath a running process, and a
+        re-check would put a detection probe on a child's turn for nothing."""
+        calls = []
+
+        def counting_compute():
+            calls.append(1)
+            return serving_plan.ServingPlan(
+                engine="ollama",
+                tutor_model="snflwr.ai-31b",
+                quality_tier="certified",
+                tutoring_enabled=True,
+                num_ctx=24576,
+                max_concurrent_requests=1,
+                reason="local",
+            )
+
+        now = [0.0]
+        monkeypatch.setattr(serving_plan, "compute_plan", counting_compute)
+        monkeypatch.setattr(serving_plan.time, "monotonic", lambda: now[0])
+        serving_plan.get_plan()
+        now[0] = 10 * serving_plan.REMOTE_PLAN_TTL_S
+        serving_plan.get_plan()
+        assert len(calls) == 1
+
+    def test_the_ttl_is_configurable(self, monkeypatch):
+        monkeypatch.setenv("INFERENCE_REMOTE_PLAN_TTL_S", "30")
+        assert serving_plan._remote_ttl_s() == 30.0
+
+    def test_a_junk_ttl_falls_back_to_the_default(self, monkeypatch):
+        monkeypatch.setenv("INFERENCE_REMOTE_PLAN_TTL_S", "soon")
+        assert serving_plan._remote_ttl_s() == serving_plan.REMOTE_PLAN_TTL_S

@@ -104,6 +104,7 @@ services:
       # SERVER token makes this box serve them.
       - INFERENCE_REMOTE_URL=${INFERENCE_REMOTE_URL:-}
       - INFERENCE_REMOTE_TOKEN=${INFERENCE_REMOTE_TOKEN:-}
+      - INFERENCE_REMOTE_PLAN_TTL_S=${INFERENCE_REMOTE_PLAN_TTL_S:-300}
       - INFERENCE_SERVER_TOKEN=${INFERENCE_SERVER_TOKEN:-}
       # Database - SQLite, no external dependency
       - DB_TYPE=sqlite

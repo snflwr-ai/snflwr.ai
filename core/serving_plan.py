@@ -36,6 +36,7 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 from dataclasses import asdict, dataclass, field, replace
 from typing import Optional
 
@@ -126,6 +127,11 @@ class ServingPlan:
     speculative_draft_model: Optional[str] = None
     vram_gb: float = 0.0
     memory_gb: float = 0.0
+    # Remote mode only. False means we could not ASK the tutor server what it
+    # serves (unreachable, bad credential, unreadable answer) -- which is not the
+    # same as being told something uncertified, and must not be treated the same
+    # way. See `get_plan`.
+    remote_reachable: bool = True
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -379,8 +385,13 @@ def _remote_plan(base_url: str) -> ServingPlan:
     tells us what it serves; we decide whether to accept it.
     """
     token = _remote_token()
-    unreachable = ServingPlan(
+    # Two different "no": `unusable` means we could not ASK (nothing to trust),
+    # `refused` means we asked and the answer was not certified. They must be
+    # distinguishable, because a network blip should not read as a downgraded
+    # server, and a downgraded server must not be excused as a network blip.
+    unusable = ServingPlan(
         engine="remote",
+        remote_reachable=False,
         tutor_model=None,
         quality_tier="unsupported",
         tutoring_enabled=False,
@@ -391,21 +402,26 @@ def _remote_plan(base_url: str) -> ServingPlan:
             + ("" if token else "; INFERENCE_REMOTE_TOKEN is not set")
         ),
     )
+
+    def refused(reason: str) -> ServingPlan:
+        """We reached a verdict about this remote. Not a connectivity problem."""
+        return replace(unusable, reason=reason, remote_reachable=True)
+
     try:
         validate_endpoint(base_url, require_tls_offbox=True)
     except ValueError as exc:
-        return replace(unreachable, reason=f"remote tutor server rejected: {exc}")
+        return refused(f"remote tutor server rejected: {exc}")
 
     advertised = _fetch_remote_plan(base_url, token)
     if advertised is None:
-        return unreachable
+        return unusable
 
     try:
         engine = str(advertised["engine"])
         model = str(advertised["model"])
         num_ctx = int(advertised["num_ctx"])
     except (KeyError, TypeError, ValueError) as exc:
-        return replace(unreachable, reason=f"remote plan is not readable: {exc}")
+        return refused(f"remote plan is not readable: {exc}")
     slots = max(1, int(advertised.get("max_concurrent", 1) or 1))
 
     # THE QUALITY FLOOR, ENFORCED ON THIS SIDE. A server that has been
@@ -418,20 +434,14 @@ def _remote_plan(base_url: str) -> ServingPlan:
         None,
     )
     if match is None:
-        return replace(
-            unreachable,
-            reason=(
-                f"remote serves {model} on {engine}, which has no sealed tutoring "
-                "run -- refusing to tutor through it"
-            ),
+        return refused(
+            f"remote serves {model} on {engine}, which has no sealed tutoring "
+            "run -- refusing to tutor through it"
         )
     if num_ctx > match.validated_ceiling:
-        return replace(
-            unreachable,
-            reason=(
-                f"remote serves {model} at num_ctx {num_ctx}, above the validated "
-                f"ceiling {match.validated_ceiling} -- refusing to tutor through it"
-            ),
+        return refused(
+            f"remote serves {model} at num_ctx {num_ctx}, above the validated "
+            f"ceiling {match.validated_ceiling} -- refusing to tutor through it"
         )
 
     return ServingPlan(
@@ -622,12 +632,63 @@ def compute_plan() -> ServingPlan:
 
 
 _PLAN: Optional[ServingPlan] = None
+_PLAN_AT: float = 0.0
+
+# How long a REMOTE plan may be trusted before we ask the tutor server again.
+# Local plans are not re-checked: they describe this box's own hardware, which
+# does not change underneath a running process. A remote plan describes ANOTHER
+# machine's configuration, and that can be changed by someone else at any time --
+# without this, a server reconfigured to an uncertified backbone would keep
+# receiving children's turns until something happened to restart us.
+# Cost: one plan fetch (a few hundred bytes, 5 s timeout) on one turn every five
+# minutes. Against a p90 of 22.5 s that is affordable; against the alternative --
+# a silently downgraded tutor -- it is cheap.
+REMOTE_PLAN_TTL_S = 300.0
+
+
+def _remote_ttl_s() -> float:
+    override = os.getenv("INFERENCE_REMOTE_PLAN_TTL_S")
+    if override:
+        try:
+            return max(0.0, float(override))
+        except ValueError:
+            logger.warning("Ignoring non-numeric INFERENCE_REMOTE_PLAN_TTL_S")
+    return REMOTE_PLAN_TTL_S
 
 
 def get_plan(refresh: bool = False) -> ServingPlan:
-    """Process-wide plan, computed once unless explicitly refreshed."""
-    global _PLAN
+    """Process-wide plan, computed once; remote plans re-verified on a TTL."""
+    global _PLAN, _PLAN_AT
     if _PLAN is None or refresh:
         _PLAN = compute_plan()
+        _PLAN_AT = time.monotonic()
         logger.info("serving plan: %s", _PLAN.summary_line())
+        return _PLAN
+
+    if _PLAN.engine != "remote":
+        return _PLAN
+    ttl = _remote_ttl_s()
+    if time.monotonic() - _PLAN_AT < ttl:
+        return _PLAN
+
+    fresh = compute_plan()
+    _PLAN_AT = time.monotonic()
+    if not fresh.remote_reachable and _PLAN.remote_reachable:
+        # We could not ASK. That is not evidence the remote changed, and taking
+        # the tutor down on a blip would show a child "not available on this
+        # computer" for what is really "try again in a moment". Keep the last
+        # verified plan; if the remote is genuinely down, the turn itself fails
+        # on the engine-unreachable path, which says the right thing.
+        logger.warning(
+            "remote plan re-verify failed (%s); keeping the last verified plan",
+            fresh.reason,
+        )
+        return _PLAN
+    if fresh.summary_line() != _PLAN.summary_line():
+        logger.warning(
+            "remote serving plan CHANGED: %s -> %s",
+            _PLAN.summary_line(),
+            fresh.summary_line(),
+        )
+    _PLAN = fresh
     return _PLAN

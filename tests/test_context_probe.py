@@ -31,6 +31,21 @@ class FakeEngine:
         return num_ctx <= self.ceiling
 
 
+class TestEngineUrlIsAnHttpEndpoint:
+    """`urlopen` follows file:// as happily as http, and the engine URL comes
+    from configuration -- so a mistyped or hostile OLLAMA_BASE_URL must not turn
+    the probe into a local-file reader. Rejected once, at construction."""
+
+    @pytest.mark.parametrize("url", ["file:///etc/passwd", "ftp://host/x", "/no/scheme"])
+    def test_a_non_http_engine_url_is_refused(self, url):
+        with pytest.raises(ValueError, match="http or https"):
+            context_probe.OllamaContextEngine(url)
+
+    @pytest.mark.parametrize("url", ["http://ollama:11434", "HTTPS://host:443/"])
+    def test_http_and_https_are_accepted(self, url):
+        assert context_probe.OllamaContextEngine(url)._base_url == url.rstrip("/")
+
+
 class TestProbe:
     def test_picks_the_largest_window_that_loads(self):
         engine = FakeEngine(ceiling=24576)

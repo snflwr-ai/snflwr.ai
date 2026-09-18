@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.parse
 import urllib.request
 from typing import Iterable, Optional, Protocol
 
@@ -58,6 +59,15 @@ class OllamaContextEngine:
     """Loads a model at a given window and checks that it answers."""
 
     def __init__(self, base_url: str):
+        # urlopen will follow file:// and other schemes as happily as http, and
+        # this URL comes from configuration. Reject anything that is not an
+        # HTTP(S) engine endpoint here, once, so the call site cannot be steered
+        # into reading a local file by a mistyped or hostile OLLAMA_BASE_URL.
+        scheme = urllib.parse.urlparse(base_url).scheme.lower()
+        if scheme not in ("http", "https"):
+            raise ValueError(
+                f"engine URL must be http or https, got {scheme or 'no'} scheme"
+            )
         self._base_url = base_url.rstrip("/")
 
     def try_context(
@@ -76,7 +86,7 @@ class OllamaContextEngine:
             headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(
+            with urllib.request.urlopen(  # nosec B310  # scheme checked in __init__
                 request, timeout=timeout_s or PROBE_TIMEOUT_S
             ) as resp:
                 payload = json.load(resp)

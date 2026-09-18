@@ -76,8 +76,14 @@ CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
         vram_gb=21.0,
         sealed_on="2026-09-17",
         note="sealed set S, 131 homework probes: all bars passed",
-        # Raised only by a validation run at the larger window (item 15).
-        max_validated_num_ctx=16384,
+        # Raised only by a validation run at the larger window. 24576 was
+        # validated 2026-09-18 on the 121-prompt dev set against the 16384
+        # baseline, same config but the window: clear reveals 4 -> 3, borderline
+        # 11 -> 11, wrong content 3 -> 0 (hand AND the certified W2 judge),
+        # stonewall 10 -> 8, p90 23.2s -> 22.5s. Single-turn only; what the
+        # larger window actually buys is multi-turn room, which that run did not
+        # measure. Costs ~0.6 GiB more card (21.6 GiB resident at 24576).
+        max_validated_num_ctx=24576,
     ),
 )
 
@@ -250,10 +256,14 @@ def _serving_num_ctx(entry: "CertifiedBackbone") -> int:
     The cap is the whole point. A 48 GB card could hold far more context than any
     tutoring run has measured, and serving an unmeasured window would be the same
     mistake as serving an unmeasured model.
+
+    A box that never ran the probe gets the SEALED window, not the validated
+    ceiling: `entry.vram_gb` is the footprint measured at `entry.num_ctx`, so
+    that is the only window this deployment can promise without probing.
     """
     from core.context_probe import choose
 
-    return choose(_installed_num_ctx(), entry.validated_ceiling)
+    return choose(_installed_num_ctx(), entry.validated_ceiling, entry.num_ctx)
 
 
 def _truthy(name: str) -> bool:

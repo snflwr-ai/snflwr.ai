@@ -114,8 +114,16 @@ def probe(
     return None
 
 
-def choose(probed: Optional[int], validated_max: int) -> int:
-    """The window to serve: what the card holds, capped at what was validated."""
+def choose(probed: Optional[int], validated_max: int, unprobed: int) -> int:
+    """The window to serve: what the card holds, capped at what was validated.
+
+    `unprobed` is what an un-probed box gets, and it is deliberately NOT
+    `validated_max`. The two were the same number until a validation run raised
+    the ceiling above the sealed window; after that, falling back to the ceiling
+    would hand a window to a card whose footprint at that window nobody has
+    measured -- which is how you OOM a machine that never ran the probe. The
+    sealed window is the one with a measured footprint, so it is the fallback.
+    """
     if probed is None:
-        return validated_max
+        return min(unprobed, validated_max)
     return min(probed, validated_max)

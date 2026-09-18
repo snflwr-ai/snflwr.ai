@@ -60,16 +60,24 @@ class TestCapAtValidated:
     table records the largest context a tutoring run actually validated."""
 
     def test_probe_result_is_capped(self):
-        assert context_probe.choose(probed=24576, validated_max=16384) == 16384
+        assert context_probe.choose(probed=32768, validated_max=24576, unprobed=16384) == 24576
 
     def test_a_smaller_card_keeps_its_probed_value(self):
-        assert context_probe.choose(probed=8192, validated_max=16384) == 8192
+        assert context_probe.choose(probed=8192, validated_max=24576, unprobed=16384) == 8192
 
     def test_equal_values_pass_through(self):
-        assert context_probe.choose(probed=16384, validated_max=16384) == 16384
+        assert context_probe.choose(probed=24576, validated_max=24576, unprobed=16384) == 24576
 
     def test_no_probe_result_falls_back_to_the_sealed_window(self):
-        assert context_probe.choose(probed=None, validated_max=16384) == 16384
+        """NOT the validated ceiling. The ceiling was validated for QUALITY on
+        one card; only the sealed window has a measured footprint, so a box that
+        never probed gets that one. These two numbers were equal until item 15
+        raised the ceiling, which is what made this a real distinction."""
+        assert context_probe.choose(probed=None, validated_max=24576, unprobed=16384) == 16384
+
+    def test_the_unprobed_fallback_is_itself_capped(self):
+        """A sealed window above the ceiling would still not be served."""
+        assert context_probe.choose(probed=None, validated_max=8192, unprobed=16384) == 8192
 
 
 def _install_config(**extra):

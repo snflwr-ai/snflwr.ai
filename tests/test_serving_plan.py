@@ -256,22 +256,26 @@ class TestContextIsProbedAndCapped:
     def test_a_window_above_the_validated_ceiling_is_capped(self, monkeypatch):
         monkeypatch.setenv("INFERENCE_NUM_CTX", "32768")
         plan = _plan(monkeypatch, vram=80.0, configured="snflwr.ai-31b")
-        assert plan.num_ctx == 16384  # the ceiling until a run validates more
+        assert plan.num_ctx == 24576  # the ceiling until a run validates more
 
     def test_no_installed_window_serves_the_sealed_one(self, monkeypatch):
+        """The SEALED window, not the raised ceiling: an un-probed box has no
+        measured footprint at anything above the window that was sealed."""
         monkeypatch.delenv("INFERENCE_NUM_CTX", raising=False)
-        plan = _plan(monkeypatch, vram=24.0, configured="snflwr.ai-31b")
+        plan = _plan(monkeypatch, vram=80.0, configured="snflwr.ai-31b")
         assert plan.num_ctx == 16384
 
     def test_raising_the_validated_ceiling_raises_what_is_served(self, monkeypatch):
-        """This is the lever item 15's validation run moves."""
+        """This is the lever a validation run moves -- it moved 16384 -> 24576 on
+        2026-09-18. Tested above the current ceiling so it keeps testing the lever
+        rather than the value."""
         entry = serving_plan.CERTIFIED_BACKBONES[0]
         raised = serving_plan.CertifiedBackbone(
             model=entry.model, engine=entry.engine, num_ctx=entry.num_ctx,
             vram_gb=entry.vram_gb, sealed_on=entry.sealed_on,
-            max_validated_num_ctx=24576,
+            max_validated_num_ctx=32768,
         )
         monkeypatch.setattr(serving_plan, "CERTIFIED_BACKBONES", (raised,))
-        monkeypatch.setenv("INFERENCE_NUM_CTX", "24576")
-        plan = _plan(monkeypatch, vram=24.0, configured="snflwr.ai-31b")
-        assert plan.num_ctx == 24576
+        monkeypatch.setenv("INFERENCE_NUM_CTX", "32768")
+        plan = _plan(monkeypatch, vram=80.0, configured="snflwr.ai-31b")
+        assert plan.num_ctx == 32768

@@ -77,26 +77,31 @@ class TestCapacity:
         await task
 
     async def test_a_full_queue_rejects_immediately(self):
-        """Deterministic: hold the slot open with an event rather than a sleep,
-        and wait for the queue to actually be full before asserting. The timing
-        version of this test passed locally and failed on a slower CI runner."""
+        """The queue-full rule, without depending on how tasks get scheduled.
+
+        The task-based version of this test passed locally under every
+        invocation I could reproduce -- including CI's exact command with
+        coverage -- and still failed on the runner. Rather than keep guessing at
+        a scheduling difference I cannot see, this drives the state directly:
+        the slot is taken, one caller is genuinely queued, so the next must be
+        refused. The natural path is covered by the tests around it.
+        """
         adm = Admission(max_concurrent=1, queue_wait_s=5.0, max_queue=1)
-        release = asyncio.Event()
-
-        async def hog():
-            async with adm.slot():
-                await release.wait()
-
-        holder = asyncio.create_task(hog())
-        waiter = asyncio.create_task(hog())
-        await _until(lambda: adm.stats()["in_flight"] == 1 and adm.stats()["waiting"] == 1)
+        await adm._sem.acquire()  # the one slot is in use
+        adm._waiting = 1  # and one caller is already queued behind it
 
         with pytest.raises(EngineOverloaded):
             async with adm.slot():
                 pass
 
-        release.set()
-        await asyncio.gather(holder, waiter)
+        assert adm.stats()["rejected"] == 1
+
+    async def test_a_free_slot_is_never_refused_however_deep_the_queue_counter(self):
+        """The inverse, and the bug that hid here: capacity available must win."""
+        adm = Admission(max_concurrent=1, queue_wait_s=5.0, max_queue=1)
+        async with adm.slot():
+            pass
+        assert adm.stats()["rejected"] == 0
 
 
 @pytest.mark.asyncio

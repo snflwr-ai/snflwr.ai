@@ -25,6 +25,9 @@ def _plan(monkeypatch, *, vram=0.0, memory=32.0, engine_env=None, vllm=False,
     monkeypatch.setattr(serving_plan, "_vllm_reachable", lambda: vllm)
     monkeypatch.setattr(serving_plan, "_is_linux", lambda: linux)
     monkeypatch.setattr(serving_plan, "_has_nvidia_gpu", lambda: nvidia)
+    # Remote mode short-circuits local detection, so a stray env var would make
+    # every local-plan test below measure something else entirely.
+    monkeypatch.delenv("INFERENCE_REMOTE_URL", raising=False)
     for name, value in (("INFERENCE_ENGINE", engine_env),
                         ("SNFLWR_ALLOW_UNVERIFIED_ENGINE", allow_unverified)):
         if value is None:

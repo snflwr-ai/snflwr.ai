@@ -33,6 +33,7 @@ from core.inference.base import (
     InferenceDriver,
 )
 from core.inference.ollama_driver import OllamaDriver
+from core.inference.remote_driver import RemoteDriver
 from core.inference.vllm_driver import VLLMDriver
 from core.serving_plan import ServingPlan, get_plan
 
@@ -153,7 +154,14 @@ def build_client(refresh: bool = False) -> InferenceClient:
     """Construct the client this deployment's hardware calls for."""
     plan = get_plan(refresh=refresh)
     driver: InferenceDriver
-    if plan.engine == "vllm":
+    if plan.engine == "remote":
+        # Capacity lives on the tutor server; the plan already carries the slot
+        # count it advertised, so admission here must not re-serialize it.
+        driver = RemoteDriver(
+            base_url=os.getenv("INFERENCE_REMOTE_URL", "").strip().rstrip("/"),
+            token=os.getenv("INFERENCE_REMOTE_TOKEN", "").strip(),
+        )
+    elif plan.engine == "vllm":
         spec = modelfile.get()
         driver = VLLMDriver(
             base_url=os.getenv("VLLM_BASE_URL", "http://vllm:8000"),

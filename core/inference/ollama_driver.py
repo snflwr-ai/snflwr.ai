@@ -65,9 +65,22 @@ class OllamaDriver:
 
     name = "ollama"
 
-    def __init__(self, *, base_url: str, client: Optional[httpx.AsyncClient] = None):
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        client: Optional[httpx.AsyncClient] = None,
+        chat_path: str = "/api/chat",
+        health_path: str = "/api/tags",
+    ):
+        # The paths are parameters because the remote driver speaks this exact
+        # wire format to a snflwr tutor server rather than to Ollama itself,
+        # where `/api/chat` is the session-authenticated student API and the
+        # engine-shaped route lives under `/api/inference`.
         self._base_url = base_url.rstrip("/")
         self._client = client or httpx.AsyncClient()
+        self._chat_path = chat_path
+        self._health_path = health_path
 
     def _raise_for_status(self, resp: httpx.Response) -> None:
         if resp.status_code < 400:
@@ -84,7 +97,7 @@ class OllamaDriver:
         body["stream"] = False
         try:
             resp = await self._client.post(
-                f"{self._base_url}/api/chat", json=body, timeout=timeout_s
+                f"{self._base_url}{self._chat_path}", json=body, timeout=timeout_s
             )
         except httpx.TimeoutException as exc:
             raise EngineTimeout(str(exc)) from exc
@@ -103,7 +116,10 @@ class OllamaDriver:
         body["stream"] = True
         try:
             async with self._client.stream(
-                "POST", f"{self._base_url}/api/chat", json=body, timeout=timeout_s
+                "POST",
+                f"{self._base_url}{self._chat_path}",
+                json=body,
+                timeout=timeout_s,
             ) as resp:
                 self._raise_for_status(resp)
                 async for line in resp.aiter_lines():
@@ -130,7 +146,9 @@ class OllamaDriver:
 
     async def health(self) -> DriverHealth:
         try:
-            resp = await self._client.get(f"{self._base_url}/api/tags", timeout=5.0)
+            resp = await self._client.get(
+                f"{self._base_url}{self._health_path}", timeout=5.0
+            )
         except httpx.HTTPError as exc:
             return DriverHealth(reachable=False, detail=str(exc))
         if resp.status_code != 200:

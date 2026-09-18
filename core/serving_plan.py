@@ -36,10 +36,12 @@ import os
 import platform
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Optional
 
 import httpx
+
+from core.endpoint_url import validate_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -317,8 +319,144 @@ def _choose_engine(vram_gb: float) -> tuple[str, str]:
     return "vllm", "vllm reachable on a supported GPU"
 
 
+def _remote_base_url() -> str:
+    return os.getenv("INFERENCE_REMOTE_URL", "").strip().rstrip("/")
+
+
+def _remote_token() -> str:
+    """The bearer credential for the tutor server. Never logged, never returned
+    anywhere it could be rendered -- callers test truthiness only."""
+    return os.getenv("INFERENCE_REMOTE_TOKEN", "").strip()
+
+
+def _fetch_remote_plan(base_url: str, token: str) -> Optional[dict]:
+    """What the remote SAYS it serves, or None if we could not ask.
+
+    Unverified on purpose: `_remote_plan()` judges it against the certified
+    table. This function only performs the fetch.
+
+    Synchronous because `compute_plan()` runs at startup outside an event loop.
+    `RemoteDriver.fetch_plan` is the async twin and parses the same payload; the
+    two must stay in step.
+
+    KNOWN LIMIT -- the certification check happens when the plan is computed, not
+    per turn. A remote reconfigured to an uncertified backbone afterwards keeps
+    receiving turns until something refreshes the plan. That is the same shape as
+    a safety classifier silently following a backbone swap, and the fix is a
+    periodic re-verify; it is not built yet, and is recorded here rather than
+    left for someone to discover.
+    """
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        resp = httpx.get(f"{base_url}/api/inference/plan", headers=headers, timeout=5.0)
+    except Exception as exc:  # noqa: BLE001 - unreachable is a state, not an error
+        logger.warning("remote tutor server unreachable (%s)", exc)
+        return None
+    if resp.status_code in (401, 403):
+        logger.warning(
+            "remote tutor server rejected our credential (%s); "
+            "check INFERENCE_REMOTE_TOKEN is set and matches the server",
+            resp.status_code,
+        )
+        return None
+    if resp.status_code >= 400:
+        logger.warning("remote plan endpoint returned %s", resp.status_code)
+        return None
+    try:
+        payload = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("remote plan is not JSON (%s)", exc)
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _remote_plan(base_url: str) -> ServingPlan:
+    """The plan for a box that offloads inference to a snflwr tutor server.
+
+    LOCAL HARDWARE IS NOT CONSULTED. A thin client has no GPU, so asking this
+    card about a remote card yields VRAM 0 and switches tutoring off -- the same
+    failure shape as the API container that could not see nvidia-smi. The remote
+    tells us what it serves; we decide whether to accept it.
+    """
+    token = _remote_token()
+    unreachable = ServingPlan(
+        engine="remote",
+        tutor_model=None,
+        quality_tier="unsupported",
+        tutoring_enabled=False,
+        num_ctx=0,
+        max_concurrent_requests=1,
+        reason=(
+            f"remote tutor server {base_url} did not answer with a usable plan"
+            + ("" if token else "; INFERENCE_REMOTE_TOKEN is not set")
+        ),
+    )
+    try:
+        validate_endpoint(base_url, require_tls_offbox=True)
+    except ValueError as exc:
+        return replace(unreachable, reason=f"remote tutor server rejected: {exc}")
+
+    advertised = _fetch_remote_plan(base_url, token)
+    if advertised is None:
+        return unreachable
+
+    try:
+        engine = str(advertised["engine"])
+        model = str(advertised["model"])
+        num_ctx = int(advertised["num_ctx"])
+    except (KeyError, TypeError, ValueError) as exc:
+        return replace(unreachable, reason=f"remote plan is not readable: {exc}")
+    slots = max(1, int(advertised.get("max_concurrent", 1) or 1))
+
+    # THE QUALITY FLOOR, ENFORCED ON THIS SIDE. A server that has been
+    # misconfigured or quietly downgraded must not be able to hand a child a
+    # weaker tutor than the one that passed the sealed run, and the client is
+    # the party with an interest in that answer being true. Same rule as local
+    # mode: the triple (engine, model, context) is what is certified, not a name.
+    match = next(
+        (e for e in CERTIFIED_BACKBONES if e.engine == engine and e.model == model),
+        None,
+    )
+    if match is None:
+        return replace(
+            unreachable,
+            reason=(
+                f"remote serves {model} on {engine}, which has no sealed tutoring "
+                "run -- refusing to tutor through it"
+            ),
+        )
+    if num_ctx > match.validated_ceiling:
+        return replace(
+            unreachable,
+            reason=(
+                f"remote serves {model} at num_ctx {num_ctx}, above the validated "
+                f"ceiling {match.validated_ceiling} -- refusing to tutor through it"
+            ),
+        )
+
+    return ServingPlan(
+        engine="remote",
+        tutor_model=model,
+        quality_tier="certified",
+        tutoring_enabled=True,
+        num_ctx=num_ctx,
+        # Capacity belongs to the server. Serializing here would cap a 64-slot
+        # remote at one turn at a time.
+        max_concurrent_requests=slots,
+        reason=(
+            f"remote tutor server {base_url}; {model} on {engine} at num_ctx "
+            f"{num_ctx}, certified {match.sealed_on}"
+        ),
+    )
+
+
 def compute_plan() -> ServingPlan:
     """Detect hardware and decide what this deployment serves."""
+    # Remote mode first, and it short-circuits: see `_remote_plan`.
+    remote_url = _remote_base_url()
+    if remote_url:
+        return _remote_plan(remote_url)
+
     try:
         vram_gb = float(_detect_vram_gb())
     except (

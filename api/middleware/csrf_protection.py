@@ -146,6 +146,11 @@ async def validate_csrf_token(request: Request) -> bool:
         "/api/chat/send",  # Server-to-server from Open WebUI middleware (Bearer token auth, no CSRF cookie)
         "/api/internal/",  # Internal server-to-server endpoints
         "/api/thin-client/",  # Thin client API (non-browser clients, no CSRF cookies)
+        # Remote inference (phase 2): another snflwr box, not a browser, so there
+        # is no CSRF cookie to present. Both routes require INFERENCE_SERVER_TOKEN
+        # (api/routes/inference.py) and a server that has not set that token
+        # answers 404, so exempting the prefix exposes nothing by itself.
+        "/api/inference/",
         # Ollama-compatible proxy paths — Open WebUI calls these server-to-server
         # over the trusted Docker network with Bearer (INTERNAL_API_KEY) auth and
         # no CSRF cookie, so CSRF protection doesn't apply. Note the two classes

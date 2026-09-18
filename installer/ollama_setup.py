@@ -553,3 +553,28 @@ filters for significantly stronger protection.
         print_info("You can retry later with:  ollama pull llama-guard3:1b")
 
     return True
+
+def probe_context_window(model: str, base_url: str = "http://localhost:11434") -> Optional[int]:
+    """Largest context window this machine can actually serve, or None.
+
+    Runs after the model is built, when it is already resident, so the first
+    candidate is usually the only load that happens. Each failed candidate costs
+    one load attempt; at install time that is a fine trade for a number that is
+    true of this hardware rather than of a spreadsheet.
+    """
+    try:
+        from core.context_probe import DEFAULT_CANDIDATES, OllamaContextEngine, probe
+    except ImportError:  # installer running without the app package on the path
+        return None
+
+    print_info("Measuring the largest context window this machine can serve...")
+    try:
+        found = probe(OllamaContextEngine(base_url), model, DEFAULT_CANDIDATES)
+    except Exception as exc:  # noqa: BLE001 - never fail an install over this
+        print_warning(f"Context probe failed ({exc}); the default window will be used")
+        return None
+    if found:
+        print_success(f"Context window: {found} tokens")
+    else:
+        print_warning("No context window loaded; the default will be used")
+    return found

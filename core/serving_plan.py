@@ -54,6 +54,15 @@ class CertifiedBackbone:
     vram_gb: float  # resident weights + KV at num_ctx, measured
     sealed_on: str  # ISO date of the sealed run that certified it
     note: str = ""
+    # The largest window a tutoring run has VALIDATED for this backbone. A box
+    # with room to spare may serve up to this and no further: a bigger window
+    # changes the KV layout and gives the model more room to run past the guided
+    # shape, which is a quality question, and quality questions get measured.
+    max_validated_num_ctx: int = 0
+
+    @property
+    def validated_ceiling(self) -> int:
+        return max(self.num_ctx, self.max_validated_num_ctx)
 
 
 CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
@@ -67,6 +76,8 @@ CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
         vram_gb=21.0,
         sealed_on="2026-09-17",
         note="sealed set S, 131 homework probes: all bars passed",
+        # Raised only by a validation run at the larger window (item 15).
+        max_validated_num_ctx=16384,
     ),
 )
 
@@ -228,6 +239,23 @@ def _env_int(name: str) -> Optional[int]:
     return value if value >= 1 else None
 
 
+def _installed_num_ctx() -> Optional[int]:
+    """The window the installer probed on this machine, if it wrote one."""
+    return _env_int("INFERENCE_NUM_CTX")
+
+
+def _serving_num_ctx(entry: "CertifiedBackbone") -> int:
+    """What this deployment serves: the probed window, capped at the validated one.
+
+    The cap is the whole point. A 48 GB card could hold far more context than any
+    tutoring run has measured, and serving an unmeasured window would be the same
+    mistake as serving an unmeasured model.
+    """
+    from core.context_probe import choose
+
+    return choose(_installed_num_ctx(), entry.validated_ceiling)
+
+
 def _truthy(name: str) -> bool:
     return (os.getenv(name) or "").strip().lower() in ("1", "true", "yes", "on")
 
@@ -355,7 +383,7 @@ def compute_plan() -> ServingPlan:
                 tutor_model=match.model,
                 quality_tier="certified",
                 tutoring_enabled=True,
-                num_ctx=match.num_ctx,
+                num_ctx=_serving_num_ctx(match),
                 max_concurrent_requests=slots,
                 reason=(
                     f"{engine_reason}; serving the configured {match.model} "
@@ -391,7 +419,7 @@ def compute_plan() -> ServingPlan:
             tutor_model=certified.model,
             quality_tier="certified",
             tutoring_enabled=True,
-            num_ctx=certified.num_ctx,
+            num_ctx=_serving_num_ctx(certified),
             max_concurrent_requests=slots,
             reason=f"{engine_reason}; {certified.model} certified {certified.sealed_on}",
             vram_gb=vram_gb,

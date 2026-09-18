@@ -55,6 +55,17 @@ def create_env_file(config):
             f.write(f"\n# AI Model\n")
             f.write(f"OLLAMA_DEFAULT_MODEL={config['OLLAMA_DEFAULT_MODEL']}\n")
 
+        # Context window, probed against THIS machine at install time.
+        # Sizing it by formula is what fails: on the reference card arithmetic
+        # said 32768 would fit and the load died with 60 MB free, because the
+        # compute buffers a forward pass allocates are not in the resident
+        # figure. The probe loads the model and makes it answer instead, and the
+        # serving plan caps whatever it finds at the largest window a tutoring
+        # run has validated.
+        if config.get("INFERENCE_NUM_CTX"):
+            f.write(f"\n# Tutor context window (probed on this machine)\n")
+            f.write(f"INFERENCE_NUM_CTX={config['INFERENCE_NUM_CTX']}\n")
+
         # Safety model (llama-guard3:1b for semantic content classification)
         safety_val = "true" if config.get("ENABLE_SAFETY_MODEL") else "false"
         f.write(f"\n# Child Safety Model (llama-guard3:1b)\n")

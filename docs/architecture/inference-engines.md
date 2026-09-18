@@ -60,6 +60,29 @@ were not bad tutoring, they were queue time eating the reveal check's budget
 until it failed closed. Over capacity, snflwr.ai now returns a short "ask me
 again in a moment" message and serves no tutoring turn at all.
 
+## Context window
+
+The window is probed at install time, not calculated. On the reference card:
+
+| Window | Result |
+|---|---|
+| 16384 | loads, ~21.0 GiB of card in use |
+| 24576 | loads, ~21.6 GiB |
+| 32768 | out of memory — the model unloads |
+
+Arithmetic said 32768 would fit and it did not: the compute buffers a forward
+pass allocates are not in the resident figure. So the installer loads the model
+at 32k, 24k, 16k, 8k, 4k in turn, keeps the first that loads *and* answers, and
+writes it to `INFERENCE_NUM_CTX`.
+
+At runtime the serving plan serves that window **capped at the largest window a
+tutoring run has validated** for the backbone
+(`CertifiedBackbone.max_validated_num_ctx`). A card with room to spare does not
+get an unmeasured window: bigger context changes the KV layout and gives the
+model more room to run past the guided shape, which is a quality question.
+Raising the cap means running the dev campaign at the larger window and
+comparing it to the certified baseline.
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -69,6 +92,7 @@ again in a moment" message and serves no tutoring turn at all.
 | `INFERENCE_MAX_CONCURRENT` | from the plan | cap on simultaneous turns |
 | `INFERENCE_QUEUE_WAIT_S` | `20` | how long a turn may wait for a slot |
 | `INFERENCE_MAX_QUEUE` | `64` | queued turns before rejecting immediately |
+| `INFERENCE_NUM_CTX` | probed at install | context window, capped at the validated maximum |
 | `TUTOR_MODELFILE_PATH` | `models/Snflwr_AI_Kids.modelfile` | persona and sampling source |
 | `SNFLWR_ALLOW_UNVERIFIED_ENGINE` | unset | allow tutoring on an uncertified engine |
 

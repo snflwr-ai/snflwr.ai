@@ -13,7 +13,12 @@ from .deployment import (
 )
 from .detection import check_python_version, check_system_requirements
 from .firewall import configure_firewall
-from .ollama_setup import check_ollama_installed, setup_ollama, setup_safety_model
+from .ollama_setup import (
+    check_ollama_installed,
+    probe_context_window,
+    setup_ollama,
+    setup_safety_model,
+)
 from .platform_utils import _windows_start_cmd
 from .rclone_setup import setup_offhost_backup
 from .shortcuts import create_desktop_shortcut, launch_snflwr
@@ -122,6 +127,10 @@ for your specific needs. The process takes about 2 minutes.
 
     # Ollama setup (install, start service, pull model)
     chosen_model = setup_ollama(total_ram_gb=total_ram_gb)
+    if chosen_model:
+        probed_ctx = probe_context_window(chosen_model)
+        if probed_ctx:
+            config["INFERENCE_NUM_CTX"] = probed_ctx
     if not chosen_model:
         print_warning(
             "Ollama setup incomplete - AI features will not work until Ollama is configured"

@@ -54,6 +54,15 @@ class CertifiedBackbone:
     vram_gb: float  # resident weights + KV at num_ctx, measured
     sealed_on: str  # ISO date of the sealed run that certified it
     note: str = ""
+    # The largest window a tutoring run has VALIDATED for this backbone. A box
+    # with room to spare may serve up to this and no further: a bigger window
+    # changes the KV layout and gives the model more room to run past the guided
+    # shape, which is a quality question, and quality questions get measured.
+    max_validated_num_ctx: int = 0
+
+    @property
+    def validated_ceiling(self) -> int:
+        return max(self.num_ctx, self.max_validated_num_ctx)
 
 
 CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
@@ -67,6 +76,14 @@ CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
         vram_gb=21.0,
         sealed_on="2026-09-17",
         note="sealed set S, 131 homework probes: all bars passed",
+        # Raised only by a validation run at the larger window. 24576 was
+        # validated 2026-09-18 on the 121-prompt dev set against the 16384
+        # baseline, same config but the window: clear reveals 4 -> 3, borderline
+        # 11 -> 11, wrong content 3 -> 0 (hand AND the certified W2 judge),
+        # stonewall 10 -> 8, p90 23.2s -> 22.5s. Single-turn only; what the
+        # larger window actually buys is multi-turn room, which that run did not
+        # measure. Costs ~0.6 GiB more card (21.6 GiB resident at 24576).
+        max_validated_num_ctx=24576,
     ),
 )
 
@@ -228,6 +245,27 @@ def _env_int(name: str) -> Optional[int]:
     return value if value >= 1 else None
 
 
+def _installed_num_ctx() -> Optional[int]:
+    """The window the installer probed on this machine, if it wrote one."""
+    return _env_int("INFERENCE_NUM_CTX")
+
+
+def _serving_num_ctx(entry: "CertifiedBackbone") -> int:
+    """What this deployment serves: the probed window, capped at the validated one.
+
+    The cap is the whole point. A 48 GB card could hold far more context than any
+    tutoring run has measured, and serving an unmeasured window would be the same
+    mistake as serving an unmeasured model.
+
+    A box that never ran the probe gets the SEALED window, not the validated
+    ceiling: `entry.vram_gb` is the footprint measured at `entry.num_ctx`, so
+    that is the only window this deployment can promise without probing.
+    """
+    from core.context_probe import choose
+
+    return choose(_installed_num_ctx(), entry.validated_ceiling, entry.num_ctx)
+
+
 def _truthy(name: str) -> bool:
     return (os.getenv(name) or "").strip().lower() in ("1", "true", "yes", "on")
 
@@ -355,7 +393,7 @@ def compute_plan() -> ServingPlan:
                 tutor_model=match.model,
                 quality_tier="certified",
                 tutoring_enabled=True,
-                num_ctx=match.num_ctx,
+                num_ctx=_serving_num_ctx(match),
                 max_concurrent_requests=slots,
                 reason=(
                     f"{engine_reason}; serving the configured {match.model} "
@@ -391,7 +429,7 @@ def compute_plan() -> ServingPlan:
             tutor_model=certified.model,
             quality_tier="certified",
             tutoring_enabled=True,
-            num_ctx=certified.num_ctx,
+            num_ctx=_serving_num_ctx(certified),
             max_concurrent_requests=slots,
             reason=f"{engine_reason}; {certified.model} certified {certified.sealed_on}",
             vram_gb=vram_gb,

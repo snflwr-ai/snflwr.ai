@@ -1,6 +1,6 @@
 services:
   open-webui:
-    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.9.6}
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-v0.11.3}
     container_name: open-webui
     network_mode: host
     # ports and extra_hosts are not used with network_mode: host —
@@ -68,6 +68,16 @@ services:
       - 'ENABLE_CALENDAR=false'
       - 'ENABLE_NOTES=false'
       - 'ENABLE_CHANNELS=false'
+      # OWUI 0.11 child-safety lockdown: plugins (admin-installed code; snflwr uses none,
+      # and several 0.11 advisories are in plugin/tool handling), subagents, open sharing
+      # and access grants. Off explicitly even where 0.11.3's default is already off.
+      - 'ENABLE_PLUGINS=false'
+      - 'ENABLE_SUBAGENTS=false'
+      - 'USER_PERMISSIONS_CHAT_ALLOW_OPEN_SHARING=false'
+      - 'USER_PERMISSIONS_ACCESS_GRANTS_ALLOW_GROUPS=false'
+      - 'USER_PERMISSIONS_ACCESS_GRANTS_ALLOW_USERS=false'
+      - 'USER_PERMISSIONS_NOTES_ALLOW_SHARING=false'
+      - 'USER_PERMISSIONS_NOTES_ALLOW_PUBLIC_SHARING=false'
       # Chat generation features — set globally before locking Interface tab for students
       - 'ENABLE_TITLE_GENERATION=true'
       - 'ENABLE_FOLLOW_UP_GENERATION=true'

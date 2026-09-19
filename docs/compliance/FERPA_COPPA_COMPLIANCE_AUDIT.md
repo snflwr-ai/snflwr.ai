@@ -1237,7 +1237,7 @@ class AgeVerificationManager:
 | **Privacy Policy** | ✅ 450+ lines, clear | ✅ Comprehensive | ✅ Comprehensive | ✅ Comprehensive | ✅ Comprehensive |
 | **Data Minimization** | ✅ First names only | ⚠️ Full names, emails | ✅ Minimal | ⚠️ Extensive data | ⚠️ Full names |
 | **Local-First** | ✅ All AI local (Ollama) | ❌ Cloud-based | ❌ Cloud-based | ❌ Cloud-based | ❌ Cloud-based |
-| **Open Source** | ✅ Full transparency | ❌ Proprietary | ⚠️ Some components | ⚠️ Some components | ❌ Proprietary |
+| **Open Source** | ❌ Proprietary since 2026-09-18 (AGPL-3.0 before) | ❌ Proprietary | ⚠️ Some components | ⚠️ Some components | ❌ Proprietary |
 
 **Scoring:**
 - ✅ Fully Implemented / Industry-Leading
@@ -1249,7 +1249,6 @@ class AgeVerificationManager:
 2. 🏆 **Only platform with zero third-party sharing** (local-first AI)
 3. 🏆 **Strongest encryption** (AES-256 at rest + SQLCipher database encryption)
 4. 🏆 **Most minimal data collection** (first names only, no last names)
-5. 🏆 **Full transparency** (open source codebase)
 
 **Areas for Improvement:**
 1. Data export API (to match Google/Khan Academy)

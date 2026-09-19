@@ -18,7 +18,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 REQUIRED_PYTHON_MAJOR=3
-REQUIRED_PYTHON_MINOR=8
+REQUIRED_PYTHON_MINOR=10
 
 # ---------------------------------------------------------------------------
 # Detect a usable Python 3 interpreter
@@ -26,7 +26,7 @@ REQUIRED_PYTHON_MINOR=8
 find_python() {
     for candidate in python3 python; do
         if command -v "$candidate" &>/dev/null; then
-            # Verify it is actually Python 3.8+
+            # Verify it is actually Python 3.10+
             if "$candidate" -c "import sys; exit(0 if sys.version_info >= ($REQUIRED_PYTHON_MAJOR, $REQUIRED_PYTHON_MINOR) else 1)" 2>/dev/null; then
                 echo "$candidate"
                 return 0

@@ -73,7 +73,7 @@ Add new routes for parents:
 ## Development Setup
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.10+
 - Node.js 18+
 - Ollama installed locally
 

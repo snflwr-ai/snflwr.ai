@@ -8,18 +8,18 @@ echo ==========================================
 echo.
 
 REM ---------------------------------------------------------------------------
-REM Check for Python 3.8+
+REM Check for Python 3.10+
 REM ---------------------------------------------------------------------------
 where python >nul 2>&1
 if %errorlevel% neq 0 goto :install_python
 
-python -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" 2>nul
+python -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)" 2>nul
 if %errorlevel% neq 0 goto :install_python
 
 goto :python_ready
 
 :install_python
-echo Python 3.8+ is required but not found.
+echo Python 3.10+ is required but not found.
 echo.
 
 REM Try winget first (Windows 10 1709+ / Windows 11)
@@ -60,7 +60,7 @@ goto :manual_install
 
 :manual_install
 echo.
-echo Please install Python 3.8+ manually from:
+echo Please install Python 3.10+ manually from:
 echo   https://www.python.org/downloads/
 echo.
 echo IMPORTANT: During installation, check "Add Python to PATH"

@@ -70,17 +70,17 @@ open_browser() {
     fi
 }
 
-# Check for Python 3.8+
+# Check for Python 3.10+
 if ! command -v python3 &>/dev/null; then
     echo -e "${RED}ERROR: Python 3 is not installed${NC}"
-    echo "Run ./setup.sh first, or install Python 3.8+ manually:"
+    echo "Run ./setup.sh first, or install Python 3.10+ manually:"
     echo "  Linux:  sudo apt install python3 python3-venv python3-pip"
     echo "  macOS:  brew install python@3"
     exit 1
 fi
 
-if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
-    echo -e "${RED}ERROR: Python 3.8+ is required${NC}"
+if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
+    echo -e "${RED}ERROR: Python 3.10+ is required${NC}"
     CURRENT_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "unknown")
     echo "Current version: $CURRENT_VER"
     echo "Run ./setup.sh to install a supported version."

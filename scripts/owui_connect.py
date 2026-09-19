@@ -136,6 +136,75 @@ def _apply_disclosure_banner(config: dict) -> dict:
     return config
 
 
+# Open WebUI 0.10 replaced the single JSON-blob ``config`` row (id, data, version)
+# with one row per setting: (key, value JSON, updated_at). Only the settings this
+# script manages are read and written, so every other setting is left untouched.
+# Until 2026-09-19 this script only knew the blob schema: on 0.10+ it exited 1
+# ("config table never appeared"), the guarded upgrader swallowed that, and a key
+# rotation left Open WebUI sending the OLD key -- every chat 401'd while the
+# upgrader's smoke test (which authenticates with the API's own key) passed.
+_KV_KEYS = ("ollama.enable", "ollama.base_urls", "ollama.api_configs", "ui.banners")
+
+
+def _kv_rows_to_config(rows) -> dict:
+    """Nest ``[("ollama.enable", "true"), ...]`` into ``{"ollama": {"enable": True}}``."""
+    config: dict = {}
+    for dotted, raw in rows:
+        value = raw if not isinstance(raw, (str, bytes)) else json.loads(raw)
+        node = config
+        *parents, leaf = dotted.split(".")
+        for part in parents:
+            node = node.setdefault(part, {})
+        node[leaf] = value
+    return config
+
+
+def _config_to_kv(config: dict) -> list:
+    """The managed settings of ``config`` as ``[(dotted_key, json_text), ...]``."""
+    out = []
+    for dotted in _KV_KEYS:
+        node = config
+        for part in dotted.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is not None:
+            out.append((dotted, json.dumps(node)))
+    return out
+
+
+def _seed_kv(cur, placeholder: str, key: str, proxy_url: str) -> int:
+    """Seed via the 0.10+ key-value schema. Caller commits. Returns 0 or 2."""
+    p = placeholder
+    in_list = ", ".join([p] * len(_KV_KEYS))
+    cur.execute(f'SELECT "key", value FROM config WHERE "key" IN ({in_list})', _KV_KEYS)
+    config = _kv_rows_to_config(cur.fetchall())
+    if _already_ok(config.get("ollama") or {}, key, proxy_url) and _banner_present(
+        config
+    ):
+        print("Open WebUI already connected to proxy; disclosure banner present.")
+        return 2
+    config = _apply_disclosure_banner(_apply_ollama(config, key, proxy_url))
+    now = int(time.time())
+    for dotted, value in _config_to_kv(config):
+        cur.execute(
+            f'UPDATE config SET value = {p}, updated_at = {p} WHERE "key" = {p}',
+            (value, now, dotted),
+        )
+        if cur.rowcount == 0:
+            cur.execute(
+                f'INSERT INTO config ("key", value, updated_at) VALUES ({p}, {p}, {p})',
+                (dotted, value, now),
+            )
+    print(
+        "Seeded proxy credential + disclosure banner into Open WebUI (key-value config)."
+    )
+    return 0
+
+
+def _sqlite_is_kv(cur) -> bool:
+    cur.execute("PRAGMA table_info(config)")
+    return {row[1] for row in cur.fetchall()} >= {"key", "value"}
+
+
 def _sqlite_path(key: str, proxy_url: str) -> int:
     """sqlite dialect — used for the home/compose stack (DATABASE_URL unset)."""
     con = None
@@ -145,6 +214,10 @@ def _sqlite_path(key: str, proxy_url: str) -> int:
         try:
             con = sqlite3.connect(DB_PATH)
             cur = con.cursor()
+            if _sqlite_is_kv(cur):
+                rc = _seed_kv(cur, "?", key, proxy_url)
+                con.commit()
+                return rc
             cur.execute("SELECT id, data FROM config ORDER BY id DESC LIMIT 1")
             row = cur.fetchone()
             break
@@ -200,6 +273,15 @@ def _postgres_path(database_url: str, key: str, proxy_url: str) -> int:
         try:
             con = psycopg2.connect(database_url)
             cur = con.cursor()
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_name = 'config'"
+            )
+            columns = {row[0] for row in (cur.fetchall() or [])}
+            if {"key", "value"} <= columns:
+                rc = _seed_kv(cur, "%s", key, proxy_url)
+                con.commit()
+                return rc
             cur.execute("SELECT id, data FROM config ORDER BY id DESC LIMIT 1")
             row = cur.fetchone()
             break

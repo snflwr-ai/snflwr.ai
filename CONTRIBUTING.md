@@ -8,7 +8,7 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.10+
 - Git
 
 ### Getting Started

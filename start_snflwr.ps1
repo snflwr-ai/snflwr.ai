@@ -20,19 +20,19 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "  snflwr.ai - Startup Script (Windows)" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
-# Check for Python 3.8+
+# Check for Python 3.10+
 $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
 if (-not $pythonCmd) {
     Write-Host "ERROR: Python is not installed" -ForegroundColor Red
-    Write-Host "Run .\setup.bat first, or install Python 3.8+ from https://www.python.org/downloads/"
+    Write-Host "Run .\setup.bat first, or install Python 3.10+ from https://www.python.org/downloads/"
     Write-Host "IMPORTANT: Check 'Add Python to PATH' during installation."
     exit 1
 }
 
-$pyVersionOk = python -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" 2>$null
+$pyVersionOk = python -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)" 2>$null
 if ($LASTEXITCODE -ne 0) {
     $currentVer = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
-    Write-Host "ERROR: Python 3.8+ is required (found $currentVer)" -ForegroundColor Red
+    Write-Host "ERROR: Python 3.10+ is required (found $currentVer)" -ForegroundColor Red
     Write-Host "Run .\setup.bat to install a supported version."
     exit 1
 }

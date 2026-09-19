@@ -19,16 +19,16 @@ echo.
 where python >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Python is not installed.
-    echo Run setup.bat first, or install Python 3.8+ from https://www.python.org/downloads/
+    echo Run setup.bat first, or install Python 3.10+ from https://www.python.org/downloads/
     echo IMPORTANT: Check "Add Python to PATH" during installation.
     pause
     exit /b 1
 )
 
-:: Verify Python 3.8+
-python -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" 2>nul
+:: Verify Python 3.10+
+python -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)" 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo ERROR: Python 3.8+ is required.
+    echo ERROR: Python 3.10+ is required.
     echo Run setup.bat to install a supported version.
     pause
     exit /b 1

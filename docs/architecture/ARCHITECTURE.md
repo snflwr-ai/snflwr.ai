@@ -447,7 +447,7 @@ docker-compose up -d  # Start all services
 ## Technology Stack
 
 ### Backend
-- **Language:** Python 3.11+
+- **Language:** Python 3.10+
 - **Web Framework:** FastAPI 0.100+
 - **Database:** SQLite 3 (USB) / PostgreSQL (Enterprise)
 - **ORM:** Raw SQL with parameterized queries

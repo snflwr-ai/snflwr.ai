@@ -74,9 +74,9 @@ def detect_usb_drives():
 
 
 def check_python_version():
-    """Ensure Python 3.8+"""
-    if sys.version_info < (3, 8):
-        print_error(f"Python 3.8+ required. You have {sys.version}")
+    """Ensure Python 3.10+ (the lockfile cannot install on older: aiohttp needs 3.10)"""
+    if sys.version_info < (3, 10):
+        print_error(f"Python 3.10+ required. You have {sys.version}")
         return False
     print_success(f"Python {sys.version.split()[0]} detected")
     return True

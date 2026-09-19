@@ -718,14 +718,14 @@ cp data/snflwr.db backups/snflwr_backup_$(date +%Y%m%d).db
 ```
 
 ### Requirements
-- Python 3.8 or higher
+- Python 3.10 or higher
 - 100MB free space on USB
 - Internet connection (for AI model access)
 
 ## [HELP] Troubleshooting
 
 ### "Python not found"
-Install Python 3.8+ from https://www.python.org/downloads/
+Install Python 3.10+ from https://www.python.org/downloads/
 Make sure to check "Add Python to PATH" during installation
 
 ### "Port 8000 already in use"

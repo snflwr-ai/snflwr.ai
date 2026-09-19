@@ -102,6 +102,58 @@ def _resident_placement(model_tag: str) -> str | None:
     return None
 
 
+def _arbiter_url() -> str:
+    """Where a GPU arbiter is, if this box runs one. Empty = no co-tenant."""
+    return os.getenv("SNFLWR_GPU_ARBITER_URL", "").strip()
+
+
+# The arbiter frees the card by unloading the co-tenant and waiting for the VRAM
+# to come back; measured at 2.5 s on the reference box. The cap is generous
+# because the alternative is not "fast" -- it is a cold CPU load at ~131 s.
+_ARBITER_TIMEOUT_S = float(os.getenv("SNFLWR_GPU_ARBITER_TIMEOUT_S", "30"))
+
+
+def _claim_from_arbiter() -> int:
+    """Ask the arbiter for the card. GPU if it grants it, CPU if it does not.
+
+    WHY THIS EXISTS. Ollama only evicts within its OWN instance. Where a second
+    Ollama on the same box holds the card (IronClaw's agent on the reference
+    box), claiming the GPU does not evict it -- the load fails with "unable to
+    allocate CUDA0 buffer". snflwr then retries on CPU, and on 2026-09-19 that
+    retry hit the 5-minute read timeout and the child saw an EMPTY reply. So
+    when a co-tenant exists, ASK before taking.
+
+    A refusal means the co-tenant is mid-turn (it is never interrupted), so CPU
+    is the honest answer for this turn. An arbiter that cannot be reached also
+    means CPU: claiming blind is what produced the empty reply.
+    """
+    try:
+        resp = httpx.post(
+            _arbiter_url().rstrip("/") + "/claim",
+            json={"who": "snflwr"},
+            timeout=_ARBITER_TIMEOUT_S,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+    except Exception as exc:  # noqa: BLE001 - see FAIL-OPEN in the module docstring
+        logger.warning(
+            "gpu_placement: arbiter unreachable (%s); serving this turn from CPU", exc
+        )
+        return CPU_ONLY
+    if result.get("granted"):
+        logger.info(
+            "gpu_placement: arbiter granted the card (freed=%s, %s MiB free)",
+            result.get("freed"),
+            result.get("free_mib"),
+        )
+        return ALL_LAYERS
+    logger.info(
+        "gpu_placement: arbiter refused the card (%s); serving from CPU",
+        result.get("reason"),
+    )
+    return CPU_ONLY
+
+
 def choose_num_gpu(model_tag: str, *, now: float | None = None) -> int:
     """Layers to offload for this turn: ALL_LAYERS (GPU) or CPU_ONLY.
 
@@ -143,6 +195,9 @@ def choose_num_gpu(model_tag: str, *, now: float | None = None) -> int:
         if os.getenv("SNFLWR_GPU_PREFER_CPU", "").strip() in ("1", "true", "yes"):
             logger.info("gpu_placement: SNFLWR_GPU_PREFER_CPU set, loading on CPU")
             return CPU_ONLY
+
+        if _arbiter_url():
+            return _claim_from_arbiter()
 
         logger.info("gpu_placement: not loaded, claiming the GPU for the tutor")
         return ALL_LAYERS

@@ -175,3 +175,75 @@ class TestTransportInjection:
         t = self._t()
         body = b'{"messages":[]}'
         assert t._inject_gpu_placement("/api/chat", body) is body
+
+
+class TestArbiter:
+    """With a co-tenant Ollama on the box, claiming the card blind is what put
+    an EMPTY reply in front of a child on 2026-09-19: the load failed with
+    "unable to allocate CUDA0 buffer", the CPU retry hit the 5-minute read
+    timeout, and the stream ended with nothing. When an arbiter is configured,
+    the tutor ASKS.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _arbiter_configured(self, monkeypatch):
+        monkeypatch.setenv("SNFLWR_GPU_ARBITER_URL", "http://arbiter:11460")
+
+    def _answer(self, monkeypatch, payload=None, exc=None):
+        calls = {}
+
+        class _Resp:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return payload
+
+        def _post(url, json=None, timeout=None):  # noqa: A002 - httpx kwarg name
+            calls["url"], calls["json"] = url, json
+            if exc:
+                raise exc
+            return _Resp()
+
+        monkeypatch.setattr(gpu_placement.httpx, "post", _post)
+        return calls
+
+    def test_granted_claim_takes_the_gpu(self, monkeypatch):
+        _placement(monkeypatch, None)
+        calls = self._answer(monkeypatch, {"granted": True, "freed": True})
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.ALL_LAYERS
+        assert calls["url"] == "http://arbiter:11460/claim"
+        assert calls["json"] == {"who": "snflwr"}
+
+    def test_refused_claim_serves_from_cpu(self, monkeypatch):
+        """A refusal means the co-tenant is mid-turn. It is never interrupted."""
+        _placement(monkeypatch, None)
+        self._answer(monkeypatch, {"granted": False, "reason": "holder within min-hold"})
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.CPU_ONLY
+
+    def test_unreachable_arbiter_serves_from_cpu(self, monkeypatch):
+        """Claiming blind is exactly what produced the empty reply."""
+        _placement(monkeypatch, None)
+        self._answer(monkeypatch, exc=RuntimeError("connection refused"))
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.CPU_ONLY
+
+    def test_no_arbiter_configured_keeps_the_old_behaviour(self, monkeypatch):
+        """Boxes with no co-tenant must not pay for this at all."""
+        monkeypatch.delenv("SNFLWR_GPU_ARBITER_URL", raising=False)
+        _placement(monkeypatch, None)
+
+        def _boom(*a, **k):
+            raise AssertionError("must not call an arbiter when none is configured")
+
+        monkeypatch.setattr(gpu_placement.httpx, "post", _boom)
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.ALL_LAYERS
+
+    def test_a_loaded_model_never_asks(self, monkeypatch):
+        """Rule 1 still wins: a resident model is not moved, arbiter or not."""
+        _placement(monkeypatch, "gpu")
+
+        def _boom(*a, **k):
+            raise AssertionError("resident model must not trigger a claim")
+
+        monkeypatch.setattr(gpu_placement.httpx, "post", _boom)
+        assert gpu_placement.choose_num_gpu("snflwr.ai") == gpu_placement.ALL_LAYERS

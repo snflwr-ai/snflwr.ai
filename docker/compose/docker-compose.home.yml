@@ -157,8 +157,11 @@ services:
   open-webui:
     # Pinned by default. The guarded upgrader (scripts/owui_upgrade.sh) bumps
     # OWU_IMAGE_TAG, smoke-tests the new version, and rolls this back to the
-    # previous tag if the smoke test fails. v0.9.6 is the safety-reviewed pin.
-    image: ghcr.io/open-webui/open-webui:${OWU_IMAGE_TAG:-v0.9.6}
+    # previous tag if the smoke test fails. v0.11.3 is the safety-reviewed pin
+    # (2026-09-19): 0.10.x rendered the reasoning tutor's streamed answer BLANK
+    # and was reverted; 0.11.3 was checked in a browser as a provisioned student
+    # -- live render, block message, banner, model list -- before adopting it.
+    image: ghcr.io/open-webui/open-webui:${OWU_IMAGE_TAG:-v0.11.3}
     container_name: snflwr-frontend
     ports:
       - "${WEBUI_PORT:-3000}:8080"
@@ -247,6 +250,16 @@ services:
       - ENABLE_CALENDAR=false
       - ENABLE_NOTES=false
       - ENABLE_CHANNELS=false
+      # OWUI 0.11 child-safety lockdown: plugins (admin-installed code; snflwr uses none,
+      # and several 0.11 advisories are in plugin/tool handling), subagents, open sharing
+      # and access grants. Off explicitly even where 0.11.3's default is already off.
+      - ENABLE_PLUGINS=false
+      - ENABLE_SUBAGENTS=false
+      - USER_PERMISSIONS_CHAT_ALLOW_OPEN_SHARING=false
+      - USER_PERMISSIONS_ACCESS_GRANTS_ALLOW_GROUPS=false
+      - USER_PERMISSIONS_ACCESS_GRANTS_ALLOW_USERS=false
+      - USER_PERMISSIONS_NOTES_ALLOW_SHARING=false
+      - USER_PERMISSIONS_NOTES_ALLOW_PUBLIC_SHARING=false
       - ENABLE_TITLE_GENERATION=true
       - ENABLE_FOLLOW_UP_GENERATION=true
       - ENABLE_TAGS_GENERATION=true

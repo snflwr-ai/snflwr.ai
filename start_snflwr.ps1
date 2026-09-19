@@ -462,7 +462,7 @@ if ($composeCmd) {
         Write-Host ""
 
         # Check if image is already cached locally
-        $webuiTag = if ($env:WEBUI_DOCKER_TAG) { $env:WEBUI_DOCKER_TAG } else { "v0.9.6" }
+        $webuiTag = if ($env:WEBUI_DOCKER_TAG) { $env:WEBUI_DOCKER_TAG } else { "v0.11.3" }
         $webuiImage = "ghcr.io/open-webui/open-webui:$webuiTag"
         $imageCached = $false
         try {

@@ -174,7 +174,7 @@ jobs:
       run: |
         { echo '### Trivy: fixable HIGH/CRITICAL in snflwr-api'; echo '```'; cat trivy-results.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
         cat trivy-results.txt
-        if grep -qE 'CRITICAL|HIGH' trivy-results.txt && grep -qE '│ *[A-Za-z0-9_.-]+ *│ *CVE-' trivy-results.txt; then
+        if grep -qE '(CVE|GHSA)-' trivy-results.txt; then
           echo "::warning::Trivy found fixable HIGH/CRITICAL vulnerabilities in the image -- see the job summary"
         fi
 

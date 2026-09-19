@@ -154,9 +154,37 @@ jobs:
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
 
+    # The SARIF above is only readable in GitHub's code-scanning UI, which on a
+    # private repo needs Advanced Security. Without this table the scan had no
+    # visible output at all: on 2026-09-19 it was hiding a fixable CRITICAL
+    # (anyio CVE-2026-63374) in the production image. Reuses Trivy's cached DB.
+    - name: Show Trivy findings in the job summary
+      if: steps.docker-build.outcome == 'success'
+      uses: aquasecurity/trivy-action@v0.35.0
+      with:
+        image-ref: 'snflwr-api:scan'
+        format: 'table'
+        output: 'trivy-results.txt'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+        skip-setup-trivy: true
+
+    - name: Publish Trivy table
+      if: always() && hashFiles('trivy-results.txt') != ''
+      run: |
+        { echo '### Trivy: fixable HIGH/CRITICAL in snflwr-api'; echo '```'; cat trivy-results.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        cat trivy-results.txt
+        if grep -qE 'CRITICAL|HIGH' trivy-results.txt && grep -qE '│ *[A-Za-z0-9_.-]+ *│ *CVE-' trivy-results.txt; then
+          echo "::warning::Trivy found fixable HIGH/CRITICAL vulnerabilities in the image -- see the job summary"
+        fi
+
     - name: Upload Trivy results to GitHub Security
       uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('trivy-results.sarif') != ''
+      # Needs Advanced Security on a private repo (see codeql-analysis). The
+      # table above is the readable output; this upload is a bonus when GHAS
+      # is on and must not fail the job when it is off.
+      continue-on-error: true
       with:
         sarif_file: 'trivy-results.sarif'
 

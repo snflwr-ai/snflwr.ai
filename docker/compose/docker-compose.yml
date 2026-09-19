@@ -180,6 +180,12 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # Rotation window (scripts/rotate_internal_key.py): the API accepts the old
+      # key too until OWU is reseeded. Never passed until 2026-09-19, so a
+      # "zero-downtime" rotation was a hard cut on every compose deploy.
+      - INTERNAL_API_KEY_PREVIOUS=${INTERNAL_API_KEY_PREVIOUS:-}
+      - INTERNAL_API_KEY_CREATED_AT=${INTERNAL_API_KEY_CREATED_AT:-}
+      - INTERNAL_API_KEY_MAX_AGE_DAYS=${INTERNAL_API_KEY_MAX_AGE_DAYS:-90}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://localhost}
     depends_on:

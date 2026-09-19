@@ -115,6 +115,12 @@ services:
       # Security
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # Rotation window (scripts/rotate_internal_key.py): the API accepts the old
+      # key too until OWU is reseeded. Never passed until 2026-09-19, so a
+      # "zero-downtime" rotation was a hard cut on every compose deploy.
+      - INTERNAL_API_KEY_PREVIOUS=${INTERNAL_API_KEY_PREVIOUS:-}
+      - INTERNAL_API_KEY_CREATED_AT=${INTERNAL_API_KEY_CREATED_AT:-}
+      - INTERNAL_API_KEY_MAX_AGE_DAYS=${INTERNAL_API_KEY_MAX_AGE_DAYS:-90}
       - PARENT_DASHBOARD_PASSWORD=${PARENT_DASHBOARD_PASSWORD}
       - ENCRYPT_CONVERSATIONS=true
       # Database encryption at rest (AES-256 via SQLCipher). The image ships

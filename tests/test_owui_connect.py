@@ -431,3 +431,98 @@ class TestKeySource:
         con.close()
         config = json.loads(row[0])
         assert config["ollama"]["api_configs"]["0"]["key"] == "padded-key"
+
+
+# ===========================================================================
+# Part 3 — Open WebUI 0.10+ key-value config schema (sqlite)
+# ===========================================================================
+
+
+def _make_kv_db(tmp_path: Path, rows: dict | None = None) -> Path:
+    """Build the 0.10+ schema exactly as OWUI 0.11.3 creates it."""
+    db_path = tmp_path / "webui.db"
+    con = sqlite3.connect(str(db_path))
+    con.execute(
+        'CREATE TABLE config ("key" TEXT NOT NULL, value JSON NOT NULL, '
+        'updated_at BIGINT, PRIMARY KEY ("key"))'
+    )
+    for k, v in (rows or {}).items():
+        con.execute(
+            "INSERT INTO config (key, value, updated_at) VALUES (?, ?, 0)",
+            (k, json.dumps(v)),
+        )
+    con.commit()
+    con.close()
+    return db_path
+
+
+def _kv(db_path: Path) -> dict:
+    con = sqlite3.connect(str(db_path))
+    rows = dict(con.execute("SELECT key, value FROM config").fetchall())
+    con.close()
+    return {k: json.loads(v) for k, v in rows.items()}
+
+
+class TestKeyValueSchema:
+    @pytest.fixture(autouse=True)
+    def _env(self, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("SNFLWR_PROXY_URL", raising=False)
+
+    def test_rotated_key_replaces_the_stale_one(
+        self, owui_connect, tmp_path, monkeypatch
+    ):
+        """The 2026-09-19 incident: OWUI kept the OLD key after a rotation."""
+        db_path = _make_kv_db(
+            tmp_path,
+            {
+                "ollama.enable": True,
+                "ollama.base_urls": ["http://snflwr-api:39150"],
+                "ollama.api_configs": {"0": {"enable": True, "key": "old-key"}},
+                "ui.banners": [],
+                "rag.ollama.base_url": "http://elsewhere:1",
+            },
+        )
+        monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
+        monkeypatch.setenv("INTERNAL_API_KEY", "new-key")
+
+        assert owui_connect.main() == 0
+        kv = _kv(db_path)
+        assert kv["ollama.api_configs"]["0"]["key"] == "new-key"
+        assert kv["ollama.enable"] is True
+        assert kv["ollama.base_urls"] == ["http://snflwr-api:39150"]
+        # Settings this script does not manage are untouched.
+        assert kv["rag.ollama.base_url"] == "http://elsewhere:1"
+
+    def test_seeds_non_dismissible_banner_and_keeps_other_banners(
+        self, owui_connect, tmp_path, monkeypatch
+    ):
+        other = {"id": "admin-note", "type": "warning", "content": "hi"}
+        db_path = _make_kv_db(tmp_path, {"ui.banners": [other]})
+        monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
+        monkeypatch.setenv("INTERNAL_API_KEY", "k")
+
+        assert owui_connect.main() == 0
+        banners = _kv(db_path)["ui.banners"]
+        assert banners[0]["id"] == owui_connect._DISCLOSURE_BANNER_ID
+        assert banners[0]["dismissible"] is False
+        assert "988" in banners[0]["content"]
+        assert other in banners
+
+    def test_fresh_kv_table_inserts_rows(self, owui_connect, tmp_path, monkeypatch):
+        db_path = _make_kv_db(tmp_path)
+        monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
+        monkeypatch.setenv("INTERNAL_API_KEY", "k")
+
+        assert owui_connect.main() == 0
+        assert set(_kv(db_path)) == set(owui_connect._KV_KEYS)
+
+    def test_second_run_is_a_no_op(self, owui_connect, tmp_path, monkeypatch):
+        db_path = _make_kv_db(tmp_path)
+        monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
+        monkeypatch.setenv("INTERNAL_API_KEY", "k")
+
+        assert owui_connect.main() == 0
+        before = _kv(db_path)
+        assert owui_connect.main() == 2
+        assert _kv(db_path) == before

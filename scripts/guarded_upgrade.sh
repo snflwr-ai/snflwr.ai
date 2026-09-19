@@ -125,10 +125,40 @@ print("OK: %d model(s) via authenticated proxy; anonymous rejected" % len(models
 reseed_owui() {
     [[ -f "$SCRIPT_DIR/owui_connect.py" ]] || return 0
     docker cp "$SCRIPT_DIR/owui_connect.py" snflwr-frontend:/tmp/owui_connect.py >/dev/null 2>&1 || true
-    local rc=0
-    docker exec snflwr-api printenv INTERNAL_API_KEY 2>/dev/null \
-        | docker exec -i snflwr-frontend python /tmp/owui_connect.py >/dev/null 2>&1 || rc=$?
-    [[ $rc -eq 0 ]] && docker restart snflwr-frontend >/dev/null 2>&1 || true
+    local rc=0 out
+    out="$(docker exec snflwr-api printenv INTERNAL_API_KEY 2>/dev/null \
+        | docker exec -i snflwr-frontend python /tmp/owui_connect.py 2>&1)" || rc=$?
+    case $rc in
+        0) docker restart snflwr-frontend >/dev/null 2>&1 || true ;;
+        2) ;;  # already seeded
+        # Loud on purpose: this used to be swallowed, and on OWUI 0.10+ the reseed
+        # failed every time (schema change) while the smoke test still passed.
+        *) warn "Open WebUI reseed failed (rc=$rc): ${out##*$'\n'}" ;;
+    esac
+}
+
+# The key Open WebUI has STORED is what it sends on every chat; proxy_auth_ok
+# only proves the API's own key works. A rotation that the reseed never reached
+# passed proxy_auth_ok while every real chat got 401 (2026-09-19). Compares
+# inside the containers and prints no key material.
+owui_key_matches() {
+    run_with_key '
+import sys, json, sqlite3
+want = sys.stdin.read().strip()
+con = sqlite3.connect("file:/app/backend/data/webui.db?mode=ro", uri=True)
+cols = {r[1] for r in con.execute("PRAGMA table_info(config)")}
+if {"key", "value"} <= cols:
+    row = con.execute("SELECT value FROM config WHERE \"key\" = ?", ("ollama.api_configs",)).fetchone()
+    configs = json.loads(row[0]) if row else {}
+else:
+    row = con.execute("SELECT data FROM config ORDER BY id DESC LIMIT 1").fetchone()
+    configs = (json.loads(row[0]).get("ollama") or {}).get("api_configs") or {} if row else {}
+have = (configs.get("0") or {}).get("key") or ""
+if have != want:
+    print("FAIL: Open WebUI stores a different proxy key than snflwr-api expects", file=sys.stderr)
+    sys.exit(1)
+print("OK: Open WebUI sends the key snflwr-api expects")
+'
 }
 
 # =============================================================================
@@ -175,6 +205,8 @@ owui_smoke() {
     info "web UI answers HTTP 200"
     proxy_auth_ok || { err "OWU↔proxy auth check failed"; return 1; }
     info "OWU↔proxy auth verified; anonymous calls rejected"
+    owui_key_matches || { err "Open WebUI's stored proxy key is stale -- every chat would 401"; return 1; }
+    info "Open WebUI's stored proxy key matches snflwr-api"
 }
 owui_restore() {
     set_env_var OWU_IMAGE_TAG "$PREV_OWU"

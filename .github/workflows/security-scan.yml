@@ -208,19 +208,22 @@ jobs:
         echo "| Docker Security | ${{ needs.docker-security.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| CodeQL Analysis | ${{ needs.codeql-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
 
+    # codeql-analysis is deliberately NOT in this gate. It carries
+    # continue-on-error (see the job), which already reports success, but
+    # relying on that subtlety to keep a merge unblocked is the kind of thing
+    # that breaks silently when someone removes the flag. Stated outright
+    # instead: CodeQL needs GitHub Advanced Security on a private repo, and
+    # a licensing state must not fail a code review. Put it back the day GHAS
+    # is enabled.
+    # (This comment must stay OUTSIDE the `if: >-` block: inside a folded
+    # scalar a `#` line is expression text, not a comment, and GitHub rejects
+    # the whole workflow -- which is exactly what happened on 2026-09-18.)
     - name: Fail if any security scan failed
       if: >-
         needs.dependency-scan.result == 'failure' ||
         needs.code-security-scan.result == 'failure' ||
         needs.secret-scan.result == 'failure' ||
         needs.docker-security.result == 'failure'
-        # codeql-analysis is deliberately NOT in this gate. It carries
-        # continue-on-error (see the job), which already reports success, but
-        # relying on that subtlety to keep a merge unblocked is the kind of thing
-        # that breaks silently when someone removes the flag. Stated outright
-        # instead: CodeQL needs GitHub Advanced Security on a private repo, and
-        # a licensing state must not fail a code review. Put it back the day GHAS
-        # is enabled.
       run: |
         echo "::error::One or more security scans failed. See summary above."
         exit 1

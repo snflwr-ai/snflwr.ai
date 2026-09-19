@@ -2,8 +2,14 @@ name: Security Scanning
 
 on:
   schedule:
-    # Run daily at 2 AM UTC
-    - cron: '0 2 * * *'
+    # Weekly, was nightly (0 2 * * *). The full scan is ~7-8 job-minutes;
+    # nightly cost ~230 minutes a month of a 2,000-minute private-repo
+    # allowance -- over a tenth of the budget re-scanning a tree that
+    # often had not changed since the last run. Every push to main and
+    # every PR still runs it, so a code change is never unscanned; this
+    # schedule only exists to catch newly-published CVEs in unchanged
+    # dependencies, and a week is a reasonable latency for that.
+    - cron: '0 2 * * 1'
   push:
     branches: [ main ]
   pull_request:
@@ -148,15 +154,52 @@ jobs:
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
 
+    # The SARIF above is only readable in GitHub's code-scanning UI, which on a
+    # private repo needs Advanced Security. Without this table the scan had no
+    # visible output at all: on 2026-09-19 it was hiding a fixable CRITICAL
+    # (anyio CVE-2026-63374) in the production image. Reuses Trivy's cached DB.
+    - name: Show Trivy findings in the job summary
+      if: steps.docker-build.outcome == 'success'
+      uses: aquasecurity/trivy-action@v0.35.0
+      with:
+        image-ref: 'snflwr-api:scan'
+        format: 'table'
+        output: 'trivy-results.txt'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+        skip-setup-trivy: true
+
+    - name: Publish Trivy table
+      if: always() && hashFiles('trivy-results.txt') != ''
+      run: |
+        { echo '### Trivy: fixable HIGH/CRITICAL in snflwr-api'; echo '```'; cat trivy-results.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        cat trivy-results.txt
+        if grep -qE '(CVE|GHSA)-' trivy-results.txt; then
+          echo "::warning::Trivy found fixable HIGH/CRITICAL vulnerabilities in the image -- see the job summary"
+        fi
+
     - name: Upload Trivy results to GitHub Security
       uses: github/codeql-action/upload-sarif@v4
       if: always() && hashFiles('trivy-results.sarif') != ''
+      # Needs Advanced Security on a private repo (see codeql-analysis). The
+      # table above is the readable output; this upload is a bonus when GHAS
+      # is on and must not fail the job when it is off.
+      continue-on-error: true
       with:
         sarif_file: 'trivy-results.sarif'
 
   codeql-analysis:
     name: CodeQL Security Analysis
     runs-on: ubuntu-latest
+    # Non-blocking since 2026-09-18. CodeQL and SARIF upload are free on PUBLIC
+    # repositories; on a private one they need GitHub Advanced Security. This
+    # repo went private, so without a GHAS licence the upload step fails and
+    # every PR carries a red check that says nothing about the code.
+    # continue-on-error keeps the analysis running (so it starts working again
+    # the moment GHAS is enabled) without gating merges on a licensing state.
+    # It is deliberately still in security-summary's needs list: if it ever goes
+    # green again we want the summary to reflect that.
+    continue-on-error: true
 
     steps:
     - name: Checkout code
@@ -193,13 +236,22 @@ jobs:
         echo "| Docker Security | ${{ needs.docker-security.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| CodeQL Analysis | ${{ needs.codeql-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
 
+    # codeql-analysis is deliberately NOT in this gate. It carries
+    # continue-on-error (see the job), which already reports success, but
+    # relying on that subtlety to keep a merge unblocked is the kind of thing
+    # that breaks silently when someone removes the flag. Stated outright
+    # instead: CodeQL needs GitHub Advanced Security on a private repo, and
+    # a licensing state must not fail a code review. Put it back the day GHAS
+    # is enabled.
+    # (This comment must stay OUTSIDE the `if: >-` block: inside a folded
+    # scalar a `#` line is expression text, not a comment, and GitHub rejects
+    # the whole workflow -- which is exactly what happened on 2026-09-18.)
     - name: Fail if any security scan failed
       if: >-
         needs.dependency-scan.result == 'failure' ||
         needs.code-security-scan.result == 'failure' ||
         needs.secret-scan.result == 'failure' ||
-        needs.docker-security.result == 'failure' ||
-        needs.codeql-analysis.result == 'failure'
+        needs.docker-security.result == 'failure'
       run: |
         echo "::error::One or more security scans failed. See summary above."
         exit 1

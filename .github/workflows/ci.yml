@@ -2,9 +2,32 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop, "claude/*" ]
+    # "claude/*" removed 2026-09-18. A push to a branch that already has a PR
+    # fired BOTH this push run and the pull_request run -- the full suite twice
+    # for one commit. PRs are the review surface; main and develop keep a push
+    # trigger so a merge is still validated on the branch it landed on.
+    branches: [ main, develop ]
+    paths-ignore:
+      # A change that touches ONLY these cannot alter Python behaviour, and the
+      # suite is 59% of all CI time. paths-ignore skips the run only when EVERY
+      # changed file matches, so a mixed PR still runs everything.
+      # The website has no Python tests covering it; it is built separately.
+      - '**.md'
+      - 'docs/**'
+      - 'website/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [ main, develop ]
+    # Duplicated deliberately: GitHub Actions does not support YAML
+    # anchors, so the &docs_only/*docs_only form this started as would
+    # not parse on the runner. Keep the two lists identical.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'website/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
 
 permissions:
   contents: read
@@ -34,6 +57,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
 
+    - name: Verify requirements.lock is in sync with requirements.txt
+      # Moved here from the duplicate security job that was removed. The image
+      # installs ONLY from requirements.lock, so a lock that drifts from
+      # requirements.txt means the thing we tested is not the thing we ship.
+      run: python scripts/check_lock_sync.py
+
     - name: Check code formatting with Black
       run: |
         black --check --diff api/ core/ safety/ storage/ utils/ scripts/
@@ -58,56 +87,16 @@ jobs:
         mypy scripts/ --ignore-missing-imports --no-strict-optional
 
   # Job 2: Security Scanning
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: 'pip'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pip-audit bandit
-
-    - name: Verify requirements.lock is in sync with requirements.txt
-      run: python scripts/check_lock_sync.py
-
-    - name: Run pip-audit for vulnerable dependencies
-      run: |
-        pip install -r requirements.txt
-        pip-audit --format json --output pip-audit-report.json || true
-        pip-audit
-
-    # `if: always()` is load-bearing. pip-audit runs first in this job, and a
-    # failing dependency audit used to SKIP this step entirely — so static
-    # analysis of the code silently stopped running for as long as any CVE sat
-    # unpatched in requirements.txt, while the job just reported the familiar
-    # "dependency" failure. A red check that hides a check nobody notices is
-    # worse than two red checks. Both now always run; the job still fails if
-    # either does.
-    - name: Run Bandit security linter
-      if: always()
-      run: |
-        # Generate the full JSON report for the uploaded artifact (non-blocking).
-        bandit -r api/ core/ safety/ storage/ utils/ -f json -o bandit-report.json --severity-level medium --confidence-level medium || true
-        # Enforce: fail the build on any medium+ severity / medium+ confidence
-        # finding (subsumes the previous high/high gate).
-        bandit -r api/ core/ safety/ storage/ utils/ --severity-level medium --confidence-level medium
-
-    - name: Upload Bandit report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: bandit-security-report
-        path: bandit-report.json
+  # The "Security Scan" job that used to live here ran pip-audit and bandit with
+  # the SAME targets and flags as security-scan.yml's dependency-scan and
+  # code-security-scan jobs. Two jobs, one finding: when bandit flagged B310 on
+  # 2026-09-18 it failed BOTH, so a single issue showed up as two red checks and
+  # cost twice the minutes. security-scan.yml keeps them (and adds Trivy,
+  # TruffleHog and CodeQL), so this was pure duplication.
+  #
+  # One thing it did that the other does not: verify requirements.lock is in sync
+  # with requirements.txt. That check moved to code-quality below rather than
+  # being lost with the job.
 
   # Job 3: Unit & Integration Tests
   test:
@@ -116,7 +105,15 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        # The ends, not every point between them. Production runs 3.12
+        # (docker/Dockerfile), and 3.10 is the floor the README advertises for
+        # the non-Docker install path -- start_snflwr.sh and installer/ run on
+        # whatever Python a family already has, so a single-version matrix would
+        # stop testing the only code that does not run in our own image.
+        # 3.11 was dropped because a break that hits 3.11 but neither 3.10 nor
+        # 3.12 is a narrow class, and the middle version cost ~74 job-minutes per
+        # 12 runs -- measured 2026-09-18, 20% of all CI time.
+        python-version: ['3.10', '3.12']
 
     services:
       postgres:
@@ -427,7 +424,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [code-quality, security, test, config-validation, database-validation, docker-build, safety-tests, middleware-tests]
+    needs: [code-quality, test, config-validation, database-validation, docker-build, safety-tests, middleware-tests]
     if: always()
 
     steps:
@@ -436,7 +433,6 @@ jobs:
         echo "CI Pipeline Summary:"
         echo "===================="
         echo "Code Quality:        ${{ needs.code-quality.result }}"
-        echo "Security Scan:       ${{ needs.security.result }}"
         echo "Tests:               ${{ needs.test.result }}"
         echo "Config Validation:   ${{ needs.config-validation.result }}"
         echo "Database Validation: ${{ needs.database-validation.result }}"
@@ -447,7 +443,6 @@ jobs:
         FAILED=0
         for job in \
           "${{ needs.test.result }}" \
-          "${{ needs.security.result }}" \
           "${{ needs.safety-tests.result }}" \
           "${{ needs.middleware-tests.result }}" \
           "${{ needs.config-validation.result }}" \

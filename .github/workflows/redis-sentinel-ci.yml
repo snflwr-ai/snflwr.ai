@@ -2,7 +2,9 @@ name: Redis Sentinel Failover
 
 on:
   push:
-    branches: [ main, develop, "claude/*" ]
+    # "claude/*" removed 2026-09-18: a push to a branch with an open PR
+    # fired this workflow twice for one commit.
+    branches: [ main, develop ]
     paths:
       - "utils/cache.py"
       - "utils/celery_config.py"
@@ -12,6 +14,18 @@ on:
       - ".github/workflows/redis-sentinel-ci.yml"
   pull_request:
     branches: [ main, develop ]
+    # Mirrors the push filter above. Without it the Sentinel failover smoke ran on EVERY
+    # pull request, including ones touching only a licence file or a
+    # workflow -- measured 2026-09-18 at ~3.6 job-minutes per PR across
+    # the two smoke workflows, spent on infrastructure the PR never
+    # touched. Keep this list identical to the push one above.
+    paths:
+      - "utils/cache.py"
+      - "utils/celery_config.py"
+      - "config.py"
+      - "docker/compose/docker-compose.sentinel-ci.yml"
+      - "tests/integration/test_redis_sentinel_failover.py"
+      - ".github/workflows/redis-sentinel-ci.yml"
   workflow_dispatch: {}
 
 permissions:

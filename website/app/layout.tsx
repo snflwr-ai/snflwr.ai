@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     'educational AI',
     'parental controls AI',
     'offline AI',
-    'open source AI safety',
+    'child safe AI',
     'snflwr.ai',
   ],
   authors: [{ name: 'snflwr.ai' }],

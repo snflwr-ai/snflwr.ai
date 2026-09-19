@@ -169,4 +169,4 @@ tests: add regression test for COPPA consent token expiry
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [AGPL-3.0 License](LICENSE).
+By contributing, you assign copyright in your contributions to snflwr.ai, and agree they are licensed under the [proprietary LICENSE](LICENSE).

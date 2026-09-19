@@ -74,15 +74,7 @@ export default function Footer(): JSX.Element {
             and local AI.
           </p>
           <p className="text-xs text-white/50">
-            Licensed under{' '}
-            <a
-              href="https://github.com/snflwr-ai/snflwr.ai/blob/main/LICENSE"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white/60 underline hover:text-white/75 transition-colors"
-            >
-              AGPL-3.0
-            </a>
+            Proprietary software. All rights reserved.
           </p>
         </div>
 
@@ -119,7 +111,7 @@ export default function Footer(): JSX.Element {
       <div className="border-t border-white/[0.04]">
         <div className="max-w-5xl mx-auto px-6 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-xs text-white/50">
-            © 2026 snflwr.ai · Open source under AGPL-3.0
+            © 2026 snflwr.ai · All rights reserved
           </p>
           <p className="text-xs text-white/50">
             Commercial licensing:{' '}

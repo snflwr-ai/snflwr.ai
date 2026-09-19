@@ -20,7 +20,7 @@ LINES = 400
 MAX_BYTES = 4096
 
 
-def _writer(path: str, worker: int, handler_kind: str, errors_path: str) -> None:
+def _writer(path: str, worker: int, handler_kind: str, errors_path: str, start) -> None:
     import logging
     import logging.handlers
 
@@ -43,6 +43,11 @@ def _writer(path: str, worker: int, handler_kind: str, errors_path: str) -> None
     log = logging.getLogger(f"w{worker}")
     log.propagate = False
     log.addHandler(h)
+    # Every writer waits here until all are ready. Under "spawn" each child
+    # spends 100ms+ importing, so without this the writers could finish nearly
+    # one after another and never collide; the stdlib control then lost no lines
+    # and failed ~40% of runs (CI, 2026-09-18). The race has to actually happen.
+    start.wait(60)
     for i in range(LINES):
         log.warning("worker=%d line=%04d %s", worker, i, "p" * 40)
     h.close()
@@ -52,8 +57,9 @@ def _run(tmp_path: Path, kind: str):
     path = tmp_path / "app.log"
     errors = tmp_path / "errors.txt"
     ctx = mp.get_context("spawn")
+    start = ctx.Barrier(WORKERS)
     procs = [
-        ctx.Process(target=_writer, args=(str(path), w, kind, str(errors)))
+        ctx.Process(target=_writer, args=(str(path), w, kind, str(errors), start))
         for w in range(WORKERS)
     ]
     for p in procs:
@@ -84,6 +90,17 @@ def test_no_line_is_lost_across_concurrent_rotations(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(os.name != "posix", reason="demonstrates the POSIX race")
 def test_stdlib_handler_loses_lines_under_the_same_load(tmp_path):
-    """The control: if this ever passes, the test above no longer proves anything."""
-    lines, n_errors = _run(tmp_path, "stdlib")
-    assert len(lines) < WORKERS * LINES or n_errors > 0
+    """The control: if this ever passes, the test above no longer proves anything.
+
+    A race is probabilistic, so a single clean run is not evidence the stdlib
+    handler is safe. It gets three independent attempts; one lossy run is enough.
+    """
+    outcomes = []
+    for attempt in range(3):
+        run_dir = tmp_path / f"attempt{attempt}"
+        run_dir.mkdir()
+        lines, n_errors = _run(run_dir, "stdlib")
+        outcomes.append((len(lines), n_errors))
+        if len(lines) < WORKERS * LINES or n_errors > 0:
+            return
+    pytest.fail(f"stdlib handler lost nothing in 3 runs (lines, errors): {outcomes}")

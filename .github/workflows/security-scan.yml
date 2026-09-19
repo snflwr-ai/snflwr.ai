@@ -10,10 +10,16 @@ on:
     # schedule only exists to catch newly-published CVEs in unchanged
     # dependencies, and a week is a reasonable latency for that.
     - cron: '0 2 * * 1'
+  # Same docs-only ignore list as ci.yml. Without it a one-line README fix paid
+  # for a Docker build, Trivy and CodeQL on billed private-repo minutes, and a
+  # docs change cannot introduce a vulnerability. The weekly schedule above
+  # still scans the whole tree regardless.
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', 'docs/**', 'website/**', 'LICENSE', '.github/ISSUE_TEMPLATE/**']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', 'docs/**', 'website/**', 'LICENSE', '.github/ISSUE_TEMPLATE/**']
   workflow_dispatch: # Allow manual triggers
 
 permissions:

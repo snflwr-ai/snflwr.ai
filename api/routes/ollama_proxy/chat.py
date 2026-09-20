@@ -62,6 +62,17 @@ _BUSY_MESSAGE = (
     "yours. Please send it again in a moment."
 )
 
+# A turn that ran out of time must SAY so. Measured 2026-09-19: with a
+# co-tenant holding the GPU, the tutor fell back to CPU, the read timeout fired
+# at 5 minutes, httpx.ReadTimeout escaped the stream generator unhandled, and the
+# child was left looking at an EMPTY bubble with no error -- the stream simply
+# ended. Only httpx.ConnectError was caught here; a timeout is not a connect
+# error. Same lesson as #188: say something, in the format the client asked for.
+_TIMEOUT_MESSAGE = (
+    "That one took me too long to work out. Please send your question again."
+)
+
+
 # Hardware below the quality floor does not tutor with a smaller model: e4b and
 # 12b never met the tutoring bars (4-13 wrong replies per 121 against a bar of 6,
 # or acceptable correctness only by stonewalling 38 times), so the honest answer
@@ -605,6 +616,11 @@ async def proxy_chat(
                 yield blocks._ollama_block_stream_bytes(
                     model, "The tutor is unavailable right now. Please try again."
                 )
+            except httpx.TimeoutException:
+                logger.warning("tutor stream timed out; telling the student so")
+                _trace["safety"] = {"blocked_layer": "error"}
+                _emit_trace()
+                yield blocks._ollama_block_stream_bytes(model, _TIMEOUT_MESSAGE)
 
         return StreamingResponse(_holdback_stream(), media_type="application/x-ndjson")
 
@@ -636,12 +652,25 @@ async def proxy_chat(
                 body_bytes, fwd_headers
             ):
                 collected.append(chunk)
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            # The client asked for a stream, so answer with one: a JSONResponse
+            # to a streamed request renders as a BLANK bubble in Open WebUI
+            # (that is #188, and this branch still had it).
+            timed_out = isinstance(exc, httpx.TimeoutException)
+            logger.warning(
+                "tutor %s on the streamed path; telling the student so",
+                "timed out" if timed_out else "was unreachable",
+            )
             _trace["safety"] = {"blocked_layer": "error"}
             _emit_trace()
-            return JSONResponse(
-                status_code=503,
-                content={"detail": "Ollama backend unreachable"},
+            return _gate_block(
+                model,
+                (
+                    _TIMEOUT_MESSAGE
+                    if timed_out
+                    else "The tutor is unavailable right now. Please try again."
+                ),
+                stream=True,
             )
         # Token counts live on the final chunk; carry them so a streamed turn
         # reports usage the same way a buffered one does.
@@ -683,6 +712,11 @@ async def proxy_chat(
                 status_code=503,
                 content={"detail": "Ollama backend unreachable"},
             )
+        except httpx.TimeoutException:
+            logger.warning("tutor timed out on the non-streamed path")
+            _trace["safety"] = {"blocked_layer": "error"}
+            _emit_trace()
+            return _gate_block(model, _TIMEOUT_MESSAGE, stream=False)
 
         try:
             upstream_json = upstream.json()

@@ -279,6 +279,7 @@ class OllamaClient:
         context: Optional[List] = None,
         options: Optional[Dict] = None,
         stream: bool = False,
+        system: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], Optional[Dict]]:
         """
         Generate response from model
@@ -289,12 +290,21 @@ class OllamaClient:
             context: Optional conversation context
             options: Optional model parameters
             stream: Whether to stream response
+            system: Replaces the model's OWN system prompt for this call.
+                Ollama treats a request-level ``system`` as a replacement, not an
+                addition, which is what lets a caller borrow a model's weights
+                without its persona. Required when calling the TUTOR as a
+                classifier: with the tutor persona in place the reveal confirm
+                scored 0/27 with every verdict unparseable.
 
         Returns:
             Tuple of (success, response or None, metadata or None)
         """
         try:
             request_data = {"model": model, "prompt": prompt, "stream": stream}
+
+            if system:
+                request_data["system"] = system
 
             if context:
                 request_data["context"] = context

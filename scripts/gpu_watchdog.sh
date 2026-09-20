@@ -51,6 +51,40 @@ container_running()  { docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$
 # container (NVML init error). Works regardless of whether a model is loaded.
 container_sees_gpu() { docker exec "$CONTAINER" nvidia-smi -L >/dev/null 2>&1; }
 
+# VISIBILITY IS NOT AVAILABILITY. On 2026-09-19 a co-tenant Ollama held the whole
+# card: the tutor could not load ("unable to allocate CUDA0 buffer"), every turn
+# fell back to CPU, a child's turn hit the 5-minute timeout -- and this watchdog
+# logged "OK" every 2 minutes throughout, because the container could still SEE
+# the GPU. So also report when the tutor is RESIDENT ON CPU while a GPU exists.
+#
+# Reported, NOT remediated: restarting the container cannot free VRAM another
+# process holds, and a restart mid-answer costs a child their turn. Arbitration
+# is the GPU arbiter's job (~/tool-integrations/docs/gpu-arbiter.md); this is the
+# alarm that stops the condition being invisible.
+TUTOR_MODELS="${GPU_WATCHDOG_TUTOR_MODELS:-snflwr.ai}"
+
+tutor_stuck_on_cpu() {
+    local ps_out
+    ps_out="$(docker exec "$CONTAINER" ollama ps 2>/dev/null)" || return 1
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            NAME*|"") continue ;;
+        esac
+        case "$line" in
+            "$TUTOR_MODELS"*)
+                # The PROCESSOR column: "100% CPU" means no layer is on the card.
+                # "48%/52% CPU/GPU" still holds VRAM and is not stuck.
+                case "$line" in
+                    *GPU*) return 1 ;;
+                    *CPU*) return 0 ;;
+                esac
+                ;;
+        esac
+    done <<< "$ps_out"
+    return 1  # not loaded at all — nothing to report
+}
+
 remediate() {
     local now last
     now=$(date +%s)
@@ -93,7 +127,11 @@ check_once() {
         return 0
     fi
     if container_sees_gpu; then
-        log "OK — $CONTAINER has GPU access."
+        if tutor_stuck_on_cpu; then
+            log "DEGRADED: $CONTAINER can see the GPU but the tutor is running on CPU — something else holds the card (check: nvidia-smi --query-compute-apps=pid,used_memory --format=csv, and the GPU arbiter on :11460). Answers are ~10x slower and long turns can time out."
+            return 0
+        fi
+        log "OK — $CONTAINER has GPU access and the tutor is not stuck on CPU."
         return 0
     fi
     log "DETECTED: host has a GPU but $CONTAINER cannot see it — Ollama is on CPU."

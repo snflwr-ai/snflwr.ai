@@ -2698,3 +2698,74 @@ class TestTopicGate:
             )
 
         assert "roman empire" in seen.get("prompt", "").lower()
+
+
+class TestTutorTimeoutIsVisibleToTheStudent:
+    """2026-09-19: a co-tenant held the GPU, the tutor fell back to CPU, the read
+    timeout fired at 5 minutes, and httpx.ReadTimeout escaped unhandled — the
+    stream just ended and the child sat looking at an EMPTY bubble. Only
+    httpx.ConnectError was caught, and a timeout is not a connect error.
+
+    The streamed branch also answered a stream request with a JSON 503, which
+    Open WebUI does not render (that is #188). Both are fixed here.
+    """
+
+    def _post(self, stream, side_effect):
+        from fastapi.testclient import TestClient
+
+        client = TestClient(_make_app())
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = _safe_result()
+        mock_pipeline.check_output.return_value = _safe_result()
+
+        async def _boom_stream(*a, **k):
+            raise side_effect
+            yield b""  # pragma: no cover - generator shape only
+
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-t", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="profile-t"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                side_effect=side_effect,
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._stream_chunks_from_ollama",
+                new=_boom_stream,
+            ),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+        ):
+            return client.post(
+                "/api/chat",
+                json=_chat_body(stream=stream),
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-t",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+
+    def test_streamed_timeout_renders_text_not_an_empty_stream(self):
+        resp = self._post(True, httpx.ReadTimeout("timed out"))
+        assert resp.status_code == 200
+        assert "application/x-ndjson" in resp.headers["content-type"]
+        body = resp.text
+        assert "too long" in body, body[:300]
+        assert json.loads(body.strip().splitlines()[-1])["done"] is True
+
+    def test_streamed_connect_error_also_renders_text(self):
+        """A JSONResponse to a streamed request is a blank bubble (#188)."""
+        resp = self._post(True, httpx.ConnectError("refused"))
+        assert "application/x-ndjson" in resp.headers["content-type"]
+        assert "unavailable" in resp.text
+
+    def test_non_streamed_timeout_returns_a_message_not_a_bare_error(self):
+        resp = self._post(False, httpx.ReadTimeout("timed out"))
+        assert resp.status_code == 200
+        assert "too long" in resp.json()["message"]["content"]

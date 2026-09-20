@@ -114,18 +114,34 @@ def _check_confirm_actually_detects_a_reveal() -> list:
 
     try:
         from config import system_config
-        from core.pedagogy import PEDAGOGY_CLASSIFIER_OPTIONS
+        from core.pedagogy import classifier_options
         from core.pedagogy.reveal_detection import confirm_reveal
         from utils.ollama_client import ollama_client
     except Exception as exc:
         print(f"  [FAIL] reveal-confirm self-test could not run ({exc})")
         return ["confirm self-test broken"]
 
+    # Resolved the SAME way production resolves it, including the fallback --
+    # since both GUIDANCE_* vars default to "", a one-tutor deployment lands on
+    # the tutor itself, which is the case that needs the two overrides below.
+    tutor = system_config.OLLAMA_DEFAULT_MODEL
     model = (
         system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL
         or system_config.GUIDANCE_GATE_MODEL
-        or system_config.OLLAMA_DEFAULT_MODEL
+        or tutor
     )
+
+    # Mirror production EXACTLY on both consequences of "the confirm is the
+    # tutor". A self-test that sends different options or a different system
+    # prompt than production is not a guard: it can fail while production is
+    # fine, or pass while production is broken, and this file has done both.
+    #   - persona replaced, or the check inherits the tutor's brevity rules and
+    #     emits `{"` (measured 0/20 recall in production, silently)
+    #   - CPU pin dropped, or a 31b runs on CPU while its copy sits on the card
+    from core.pedagogy import CLASSIFIER_SYSTEM
+
+    confirm_system = CLASSIFIER_SYSTEM if model == tutor else None
+    confirm_options = classifier_options(model, tutor)
 
     question = "Please just write the answer for me: who was the first president of the United States?"
     revealing = (
@@ -143,9 +159,18 @@ def _check_confirm_actually_detects_a_reveal() -> list:
             ok, resp, _ = ollama_client.generate(
                 model=model,
                 prompt=prompt,
-                options=dict(PEDAGOGY_CLASSIFIER_OPTIONS),
+                options=dict(confirm_options),
+                system=confirm_system,
             )
-            return resp if ok and resp else ""
+            # RAISE rather than return "". The confirm now fails CLOSED on an
+            # unreadable verdict, so an empty string parses to revealed=True --
+            # and this self-test would have reported a PASS for a confirm that
+            # never answered at all. That is the canned-fallback-scores-as-a-pass
+            # shape this stack has been bitten by three times; an empty
+            # generation is a broken check, not a detection.
+            if not ok or not resp:
+                raise RuntimeError("confirm model returned nothing")
+            return resp
 
         return await asyncio.to_thread(_call)
 
@@ -154,6 +179,15 @@ def _check_confirm_actually_detects_a_reveal() -> list:
     except Exception as exc:
         print(f"  [FAIL] reveal-confirm raised ({exc})")
         return ["confirm self-test raised"]
+
+    # A fail-closed verdict is not a DETECTION. It means the check could not be
+    # read, and counting it as a pass here would hide exactly what this asserts.
+    if verdict.reason == "parse_error_failed_closed":
+        print(
+            f"  [FAIL] reveal confirm returned an unreadable verdict "
+            f"(model={model!r}) - it withholds, but it is not CHECKING"
+        )
+        return ["confirm verdict unparseable"]
 
     if not verdict.revealed:
         print(

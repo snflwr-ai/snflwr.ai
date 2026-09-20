@@ -70,7 +70,28 @@ def _parse_verdict(raw: str) -> RevealVerdict:
     f = _REVEALED_FIELD_RE.search(text)
     if f:
         return RevealVerdict(f.group(1).lower() == "true", "recovered")
-    return RevealVerdict(False, "parse_error")  # fail-open
+
+    # FAIL CLOSED. This returned False -- "no reveal" -- until 2026-09-20, which
+    # meant a check that could not be READ waved the reply through.
+    #
+    # Measured that day on case wP157 of the 87 served replies: the confirm was
+    # asked for `{"item", "quote", "revealed"}` in that key order under
+    # num_predict 256, the reply was a mathematical proof, and the model spent the
+    # whole budget quoting it -- cut off before it ever emitted `revealed`. The
+    # verdict sat downstream of its own evidence, so long evidence starved it. The
+    # regex above cannot recover that: the token `revealed` never appears.
+    #
+    # Fail-open there passes a proof to the child who was assigned to write it.
+    # We are only on this path because the gate already ruled the turn a homework
+    # demand, so the prior on an unchecked answer is that it should be withheld --
+    # the same reasoning the enforcer's confirm-unavailable branch already uses.
+    # An unparseable verdict now routes to the rewrite path, whose consequence is
+    # a duller answer rather than a handed-over one.
+    #
+    # This direction is also the LOUD one: a systematically unparseable confirm
+    # drives the fallback rate up where the canary and honesty-lint see it, where
+    # fail-open degraded in silence behind a healthy container.
+    return RevealVerdict(True, "parse_error_failed_closed")
 
 
 async def confirm_reveal(
@@ -79,8 +100,20 @@ async def confirm_reveal(
     generate: Callable[[str], Awaitable[str]],
 ) -> RevealVerdict:
     prompt = _CONFIRM_PROMPT.format(question=user_text, response=response)
-    try:
-        raw = await generate(prompt)
-    except Exception:
-        return RevealVerdict(False, "confirm_error")  # fail-open
+    # A generation failure PROPAGATES. It used to be caught here and turned into
+    # `RevealVerdict(False, "confirm_error")`, which made the enforcer's
+    # fail-closed branch DEAD CODE for the failure that actually happens.
+    #
+    # Found 2026-09-20 by reading the two paths together. `asyncio.wait_for`
+    # cancels with `CancelledError`, which derives from BaseException and so slips
+    # past `except Exception` -- that is why the TIMEOUT path fails closed and has
+    # tests proving it. An ordinary error does not: connection refused, a 500, a
+    # model evicted from the card, an OOM -- every one of those was swallowed here
+    # and returned "no reveal", and the enforcer served the unchecked answer.
+    #
+    # On this box that is not hypothetical. The GPU arbiter can hand the card to
+    # the co-tenant mid-turn, and the confirm call then fails with an error, not a
+    # timeout. The enforcer already has the reasoned fail-closed branch for this
+    # (see `enforce_guidance`); letting the exception reach it is the whole fix.
+    raw = await generate(prompt)
     return _parse_verdict(raw)

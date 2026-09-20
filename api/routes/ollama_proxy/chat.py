@@ -116,34 +116,43 @@ async def _pedagogy_reissue(
     return upstream.json().get("message", {}).get("content", "")
 
 
-# A classifier must not wear the tutor's persona. Ollama treats a request
-# `system` message as a REPLACEMENT for the Modelfile's, so this hands a call the
-# tutor's WEIGHTS without the tutor. Measured 2026-09-20 on 27 reveals children
-# were actually served: with the persona, 0/27 and every one of the 27 verdicts
-# unparseable (fail-open); with this override, 22/27 on the same cases.
-_CLASSIFIER_SYSTEM = (
-    "You are a strict JSON classifier. You are not a tutor and you are not "
-    "talking to a child. Answer only with the JSON object the instructions ask "
-    "for. Do not shorten your answer and do not add commentary."
-)
+# The classifier system override lives in core.pedagogy with the other
+# classifier settings. It moved there because the deploy self-test must send the
+# SAME override production sends, and importing an API ROUTE from scripts/ made
+# mypy resolve scripts/ under two module names. A classifier's system prompt is
+# a pedagogy concern, not a routing one.
+from core.pedagogy import CLASSIFIER_SYSTEM as _CLASSIFIER_SYSTEM  # noqa: E402
 
 
 async def _pedagogy_oneshot(
-    prompt: str, model: str, fwd_headers: dict, *, system: str | None = None
+    prompt: str,
+    model: str,
+    fwd_headers: dict,
+    *,
+    system: str | None = None,
+    tutor_model: str | None = None,
 ) -> str:
     """Single-turn Ollama call for the pedagogy confirm stage.
 
-    Called by the pedagogy enforcer's ``_confirm_generate`` closure. Fail-open:
-    callers (inside ``confirm_reveal``) catch all exceptions from this helper.
+    Called by the pedagogy enforcer's ``_confirm_generate`` closure. Errors
+    PROPAGATE: ``confirm_reveal`` used to swallow them into a "no reveal"
+    verdict, which made the enforcer's fail-closed branch dead code for the
+    failure that actually happens on this box (the arbiter handing the card to
+    the co-tenant mid-turn raises an error, not a timeout). The enforcer now
+    sees the exception and withholds.
 
     ``system`` replaces the model's own system prompt for this call. Pass it
     whenever the model being called is the TUTOR, or the check inherits the
-    persona and stops working -- silently, because an unparseable verdict fails
-    open.
+    persona and stops working -- silently, because an unreadable verdict used to
+    fail open.
+
+    ``tutor_model`` decides the CPU pin. Pass it whenever it is known: pinning
+    the resident tutor to CPU keeps the verdict and throws away the only reason
+    to use it.
     """
     # Imported here, like enforce_guidance below, to keep core.pedagogy off this
     # module's import path at load time.
-    from core.pedagogy import PEDAGOGY_CLASSIFIER_OPTIONS
+    from core.pedagogy import classifier_options
 
     payload = _json.dumps(
         {
@@ -172,7 +181,7 @@ async def _pedagogy_oneshot(
             #
             # A classifier trades a little latency for never being evicted. Here
             # it does not even cost latency: 0.8 s warm beats the GPU path.
-            "options": dict(PEDAGOGY_CLASSIFIER_OPTIONS),
+            "options": classifier_options(model, tutor_model),
         }
     ).encode()
     upstream = await transport._forward_request(
@@ -826,6 +835,12 @@ async def proxy_chat(
                         confirm_model,
                         fwd_headers,
                         system=(_CLASSIFIER_SYSTEM if confirm_model == model else None),
+                        # Same condition, second consequence: when the confirm
+                        # runs on the tutor's own weights it must ALSO drop the
+                        # CPU pin, or the check runs a 31b on CPU while its copy
+                        # sits on the card. Both hang off "is this the tutor?",
+                        # so they are passed together and tested together.
+                        tutor_model=model,
                     )
 
                 _gate_generate = None

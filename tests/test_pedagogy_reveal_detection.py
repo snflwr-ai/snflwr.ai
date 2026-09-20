@@ -24,19 +24,48 @@ def test_confirm_false_when_model_says_guided():
     assert _run(confirm_reveal("q", "what's 7x4?", gen)).revealed is False
 
 
-def test_confirm_fails_open_on_garbage():
+def test_confirm_fails_closed_on_an_unreadable_verdict():
+    """An unreadable verdict WITHHOLDS. This asserted the opposite until
+    2026-09-20, and the reversal came from a measured leak, not a preference.
+
+    Case wP157 of the 87 served replies: the confirm was asked for
+    ``{"item", "quote", "revealed"}`` in that key order under num_predict 256,
+    the reply was a mathematical proof, and the model spent its whole budget
+    quoting the proof -- cut off before it ever emitted ``revealed``. The
+    verdict was downstream of its own evidence, so long evidence starved it,
+    and the old default handed the proof to the child assigned to write it.
+    """
     async def gen(_):
         return "no json here"
 
-    assert _run(confirm_reveal("q", "x", gen)).revealed is False
+    v = _run(confirm_reveal("q", "x", gen))
+    assert v.revealed is True
+    assert v.reason == "parse_error_failed_closed"
 
 
-def test_confirm_fails_open_on_backend_error():
+def test_confirm_propagates_a_backend_error_instead_of_calling_it_clean():
+    """A generation failure must REACH the enforcer, which fails closed.
+
+    This used to assert ``revealed is False, reason == "confirm_error"`` -- the
+    helper swallowed every exception and reported "no reveal". The effect was
+    that ``enforce_guidance``'s carefully reasoned fail-closed branch was DEAD
+    CODE for the failure that actually happens: ``asyncio.wait_for`` cancels
+    with ``CancelledError`` (a BaseException, so it slipped past ``except
+    Exception`` and the timeout path did fail closed and had tests proving it),
+    while an ordinary error -- connection refused, a 500, a model evicted off
+    the card by the co-tenant, an OOM -- did not.
+
+    So the tested path passed while the untested one served children unchecked
+    answers. Letting the exception out is the fix; the enforcer already knows
+    what to do with it (see the companion test in the enforcer suite).
+    """
+    import pytest
+
     async def gen(_):
         raise RuntimeError("boom")
 
-    v = _run(confirm_reveal("q", "x", gen))
-    assert v.revealed is False and v.reason == "confirm_error"
+    with pytest.raises(RuntimeError):
+        _run(confirm_reveal("q", "x", gen))
 
 
 def test_confirm_prompt_delimits_untrusted_student_input():
@@ -109,6 +138,11 @@ class TestVerdictParserRecoversTruncation:
     The strict object match rejected it and fail-opened. Harmless that way round;
     the SAME truncation on a `true` verdict silently drops a real reveal, which
     is the exact failure this module exists to prevent.
+
+    Recovery and fail-closed are separate jobs and both are load-bearing: a
+    verdict that can be READ is honoured exactly as written (so a clipped
+    `false` does not cause a needless rewrite), and only genuinely unreadable
+    output withholds.
     """
 
     def test_truncated_true_is_recovered(self):
@@ -124,12 +158,15 @@ class TestVerdictParserRecoversTruncation:
     def test_wrapped_in_prose_still_parses(self):
         assert _parse_verdict('Sure: {"revealed": true} — done').revealed is True
 
-    def test_unrecognisable_output_still_fails_open(self):
+    def test_unrecognisable_output_fails_CLOSED(self):
+        """Reversed 2026-09-20 on measured evidence -- see case wP157. Recovery
+        above is for verdicts we CAN read; output we cannot read is not a
+        verdict, and treating it as "clean" handed a child a proof."""
         v = _parse_verdict("I think the tutor was quite helpful actually")
-        assert v.revealed is False and v.reason == "parse_error"
+        assert v.revealed is True and v.reason == "parse_error_failed_closed"
 
-    def test_non_boolean_value_fails_open(self):
-        assert _parse_verdict('{"revealed": "yes"}').revealed is False
+    def test_non_boolean_value_fails_CLOSED(self):
+        assert _parse_verdict('{"revealed": "yes"}').revealed is True
 
 
 def test_confirm_prompt_covers_narrative_retelling():

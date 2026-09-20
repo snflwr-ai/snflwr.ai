@@ -75,10 +75,28 @@ def test_the_selftest_and_production_cannot_drift():
     assert PEDAGOGY_CLASSIFIER_OPTIONS["num_gpu"] == 0
     assert PEDAGOGY_CLASSIFIER_OPTIONS["temperature"] == 0
 
-    for mod, name in ((chat_mod, "_pedagogy_oneshot"),
-                      (smoke, "_check_confirm_actually_detects_a_reveal")):
+    for mod, name in (
+        (chat_mod, "_pedagogy_oneshot"),
+        (smoke, "_check_confirm_actually_detects_a_reveal"),
+    ):
         src = inspect.getsource(getattr(mod, name))
-        assert "PEDAGOGY_CLASSIFIER_OPTIONS" in src, (
+        assert "classifier_options" in src, (
             f"{name} builds classifier options by hand instead of using the "
-            "shared constant; it will drift from production"
+            "shared derivation; it will drift from production"
         )
+
+    # The pin is no longer unconditional, so "both read the same constant" is no
+    # longer enough: they must agree on the CONDITION too. The confirm running on
+    # the tutor has two consequences -- drop the CPU pin AND replace the persona
+    # -- and a self-test that mirrors one but not the other tests a configuration
+    # nothing runs. That is what this guard caught when the pin became
+    # conditional: production stopped pinning while the self-test kept pinning.
+    smoke_src = inspect.getsource(smoke._check_confirm_actually_detects_a_reveal)
+    assert "CLASSIFIER_SYSTEM" in smoke_src, (
+        "the deploy self-test calls the confirm without the persona override "
+        "production uses; on a one-tutor deployment (both GUIDANCE_* vars "
+        "default to \"\") it would exercise the 0/27-unparseable path instead"
+    )
+    assert "system=" in smoke_src, (
+        "the self-test computes a system override but never sends it"
+    )

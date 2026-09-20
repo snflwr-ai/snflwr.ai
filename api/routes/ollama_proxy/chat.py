@@ -116,11 +116,30 @@ async def _pedagogy_reissue(
     return upstream.json().get("message", {}).get("content", "")
 
 
-async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
+# A classifier must not wear the tutor's persona. Ollama treats a request
+# `system` message as a REPLACEMENT for the Modelfile's, so this hands a call the
+# tutor's WEIGHTS without the tutor. Measured 2026-09-20 on 27 reveals children
+# were actually served: with the persona, 0/27 and every one of the 27 verdicts
+# unparseable (fail-open); with this override, 22/27 on the same cases.
+_CLASSIFIER_SYSTEM = (
+    "You are a strict JSON classifier. You are not a tutor and you are not "
+    "talking to a child. Answer only with the JSON object the instructions ask "
+    "for. Do not shorten your answer and do not add commentary."
+)
+
+
+async def _pedagogy_oneshot(
+    prompt: str, model: str, fwd_headers: dict, *, system: str | None = None
+) -> str:
     """Single-turn Ollama call for the pedagogy confirm stage.
 
     Called by the pedagogy enforcer's ``_confirm_generate`` closure. Fail-open:
     callers (inside ``confirm_reveal``) catch all exceptions from this helper.
+
+    ``system`` replaces the model's own system prompt for this call. Pass it
+    whenever the model being called is the TUTOR, or the check inherits the
+    persona and stops working -- silently, because an unparseable verdict fails
+    open.
     """
     # Imported here, like enforce_guidance below, to keep core.pedagogy off this
     # module's import path at load time.
@@ -129,7 +148,8 @@ async def _pedagogy_oneshot(prompt: str, model: str, fwd_headers: dict) -> str:
     payload = _json.dumps(
         {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": ([{"role": "system", "content": system}] if system else [])
+            + [{"role": "user", "content": prompt}],
             "stream": False,
             "think": False,
             # temperature 0: this is a safety CLASSIFIER, not a generator, and it
@@ -783,17 +803,29 @@ async def proxy_chat(
                     )
 
                 async def _confirm_generate(prompt: str) -> str:
-                    return await _pedagogy_oneshot(
-                        prompt,
-                        # CONFIRM_MODEL -> GATE_MODEL -> tutor. The tutor is
-                        # LAST: running the confirm on it inherits the tutor's
-                        # system prompt, whose brevity rules truncate the JSON
-                        # verdict to `{"` and fail open on every reveal
-                        # (measured 0/20 recall vs 13/20 on the base model).
+                    # CONFIRM_MODEL -> GATE_MODEL -> tutor. The tutor is LAST
+                    # because running the confirm on it USED TO inherit the
+                    # tutor's system prompt, whose brevity rules truncate the
+                    # JSON verdict to `{"` and fail open on every reveal
+                    # (measured 0/20, and again 0/27 with 27 unparseable
+                    # verdicts on 2026-09-20).
+                    #
+                    # That fallback is reached by DEFAULT: both env vars default
+                    # to "" (config.py), and the production compose passes
+                    # neither, so a deployment could run with the reveal check
+                    # silently dead. It is now SAFE rather than merely last --
+                    # when the tutor's weights are used, the persona is replaced
+                    # and the same cases score 22/27 instead of 0/27.
+                    confirm_model = (
                         system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL
                         or system_config.GUIDANCE_GATE_MODEL
-                        or model,
+                        or model
+                    )
+                    return await _pedagogy_oneshot(
+                        prompt,
+                        confirm_model,
                         fwd_headers,
+                        system=(_CLASSIFIER_SYSTEM if confirm_model == model else None),
                     )
 
                 _gate_generate = None

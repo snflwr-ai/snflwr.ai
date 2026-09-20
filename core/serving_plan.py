@@ -53,6 +53,14 @@ logger = logging.getLogger(__name__)
 class CertifiedBackbone:
     model: str
     engine: str
+    # What `ollama create` builds this wrapper FROM. Recorded here because the
+    # install paths used to ask resource_detection's ladder instead, and the two
+    # disagreed: the ladder reserves card space for a classifier that is
+    # CPU-pinned, so on the very box the sealed run was measured on it picked
+    # gemma4:e4b -- and every deploy rebuilt an UNCERTIFIED tutor while the plan
+    # served the certified one that had been built by hand. One source of truth
+    # for "what is the tutor and what is it made of" (2026-09-20).
+    base: str
     num_ctx: int
     vram_gb: float  # resident weights + KV at num_ctx, measured
     sealed_on: str  # ISO date of the sealed run that certified it
@@ -72,6 +80,7 @@ CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
     CertifiedBackbone(
         model="snflwr.ai-31b",
         engine="ollama",
+        base="gemma4:31b",
         num_ctx=16384,
         # 18.7 GiB of weights+KV reported by /api/ps, 21.0 GiB of card actually
         # occupied once the CUDA context is counted (nvidia-smi, 2026-09-17).

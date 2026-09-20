@@ -274,6 +274,7 @@ class TestContextIsProbedAndCapped:
         rather than the value."""
         entry = serving_plan.CERTIFIED_BACKBONES[0]
         raised = serving_plan.CertifiedBackbone(
+            base=entry.base,
             model=entry.model, engine=entry.engine, num_ctx=entry.num_ctx,
             vram_gb=entry.vram_gb, sealed_on=entry.sealed_on,
             max_validated_num_ctx=32768,

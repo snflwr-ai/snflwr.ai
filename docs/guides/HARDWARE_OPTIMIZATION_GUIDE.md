@@ -21,12 +21,28 @@ The tutor is always the `snflwr.ai` Ollama model (a wrapper over a base model vi
 `models/Snflwr_AI_Kids.modelfile`). What changes by tier is the **base model** it
 wraps and the **safety classifier** size.
 
-| Tier | RAM / VRAM | Tutor backbone | Safety classifier | Best for |
-|------|-----------|----------------|-------------------|----------|
-| **Minimum** | 14–15GB RAM, no/small GPU | **`gemma4:12b`** (only when `e4b` will not fit) | `llama-guard3:1b` | smaller laptops |
-| **Unsupported** | <14GB RAM and <6GB VRAM | *(none — the install refuses)* | — | see note below |
-| **Standard (default)** | 16GB+ RAM, or any GPU | **gemma4:e4b** (~10GB) | `llama-guard3:8b` | all K-12, most families & schools |
-| **High-end (opt-in)** | GPU **≥26GB** VRAM | **gemma4:31b** (~19GB), via `SNFLWR_ENABLE_GEMMA_31B=true` | `llama-guard3:8b` | big single-GPU / multi-GPU servers |
+| Tier | Requirement | Tutor | Safety classifier | Tutoring |
+|------|-------------|-------|-------------------|----------|
+| **Supported** | GPU with **~22 GB VRAM** or more | **`snflwr.ai-31b`** (built on `gemma4:31b`) | `llama-guard3-cpu` (CPU-pinned) | yes |
+| **Everything else** | less than that, or no GPU | *(none)* | `llama-guard3-cpu` | **no — the serving plan disables it** |
+
+**One tutor, not a ladder (2026-09-20).** The three-tier ladder this table used
+to describe is gone for tutoring. Only `snflwr.ai-31b` has a sealed tutoring run,
+and the quality floor refuses anything else rather than hand a child a tutor
+measured as worse at its own job: 31b scored **88.8 against e4b's 80.3** overall
+and cut wrong content **17 → 4** on the same 121 probes. The rest of the product
+— dashboard, parent accounts, the safety pipeline — installs and runs on smaller
+boxes; only tutoring is withheld.
+
+The previous **≥26 GB** figure for 31b rested on it having to share the card with
+a 5 GB guard. The guard is CPU-pinned now (`llama-guard3-cpu`, `num_gpu 0`), so
+the requirement is the backbone's own measured footprint plus a reserve. Do not
+restate the number here — ask the registry, which is what the running system
+enforces:
+
+```bash
+python3 scripts/certified_tutor.py            # or exit 3 with the requirement
+```
 
 Notes:
 - **gemma4:e4b is the recommended default** anywhere with ≥16GB RAM or a GPU.
@@ -35,14 +51,14 @@ Notes:
   the difference shows up in the **reliability tail**: the small e4b backbone
   occasionally slips on multi-step mental math (e.g. botching "15% of 80"), a
   stochastic small-model limit that prompting reduces but can't fully remove. So
-  the high-end tier buys **more reliable multi-step reasoning/math**, not a higher
   average score — and it roughly halves per-GPU throughput. Think of it as the
   natural accuracy difference between hardware classes, not a bug on e4b.
-- **VRAM floor for the high-end tier:** `gemma4:31b` (~19GB) + the `llama-guard3:8b`
-  classifier (~5GB) + KV/context must fit together → **≥26GB co-resident (28GB+
-  comfortable)**. On a single 24GB card it silently falls back / OOMs against the
-  guard. Alternative: put the guard on a **second GPU**, which frees the 31b to
-  ~22–24GB on its own card. This applies to **any** capable box — a high-end home
+  **Superseded 2026-09-20:** the throughput trade is no longer offered. 31b is
+  the only certified tutor, because a cheaper tutor taught wrong content in at
+  least 10% of replies. The old co-residency sizing (tutor + a ~5GB guard on one
+  card → ≥26GB) is void: the guard is CPU-pinned and takes no VRAM, so a 23GB
+  card serves the 31b tutor in production. Ask
+  `python3 scripts/certified_tutor.py` rather than a table.
   rig opts up the same way an enterprise node does; it's hardware capability, not
   a "home vs enterprise" label.
 - **There is no low-RAM fallback family any more.** The old small tiers came from
@@ -60,17 +76,21 @@ Notes:
 
 `start_snflwr.sh` (and `install.py`) detect RAM/GPU and pick:
 
-- **Tutor backbone**: `gemma4:e4b` on ≥16GB RAM or ≥6GB VRAM; `gemma4:12b` on the
-  14–15GB RAM band; below that the install refuses. A GPU with ≥26GB VRAM **and** `SNFLWR_ENABLE_GEMMA_31B=true`
-  selects `gemma4:31b`.
+- **Tutor**: there is no sizing decision any more. The install asks
+  `scripts/certified_tutor.py`, which reads the same registry the serving plan
+  enforces, and gets either `snflwr.ai-31b` (built on `gemma4:31b`) or a refusal
+  with the requirement. Nothing smaller is offered: the floor would disable
+  tutoring anyway, and a smaller tutor measured materially worse at withholding
+  homework answers.
 - **Safety classifier**: `llama-guard3:8b` when there's headroom (GPU ≥16GB VRAM,
   or ≥24GB RAM); otherwise the faster `llama-guard3:1b`. The API prefers `:8b`
   (`config.py` `SAFETY_MODEL` default) and falls back to `:1b`.
 
-The two models stay **co-resident** so every turn (input + output both run through
-the classifier) avoids per-turn reload thrash. This is why the high-end tier needs
-≥26GB VRAM: `gemma4:31b` (~19GB) must fit alongside `llama-guard3:8b` (~5GB); below
-that, keep `gemma4:e4b`.
+The tutor and the safety classifier are **not** co-resident: the classifier is
+CPU-pinned (`llama-guard3-cpu`, `num_gpu 0`) because on the card it was evicted
+mid-request and failed closed, blocking children on harmless questions. So the
+VRAM requirement is the tutor's alone — ~22 GB for `snflwr.ai-31b` — and the
+old "≥26GB co-resident" arithmetic no longer applies.
 
 ### Building images with specific models
 
@@ -101,11 +121,11 @@ change:
 ```
 User question
     ↓
-check_input  → Safety classifier (llama-guard3:8b, or :1b on small hardware)
+check_input  → Safety classifier (llama-guard3-cpu — CPU-pinned on purpose)
     ↓
-snflwr.ai tutor (gemma4:e4b default · gemma4:31b on ≥26GB GPU · gemma4:12b on 14–15GB RAM)
+snflwr.ai tutor (snflwr.ai-31b, the only certified backbone      GPU · gemma4:12b on 14–15GB RAM)
     ↓
-check_output → Safety classifier (same model)
+check_output → Safety classifier (same model, same pin)
     ↓
 Response
 ```
@@ -157,9 +177,9 @@ for your box):
 
 | Backbone | VRAM (GPU) | Per-turn latency | Notes |
 |----------|-----------|------------------|-------|
-| `gemma4:12b` | ~7.9 GB | ~4 s | only when `e4b` will not fit; 1.6x slower than e4b |
+| `gemma4:12b` | ~7.9 GB | ~4 s | not a tutor any more; retired from tutoring 2026-09-20 |
 | **gemma4:e4b** | ~10 GB | ~4–5 s (GPU) | default; concurrency headroom alongside the 8b guard |
-| **gemma4:31b** | ~19 GB | ~8–15 s (GPU) | dense; ~half the throughput; needs ≥26GB with the guard |
+| **`snflwr.ai-31b`** (the tutor) | ~19 GB | ~8–15 s (GPU) | the only certified tutor; needs ~22 GB VRAM (the guard is on the CPU) |
 
 **Single-GPU throughput ceiling** (e.g. one RTX 3090 Ti): ~**13–15 tutor turns/min**,
 and it **plateaus** — adding concurrency raises per-turn latency, not throughput.
@@ -178,8 +198,9 @@ The model lives in the Ollama data volume; swap it with the guarded upgrade flow
 (snapshot → swap → smoke-test → auto-rollback):
 
 ```bash
-# Change the backbone (e.g. enable the high-end tier on a ≥26GB GPU)
-export SNFLWR_ENABLE_GEMMA_31B=true   # then re-run the deploy / model upgrade
+# The backbone is not a choice any more; this is how you ASK what it is
+# SNFLWR_ENABLE_GEMMA_31B is gone (2026-09-20): 31b is the only certified
+# tutor, not an opt-in tier. Nothing to enable. / model upgrade
 ./deploy.sh --upgrade model
 ```
 
@@ -191,9 +212,10 @@ Ollama model changes.
 ## Summary
 
 1. The tutor backbone and the safety classifier are **sized to detected hardware**.
-2. **Default: `gemma4:e4b` + `llama-guard3:8b`** (≥16GB RAM or any GPU).
+2. **The tutor: `snflwr.ai-31b` + CPU-pinned `llama-guard3-cpu`** — the only
+   certified pairing. Smaller boxes run everything except tutoring.
 3. **Minimum supported:** `gemma4:12b` + `llama-guard3:1b` (14–15GB RAM). Below that: unsupported, install refuses.
-4. **Opt-in high-end:** `gemma4:31b` on a **≥26GB** GPU (so it co-resides with the
+4. ~~Opt-in high-end tier~~ — gone 2026-09-20: 31b is the only certified tutor. (was: 31b on a ≥26GB GPU, so it co-resides with the
    8b guard) — for headroom on big hardware, not better tutoring quality.
 5. Same fail-closed safety pipeline and features on every tier.
 6. Scale **horizontally** (more GPUs), not by enlarging the model on one card.

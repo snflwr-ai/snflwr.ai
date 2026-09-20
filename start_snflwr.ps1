@@ -184,18 +184,20 @@ if ($env:BASE_MODEL) {
     $ramGB = [math]::Round($ramBytes / 1GB)
 
     $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }
-    $chatModel = (& $py -c @"
-import sys
-from resource_detection import recommend_base_model, unsupported_hardware_message
-ram, vram = float(sys.argv[1]), float(sys.argv[2])
-m = recommend_base_model(memory_gb=ram, vram_gb=vram)
-print(m if m else 'UNSUPPORTED ' + unsupported_hardware_message(ram, vram))
-"@ $ramGB $vramGB 2>$null)
+    # THE TUTOR IS ONE MODEL (2026-09-20). Only `snflwr.ai-31b` has a sealed
+    # tutoring run and the serving plan refuses anything else, so this asks the
+    # certified registry instead of the hardware ladder. The ladder picks a BASE
+    # variant and the floor then refuses it -- that disagreement is what had
+    # every deploy building an uncertified tutor.
+    $tutorModel = (& $py "scripts/certified_tutor.py" "--vram-gb" $vramGB "--format" "model" 2>$null)
+    $chatModel  = (& $py "scripts/certified_tutor.py" "--vram-gb" $vramGB "--format" "base" 2>$null)
 
-    if (-not $chatModel) {
-        Write-Host "Could not compute a backbone recommendation (python / resource_detection.py)." -ForegroundColor Red
+    if (-not $tutorModel -or -not $chatModel) {
+        Write-Host "No certified tutor fits this machine, or the registry could not be read." -ForegroundColor Red
+        Write-Host "Run 'python scripts/certified_tutor.py' to see the requirement." -ForegroundColor Yellow
         exit 1
     }
+    $env:OLLAMA_DEFAULT_MODEL = $tutorModel
     if ($chatModel -like "UNSUPPORTED*") {
         # No safe smaller backbone exists to fall back to: gemma4:e2b was removed
         # 2026-09-10 for measuring 9 points below e4b overall and 7 below on

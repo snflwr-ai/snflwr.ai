@@ -724,13 +724,33 @@ _WRAPPER_BUILDERS = [
 
 
 @pytest.mark.parametrize("rel", _DELEGATING_ENTRY_POINTS)
-def test_entry_point_delegates_to_the_shared_ladder(rel):
-    """No entry point may carry its own hardcoded backbone ladder."""
+def test_entry_point_delegates_to_a_shared_source_of_truth(rel):
+    """No entry point may carry its own model choice.
+
+    UPDATED 2026-09-20. This used to require `recommend_base_model` in every
+    entry point, from the era when the LADDER chose the tutor. The tutor is now
+    whatever `core/serving_plan.CERTIFIED_BACKBONES` says has a sealed run --
+    only `snflwr.ai-31b` -- and the ladder is for the models that are NOT the
+    tutor (the CPU-pinned classifiers) plus the minimum-requirements message.
+    Requiring the ladder call here would now force an entry point to consult the
+    thing that disagrees with the quality floor, which is the defect this guard
+    exists to prevent, pointed backwards.
+
+    The intent is unchanged: ONE source of truth, never a local tier list. So
+    either source satisfies it; a hand-rolled ladder satisfies neither.
+    """
     text = (_REPO_ROOT / rel).read_text(errors="ignore")
-    assert "recommend_base_model" in text, (
-        f"{rel} selects a backbone without calling "
-        f"resource_detection.recommend_base_model. That is how seven divergent "
-        f"ladders happened; add the call rather than a local tier list."
+    delegates = (
+        "recommend_base_model" in text  # the ladder: classifier sizing, messaging
+        or "certified_tutor.py" in text  # the registry, via the shell helper
+        or "CERTIFIED_BACKBONES" in text  # the registry, directly
+        or "_certified_for" in text
+    )
+    assert delegates, (
+        f"{rel} selects a model without consulting either shared source of "
+        f"truth (resource_detection's ladder for classifiers, or the certified "
+        f"registry for the tutor). That is how seven divergent ladders happened; "
+        f"call one rather than writing a local tier list."
     )
 
 

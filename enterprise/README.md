@@ -63,13 +63,11 @@ The build script detects your server hardware and prompts you to select:
 - **Chat model** — `gemma4:e4b` default backbone, sized on **VRAM when a GPU is present** (~6 GB VRAM is enough; the tutor is only ~3.3 GB resident) and on RAM otherwise (~15 GB); servers below the minimum are unsupported and the build refuses; `gemma4:31b` is an opt-in for stronger multi-step reasoning/math reliability)
 - **Safety classifier** (Meta Llama Guard) — `llama-guard3:8b` default, `llama-guard3:1b` small-hardware fallback
 
-> **VRAM sizing:** the chat model and the safety classifier are **co-resident**.
-> `gemma4:e4b` (~10 GB) + `llama-guard3:8b` (~5 GB) fits comfortably on a single
-> 16 GB+ GPU. `gemma4:31b` (~19 GB) + the guard needs **≥26 GB co-resident
-> (28 GB+ comfortable)** — on a single 24 GB card it silently falls back / OOMs
-> against the guard. On multi-GPU nodes you can instead place the guard on a
-> separate GPU, freeing the 31b to ~22–24 GB on its own card. See
-> [`docs/guides/HARDWARE_OPTIMIZATION_GUIDE.md`](../docs/guides/HARDWARE_OPTIMIZATION_GUIDE.md).
+> **Sizing corrected 2026-09-20.** The safety classifier is CPU-pinned
+> (`llama-guard3-cpu`, `num_gpu 0`), so it is NOT co-resident with the tutor and
+> takes no VRAM. The tutor requirement is its own measured footprint plus a
+> reserve — ask `python3 scripts/certified_tutor.py`. `snflwr.ai-31b` is the only
+> certified tutor and it runs on a 23 GB card in production today.
 
 The LLM safety classifier is **mandatory** for enterprise deployments and cannot be disabled. It runs on every message alongside the deterministic pattern-matching pipeline.
 

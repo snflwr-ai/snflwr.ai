@@ -19,7 +19,10 @@ deploy time by all of:
 - `install.py` — interactive installer
 - `docker/Dockerfile.ollama` — enterprise tier (baked into the image)
 
-Each picks a base model sized to available RAM via `resource_detection.recommend_base_model` (`gemma4:e4b` on 16 GB+ systems, `gemma4:12b` on 14-15 GB; below that the install is refused), then runs:
+The tutor is NOT sized to the box any more (2026-09-20): every path asks
+`scripts/certified_tutor.py`, which reads `core/serving_plan.CERTIFIED_BACKBONES`
+-- the registry the serving plan enforces at request time. Only `snflwr.ai-31b`
+has a sealed tutoring run; a box that cannot hold it does not tutor.
 
 ```
 ollama create snflwr.ai -f models/Snflwr_AI_Kids.modelfile

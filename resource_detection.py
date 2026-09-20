@@ -186,6 +186,23 @@ def recommend_num_predict(memory_gb: float) -> int:
 # real — but it is GPU-ONLY (see _GPU_ONLY_VARIANTS): a 19 GB dense model on CPU
 # is unusable, and partial offload is not a middle ground (63% of it on the card
 # still costs 4.4x versus full-GPU).
+# THIS TABLE NO LONGER PICKS THE TUTOR (2026-09-20). The tutor is whatever
+# core/serving_plan.CERTIFIED_BACKBONES says has a sealed tutoring run -- today
+# only `snflwr.ai-31b` -- and the quality floor refuses everything else. On
+# measured quality that is not a close call: 31b 88.8 against e4b 80.3 overall,
+# and on the same 121 probes it cut wrong content 17 -> 4, canned fallback
+# 27 -> 5 and refusals 31 -> 10.
+#
+# The two disagreed in the worst direction. This ladder reserves card space for
+# the safety classifier, but the classifier is CPU-PINNED (`llama-guard3-cpu`,
+# PARAMETER num_gpu 0) -- so on a 23 GB card it under-selects to gemma4:e4b, and
+# every deploy rebuilt an uncertified tutor while the plan served the certified
+# one. Ask `scripts/certified_tutor.py` for a TUTOR.
+#
+# What this table is still for: sizing the small models that are NOT the tutor
+# (the homework gate and reveal confirm run on `gemma4:e4b` base weights on
+# purpose -- a classifier that inherits the tutor's persona had 0% recall), plus
+# the minimum-requirements message.
 GEMMA4_VARIANTS = [
     ("gemma4:31b", 19.4, 19.0),  # best measured quality; GPU-only, 3.8x slower than e4b
     ("gemma4:e4b", 3.3, 9.5),    # best quality-per-GB; the throughput choice

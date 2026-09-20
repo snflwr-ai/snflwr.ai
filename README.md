@@ -293,16 +293,28 @@ kind stays on e4b. The one floor that matters is **VRAM co-resident with the
 ~5 GB `llama-guard3:8b` safety classifier** (always loaded alongside the tutor —
 that's why each row's VRAM floor exceeds the model's own size):
 
-| Base model | Weights | Auto-select (RAM) | **GPU VRAM floor** (model + 5 GB guard + KV) | Notes |
+| What | Model | Weights | Requirement | Notes |
 |---|---|---|---|---|
-| `gemma4:12b` | ~7.6 GB | 14–15 GB | ~10 GB | Only when `e4b` will not fit |
-| **`gemma4:e4b`** | ~10 GB | 16 GB+ **(default)** | **~16 GB** | Default backbone; co-resides with the guard on a single consumer card (e.g. a 24 GB RTX 3090/4090) |
-| `gemma4:31b` | ~19 GB | opt-in only | **≥26 GB** *(19 GB model + 5 GB guard + KV; 28 GB+ comfortable, or run the guard on a 2nd GPU, freeing the 31b to ~22–24 GB on its own card)* | Stronger multi-step reasoning / math reliability than e4b. Opt in on capable hardware via `SNFLWR_ENABLE_GEMMA_31B` or `./deploy.sh --model gemma4:31b`. NOT auto-selected. |
+| **Tutor** | **`snflwr.ai-31b`** (built on `gemma4:31b`) | ~19 GB | **~22 GB VRAM** | The only backbone with a sealed tutoring run. A box that cannot hold it does not tutor — the serving plan refuses rather than serve an unmeasured model. |
+| Safety classifier | `llama-guard3-cpu` | ~5 GB | RAM, not VRAM | **CPU-pinned on purpose.** On the card it was evicted mid-request and failed closed, blocking children on harmless questions. Same blob digest as the GPU build; 1.9 s vs 1.8 s. |
+| Homework gate / reveal confirm | `gemma4:e4b` (base weights) | ~10 GB | RAM | Pinned away from the tutor model deliberately: run on the tutor, the confirm inherited its persona, emitted two characters and scored **0% recall** on 20 known reveals. |
 
-> **Sizing trap:** `gemma4:31b` (~19 GB) **cannot** co-reside with the 5 GB guard
-> on a single 24 GB card — it silently falls back / OOMs against the guard. Spec a
-> **≥26 GB** card (28 GB+ comfortable) or split the guard onto a second GPU before
-> enabling it.
+**There is one tutor, not a ladder (2026-09-20).** The smaller backbones were
+retired from tutoring on measured quality: `gemma4:31b` scored **88.8 against
+e4b's 80.3** overall, and on the same 121 probes cut wrong content **17 → 4**,
+canned fallback 27 → 5 and refusals 31 → 10. Throughput is the real cost — 31b
+serves roughly a quarter of the students per card — and that is not a reason to
+teach children wrong content.
+
+Ask what a given box can serve:
+
+```bash
+python3 scripts/certified_tutor.py          # model, base and context window, or exit 3
+```
+
+> **Retired claim.** This table used to gate 31b at **≥26 GB** "because it cannot
+> co-reside with the 5 GB guard". That premise is gone: the guard is CPU-pinned,
+> and a 23 GB card serves the 31b tutor in production today.
 
 The wrapper bundles the K-12 tutor system prompt (all school subjects — STEM
 plus reading, writing, history, civics, and the arts), sampling parameters

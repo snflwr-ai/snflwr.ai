@@ -167,3 +167,82 @@ def test_certified_bases_are_real_ladder_variants():
             f"certified base {base} is not in GEMMA4_VARIANTS {sorted(known)}; "
             "deploy.sh would try to pull a tag the ladder does not know"
         )
+
+
+# ---------------------------------------------------------------------------
+# One tutor, not a ladder (2026-09-20)
+# ---------------------------------------------------------------------------
+# The smaller backbones were retired from TUTORING on measured quality (31b 88.8
+# vs e4b 80.3; wrong content 17 -> 4 on the same 121 probes). They remain as
+# CLASSIFIERS -- the homework gate and reveal confirm run on gemma4:e4b base
+# weights on purpose, because a confirm that inherits the tutor persona scored 0%
+# recall. These guards are about the TUTOR only.
+
+TUTOR_ENTRY_POINTS = (
+    "deploy.sh",
+    "start_snflwr.sh",
+    "start_snflwr.ps1",
+    "START_SNFLWR.bat",
+    "installer/ollama_setup.py",
+)
+
+
+@pytest.mark.parametrize("name", TUTOR_ENTRY_POINTS)
+def test_entry_point_asks_the_registry_for_the_tutor(name):
+    """No shipped path may pick a tutor with the hardware ladder."""
+    path = ROOT / name
+    if not path.exists():
+        pytest.skip(f"{name} not present")
+    text = path.read_text()
+    asks_registry = (
+        "certified_tutor.py" in text
+        or "CERTIFIED_BACKBONES" in text
+        or "_certified_for" in text
+    )
+    assert asks_registry, (
+        f"{name} does not consult the certified registry. The ladder picks a BASE "
+        "variant by size and the quality floor then refuses it — that disagreement "
+        "is what had every deploy building an uncertified tutor."
+    )
+
+
+def test_the_documented_requirement_matches_the_registry():
+    """A number restated in prose drifts; assert the docs carry the real one."""
+    from core.serving_plan import GPU_RESERVE_GB
+
+    needed = min(e.vram_gb for e in CERTIFIED_BACKBONES) + GPU_RESERVE_GB
+    rendered = f"{needed:.0f} GB"  # e.g. "22 GB"
+    for doc in ("README.md", "docs/guides/HARDWARE_OPTIMIZATION_GUIDE.md"):
+        text = (ROOT / doc).read_text()
+        assert rendered in text, (
+            f"{doc} does not state the certified tutor's real requirement "
+            f"({rendered}); a stale figure here is how an operator specs a box "
+            "that cannot tutor"
+        )
+
+
+@pytest.mark.parametrize("name", ("docs/guides/HARDWARE_OPTIMIZATION_GUIDE.md", "enterprise/README.md"))
+def test_no_live_co_residency_sizing_claim(name):
+    """The guard is CPU-pinned, so tutor+guard VRAM arithmetic is void.
+
+    The old "31b needs >=26GB because it shares the card with a 5GB guard" claim
+    is what gated 31b off a 23GB card that serves it in production today. Any
+    surviving mention must read as a retraction, not as guidance.
+    """
+    path = ROOT / name
+    if not path.exists():
+        pytest.skip(f"{name} not present")
+    retraction_markers = (
+        "no longer", "void", "previous", "superseded", "gone", "corrected", "was:",
+    )
+    # The claim shape, not the digits: "26" also appears in every 2026 date, and
+    # a guard that fires on a dateline is a guard nobody keeps.
+    claim = re.compile(r"(?:>=|\u2265)\s*26\s*GB", re.I)
+    for line in path.read_text().splitlines():
+        if not claim.search(line):
+            continue
+        lowered = line.lower()
+        assert any(m in lowered for m in retraction_markers), (
+            f"{name} still presents a 26 GB co-residency requirement as live "
+            f"guidance: {line.strip()[:120]}"
+        )

@@ -278,64 +278,37 @@ elif [ -n "$OLLAMA_DEFAULT_MODEL" ] && [ "$OLLAMA_DEFAULT_MODEL" != "snflwr.ai" 
     # Legacy: env held a base-model tag directly
     CHAT_MODEL="$OLLAMA_DEFAULT_MODEL"
 else
-    # Recommend a base model from detected hardware (RAM_GB/HAS_GPU/VRAM_GB set above).
+    # THE TUTOR IS ONE MODEL. Not a ladder any more (2026-09-20, owner
+    # decision on measured quality): only `snflwr.ai-31b` has a sealed tutoring
+    # run, and the serving plan refuses to tutor with anything else. 31b scored
+    # 88.8 against e4b's 80.3 overall, and cut wrong content 17 -> 4, canned
+    # fallback 27 -> 5 and refusals 31 -> 10 on the same 121 probes. A box that
+    # cannot hold it does not get a smaller tutor; it gets no tutoring, and is
+    # told so.
     #
-    # gemma4:e4b (~10GB) is the default backbone as of 2026-06-17 — it won the
-    # tutoring-quality bake-off outright (see evals/tutoring/backbone_bakeoff.py)
-    # and is what deploy.sh, .env.example, and the modelfile use. Boxes too small
-    # for gemma are UNSUPPORTED as of 2026-09-10 — there is no safe smaller
-    # backbone to fall back to. Keep this aligned with deploy.sh.
-    #
-    # OPT-IN high-end tier: a box with an ~18-20GB+ VRAM GPU can run gemma4:31b.
-    # Kept OPT-IN (not default) for OPERATIONAL reasons (slower, dense ~19GB VRAM)
-    # — NOT quality. Two bake-offs: the first (judge gemma4:e4b, 24 cases) flagged
-    # a math + homework-integrity regression, but the stronger-judge re-run
-    # (claude-opus-4-8, 34 cases) OVERTURNED that — both models are near-tied on
-    # the quality rubric (31b 99.3 vs e4b 98.5), with 31b marginally BETTER at math
-    # (99.3 vs 97.8) and homework-integrity (96.9 vs 93.8; e4b handed over the
-    # answer twice as often). So there's no quality reason to avoid 31b on a
-    # capable GPU; it stays opt-in purely for the latency/VRAM cost.
-    #
-    # VRAM gate is 26GB, NOT 18: 31b (~19GB) must co-reside with the llama-guard3:8b
-    # safety classifier (~5GB) — every turn runs input+output through the guard, so
-    # both stay resident (19+5+KV ≈ 26GB). At 18-24GB they can't both fit, and Ollama
-    # would either thrash (reload a 19GB model per turn) or silently evict the 8b guard
-    # down to :1b — a child-safety-classifier downgrade we will NOT do by default.
-    # So 31b auto-enables only on a card with room for 31b + the full guard (≥~26GB,
-    # or multi-GPU). On a single ≤24GB card, keep e4b (which leaves comfortable guard
-    # headroom). Verified on the 23GB 3090 Ti: 31b + 8b guard do not co-reside.
-    # The ladder is NOT duplicated here any more. Until 2026-09-10 this file
-    # carried its own hardcoded tiers, including a different model family for
-    # small boxes, which had already drifted from deploy.sh and from
-    # resource_detection.GEMMA4_VARIANTS — three ladders, three answers for the
-    # same box. One source of truth now, unit-tested in
-    # tests/test_resource_detection.py.
-    if [ "${SNFLWR_ENABLE_GEMMA_31B:-false}" = "true" ] && [ "$HAS_GPU" = true ] && [ "$VRAM_GB" -ge 26 ]; then
-        CHAT_MODEL="gemma4:31b"
+    # WHAT THIS BLOCK USED TO SAY, and why every line of it was wrong by the end:
+    #   "gemma4:e4b is the default backbone"   -> the floor refuses e4b outright.
+    #   "31b is opt-in for latency/VRAM cost"  -> it is the only certified tutor.
+    #   "31b needs >=26GB because llama-guard3:8b must co-reside"
+    #                                          -> the guard is CPU-PINNED now
+    #     (`llama-guard3-cpu`, PARAMETER num_gpu 0), which is exactly why the
+    #     23GB card in front of me serves 31b. The real requirement is the
+    #     certified backbone's measured VRAM plus a reserve, and the registry
+    #     knows it -- so ask, rather than restating it here and drifting again.
+    CERT_TSV=$(cd "$SCRIPT_DIR" 2>/dev/null && python3 scripts/certified_tutor.py \
+                  --vram-gb "${VRAM_GB:-0}" --format tsv 2>/dev/null)
+    CERT_RC=$?
+    if [ "$CERT_RC" -eq 0 ] && [ -n "$CERT_TSV" ]; then
+        TUTOR_MODEL=$(printf '%s' "$CERT_TSV" | cut -f1)
+        CHAT_MODEL=$(printf '%s' "$CERT_TSV" | cut -f2)
+        echo -e "${GREEN}Certified tutor: ${TUTOR_MODEL} (base ${CHAT_MODEL})${NC}"
+    elif [ "$CERT_RC" -eq 3 ]; then
+        echo -e "${RED}$(cd "$SCRIPT_DIR" && python3 scripts/certified_tutor.py --vram-gb "${VRAM_GB:-0}" 2>/dev/null)${NC}" >&2
+        echo -e "${YELLOW}Set BASE_MODEL=<tag> to override deliberately (tutoring stays off unless the model is certified).${NC}" >&2
+        exit 1
     else
-        CHAT_MODEL=$(cd "$SCRIPT_DIR" 2>/dev/null && python3 - "$RAM_GB" "$VRAM_GB" <<'PYEOF' 2>/dev/null
-import sys
-from resource_detection import recommend_base_model, unsupported_hardware_message
-ram, vram = float(sys.argv[1] or 0), float(sys.argv[2] or 0)
-model = recommend_base_model(memory_gb=ram, vram_gb=vram)
-print(model if model else "UNSUPPORTED " + unsupported_hardware_message(ram, vram))
-PYEOF
-)
-        case "$CHAT_MODEL" in
-            UNSUPPORTED*)
-                # No safe smaller backbone exists to fall back to: gemma4:e2b was
-                # removed 2026-09-10 for measuring 9 points below e4b overall and
-                # 7 below on homework integrity. Refuse rather than quietly serve
-                # children from a tutor we measured as worse at its own job.
-                echo -e "${RED}${CHAT_MODEL#UNSUPPORTED }${NC}" >&2
-                echo -e "${YELLOW}Set BASE_MODEL=<tag> to override deliberately.${NC}" >&2
-                exit 1
-                ;;
-            "")
-                echo -e "${RED}Could not compute a backbone recommendation (python3 / resource_detection.py).${NC}" >&2
-                exit 1
-                ;;
-        esac
+        echo -e "${RED}Could not ask the certified registry (python3 / scripts/certified_tutor.py).${NC}" >&2
+        exit 1
     fi
 
     if [ "$RAM_GB" -gt 0 ]; then

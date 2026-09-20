@@ -322,17 +322,16 @@ class UnsupportedHardwareError(RuntimeError):
 
 
 def choose_model(total_ram_gb: Optional[float] = None) -> str:
-    """Choose a base model to build the snflwr.ai wrapper on, based on RAM.
+    """The base model the certified tutor is built on, or refuse.
 
-    Returns a base tag to pull, or raises UnsupportedHardwareError when the box
-    cannot run any supported backbone.
+    Returns the base tag to pull, or raises UnsupportedHardwareError when no
+    certified backbone fits this hardware.
 
-    Delegates to resource_detection.recommend_base_model so the installer, the
-    two shell entry points and the two Windows entry points all read ONE ladder.
-    Until 2026-09-10 each had its own, and they disagreed: this file dropped to
-    a different model family below 16 GB, which meant a small box installed a
-    DIFFERENT tutor that none of the persona, pedagogy or S9051B compliance work
-    had been measured against.
+    Reads core/serving_plan.CERTIFIED_BACKBONES -- the same registry the serving
+    plan enforces at request time -- so the installer cannot configure a tutor
+    the quality floor will then refuse. It used to delegate to the hardware
+    ladder, which picks a base variant by size; the two disagreed, and the floor
+    always won.
 
     Checked BEFORE the pull on purpose: refusing after an ~8 GB download is a
     worse experience than refusing up front.
@@ -353,73 +352,45 @@ def choose_model(total_ram_gb: Optional[float] = None) -> str:
         print_info(f"Using base model from OLLAMA_DEFAULT_MODEL: {env_model}")
         return env_model
 
-    from resource_detection import (  # noqa: PLC0415 - keep installer import-light
-        DEFAULT_MODEL_RESERVE_GB,
-        GEMMA4_VARIANTS,
-        minimum_requirements_gb,
-        recommend_base_model,
-        unsupported_hardware_message,
+    # THE TUTOR IS ONE MODEL (2026-09-20, owner decision on measured quality).
+    # This used to print a MENU of gemma4 variants sized by RAM -- every entry of
+    # which the quality floor now refuses, because only `snflwr.ai-31b` has a
+    # sealed tutoring run (31b scored 88.8 vs e4b 80.3, and cut wrong content
+    # 17 -> 4 on the same 121 probes). It also passed vram_gb=0.0, so it sized a
+    # GPU tutor on RAM and always landed on e4b.
+    #
+    # There is no menu now: the registry says what the tutor is, or the box does
+    # not tutor. Offering a choice between models we have measured as worse at
+    # withholding homework answers is not a choice worth presenting for a
+    # children's product.
+    from core.serving_plan import (  # noqa: PLC0415 - keep installer import-light
+        CERTIFIED_BACKBONES,
+        GPU_RESERVE_GB,
+        _certified_for,
+        _detect_vram_gb,
     )
 
-    ram = total_ram_gb if total_ram_gb is not None else 0.0
-    recommended = recommend_base_model(memory_gb=ram, vram_gb=0.0) if ram else "gemma4:e4b"
+    try:
+        vram_gb = float(_detect_vram_gb())
+    except Exception:  # noqa: BLE001 - no GPU is an answer, not an error
+        vram_gb = 0.0
 
-    if recommended is None:
-        # APPROACH C: refuse BEFORE the multi-GB pull, not after. There is no
-        # safe smaller backbone left to offer — gemma4:e2b was removed
-        # 2026-09-10 (70.0 vs 79.0 overall, 74.9 vs 81.9 on homework integrity
-        # over 3 repeats). Offering a menu here would just be offering the
-        # operator a tutor we already measured as worse at withholding homework
-        # answers, which is not a choice worth presenting for a children's app.
-        raise UnsupportedHardwareError(unsupported_hardware_message(ram, 0.0))
-
-    # RAM requirement per variant comes from the same table the ladder uses, so
-    # the menu can never advertise a threshold the selector disagrees with.
-    models = [
-        (tag, ram_gb + DEFAULT_MODEL_RESERVE_GB)
-        for tag, _vram_gb, ram_gb in GEMMA4_VARIANTS
-    ]
-
-    min_vram, min_ram = minimum_requirements_gb()
-    print_info(
-        "Choose a base model (gemma4:e4b is the recommended backbone;\n"
-        "snflwr.ai is built as a wrapper on top of your choice):\n"
-    )
-
-    for i, (tag, min_ram_for_tag) in enumerate(models, 1):
-        rec = " \u2190 recommended" if tag == recommended else ""
-        print(f"  {i}. {tag:<14} needs ~{min_ram_for_tag:.0f} GB RAM{rec}")
-
-    print("\n  s. Skip model download for now")
-
-    if total_ram_gb is not None:
-        print(f"\n  Your system: {total_ram_gb:.0f} GB RAM (minimum supported: {min_ram} GB)")
-
-    rec_idx = next(
-        (i for i, (tag, _m) in enumerate(models, 1) if tag == recommended),
-        1,
-    )
-
-    while True:
-        choice = ask_question(
-            f"Select model (1-{len(models)}, or s to skip)", str(rec_idx)
+    entry = _certified_for("ollama", vram_gb)
+    if entry is None:
+        needed = min(e.vram_gb for e in CERTIFIED_BACKBONES) + GPU_RESERVE_GB
+        raise UnsupportedHardwareError(
+            f"no certified tutor fits {vram_gb:.1f} GB VRAM (needs {needed:.1f} GB). "
+            "The rest of snflwr.ai installs and runs; tutoring stays off until "
+            "this box has a card that fits the certified backbone, because the "
+            "serving plan refuses to tutor with a model that has no sealed run."
         )
-        if choice.lower() == "s":
-            return ""  # empty string means skip
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(models):
-                tag, min_ram_for_tag = models[idx]
-                if total_ram_gb is not None and total_ram_gb < min_ram_for_tag:
-                    print_warning(
-                        f"Your system has {total_ram_gb:.0f} GB RAM but {tag} needs ~{min_ram_for_tag:.0f} GB."
-                    )
-                    if not ask_yes_no("Continue anyway?", default=False):
-                        continue
-                return tag
-        except ValueError:
-            pass
-        print_error(f"Please enter a number 1-{len(models)} or 's' to skip")
+
+    print_info(
+        f"Tutor: {entry.model} (certified {entry.sealed_on}), built on {entry.base}.\n"
+        f"Detected {vram_gb:.1f} GB VRAM; this backbone needs "
+        f"{entry.vram_gb + GPU_RESERVE_GB:.1f} GB.\n"
+    )
+    return entry.base
 
 
 def setup_ollama(total_ram_gb: Optional[float] = None) -> str:

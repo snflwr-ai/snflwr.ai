@@ -172,11 +172,26 @@ if "%OLLAMA_DEFAULT_MODEL%"=="" (
     :: for its string literals — so the quoted form would have been truncated
     :: before it ever ran. With usebackq the command is delimited by backticks and
     :: inner single quotes are literal.
-    for /f "usebackq delims=" %%M in (`python -c "import sys;from resource_detection import recommend_base_model,unsupported_hardware_message;r=float(sys.argv[1]);m=recommend_base_model(memory_gb=r,vram_gb=0);print(m if m else 'UNSUPPORTED '+unsupported_hardware_message(r,0))" !RAM_GB! 2^>nul`) do (
+    :: THE TUTOR IS ONE MODEL (2026-09-20). Only `snflwr.ai-31b` has a sealed
+    :: tutoring run; the serving plan refuses anything else. This block used to
+    :: assign a BASE model tag (gemma4:e4b) to OLLAMA_DEFAULT_MODEL -- which is
+    :: the variable the plan reads -- so every Windows install configured a tutor
+    :: the quality floor then refused. Two calls, because splitting a TAB in
+    :: batch is not worth the risk; the registry answers both questions.
+    ::
+    :: No --vram-gb: the helper detects the card itself (nvidia-smi), which this
+    :: file never did -- it passed vram_gb=0 and sized the tutor on RAM.
+    for /f "usebackq delims=" %%M in (`python scripts\certified_tutor.py --format model 2^>nul`) do (
         set "OLLAMA_DEFAULT_MODEL=%%M"
     )
+    for /f "usebackq delims=" %%B in (`python scripts\certified_tutor.py --format base 2^>nul`) do (
+        set "BASE_MODEL=%%B"
+    )
     if "!OLLAMA_DEFAULT_MODEL!"=="" (
-        echo Could not compute a backbone recommendation ^(python / resource_detection.py^).
+        echo No certified tutor fits this machine, or the registry could not be read.
+        echo Tutoring needs a GPU large enough for the certified backbone; run
+        echo   python scripts\certified_tutor.py
+        echo to see the requirement. Everything else installs normally.
         exit /b 1
     )
     echo !OLLAMA_DEFAULT_MODEL! | findstr /b "UNSUPPORTED" >nul

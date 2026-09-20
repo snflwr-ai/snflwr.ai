@@ -180,6 +180,25 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # Homework-integrity enforcement. NONE of these reached this stack until
+      # 2026-09-20, and the consequence was not a degraded feature but an absent
+      # one: GUIDANCE_ENFORCEMENT_ENABLED defaults to "false" (config.py), so the
+      # enforcer was OFF on the deployment aimed at schools, and could not be
+      # turned on -- the variable never reached the container.
+      #
+      # GUIDANCE_GATE_MODEL matters for a second reason: the confirm resolves
+      # CONFIRM_MODEL -> GATE_MODEL -> tutor, and running it on the tutor scored
+      # 0/27 with every verdict unparseable (fail-open) until the persona
+      # override landed. Name a small base model here, not the tutor.
+      - GUIDANCE_ENFORCEMENT_ENABLED=${GUIDANCE_ENFORCEMENT_ENABLED:-false}
+      - GUIDANCE_GATE_MODEL=${GUIDANCE_GATE_MODEL:-}
+      - GUIDANCE_GATE_TIMEOUT_S=${GUIDANCE_GATE_TIMEOUT_S:-6}
+      - GUIDANCE_ENFORCER_CONFIRM_MODEL=${GUIDANCE_ENFORCER_CONFIRM_MODEL:-}
+      - GUIDANCE_ENFORCER_TIMEOUT_S=${GUIDANCE_ENFORCER_TIMEOUT_S:-15}
+      - GUIDANCE_ENFORCER_TOTAL_BUDGET_S=${GUIDANCE_ENFORCER_TOTAL_BUDGET_S:-40}
+      - GUIDANCE_ENFORCER_MAX_REGEN_ATTEMPTS=${GUIDANCE_ENFORCER_MAX_REGEN_ATTEMPTS:-3}
+      - SAFETY_MODEL=${SAFETY_MODEL:-llama-guard3:8b}
+      - SAFETY_MODEL_FALLBACKS=${SAFETY_MODEL_FALLBACKS:-llama-guard3:8b,llama-guard3:1b}
       # Optional GPU arbiter (host service) for boxes that share the card with
       # another Ollama. Empty = no co-tenant, and gpu_placement behaves exactly
       # as before. Point it at the gateway of THIS service's network:

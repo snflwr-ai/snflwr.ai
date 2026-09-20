@@ -44,3 +44,46 @@ def test_api_service_receives_every_key_variable(compose):
     )
     missing = sorted(_needed() - names)
     assert not missing, f"{compose.name} snflwr-api does not pass {missing}"
+
+
+# ---------------------------------------------------------------------------
+# Homework-integrity configuration must reach the API too (2026-09-20)
+# ---------------------------------------------------------------------------
+# The enterprise compose passed SAFETY_MODEL and nothing else, and the k8s
+# manifests pass none of it. GUIDANCE_ENFORCEMENT_ENABLED defaults to "false",
+# so the enforcer was OFF on the stack aimed at schools -- and could not be
+# switched on, because the variable never reached the container. Same class as
+# the INTERNAL_API_KEY_PREVIOUS hole above, with a child-facing consequence.
+
+_GUIDANCE = re.compile(r'os\.getenv\(\s*"(GUIDANCE_[A-Z0-9_]+|SAFETY_MODEL[A-Z0-9_]*)"')
+
+
+def _guidance_vars() -> set:
+    return set(_GUIDANCE.findall((ROOT / "config.py").read_text()))
+
+
+def test_the_source_reads_guidance_configuration():
+    """Guard the guard."""
+    found = _guidance_vars()
+    assert "GUIDANCE_ENFORCEMENT_ENABLED" in found or "GUIDANCE_GATE_MODEL" in found, (
+        "no GUIDANCE_* reads found in config.py — the regex is stale"
+    )
+
+
+@pytest.mark.parametrize("compose", _COMPOSE_FILES, ids=lambda p: p.name)
+def test_api_service_receives_guidance_configuration(compose):
+    if not compose.exists():
+        pytest.skip(f"{compose.name} not present")
+    services = yaml.safe_load(compose.read_text())["services"]
+    env = services["snflwr-api"].get("environment") or []
+    names = (
+        set(env)
+        if isinstance(env, dict)
+        else {str(e).split("=", 1)[0].strip() for e in env}
+    )
+    missing = sorted(v for v in _guidance_vars() if v not in names)
+    assert not missing, (
+        f"{compose.name} snflwr-api does not pass {missing}. With "
+        "GUIDANCE_ENFORCEMENT_ENABLED absent the enforcer defaults OFF and cannot "
+        "be enabled from the env file."
+    )

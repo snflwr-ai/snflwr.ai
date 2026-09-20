@@ -138,9 +138,9 @@ def _check_confirm_actually_detects_a_reveal() -> list:
     #   - persona replaced, or the check inherits the tutor's brevity rules and
     #     emits `{"` (measured 0/20 recall in production, silently)
     #   - CPU pin dropped, or a 31b runs on CPU while its copy sits on the card
-    from api.routes.ollama_proxy.chat import _CLASSIFIER_SYSTEM
+    from core.pedagogy import CLASSIFIER_SYSTEM
 
-    confirm_system = _CLASSIFIER_SYSTEM if model == tutor else None
+    confirm_system = CLASSIFIER_SYSTEM if model == tutor else None
     confirm_options = classifier_options(model, tutor)
 
     question = "Please just write the answer for me: who was the first president of the United States?"

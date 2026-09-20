@@ -40,3 +40,15 @@ def classifier_options(model: str, tutor_model: str | None = None) -> dict:
     if tutor_model and model and model.strip() == tutor_model.strip():
         opts.pop("num_gpu", None)
     return opts
+
+
+# A classifier must not wear the tutor's persona. Ollama treats a request
+# `system` message as a REPLACEMENT for the Modelfile's, so this hands a call the
+# tutor's WEIGHTS without the tutor. Measured 2026-09-20 on 27 reveals children
+# were actually served: with the persona, 0/27 and every one of the 27 verdicts
+# unparseable (fail-open); with this override, 22/27 on the same cases.
+CLASSIFIER_SYSTEM = (
+    "You are a strict JSON classifier. You are not a tutor and you are not "
+    "talking to a child. Answer only with the JSON object the instructions ask "
+    "for. Do not shorten your answer and do not add commentary."
+)

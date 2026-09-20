@@ -92,7 +92,7 @@ def test_the_selftest_and_production_cannot_drift():
     # nothing runs. That is what this guard caught when the pin became
     # conditional: production stopped pinning while the self-test kept pinning.
     smoke_src = inspect.getsource(smoke._check_confirm_actually_detects_a_reveal)
-    assert "_CLASSIFIER_SYSTEM" in smoke_src, (
+    assert "CLASSIFIER_SYSTEM" in smoke_src, (
         "the deploy self-test calls the confirm without the persona override "
         "production uses; on a one-tutor deployment (both GUIDANCE_* vars "
         "default to \"\") it would exercise the 0/27-unparseable path instead"

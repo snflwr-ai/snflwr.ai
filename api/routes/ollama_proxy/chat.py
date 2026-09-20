@@ -116,16 +116,12 @@ async def _pedagogy_reissue(
     return upstream.json().get("message", {}).get("content", "")
 
 
-# A classifier must not wear the tutor's persona. Ollama treats a request
-# `system` message as a REPLACEMENT for the Modelfile's, so this hands a call the
-# tutor's WEIGHTS without the tutor. Measured 2026-09-20 on 27 reveals children
-# were actually served: with the persona, 0/27 and every one of the 27 verdicts
-# unparseable (fail-open); with this override, 22/27 on the same cases.
-_CLASSIFIER_SYSTEM = (
-    "You are a strict JSON classifier. You are not a tutor and you are not "
-    "talking to a child. Answer only with the JSON object the instructions ask "
-    "for. Do not shorten your answer and do not add commentary."
-)
+# The classifier system override lives in core.pedagogy with the other
+# classifier settings. It moved there because the deploy self-test must send the
+# SAME override production sends, and importing an API ROUTE from scripts/ made
+# mypy resolve scripts/ under two module names. A classifier's system prompt is
+# a pedagogy concern, not a routing one.
+from core.pedagogy import CLASSIFIER_SYSTEM as _CLASSIFIER_SYSTEM  # noqa: E402
 
 
 async def _pedagogy_oneshot(

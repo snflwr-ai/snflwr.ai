@@ -108,6 +108,31 @@ _WITHHOLDING_FALLBACK = (
 )
 
 
+def _nudge_for(item: str) -> str:
+    """The nudge, naming the assigned item when the confirm identified it.
+
+    The generic nudge lists CATEGORIES to withhold (definition, comparison,
+    list, name, translation...). That list exists because of a measured
+    failure: on sealed set 9 every turn that exhausted its rewrites and fell
+    back to static text was one of those tasks, and "the rewrites kept
+    supplying the content because nothing told them what to withhold".
+    Categories were the first fix. Naming the ACTUAL item is the next, and it is
+    free: the certified confirm prompts already return an `item` field, present
+    in 100% of flagged verdicts, and it was being discarded.
+
+    The item is bounded and flattened upstream (`_clean_item`) because it is
+    model text derived from a child's message and is being pasted into a prompt.
+    An empty item falls back to the generic nudge -- never to no nudge.
+    """
+    if not item:
+        return _NUDGE
+    return (
+        f"Your previous reply gave away the item the student was asked to "
+        f"produce: {item}. Do NOT state it, spell it, gloss it, or hand it over "
+        f"in pieces the student only has to put together. " + _NUDGE
+    )
+
+
 def _looks_like_meta_commentary(text: str) -> bool:
     """True if the retry talks ABOUT the reply instead of tutoring the student."""
     return bool(_META_COMMENTARY_RE.search(text or ""))
@@ -342,7 +367,9 @@ async def enforce_guidance(
         attempts += 1
         try:
             retry = await _await_with_retry(
-                lambda: regenerate(_NUDGE), budget=budget, deadline=deadline
+                lambda: regenerate(_nudge_for(verdict.item)),
+                budget=budget,
+                deadline=deadline,
             )
         except Exception:
             logger.info("guidance re-prompt failed")

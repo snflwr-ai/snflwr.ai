@@ -138,14 +138,29 @@ def _run(stream_chunks, forward_responses, *, enforcement=True):
         )
 
 
+def _confirm_run(revealed: bool) -> list:
+    """Every response ONE confirm stage consumes, sized from the live ensemble.
+
+    The confirm is an OR-ensemble: a clean verdict costs one call per member
+    (all must agree), a revealed verdict short-circuits on the first. Derived
+    from `_CONFIRM_ENSEMBLE` so adding or removing a member does not silently
+    desync these scripted responses -- which is exactly how they broke when the
+    second member shipped.
+    """
+    from core.pedagogy.reveal_detection import _CONFIRM_ENSEMBLE
+
+    n = 1 if revealed else max(1, len(_CONFIRM_ENSEMBLE))
+    return [_confirm(revealed) for _ in range(n)]
+
+
 class TestEnforcerFiresOnStreamedTurns:
     def test_revealing_streamed_answer_is_replaced(self):
         # confirm(original)->revealed, re-issue->clean, confirm(retry)->clean
         r = _run(_ndjson(_REVEALING),
-                 [_confirm(True), httpx.Response(200, json={
+                 [*_confirm_run(True), httpx.Response(200, json={
                      "model": "snflwr.ai", "done": True,
                      "message": {"role": "assistant", "content": _CLEAN}}),
-                  _confirm(False)])
+                  *_confirm_run(False)])
         assert r.status_code == 200
         assert "application/x-ndjson" in r.headers["content-type"]
         served = _served(r)
@@ -154,10 +169,10 @@ class TestEnforcerFiresOnStreamedTurns:
 
     def test_wire_format_stays_ndjson(self):
         r = _run(_ndjson(_REVEALING),
-                 [_confirm(True), httpx.Response(200, json={
+                 [*_confirm_run(True), httpx.Response(200, json={
                      "model": "snflwr.ai", "done": True,
                      "message": {"role": "assistant", "content": _CLEAN}}),
-                  _confirm(False)])
+                  *_confirm_run(False)])
         # A JSONResponse here renders as a blank bubble in Open WebUI.
         assert "application/x-ndjson" in r.headers["content-type"]
         for line in r.content.splitlines():
@@ -165,7 +180,7 @@ class TestEnforcerFiresOnStreamedTurns:
                 json.loads(line)  # every line must be a standalone JSON object
 
     def test_clean_streamed_answer_is_served_unchanged(self):
-        r = _run(_ndjson(_CLEAN), [_confirm(False)])
+        r = _run(_ndjson(_CLEAN), _confirm_run(False))
         assert _served(r) == _CLEAN
 
     def test_enforcement_disabled_leaves_the_stream_alone(self):
@@ -173,14 +188,14 @@ class TestEnforcerFiresOnStreamedTurns:
         assert _served(r) == _REVEALING
 
     def test_token_usage_survives_buffering(self):
-        r = _run(_ndjson(_CLEAN), [_confirm(False)])
+        r = _run(_ndjson(_CLEAN), _confirm_run(False))
         obj = [json.loads(l) for l in r.content.splitlines() if l.strip()][-1]
         assert obj.get("prompt_eval_count") == 11
         assert obj.get("eval_count") == 22
 
     def test_scaffolding_is_stripped_on_the_streamed_path_too(self):
         tagged = "[Student age range: 11-13]\n\n" + _CLEAN
-        r = _run(_ndjson(tagged), [_confirm(False)])
+        r = _run(_ndjson(tagged), _confirm_run(False))
         assert "Student age range" not in _served(r)
 
 
@@ -228,7 +243,7 @@ class TestProgressivePathBuffersHomework:
             [_confirm(True),
              httpx.Response(200, json={"model": "snflwr.ai", "done": True,
                                        "message": {"role": "assistant", "content": _CLEAN}}),
-             _confirm(False)])
+             *_confirm_run(False)])
         served = _served(r)
         assert served == _CLEAN, (
             "a homework turn took the progressive path and escaped the enforcer: "

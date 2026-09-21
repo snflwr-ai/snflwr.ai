@@ -88,6 +88,21 @@ _HOMEWORK_Q = "Just give me the answer to 7 times 8."
 # A revealing response (the mocked confirm stage flags it as a reveal)
 _REVEALING = "The answer is 56."
 
+def _confirm_run(revealed: bool = True) -> list:
+    """Every response ONE confirm stage consumes, sized from the live ensemble.
+
+    The confirm is an OR-ensemble, so a "not revealed" verdict costs one call per
+    member (all must agree it is clean) while a "revealed" verdict short-circuits
+    on the first. Deriving the count from `_CONFIRM_ENSEMBLE` rather than writing
+    2 keeps these fixtures correct the next time a member is added or removed --
+    they broke exactly that way when the second member shipped.
+    """
+    from core.pedagogy.reveal_detection import _CONFIRM_ENSEMBLE
+
+    n = 1 if revealed else max(1, len(_CONFIRM_ENSEMBLE))
+    return [_ollama_confirm_resp(revealed=revealed) for _ in range(n)]
+
+
 # A clean guiding response (the mocked confirm stage says NOT revealed)
 _CLEAN = "What is 7 times 4? Think about how that helps you get to 7 times 8."
 
@@ -131,9 +146,9 @@ class TestPedagogyProxyHook:
         mock_fwd = AsyncMock(
             side_effect=[
                 _ollama_chat_resp(_REVEALING),        # 1. original turn
-                _ollama_confirm_resp(revealed=True),  # 2. confirm (original)
+                *_confirm_run(revealed=True),  # 2. confirm (original)
                 _ollama_chat_resp(_CLEAN),            # 3. re-issue (regenerate)
-                _ollama_confirm_resp(revealed=False), # 4. confirm (retry) -> clean
+                *_confirm_run(revealed=False), # 4. confirm (retry) -> clean
             ]
         )
 
@@ -172,7 +187,11 @@ class TestPedagogyProxyHook:
             f"Expected clean text, got: {data['message']['content']!r}"
         )
         # Enforcer ran all four calls (original, confirm, re-issue, retry re-check)
-        assert mock_fwd.call_count == 4
+        # 1 original + confirm(revealed) + 1 re-issue + confirm(clean); the two
+        # confirm stages are ensemble-sized, so derive rather than hardcode.
+        assert mock_fwd.call_count == 2 + len(_confirm_run(True)) + len(
+            _confirm_run(False)
+        )
 
     def test_flag_off_response_is_unchanged(self):
         """Flag OFF: the proxy returns the revealing text byte-for-byte (no enforcer).
@@ -351,9 +370,9 @@ class TestPedagogyProxyHook:
         mock_fwd = AsyncMock(
             side_effect=[
                 _ollama_chat_resp(_REVEALING),        # 1. original turn
-                _ollama_confirm_resp(revealed=True),  # 2. confirm (original)
+                *_confirm_run(revealed=True),  # 2. confirm (original)
                 _ollama_chat_resp(_CLEAN),            # 3. re-issue (unsafe rewrite)
-                _ollama_confirm_resp(revealed=False), # 4. confirm (retry) -> clean
+                *_confirm_run(revealed=False), # 4. confirm (retry) -> clean
             ]
         )
 
@@ -393,6 +412,10 @@ class TestPedagogyProxyHook:
             f"got: {data['message']['content']!r}"
         )
         # Enforcer ran all four calls (original→confirm→reissue→retry re-check)
-        assert mock_fwd.call_count == 4
+        # 1 original + confirm(revealed) + 1 re-issue + confirm(clean); the two
+        # confirm stages are ensemble-sized, so derive rather than hardcode.
+        assert mock_fwd.call_count == 2 + len(_confirm_run(True)) + len(
+            _confirm_run(False)
+        )
         # check_output was called at least twice: once for original, once for rewrite
         assert call_count["n"] >= 2

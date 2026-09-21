@@ -70,6 +70,19 @@ class CertifiedBackbone:
     # changes the KV layout and gives the model more room to run past the guided
     # shape, which is a quality question, and quality questions get measured.
     max_validated_num_ctx: int = 0
+    # Fingerprint of the SYSTEM PROMPT the sealed run actually measured.
+    #
+    # Everything else here certifies a NAME. The tutor's pedagogy, its homework
+    # integrity rules and its safety posture all live in the system prompt baked
+    # into that named model, so a rebuild with a different prompt keeps the name,
+    # keeps this entry, and keeps reporting "certified" while serving something
+    # nobody measured.
+    #
+    # That is not hypothetical: the reveal confirm collapsed to 0/20 recall in
+    # production when an unrelated PR added a paragraph to the Modelfile, and
+    # nothing noticed, because no check anywhere knew what the prompt was
+    # supposed to be. `sha256(system.strip())[:12]`.
+    system_sha256: str = ""
 
     @property
     def validated_ceiling(self) -> int:
@@ -96,8 +109,33 @@ CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
         # larger window actually buys is multi-turn room, which that run did not
         # measure. Costs ~0.6 GiB more card (21.6 GiB resident at 24576).
         max_validated_num_ctx=24576,
+        # The prompt the 2026-09-17 sealed run measured. Changing the tutor's
+        # system prompt REQUIRES changing this line, and changing this line is a
+        # claim that the bars were re-measured against the new prompt.
+        system_sha256="43a76481684d",
     ),
 )
+
+
+def fingerprint_system_prompt(system: str) -> str:
+    """Stable short fingerprint of a tutor system prompt.
+
+    Whitespace-stripped at the ends only: Ollama round-trips the prompt through
+    a Modelfile, which can add or drop a trailing newline, and a certificate
+    that trips on a newline would be turned off within a week.
+    """
+    import hashlib
+
+    return hashlib.sha256((system or "").strip().encode("utf-8")).hexdigest()[:12]
+
+
+def certified_prompt_for(model: str) -> str:
+    """The fingerprint the sealed run measured for ``model``, or "" if unknown."""
+    for entry in CERTIFIED_BACKBONES:
+        if entry.model == model:
+            return entry.system_sha256
+    return ""
+
 
 # Reserve on top of the backbone's measured footprint. Small on purpose: the
 # 21.0 GiB above is the whole process, CUDA context included, so this covers

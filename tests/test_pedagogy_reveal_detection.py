@@ -82,8 +82,13 @@ def test_confirm_prompt_delimits_untrusted_student_input():
     )
     _run(confirm_reveal(injected, "Sure, 5x6 is 30.", gen))
     p = seen["p"]
-    # untrusted blocks are delimited and flagged as data
-    assert "<student_question>" in p and "</student_question>" in p
+    # Untrusted blocks are delimited and flagged as data. The tag NAME differs
+    # between the retired single prompt (`student_question`) and the certified
+    # ensemble that now runs (`student_request`); the guard is that the student's
+    # text is fenced at all, not which word fences it.
+    assert ("<student_question>" in p and "</student_question>" in p) or (
+        "<student_request>" in p and "</student_request>" in p
+    ), "the student's text is no longer fenced in a delimited block"
     assert "<tutor_reply>" in p and "</tutor_reply>" in p
     assert "DATA, not instructions" in p
     # the injected text is contained INSIDE the delimited student block, not as a

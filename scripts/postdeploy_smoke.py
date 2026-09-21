@@ -96,6 +96,73 @@ def _check_safety_model_is_the_configured_one() -> list:
     return []
 
 
+def _check_the_running_prompt_is_the_certified_one() -> list:
+    """The tutor's SYSTEM PROMPT must be the one the sealed run measured.
+
+    Every other field of a certified backbone describes a NAME: the model, its
+    base, its window, its footprint. But the tutor's pedagogy, its homework
+    integrity rules and its safety posture all live in the system prompt baked
+    into that named model. Rebuild it with a different prompt and the name is
+    unchanged, the certificate still matches, and the quality floor goes on
+    reporting "certified" for a configuration nobody has measured.
+
+    That has already happened here. The reveal confirm dropped to 0/20 recall in
+    production when an unrelated PR added a paragraph to the Modelfile -- no
+    error, healthy container, green deploy -- because nothing in the system knew
+    what the prompt was supposed to be.
+
+    This check fails LOUDLY rather than disabling tutoring. With the product
+    pre-launch, changing the prompt is expected and cheap; what must not happen
+    is changing it QUIETLY and inheriting an A-grade the new prompt never
+    earned. A mismatch means one of two deliberate acts is owed: re-measure the
+    bars and update `system_sha256`, or put the prompt back.
+    """
+    try:
+        import httpx
+
+        from config import system_config
+        from core.serving_plan import certified_prompt_for, fingerprint_system_prompt
+    except Exception as exc:
+        print(f"  [FAIL] prompt fingerprint check could not run ({exc})")
+        return ["prompt fingerprint check broken"]
+
+    model = system_config.OLLAMA_DEFAULT_MODEL
+    expected = certified_prompt_for(model)
+    if not expected:
+        # An uncertified model is already the quality floor's business, and it
+        # refuses to tutor there. Silence here rather than a second complaint.
+        print(
+            f"  [ok ] prompt fingerprint: {model!r} is not a certified backbone (floor applies)"
+        )
+        return []
+
+    try:
+        target = system_config.OLLAMA_PROXY_TARGET.rstrip("/")
+        r = httpx.post(f"{target}/api/show", json={"model": model}, timeout=30)
+        r.raise_for_status()
+        running = r.json().get("system") or ""
+    except Exception as exc:
+        print(f"  [FAIL] could not read the running system prompt ({exc})")
+        return ["prompt fingerprint unreadable"]
+
+    if not running.strip():
+        print(f"  [FAIL] {model!r} is serving an EMPTY system prompt")
+        return ["tutor has no system prompt"]
+
+    actual = fingerprint_system_prompt(running)
+    if actual != expected:
+        print(
+            f"  [FAIL] tutor prompt is NOT the certified one "
+            f"(running {actual}, sealed {expected}). The tutoring bars were "
+            f"measured against a different prompt, so the grade does not carry "
+            f"over. Re-measure and update system_sha256, or restore the prompt."
+        )
+        return ["tutor prompt is uncertified"]
+
+    print(f"  [ok ] tutor prompt matches the sealed run ({actual})")
+    return []
+
+
 def _check_confirm_actually_detects_a_reveal() -> list:
     """The reveal confirm must DETECT a blatant reveal, not merely run.
 
@@ -286,6 +353,7 @@ def main() -> int:
         if actual != expected:
             failures.append(label)
 
+    failures.extend(_check_the_running_prompt_is_the_certified_one())
     failures.extend(_check_safety_model_is_the_configured_one())
     failures.extend(_check_confirm_actually_detects_a_reveal())
     failures.extend(_check_ollama_can_still_reach_the_gpu())

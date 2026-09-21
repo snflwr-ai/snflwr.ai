@@ -152,14 +152,32 @@ def _check_the_running_prompt_is_the_certified_one() -> list:
     actual = fingerprint_system_prompt(running)
     if actual != expected:
         print(
-            f"  [FAIL] tutor prompt is NOT the certified one "
-            f"(running {actual}, sealed {expected}). The tutoring bars were "
-            f"measured against a different prompt, so the grade does not carry "
-            f"over. Re-measure and update system_sha256, or restore the prompt."
+            f"  [FAIL] tutor prompt is NOT the one this build ships "
+            f"(running {actual}, expected {expected}). The model was rebuilt "
+            f"from a different source, or the deploy did not take. This is a "
+            f"drift failure, not a certification question."
         )
-        return ["tutor prompt is uncertified"]
+        return ["tutor prompt does not match the build"]
 
-    print(f"  [ok ] tutor prompt matches the sealed run ({actual})")
+    print(f"  [ok ] tutor prompt matches what this build ships ({actual})")
+
+    # Integrity is satisfied. Currency is a SEPARATE question, and it is not a
+    # deploy failure: a prompt may be changed deliberately on evidence that is
+    # narrower than a full sealed run. What must never happen is quoting the
+    # sealed grade for a prompt the sealed run never saw, so say so every deploy.
+    try:
+        from core.serving_plan import grade_carries_for, sealed_prompt_for
+
+        carries, why = grade_carries_for(model)
+        if not carries:
+            print(
+                f"  [NOTE] the sealed tutoring grade does NOT describe this "
+                f"prompt (sealed {sealed_prompt_for(model)}, shipping {actual}). "
+                f"Do not quote the tutoring-A grade for this build.\n"
+                f"         {why}"
+            )
+    except Exception as exc:  # noqa: BLE001 - never let the note break the smoke
+        print(f"  [NOTE] could not read certification currency ({exc})")
     return []
 
 

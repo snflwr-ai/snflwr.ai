@@ -83,10 +83,39 @@ class CertifiedBackbone:
     # nothing noticed, because no check anywhere knew what the prompt was
     # supposed to be. `sha256(system.strip())[:12]`.
     system_sha256: str = ""
+    # Fingerprint of the prompt actually SHIPPING, when it differs from the one
+    # the sealed run measured. Empty means they are the same.
+    #
+    # These were one field until 2026-09-21, and a prompt change exposed the
+    # conflation: the only way to ship was to overwrite the sealed hash, which
+    # silently asserts "the bars were re-measured". Splitting them keeps the
+    # drift guard armed (integrity) without faking a certification (currency).
+    shipped_system_sha256: str = ""
+    # Non-empty when the sealed grade does NOT describe the shipping prompt.
+    # Says what changed, on what evidence, and what re-certification would cost.
+    sealed_grade_stale: str = ""
 
     @property
     def validated_ceiling(self) -> int:
         return max(self.num_ctx, self.max_validated_num_ctx)
+
+    @property
+    def serving_sha256(self) -> str:
+        """The prompt the running model is supposed to be serving.
+
+        Integrity checks compare against THIS, not the sealed hash: the deploy
+        must match what we intended to ship, whether or not that prompt has
+        been certified. Certification currency is `sealed_grade_stale`'s job.
+        """
+        return self.shipped_system_sha256 or self.system_sha256
+
+    @property
+    def grade_carries(self) -> bool:
+        """False when the sealed tutoring bars do not describe what is served."""
+        return not self.sealed_grade_stale and (
+            not self.shipped_system_sha256
+            or self.shipped_system_sha256 == self.system_sha256
+        )
 
 
 CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
@@ -112,7 +141,38 @@ CERTIFIED_BACKBONES: tuple[CertifiedBackbone, ...] = (
         # The prompt the 2026-09-17 sealed run measured. Changing the tutor's
         # system prompt REQUIRES changing this line, and changing this line is a
         # claim that the bars were re-measured against the new prompt.
+        #
+        # NOT CHANGED on 2026-09-21 when the TEXT ACCURACY block shipped,
+        # because the bars were NOT re-measured. This field records WHAT WAS
+        # SEALED, and nothing else may be written here without a sealed run.
         system_sha256="43a76481684d",
+        # What is actually deployed. Split out on 2026-09-21 because one field
+        # was carrying two different facts, and a prompt change forced the
+        # difference into the open:
+        #   * INTEGRITY  -- does the running model serve the prompt we intended
+        #     to ship? Must always hold; this is the drift guard that caught a
+        #     confirm dropping to 0/20 recall in production.
+        #   * CURRENCY   -- were the tutoring bars measured against THIS prompt?
+        #     Right now: no.
+        # With one field, the only way to ship a prompt change was to overwrite
+        # the sealed hash, which silently CLAIMS a re-measurement. Two fields
+        # let the deploy stay guarded while the staleness stays visible.
+        shipped_system_sha256="cdb0ac49ff3f",
+        # Why the sealed grade is stale, and what it would cost to refresh it.
+        # The sealed prereg forbids re-running set S ("no re-runs on a sealed
+        # set; S is never used for tuning"), so re-certification must spend
+        # reserve set R -- 212 probes at
+        # ~/snflwr-artefacts/2026-09-18-session/tutoring-a/sealed_R_unlabelled.json,
+        # still unlabelled and unspent. That is a full sealed run plus a hand
+        # read, not a quick check.
+        sealed_grade_stale=(
+            "2026-09-21: TEXT ACCURACY block shipped on the countable-shape "
+            "evidence (chapter/stanza-past-the-end confabulation 10/13 -> 0/13, "
+            "McNemar p=0.0117 overall, zero over-refusal cost, two independent "
+            "grader pairs). The 2026-09-17 sealed tutoring-A bars were NOT "
+            "re-measured against it, so the A grade does not carry. Re-certify "
+            "on reserve set R when the grade is needed."
+        ),
     ),
 )
 
@@ -130,11 +190,44 @@ def fingerprint_system_prompt(system: str) -> str:
 
 
 def certified_prompt_for(model: str) -> str:
-    """The fingerprint the sealed run measured for ``model``, or "" if unknown."""
+    """The fingerprint the deploy is SUPPOSED to be serving, or "" if unknown.
+
+    This is the INTEGRITY answer, and it is what the drift guard and the
+    postdeploy smoke compare against: does the running model serve the prompt
+    this repo intends to ship?
+
+    It is deliberately NOT "the prompt the sealed run measured". Those were the
+    same string until 2026-09-21, and conflating them meant the only way to ship
+    a prompt change was to overwrite the sealed hash -- silently converting a
+    ship into a claim that the tutoring bars had been re-measured. Ask
+    `sealed_prompt_for` for the sealed one and `grade_carries_for` for whether
+    the grade still describes what is served.
+    """
+    for entry in CERTIFIED_BACKBONES:
+        if entry.model == model:
+            return entry.serving_sha256
+    return ""
+
+
+def sealed_prompt_for(model: str) -> str:
+    """The fingerprint the sealed tutoring run actually measured."""
     for entry in CERTIFIED_BACKBONES:
         if entry.model == model:
             return entry.system_sha256
     return ""
+
+
+def grade_carries_for(model: str) -> tuple[bool, str]:
+    """(does the sealed grade describe the shipping prompt, why not).
+
+    A False here is not a deploy failure -- the prompt may have been changed
+    deliberately and on good evidence. It means no one may quote the sealed
+    tutoring grade for what is currently served.
+    """
+    for entry in CERTIFIED_BACKBONES:
+        if entry.model == model:
+            return entry.grade_carries, entry.sealed_grade_stale
+    return False, f"{model!r} is not a certified backbone"
 
 
 # Reserve on top of the backbone's measured footprint. Small on purpose: the

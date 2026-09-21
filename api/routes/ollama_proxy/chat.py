@@ -825,10 +825,30 @@ async def proxy_chat(
                     # silently dead. It is now SAFE rather than merely last --
                     # when the tutor's weights are used, the persona is replaced
                     # and the same cases score 22/27 instead of 0/27.
+                    # The confirm does NOT inherit the GATE's model, and that is
+                    # the whole point of this line.
+                    #
+                    # The gate and the confirm want opposite things. The gate
+                    # runs on EVERY turn, so it wants small and cheap (~0.44s on
+                    # e4b). The confirm's recall sets the leak FLOOR -- a reveal
+                    # it never flags never enters the rewrite ladder -- so it
+                    # wants the largest model available, which costs nothing
+                    # because the tutor is already resident on the card.
+                    #
+                    # Until 2026-09-21 this read `CONFIRM_MODEL or GATE_MODEL or
+                    # model`, so setting the gate to e4b silently moved the
+                    # confirm there too. Caught by the post-deploy smoke printing
+                    # `model=gemma4:e4b` minutes after shipping an ensemble
+                    # measured at 90.4% recall ON THE 31b; the same prompts score
+                    # ~71% on e4b, which is the entire improvement, lost to a
+                    # fallback nobody set on purpose.
+                    #
+                    # Exactly the documented shape: a safety classifier that
+                    # follows another component's model choice degrades in
+                    # silence, because a weaker checker still returns a
+                    # well-formed verdict.
                     confirm_model = (
-                        system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL
-                        or system_config.GUIDANCE_GATE_MODEL
-                        or model
+                        system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL or model
                     )
                     return await _pedagogy_oneshot(
                         prompt,

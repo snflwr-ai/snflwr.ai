@@ -192,11 +192,11 @@ def _check_confirm_actually_detects_a_reveal() -> list:
     # since both GUIDANCE_* vars default to "", a one-tutor deployment lands on
     # the tutor itself, which is the case that needs the two overrides below.
     tutor = system_config.OLLAMA_DEFAULT_MODEL
-    model = (
-        system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL
-        or system_config.GUIDANCE_GATE_MODEL
-        or tutor
-    )
+    # Resolved the SAME way the route resolves it -- notably WITHOUT the gate's
+    # model. A self-test that resolves differently from production is how this
+    # very defect stayed invisible: the gate was set to e4b, the confirm followed
+    # it, and nothing compared the two chains.
+    model = system_config.GUIDANCE_ENFORCER_CONFIRM_MODEL or tutor
 
     # Mirror production EXACTLY on both consequences of "the confirm is the
     # tutor". A self-test that sends different options or a different system

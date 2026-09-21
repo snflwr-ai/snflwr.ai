@@ -100,3 +100,44 @@ def test_the_selftest_and_production_cannot_drift():
     assert "system=" in smoke_src, (
         "the self-test computes a system override but never sends it"
     )
+
+
+def test_the_confirm_never_inherits_the_GATE_model():
+    """The reveal confirm must not follow the homework gate's model choice.
+
+    They want opposite things: the gate runs on every turn and wants small and
+    cheap; the confirm's recall sets the leak floor and wants the largest model
+    available, which is free because the tutor is already resident.
+
+    Until 2026-09-21 the chain read `CONFIRM_MODEL or GATE_MODEL or model`, so
+    setting the gate to e4b silently moved the confirm there. It was caught by
+    the post-deploy smoke printing `model=gemma4:e4b` minutes after shipping an
+    ensemble measured at 90.4% recall on the 31b -- the same prompts score ~71%
+    on e4b, so the entire improvement was lost to a fallback nobody chose.
+
+    A weaker checker still returns a well-formed verdict, so nothing else would
+    have noticed.
+    """
+    import inspect
+    import re
+
+    from api.routes.ollama_proxy import chat as chat_mod
+    import scripts.postdeploy_smoke as smoke
+
+    src = inspect.getsource(chat_mod)
+    m = re.search(r"confirm_model = \((.*?)\)", src, re.S)
+    assert m, "the confirm model resolution chain moved or changed shape"
+    chain = m.group(1)
+    assert "GUIDANCE_GATE_MODEL" not in chain, (
+        "the confirm resolves through GUIDANCE_GATE_MODEL again -- setting the "
+        "gate to a small model silently downgrades the reveal detector"
+    )
+    assert "GUIDANCE_ENFORCER_CONFIRM_MODEL" in chain and "model" in chain
+
+    # And the deploy self-test must resolve it the same way, or it reports a
+    # configuration production does not run.
+    smoke_src = inspect.getsource(smoke._check_confirm_actually_detects_a_reveal)
+    assert "GUIDANCE_GATE_MODEL" not in smoke_src, (
+        "the smoke test resolves the confirm through the gate's model while "
+        "production does not -- the two chains must not drift"
+    )

@@ -129,19 +129,33 @@ class TestItFailsClosedWhenNothingChecks:
 
 class TestTheEnsembleIsTheMeasuredOne:
     def test_it_has_exactly_the_two_certified_members(self):
-        """Shipping an unmeasured member is shipping an unmeasured detector. Both
-        of these were scored on 115 labelled reveals across two independently
-        labelled sets; candA/candB/candD were scored and lost."""
-        assert [n for n, _ in _CONFIRM_ENSEMBLE] == ["v3", "candC"]
+        """Shipping an unmeasured member is shipping an unmeasured detector.
+        Both were scored on 488 blind-labelled cases from 500 distinct requests
+        spanning realistic traffic; candA/candB/candC/candD were scored and lost.
+        """
+        assert [n for n, _ in _CONFIRM_ENSEMBLE] == ["v3", "candE"]
 
-    def test_candc_is_v3_plus_calibration_examples(self):
-        """The measured difference, asserted so a future edit to one member does
-        not silently diverge them."""
+    def test_cande_is_v3_plus_the_assembly_clause(self):
+        """The one difference, asserted so a future edit cannot quietly drop it.
+
+        The labels are scored against a rubric whose rule 3 makes chunks and
+        glosses that assemble into the item BE the item. v3 never mentioned that
+        class, so the detector was blind to a labelled category by construction.
+        Naming it did not raise recall (prediction wrong) -- it raised precision,
+        cutting false alarms 50 -> 39 at identical recall.
+        """
         v3 = dict(_CONFIRM_ENSEMBLE)["v3"]
-        cc = dict(_CONFIRM_ENSEMBLE)["candC"]
-        assert "NOT reveals, for calibration" in cc
-        assert "NOT reveals, for calibration" not in v3
-        assert len(cc) > len(v3)
+        ce = dict(_CONFIRM_ENSEMBLE)["candE"]
+        low = ce.lower()
+        assert "assemble" in low and "gloss" in low, "the assembly clause is gone"
+        assert "assemble" not in v3.lower(), "v3 changed; the pair is no longer diverse"
+        assert len(ce) > len(v3)
+
+    def test_the_rejected_candidate_is_not_what_ships(self):
+        """candE ALONE reaches 91.4% specificity by missing three MORE reveals,
+        and served reveals already fail their bar at 8.0%. The pair keeps v3's
+        recall and takes candE's precision."""
+        assert len(_CONFIRM_ENSEMBLE) == 2, "a single-member ensemble loses recall"
 
     def test_the_old_single_prompt_is_not_what_runs(self):
         """`_CONFIRM_PROMPT` is kept for the tests that record what it cost to

@@ -131,6 +131,63 @@ def _engine_is_vllm() -> bool:
         return False
 
 
+def _upstream() -> tuple[str, dict]:
+    """(base_url, extra headers) for this hop -- the ONE place that decides.
+
+    Until now all three request builders in this module pasted
+    ``system_config.OLLAMA_PROXY_TARGET`` inline, so remote inference was
+    architecturally complete and physically impossible: `RemoteDriver` verified
+    a server that no child's turn could reach, and the proxy forwarded to the
+    local Ollama regardless of what the plan said.
+
+    EVERY path routes remotely when the plan is remote, not just /api/chat. The
+    remote runs snflwr's own API, and a thin client has no local model -- so
+    keeping /api/tags or /api/show local would serve an empty model list to the
+    UI while chat worked, which is a confusing half-configured state.
+
+    The target now comes from the PLAN, which is the object that verified it --
+    its TLS, its credential, and that the (engine, model, num_ctx) triple it
+    advertises has a sealed tutoring run. Reading the URL from the environment
+    here instead would let traffic go somewhere the plan never checked, which is
+    the guard-one-thing-operate-on-another shape this wiring exists to remove.
+
+    FAIL-CLOSED ON REMOTE, and this is the important part. A thin client with no
+    usable GPU has no local model to fall back to, so silently forwarding to
+    ``localhost:11434`` would turn "the tutor server is down" into "the tutor
+    answered oddly". When the plan is remote and not serving, this raises, and
+    every caller in this module already maps a transport error to a graceful
+    503. An honest outage beats an unmeasured tutor.
+
+    Non-remote engines are untouched: local Ollama and vLLM keep the exact path
+    the sealed run was measured on.
+    """
+    try:
+        plan = serving_plan.get_plan()
+    except Exception as exc:  # noqa: BLE001 - never let planning break a turn
+        logger.warning("transport: serving plan unavailable (%s); using ollama", exc)
+        return system_config.OLLAMA_PROXY_TARGET.rstrip("/"), {}
+
+    if plan.engine != "remote":
+        return system_config.OLLAMA_PROXY_TARGET.rstrip("/"), {}
+
+    base = str((plan.engine_args or {}).get("base_url") or "").rstrip("/")
+    if not plan.tutoring_enabled or not base:
+        # `remote_reachable` distinguishes "could not ask" from "asked and the
+        # answer was not certified"; both mean do not serve, and the plan's
+        # own `reason` already says which, so it is logged verbatim rather
+        # than re-derived here.
+        raise httpx.ConnectError(
+            f"remote tutor server is not serving a certified backbone: {plan.reason}"
+        )
+    # The token is read HERE and never stored on the plan. A plan object gets
+    # logged, returned by /health and compared in tests; a bearer token on it
+    # would leak through all three. The URL is safe to carry, the credential is
+    # not.
+    token = serving_plan.remote_token()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return base, headers
+
+
 async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
     """Send *method* + *path* to the real Ollama backend and return the raw response.
 
@@ -157,7 +214,10 @@ async def _forward_request(method: str, path: str, **kwargs) -> httpx.Response:
         kwargs["content"] = _inject_gpu_placement(
             path, _inject_context_length(path, kwargs["content"])
         )
-    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}{path}"
+    _base, _auth = _upstream()
+    url = f"{_base}{path}"
+    if _auth:
+        kwargs["headers"] = {**(kwargs.get("headers") or {}), **_auth}
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT)
@@ -250,7 +310,8 @@ async def _stream_chunks_from_ollama(body: bytes, headers: dict):
 
     if not ollama_circuit.can_execute():
         raise httpx.ConnectError("Ollama circuit breaker open")
-    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
+    _base, _auth = _upstream()
+    url = f"{_base}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     # STUDENT path. Same placement injection as _forward_request; this helper
     # builds its own request so it bypasses that choke point. This is the one
@@ -326,7 +387,8 @@ async def _stream_chat_from_ollama(
             status_code=503,
             content={"detail": "Ollama backend unreachable"},
         )
-    url = f"{system_config.OLLAMA_PROXY_TARGET.rstrip('/')}/api/chat"
+    _base, _auth = _upstream()
+    url = f"{_base}/api/chat"
     client = httpx.AsyncClient(timeout=httpx.Timeout(None, read=_OLLAMA_READ_TIMEOUT))
     try:
         # Same placement injection as _forward_request. These streaming helpers

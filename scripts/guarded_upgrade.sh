@@ -39,7 +39,21 @@ SMOKE_TIMEOUT=180
 # Timestamped so a second run can never overwrite the rollback point of the first.
 DB_BACKUP="${TMPDIR:-/tmp}/snflwr-owui-webui.db.pre-upgrade.$(date +%Y%m%d-%H%M%S).bak"
 DB_IN_CONTAINER="/app/backend/data/webui.db"
-MODEL_BACKUP_TAG="snflwr.ai:preupgrade-bak"
+# The wrapper model this deployment actually SERVES, and the tag we snapshot it
+# to. Both are resolved at runtime by served_model(), never hardcoded.
+#
+# This file used to say "snflwr.ai" in seven places -- the build, the snapshot,
+# the rollback and the post-upgrade smoke. Production serves `snflwr.ai-31b`
+# (OLLAMA_DEFAULT_MODEL in snflwr-api). So `--upgrade model` rebuilt, smoke-
+# tested and rolled back a model NOBODY SERVES, and then reported success: the
+# guarded path was guarding a decoy while the real tutor sat untouched. Found
+# 2026-09-21 while deploying a tutor prompt change, which is why that deploy was
+# done by hand instead.
+#
+# Same class as the GPU watchdog that restart-looped for five weeks behind a
+# green repo: a check that names the wrong artifact passes for the wrong reason.
+SERVED_MODEL=""
+MODEL_BACKUP_TAG=""
 
 # --- pretty output -----------------------------------------------------------
 if [[ -t 1 ]]; then
@@ -59,6 +73,48 @@ compose() {
     local files=(-f "$COMPOSE_BASE")
     [[ -f "$COMPOSE_GPU" ]] && files+=(-f "$COMPOSE_GPU")
     docker compose "${files[@]}" --env-file "$ENV_FILE" "$@"
+}
+
+served_model() {
+    # Which wrapper model is this deployment actually serving to children?
+    #
+    # Asked of the RUNNING API first, because that is the artifact that decides:
+    # the proxy pins every student request to OLLAMA_DEFAULT_MODEL. The env file
+    # is a fallback for a stopped stack, and the literal is a last resort.
+    #
+    # Then VERIFIED to exist in ollama. A name that resolves but does not exist
+    # would make every ollama command below silently no-op, which is the exact
+    # failure this function was written to remove -- so an unresolvable model is
+    # a hard error, never a default.
+    # PURE: the only thing this writes to stdout is the model name, because it
+    # is called as `$(served_model)`. Progress goes to stderr -- an `info` line
+    # on stdout here would be captured as part of the model name, and every
+    # docker command downstream would take a mangled argument.
+    #
+    # It also sets no globals: inside `$(...)` the assignment happens in a
+    # subshell and never reaches the caller, so MODEL_BACKUP_TAG would have
+    # stayed empty and the snapshot would have been written to ":preupgrade-bak".
+    # Both of those were bugs in the first version of this fix.
+    local m
+    m="$(docker exec snflwr-api printenv OLLAMA_DEFAULT_MODEL 2>/dev/null | tr -d '\r\n')"
+    [[ -z "$m" ]] && m="$(get_env_var OLLAMA_DEFAULT_MODEL "")"
+    [[ -z "$m" ]] && m="snflwr.ai"
+    if ! docker exec snflwr-ollama ollama list 2>/dev/null \
+        | awk '{print $1}' | grep -qx -e "$m" -e "${m}:latest"; then
+        err "the served model '${m}' does not exist in snflwr-ollama."
+        err "Refusing to run: every build/snapshot/rollback below would no-op"
+        err "and this script would report success. Check OLLAMA_DEFAULT_MODEL."
+        return 1
+    fi
+    echo "$m"
+}
+
+resolve_served_model() {
+    # Called ONCE from the main flow, directly and not in a subshell, so the
+    # globals actually persist. Everything else reads SERVED_MODEL.
+    SERVED_MODEL="$(served_model)" || return 1
+    MODEL_BACKUP_TAG="${SERVED_MODEL}:preupgrade-bak"
+    info "serving model: ${SERVED_MODEL} (rollback tag ${MODEL_BACKUP_TAG})"
 }
 
 get_env_var() {  # get_env_var VAR DEFAULT
@@ -252,11 +308,12 @@ ollama_smoke() {
     fi
     info "ollama responds to --version"
     # the tutor model still loads and generates (and lands on the GPU)
-    if ! docker exec snflwr-ollama ollama run snflwr.ai "Say hi in 3 words." >/dev/null 2>&1; then
-        err "snflwr.ai failed to generate after upgrade"; return 1
+    local served="$SERVED_MODEL"
+    if ! docker exec snflwr-ollama ollama run "$served" "Say hi in 3 words." >/dev/null 2>&1; then
+        err "${served} failed to generate after upgrade"; return 1
     fi
     local proc; proc="$(docker exec snflwr-ollama ollama ps 2>/dev/null | awk 'NR==2{print $5, $6}')"
-    info "snflwr.ai generates (processor: ${proc:-unknown})"
+    info "${served} generates (processor: ${proc:-unknown})"
     # the api proxy can still round-trip to ollama
     proxy_auth_ok || { err "proxy↔ollama round-trip failed"; return 1; }
     info "proxy↔ollama round-trip verified"
@@ -278,20 +335,32 @@ model_resolve_target() {
 model_pull() { docker exec snflwr-ollama ollama pull "$1"; }
 model_snapshot() {
     PREV_BASE="$(model_current)"
+    local served="$SERVED_MODEL"
     # Duplicate the current wrapper so we can restore it byte-for-byte.
-    docker exec snflwr-ollama ollama cp snflwr.ai "$MODEL_BACKUP_TAG" >/dev/null 2>&1 \
-        && info "Snapshotted current snflwr.ai → ${MODEL_BACKUP_TAG}" \
+    docker exec snflwr-ollama ollama cp "$served" "$MODEL_BACKUP_TAG" >/dev/null 2>&1 \
+        && info "Snapshotted current ${served} → ${MODEL_BACKUP_TAG}" \
         || warn "Could not snapshot current model; rollback will rebuild from PREV_BASE."
 }
-model_build() {  # model_build BASE_TAG — rebuild the snflwr.ai wrapper on BASE_TAG
+model_build() {  # model_build BASE_TAG — rebuild the SERVED wrapper on BASE_TAG
     local base="$1"
+    local served="$SERVED_MODEL"
     local src="$REPO_DIR/models/Snflwr_AI_Kids.modelfile"
     [[ -f "$src" ]] || { err "Modelfile not found at $src"; return 1; }
     local tmp; tmp="$(mktemp)"
     sed "s|^FROM .*|FROM ${base}|" "$src" > "$tmp"
-    docker cp "$tmp" snflwr-ollama:/tmp/snflwr.ai.modelfile >/dev/null 2>&1
+    # gemma4:e4b ships `PARAMETER num_gpu 0` in its own manifest and `FROM`
+    # inherits it, so a rebuild without this line silently moves the tutor to
+    # CPU -- about 20x slower, no error. deploy.sh computes the same value; a
+    # rebuild path that skips it undoes the deploy it is meant to guard.
+    local layers
+    layers="$(cd "$REPO_DIR" 2>/dev/null && python3 -c "
+from resource_detection import recommend_num_gpu
+print(recommend_num_gpu('${base}'))
+" 2>/dev/null)"
+    [[ -n "$layers" ]] && printf '\nPARAMETER num_gpu %s\n' "$layers" >> "$tmp"
+    docker cp "$tmp" snflwr-ollama:/tmp/snflwr-wrapper.modelfile >/dev/null 2>&1
     rm -f "$tmp"
-    docker exec snflwr-ollama ollama create snflwr.ai -f /tmp/snflwr.ai.modelfile >/dev/null 2>&1
+    docker exec snflwr-ollama ollama create "$served" -f /tmp/snflwr-wrapper.modelfile >/dev/null 2>&1
 }
 model_apply() { set_env_var BASE_MODEL "$1"; model_build "$1"; }
 model_smoke() {
@@ -303,8 +372,8 @@ model_smoke() {
 model_restore() {
     set_env_var BASE_MODEL "$PREV_BASE"
     if docker exec snflwr-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$MODEL_BACKUP_TAG"; then
-        docker exec snflwr-ollama ollama cp "$MODEL_BACKUP_TAG" snflwr.ai >/dev/null 2>&1 \
-            && info "Restored previous snflwr.ai from ${MODEL_BACKUP_TAG}" \
+        docker exec snflwr-ollama ollama cp "$MODEL_BACKUP_TAG" "$SERVED_MODEL" >/dev/null 2>&1 \
+            && info "Restored previous ${SERVED_MODEL} from ${MODEL_BACKUP_TAG}" \
             || model_build "$PREV_BASE"
     else
         model_build "$PREV_BASE"
@@ -339,6 +408,17 @@ echo "  ==============================="
 if [[ ! -f "$ENV_FILE" ]]; then err "$ENV_FILE not found — run ./deploy.sh first."; exit 1; fi
 if ! docker inspect snflwr-frontend &>/dev/null; then
     err "snflwr stack is not running — run ./deploy.sh first."; exit 1
+fi
+
+# Resolve the served wrapper model BEFORE anything is pulled, snapshotted or
+# built. Every component touches it: `model` rebuilds it, `ollama` smoke-tests
+# that it still generates. Resolving here, once and outside any subshell, is
+# what stops this script operating on a model nobody serves -- and it aborts
+# rather than falling back, because a silent no-op reported as success is the
+# defect being fixed.
+if ! resolve_served_model; then
+    err "could not resolve which model this deployment serves; refusing to continue"
+    exit 1
 fi
 
 CURRENT="$(${COMPONENT}_current)"

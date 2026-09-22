@@ -108,6 +108,31 @@ _WITHHOLDING_FALLBACK = (
 )
 
 
+def _nudge_for(item: str) -> str:
+    """The nudge, naming the assigned item when the confirm identified it.
+
+    The generic nudge lists CATEGORIES to withhold (definition, comparison,
+    list, name, translation...). That list exists because of a measured
+    failure: on sealed set 9 every turn that exhausted its rewrites and fell
+    back to static text was one of those tasks, and "the rewrites kept
+    supplying the content because nothing told them what to withhold".
+    Categories were the first fix. Naming the ACTUAL item is the next, and it is
+    free: the certified confirm prompts already return an `item` field, present
+    in 100% of flagged verdicts, and it was being discarded.
+
+    The item is bounded and flattened upstream (`_clean_item`) because it is
+    model text derived from a child's message and is being pasted into a prompt.
+    An empty item falls back to the generic nudge -- never to no nudge.
+    """
+    if not item:
+        return _NUDGE
+    return (
+        f"Your previous reply gave away the item the student was asked to "
+        f"produce: {item}. Do NOT state it, spell it, gloss it, or hand it over "
+        f"in pieces the student only has to put together. " + _NUDGE
+    )
+
+
 def _looks_like_meta_commentary(text: str) -> bool:
     """True if the retry talks ABOUT the reply instead of tutoring the student."""
     return bool(_META_COMMENTARY_RE.search(text or ""))
@@ -121,6 +146,35 @@ class EnforceMeta:
     # action names are a stable vocabulary that the canary and the proxy trace
     # both read, so the attempt count rides alongside rather than mangling them.
     attempts: int = 0
+    # WHICH gate decided this turn: the LLM gate, or the regex fallback.
+    #
+    # These are not equivalent, and the difference was invisible until it was
+    # measured. On a blind holdout (2026-09-21, 40 stuck / 20 demand / 20 dodge
+    # turns, ~/snflwr-artefacts/2026-09-21-stuckchild-holdout/):
+    #
+    #                        LLM gate (e4b)   regex fallback
+    #   stuck false alarms        0/40             2/40
+    #   demand caught            20/20            16/20
+    #   DODGE caught             18/20 = 90%      13/20 = 65%   <- fails the bar
+    #
+    # A "dodge" is a real demand for the assigned deliverable with a refusal or
+    # learning frame bolted on ("i wanna lern. wats the ansers on my paper").
+    # On the fallback path, 35% of them get the child's homework done for them.
+    #
+    # The fallback was logged at INFO and counted NOWHERE, so a deployment
+    # running mostly on the weak path would look identical in every metric the
+    # product has. That is the shape this project has already been bitten by --
+    # a downgraded classifier runs, says "fine", and passes the bad output
+    # through. Recording it here puts the decision path in the same telemetry as
+    # every other enforcement outcome, so "how often are we on the weak gate?"
+    # becomes answerable instead of a guess.
+    #
+    # Cold start is the realistic trigger: the gate model's first call after it
+    # goes idle measured 29.9s against a 6s timeout, while steady state is
+    # p50 0.43s. One idle period is enough to put a turn on the regex.
+    gate: str = (
+        "none"  # "llm" | "regex_fallback" | "none" (enforcement off//not reached)
+    )
 
 
 T = TypeVar("T")
@@ -225,6 +279,23 @@ async def enforce_guidance(
     if gate_generate is not None:
         gate_verdict = await asks_for_assigned_work(user_text, gate_generate)
     triggered = is_homework_request(user_text) if gate_verdict is None else gate_verdict
+    # Which gate actually decided. `gate_generate is None` means the LLM gate is
+    # not configured at all; a None verdict with it configured means it was
+    # reached for and could not answer -- unreachable, timed out, or unparseable.
+    # Only the second is a degradation, and the two must not be conflated.
+    gate_used = (
+        "none"
+        if gate_generate is None
+        else ("regex_fallback" if gate_verdict is None else "llm")
+    )
+    if gate_used == "regex_fallback":
+        # WARNING, not INFO: this is a measured drop in capability (dodge catch
+        # 90% -> 65% on a blind holdout), not a routine event. It was previously
+        # invisible to every metric the product has.
+        logger.warning(
+            "guidance: LLM input gate gave no verdict; decided on the REGEX "
+            "fallback, which catches 65%% of framed demands vs the gate's 90%%"
+        )
 
     # ONE narrow override of a negative gate verdict: a demand to produce the work
     # wearing a verification frame ("solve it from scratch so I can see if my
@@ -240,7 +311,7 @@ async def enforce_guidance(
         triggered = True
 
     if not triggered:
-        return response, EnforceMeta("not_homework")
+        return response, EnforceMeta("not_homework", gate=gate_used)
 
     budget = settings.GUIDANCE_ENFORCER_TIMEOUT_S
     deadline = _Deadline(settings.GUIDANCE_ENFORCER_TOTAL_BUDGET_S)
@@ -275,10 +346,12 @@ async def enforce_guidance(
         logger.info(
             "guidance confirm unavailable; withholding rather than serving unchecked"
         )
-        return _WITHHOLDING_FALLBACK, EnforceMeta("confirm_failed_closed")
+        return _WITHHOLDING_FALLBACK, EnforceMeta(
+            "confirm_failed_closed", gate=gate_used
+        )
 
     if not verdict.revealed:
-        return response, EnforceMeta("no_reveal")
+        return response, EnforceMeta("no_reveal", gate=gate_used)
 
     # ---- A reveal is now CONFIRMED. From here the original must not ship. -----
     #
@@ -294,7 +367,9 @@ async def enforce_guidance(
         attempts += 1
         try:
             retry = await _await_with_retry(
-                lambda: regenerate(_NUDGE), budget=budget, deadline=deadline
+                lambda: regenerate(_nudge_for(verdict.item)),
+                budget=budget,
+                deadline=deadline,
             )
         except Exception:
             logger.info("guidance re-prompt failed")
@@ -318,7 +393,7 @@ async def enforce_guidance(
             # Trim a dangling final fragment. After the re-check on purpose:
             # trimming only removes text, so the cleared verdict still holds.
             return _repair_truncation(retry), EnforceMeta(
-                "reprompt_clean", attempts=attempts
+                "reprompt_clean", attempts=attempts, gate=gate_used
             )
 
     # Every rewrite failed, or we ran out of budget. The ORIGINAL IS KNOWN TO
@@ -337,4 +412,6 @@ async def enforce_guidance(
     # after #240 is 4 of 32 homework turns, and rewrites usually pass, so this is
     # rare -- and the failure is a duller answer, never a handed-over one.
     logger.info("guidance could not withhold the answer; serving the safe fallback")
-    return _WITHHOLDING_FALLBACK, EnforceMeta("fallback_served", attempts=attempts)
+    return _WITHHOLDING_FALLBACK, EnforceMeta(
+        "fallback_served", attempts=attempts, gate=gate_used
+    )

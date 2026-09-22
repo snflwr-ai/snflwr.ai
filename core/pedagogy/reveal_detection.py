@@ -18,6 +18,20 @@ from typing import Awaitable, Callable
 class RevealVerdict:
     revealed: bool
     reason: str = ""
+    # What the confirm says the student was assigned to produce.
+    #
+    # The certified prompts already ask for `{"item", "quote", "revealed"}` and
+    # this module used to read `revealed` and discard the rest. Measured on 36
+    # flagged verdicts: `item` is present in 100% of them, `quote` in only 33%.
+    #
+    # `item` is worth keeping because the rewrite nudge has no idea what to
+    # withhold. Its own comment records why that matters: on sealed set 9 every
+    # turn that exhausted its rewrites and fell back to static text was a
+    # DEFINE/COMPARE/LIST/TRANSLATE task, "and the rewrites kept supplying the
+    # content because nothing told them what to withhold". A generic list of
+    # categories was the first fix; naming the actual item is the next one, and
+    # it costs nothing because the model already said it.
+    item: str = ""
 
 
 # The student question is UNTRUSTED input. It is delimited and explicitly marked
@@ -192,6 +206,24 @@ _CONFIRM_ENSEMBLE: tuple[tuple[str, str], ...] = (
 _REVEALED_FIELD_RE = re.compile(r'"revealed"\s*:\s*(true|false)', re.IGNORECASE)
 
 
+_ITEM_FIELD_RE = re.compile(r'"item"\s*:\s*"((?:[^"\\]|\\.)*)"', re.IGNORECASE)
+
+# The item is MODEL text derived from a child's message, and it is about to be
+# pasted into a prompt, so it is bounded and flattened. A long or multi-line
+# item would both bloat the nudge and give a student a lever for steering the
+# rewrite -- the same reason the confirm's own quote field is capped.
+_ITEM_MAX_CHARS = 120
+
+
+def _clean_item(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = " ".join(value.split())
+    if text.lower() in ("none", "null", "n/a", "-"):
+        return ""
+    return text[:_ITEM_MAX_CHARS]
+
+
 def _parse_verdict(raw: str) -> RevealVerdict:
     """Read the model's OWN verdict, which is the LAST one in its reply.
 
@@ -226,7 +258,7 @@ def _parse_verdict(raw: str) -> RevealVerdict:
         except (ValueError, TypeError):
             continue
         if isinstance(data, dict) and isinstance(data.get("revealed"), bool):
-            return RevealVerdict(data["revealed"])
+            return RevealVerdict(data["revealed"], item=_clean_item(data.get("item")))
 
     # A whole object that spans nested braces, still preferring the last verdict.
     m = re.search(r"\{.*\}", text, re.DOTALL)
@@ -236,12 +268,17 @@ def _parse_verdict(raw: str) -> RevealVerdict:
         except (ValueError, TypeError):
             data = None
         if isinstance(data, dict) and isinstance(data.get("revealed"), bool):
-            return RevealVerdict(data["revealed"])
+            return RevealVerdict(data["revealed"], item=_clean_item(data.get("item")))
 
     # No parseable object: recover a truncated or lightly malformed verdict.
     found = _REVEALED_FIELD_RE.findall(text)
     if found:
-        return RevealVerdict(found[-1].lower() == "true", "recovered")
+        items = _ITEM_FIELD_RE.findall(text)
+        return RevealVerdict(
+            found[-1].lower() == "true",
+            "recovered",
+            item=_clean_item(items[-1] if items else ""),
+        )
 
     # FAIL CLOSED. This returned False -- "no reveal" -- until 2026-09-20, which
     # meant a check that could not be READ waved the reply through.

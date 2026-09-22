@@ -339,6 +339,124 @@ _BARE_DEMAND = re.compile(
 
 # A genuine learner in a school register trips tier 2 constantly. These phrases
 # mark the turn as wanting UNDERSTANDING, and veto tier 2 (never tier 1).
+# A child who names a LESSER thing they want and refuses the deliverable in the
+# same breath. Measured 2026-09-21 on 60 wild-shaped stuck-child turns: this was
+# 2 of 4 false alarms, and both were replies to a child who had said outright
+# they did not want the answer.
+#
+#   "can u just give me a hint for the next part, i dont want the answer
+#    i wanna figure it out myself"       -> fired on "just give me"
+#   "give me a clue not the answer"      -> fired because the answer-demand
+#                                           pattern's `(\w+ ){0,3}` gap spans
+#                                           "clue not the", reading it as
+#                                           "give me a ... answer"
+#
+# `_LEARNING_INTENT` already covers "give me a hint" -- but it is consulted
+# AFTER the hard `_DEMAND` patterns, which return True first, so the veto that
+# exists for exactly this case was unreachable. This check runs BEFORE them.
+#
+# ⚠️ THE DODGE RISK IS THE WHOLE DESIGN PROBLEM. An answer-refusal veto is an
+# obvious bypass: bolt "i dont want the answer" onto a real demand and walk
+# through. So all THREE conditions are required together:
+#   1. an explicit refusal of the deliverable, AND
+#   2. a named lesser want (hint / clue / step / where to start), AND
+#   3. NO full-deliverable imperative anywhere in the turn.
+# Condition 3 is what defeats the dodge: "just write my paragraph, i dont want
+# the answer" names the whole deliverable, so it still fires. The project has
+# met this trick before as "a dodge wearing a verification frame"
+# (`_PRODUCE_FOR_ME` below); a refusal frame is the same move.
+_REFUSES_THE_DELIVERABLE = re.compile(
+    r"\b(not the answer|don'?t want the answer|dont want the answer|"
+    r"don'?t (tell|give) me the answer|dont (tell|give) me the answer|"
+    r"not the whole (thing|answer|solution)|without (telling|giving) me the answer|"
+    r"i don'?t want you to (do|write|solve) it|"
+    r"figure it out myself|work it out myself|do it myself)\b",
+    re.IGNORECASE,
+)
+_WANTS_SOMETHING_LESSER = re.compile(
+    r"\b(a hint|hint|a clue|clue|a nudge|nudge|a tip|a pointer|"
+    r"the first step|where to start|where do i start|what to try|"
+    r"a push|point me)\b",
+    re.IGNORECASE,
+)
+# The full deliverable, asked for as an imperative. Kept separate and narrow:
+# these are the shapes that mean the child walks away with assigned work done.
+_FULL_DELIVERABLE_IMPERATIVE = re.compile(
+    r"\b((write|do|solve|finish|complete|answer|translate|summari[sz]e)\s+"
+    r"(my|the|this|these|it|number|#|question|problem|q\d)"
+    r"|do my (homework|assignment|worksheet|essay|paper)"
+    r"|whats the answer|what'?s the answer|what is the answer"
+    r"|(write|do|solve) (it|them) for me)\b",
+    re.IGNORECASE,
+)
+
+
+def _asks_for_less_than_the_answer(text: str) -> bool:
+    """True when the child refuses the deliverable AND names a lesser want.
+
+    All three conditions from the block comment above, together. Any one or two
+    of them alone is not enough: (1)+(2) without (3) is the dodge.
+    """
+    return bool(
+        _REFUSES_THE_DELIVERABLE.search(text)
+        and _WANTS_SOMETHING_LESSER.search(text)
+        and not _FULL_DELIVERABLE_IMPERATIVE.search(text)
+    )
+
+
+# A demand verb whose subject is the CHILD or a third party, not the tutor.
+# The other 2 of the 4 measured false alarms, and I nearly filed them as
+# "over-broad, mechanism unclear":
+#
+#   "my lab data says the mass went UP ... i'm supposed to write this up tonight"
+#       -> _CONTEXT("my lab") + _BARE_DEMAND("write"); the child is stating
+#          their OWN obligation
+#   "everyone else already finished the lab worksheet and im still on part 1"
+#       -> soft pattern matched "finish the lab worksheet"; that is what the
+#          OTHER children did
+#
+# Neither turn asks the tutor for anything. Measured on the tune set: this frame
+# appears in 4/60 stuck turns and 0/20 demands.
+#
+# ⚠️ NOT a blanket veto, for the same dodge reason: "i have to write a paragraph,
+# just write it for me" carries the frame AND is a real demand. It only vetoes
+# when every demand-verb occurrence is GOVERNED by the frame -- i.e. the frame
+# immediately precedes it -- and never when an ungoverned imperative also exists.
+_OBLIGATION_FRAME = re.compile(
+    r"\b(i'?m supposed to|i am supposed to|i have to|i hafta|i gotta|i need to|"
+    r"i'?ve got to|we have to|we'?re supposed to|my teacher wants me to|"
+    r"everyone else|everybody else|the whole class|they already|we already|"
+    r"my friend)\s+(\w+\s+){0,2}",
+    re.IGNORECASE,
+)
+
+
+def _demand_verb_is_someone_elses_job(text: str) -> bool:
+    """True when the only demand-shaped verb sits inside an obligation clause.
+
+    Conservative by construction: if the turn ALSO contains a full-deliverable
+    imperative, this returns False and the turn is judged normally.
+    """
+    if not _OBLIGATION_FRAME.search(text):
+        return False
+    # Strip each obligation clause plus the few words it governs, THEN look for
+    # an ungoverned demand. Order matters and I got it wrong first time: checking
+    # the guard on the ORIGINAL text meant "i'm supposed to write this up" and
+    # "everyone else already finished the worksheet" tripped the guard on their
+    # OWN governed verbs ("write this", "finish the"), so the veto refused to
+    # fire on precisely the two cases it was written for.
+    #
+    # On the stripped remainder the distinction works as intended:
+    #   "i'm supposed to write this up tonight"        -> "up tonight", no demand
+    #   "i have to write a paragraph, just write it for me"
+    #                                                  -> "...just write it for
+    #      me" survives, guard fires, the turn is judged normally (a demand)
+    stripped = _OBLIGATION_FRAME.sub(" ", text)
+    if _FULL_DELIVERABLE_IMPERATIVE.search(stripped):
+        return False
+    return not _BARE_DEMAND.search(stripped)
+
+
 _LEARNING_INTENT = re.compile(
     r"\b(i (don'?t|do not|dont) (understand|get|know why|see why|see how)|"
     r"i want to understand|i need to understand|help me understand|"
@@ -375,6 +493,18 @@ _COMPILED_SOFT = [re.compile(p, re.IGNORECASE) for p in _SOFT_DEMAND]
 def is_homework_request(user_text: str) -> bool:
     """True if the turn asks the tutor to PRODUCE the student's assigned answer."""
     text = normalize(user_text)
+    # These two run BEFORE the hard patterns, which is the point: both describe
+    # turns that a hard pattern matches on phrasing while the child is asking
+    # for something else entirely. `_LEARNING_INTENT` below already covered the
+    # hint case and was simply unreachable from here.
+    #
+    # Each carries its own anti-dodge guard (see their definitions); neither is
+    # a blanket veto, and both refuse to fire when the turn also contains a
+    # full-deliverable imperative.
+    if _asks_for_less_than_the_answer(text):
+        return False
+    if _demand_verb_is_someone_elses_job(text):
+        return False
     if any(p.search(text) for p in _COMPILED):
         return True
     # A turn that says outright it wants to understand is not a demand for the

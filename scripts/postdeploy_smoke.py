@@ -349,6 +349,54 @@ def _check_ollama_can_still_reach_the_gpu() -> list:
     return []
 
 
+def _check_the_child_is_not_waiting_longer_than_the_bar() -> list:
+    """Run the latency ratchet against the deployed stack.
+
+    Latency had NO bar at all until 2026-09-21. Every bar this product has is
+    about correctness -- reveal rate, fallback rate, wrong content -- so the
+    enforcement pipeline grew to 2.9x the unenforced wait (traffic-weighted p50
+    10.6s vs 3.7s) and nothing objected. A flagged turn reaches p90 31.6s.
+
+    The bar existed as a standalone script for a day and NOTHING RAN IT, which
+    makes it decoration: "a ratchet nobody tightens decays into a no-op". It is
+    wired in here rather than in CI because it needs a GPU and a resident model,
+    which CI does not have.
+
+    Contention is not a regression: the script reports UNMEASURED and exits 0
+    when it cannot get the model resident, so a co-tenant holding the card
+    cannot fail a deploy. That is deliberate -- a check that reads contention as
+    failure gets switched off within a week, and one that reads it as a PASS is
+    worse.
+    """
+    import subprocess
+
+    script = Path(__file__).resolve().parent / "latency_bar.py"
+    if not script.exists():
+        print("  [FAIL] latency_bar.py is missing; nothing guards the child's wait")
+        return ["latency bar missing"]
+    try:
+        r = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            cwd=str(script.parent.parent),
+        )
+    except subprocess.TimeoutExpired:
+        # The bar's own budget is 40s per turn; overrunning ten minutes means
+        # something is wrong with the run, not with latency.
+        print("  [FAIL] the latency bar did not finish in 600s")
+        return ["latency bar hung"]
+    for line in (r.stdout or "").splitlines():
+        if line.strip():
+            print(f"    {line}")
+    if r.returncode != 0:
+        print("  [FAIL] the child's wait is outside the latency bar")
+        return ["latency regressed"]
+    print("  [ok ] child-facing latency inside the bar (or UNMEASURED on contention)")
+    return []
+
+
 def main() -> int:
     try:
         from core.pedagogy.trigger import is_homework_request, normalize
@@ -375,6 +423,7 @@ def main() -> int:
     failures.extend(_check_safety_model_is_the_configured_one())
     failures.extend(_check_confirm_actually_detects_a_reveal())
     failures.extend(_check_ollama_can_still_reach_the_gpu())
+    failures.extend(_check_the_child_is_not_waiting_longer_than_the_bar())
 
     if failures:
         print(

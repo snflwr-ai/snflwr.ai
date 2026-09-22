@@ -516,6 +516,18 @@ def _fetch_remote_plan(base_url: str, token: str) -> Optional[dict]:
     return payload if isinstance(payload, dict) else None
 
 
+def remote_token() -> str:
+    """The credential for the remote tutor server, read fresh at each use.
+
+    Public because `transport` needs it to authenticate a child's turn, and
+    deliberately NOT a field on `ServingPlan`: plan objects are logged, returned
+    by /health and compared in tests, so a bearer token on one would leak
+    through all three. The URL travels with the plan (it is what got verified);
+    the secret does not.
+    """
+    return _remote_token()
+
+
 def _remote_plan(base_url: str) -> ServingPlan:
     """The plan for a box that offloads inference to a snflwr tutor server.
 
@@ -590,6 +602,21 @@ def _remote_plan(base_url: str) -> ServingPlan:
         quality_tier="certified",
         tutoring_enabled=True,
         num_ctx=num_ctx,
+        # THE ROUTING TARGET TRAVELS WITH THE VERDICT, on purpose.
+        #
+        # Everything above verified THIS `base_url`: its TLS, its credential,
+        # and that the (engine, model, num_ctx) triple it advertises is
+        # certified. If the caller that actually forwards a child's turn read
+        # INFERENCE_REMOTE_URL from the environment instead, it could route
+        # somewhere this function never checked -- a guard examining one
+        # artifact while the traffic goes to another. That is the same defect
+        # class as a guarded upgrade that rebuilds a model nobody serves, and
+        # it would be worse here because the thing being guarded is which tutor
+        # a child talks to.
+        #
+        # So the URL is part of the plan object. `transport` takes the target
+        # from the plan it was handed and nowhere else.
+        engine_args={"base_url": base_url},
         # Capacity belongs to the server. Serializing here would cap a 64-slot
         # remote at one turn at a time.
         max_concurrent_requests=slots,

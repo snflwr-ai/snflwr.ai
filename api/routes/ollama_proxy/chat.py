@@ -123,6 +123,12 @@ async def _pedagogy_reissue(
 # a pedagogy concern, not a routing one.
 from core.pedagogy import CLASSIFIER_SYSTEM as _CLASSIFIER_SYSTEM  # noqa: E402
 
+# How long to hold a pedagogy classifier in memory between turns. Long enough
+# that ordinary gaps in child traffic do not cause a cold load; not "forever",
+# which is how a co-tenant model on this box ended up pinning 17 GB of card
+# indefinitely.
+_CLASSIFIER_KEEP_ALIVE = "30m"
+
 
 async def _pedagogy_oneshot(
     prompt: str,
@@ -161,6 +167,22 @@ async def _pedagogy_oneshot(
             + [{"role": "user", "content": prompt}],
             "stream": False,
             "think": False,
+            # keep_alive: hold the CPU-pinned classifier RESIDENT between turns.
+            #
+            # The input gate runs on EVERY child turn and its cold load was
+            # measured at 29.9s against a 6s timeout, while steady state is
+            # p50 0.43s. One idle period therefore times the gate out, and the
+            # enforcer silently falls back to the REGEX -- which is 25 points
+            # weaker on framed demands (dodge catch 90% -> 65% on a blind
+            # holdout, 2026-09-21). At the moment this was added the gate model
+            # was NOT resident, so the next child's turn would have taken the
+            # weak path.
+            #
+            # Cheap because this classifier is num_gpu 0: it costs RAM (53 GiB
+            # free on this box), not the contended 23 GiB card, so it cannot
+            # evict the tutor. A GPU-resident checker would be a different and
+            # much worse trade.
+            "keep_alive": _CLASSIFIER_KEEP_ALIVE,
             # temperature 0: this is a safety CLASSIFIER, not a generator, and it
             # was the only one in the codebase running at the model default --
             # core/topic_gate.py and safety/pipeline/classifier.py both pin their

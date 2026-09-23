@@ -22,6 +22,7 @@ from core import gpu_placement
 from core.authentication import AuthSession, auth_manager
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_manager import ProfileManager
+from core.serving_plan import CERTIFIED_BACKBONES
 from core.session_manager import SessionError, SessionLimitError, session_manager
 from safety.incident_logger import incident_logger
 from safety.pipeline import safety_pipeline
@@ -42,6 +43,14 @@ from utils.rate_limiter import rate_limiter
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# Models whose Modelfile bakes in the tutor SYSTEM prompt. Injecting a
+# {"role":"system"} message for one of these REPLACES that prompt in Ollama's
+# template, discarding the tuned persona and its safety protocols -- so this set
+# decides whether the persona survives. Derived from the certified registry so a
+# new backbone cannot be added without being covered; `snflwr.ai` is the legacy
+# override wrapper, built from the same Modelfile.
+_BAKED_SYSTEM_MODELS = frozenset(b.model for b in CERTIFIED_BACKBONES) | {"snflwr.ai"}
 
 
 def _age_band(age: int) -> str:
@@ -429,7 +438,19 @@ async def send_chat_message(
         #
         # Other models (admin test models, or any future non-snflwr.ai
         # student model) still get a lightweight K-12 framing from Python.
-        model_has_baked_system = model_name == "snflwr.ai"
+        # Derived from the certified registry, NOT a hardcoded name. This read
+        # `model_name == "snflwr.ai"` while production serves `snflwr.ai-31b`,
+        # so the check was False for the actual tutor -- and the branch below
+        # then injected a system message, which Ollama treats as a REPLACEMENT
+        # for the modelfile SYSTEM. That silently discarded the whole tuned
+        # persona, safety protocols included, on the one model it was written
+        # for. Exactly the defect this comment block warns about, caused by the
+        # line meant to prevent it. Fixed 2026-09-23.
+        #
+        # The legacy `snflwr.ai` wrapper is kept in the set: an explicit
+        # BASE_MODEL override still builds it from the same Modelfile, so it
+        # carries a baked SYSTEM even though it is not a certified backbone.
+        model_has_baked_system = model_name in _BAKED_SYSTEM_MODELS
 
         messages: list = []
 

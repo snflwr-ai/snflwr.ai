@@ -301,6 +301,7 @@ else
     if [ "$CERT_RC" -eq 0 ] && [ -n "$CERT_TSV" ]; then
         TUTOR_MODEL=$(printf '%s' "$CERT_TSV" | cut -f1)
         CHAT_MODEL=$(printf '%s' "$CERT_TSV" | cut -f2)
+        TUTOR_NUM_CTX=$(printf '%s' "$CERT_TSV" | cut -f3)
         echo -e "${GREEN}Certified tutor: ${TUTOR_MODEL} (base ${CHAT_MODEL})${NC}"
     elif [ "$CERT_RC" -eq 3 ]; then
         echo -e "${RED}$(cd "$SCRIPT_DIR" && python3 scripts/certified_tutor.py --vram-gb "${VRAM_GB:-0}" 2>/dev/null)${NC}" >&2
@@ -318,10 +319,27 @@ else
     fi
 fi
 
-# Export so the API server (and Open WebUI) talk to the snflwr.ai wrapper
-# (built below). BASE_MODEL is preserved for downstream visibility.
+# Export so the API server (and Open WebUI) talk to the wrapper built below.
+# BASE_MODEL is preserved for downstream visibility.
+#
+# The wrapper MUST carry the name the serving plan certifies. This script asked
+# the registry for it above (TUTOR_MODEL, e.g. `snflwr.ai-31b`) and then built
+# and exported a hardcoded `snflwr.ai` anyway -- a name no registry entry
+# matches, so `core/serving_plan.py` returned tier=unsupported tutoring=False
+# and a freshly installed box served no tutoring at all. The one hand-tuned host
+# worked only because its env was set by hand. Fixed 2026-09-23.
+#
+# Only the hardware-detection path consults the registry; an explicit
+# BASE_MODEL/OLLAMA_DEFAULT_MODEL override keeps the legacy `snflwr.ai` name,
+# and the floor will refuse to tutor with it -- which is the documented, stated
+# behaviour of a deliberate override, not a silent failure.
+: "${TUTOR_MODEL:=snflwr.ai}"
 export BASE_MODEL="$CHAT_MODEL"
-export OLLAMA_DEFAULT_MODEL="snflwr.ai"
+export OLLAMA_DEFAULT_MODEL="$TUTOR_MODEL"
+# The registry also pins the context the tutoring run was sealed at. Dropping it
+# left the model's own 8192 default in force while the sealed grade belonged to
+# a different (engine, model, num_ctx) triple.
+[ -n "$TUTOR_NUM_CTX" ] && export INFERENCE_NUM_CTX="$TUTOR_NUM_CTX"
 
 # Pull base model if not already available
 if ! ollama list | awk '{print $1}' | grep -qxF "$CHAT_MODEL"; then
@@ -340,7 +358,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODELFILE_SRC="${SCRIPT_DIR}/models/Snflwr_AI_Kids.modelfile"
 if [ -f "$MODELFILE_SRC" ]; then
-    echo -e "${GREEN}Building 'snflwr.ai' on top of '${CHAT_MODEL}'...${NC}"
+    echo -e "${GREEN}Building '${TUTOR_MODEL}' on top of '${CHAT_MODEL}'...${NC}"
     TMP_MODELFILE="$(mktemp)"
     sed "s|^FROM .*|FROM ${CHAT_MODEL}|" "$MODELFILE_SRC" > "$TMP_MODELFILE"
     # gemma4 ships `PARAMETER num_gpu 0` in its own manifest and FROM inherits
@@ -353,10 +371,10 @@ from resource_detection import recommend_num_gpu
 print(recommend_num_gpu('${CHAT_MODEL}', vram_gb=${_VRAM_GB:-0}))
 " 2>/dev/null)
     [ -n "$_NUM_GPU" ] && printf '\nPARAMETER num_gpu %s\n' "$_NUM_GPU" >> "$TMP_MODELFILE"
-    if ollama create snflwr.ai -f "$TMP_MODELFILE" >/dev/null 2>&1; then
-        echo -e "${GREEN}'snflwr.ai' built successfully.${NC}"
+    if ollama create "$TUTOR_MODEL" -f "$TMP_MODELFILE" >/dev/null 2>&1; then
+        echo -e "${GREEN}'${TUTOR_MODEL}' built successfully.${NC}"
     else
-        echo -e "${YELLOW}WARNING: Failed to build 'snflwr.ai' wrapper.${NC}"
+        echo -e "${YELLOW}WARNING: Failed to build '${TUTOR_MODEL}' wrapper.${NC}"
         echo "Falling back to base model — kids will see '${CHAT_MODEL}' in the dropdown."
         export OLLAMA_DEFAULT_MODEL="$CHAT_MODEL"
     fi

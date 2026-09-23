@@ -253,12 +253,22 @@ jobs:
       # The SARIF is the only evidence the analysis ran, so a missing or
       # unreadable one FAILS rather than passing quietly. The script compares
       # findings against .github/codeql-baseline.json, which records every
-      # accepted finding with the reason it was accepted, and fails on any
-      # drift in either direction.
+      # accepted finding with the reason it was accepted.
+      #
+      # Scope is not cosmetic. On a pull_request codeql-action runs
+      # DIFF-INFORMED -- it builds the whole database but reports only results
+      # inside the changed line ranges ("Persisted 11 diff range(s) across 5
+      # file(s)"). A PR touching none of the flagged files reports ZERO
+      # findings, which against a full-tree baseline reads as "every entry
+      # went stale" and fails every PR. So the stale-baseline half of the
+      # ratchet runs only where the analysis actually looked everywhere.
+      env:
+        GATE_SCOPE: ${{ github.event_name == 'pull_request' && 'diff' || 'full' }}
       run: |
         python scripts/summarize_codeql_sarif.py \
           "${{ github.workspace }}/codeql-results" \
-          .github/codeql-baseline.json
+          .github/codeql-baseline.json \
+          --scope "$GATE_SCOPE"
 
     - name: Upload CodeQL SARIF
       uses: actions/upload-artifact@v4

@@ -22,7 +22,8 @@ So: run the analysis, skip the upload, read the SARIF here, and gate on it.
 Same move already made for Trivy in this workflow, which was hiding a fixable
 CRITICAL until its findings were printed into the job summary.
 
-    python scripts/summarize_codeql_sarif.py <sarif-dir> <baseline.json>
+    python scripts/summarize_codeql_sarif.py <sarif-dir> <baseline.json> \
+        [--scope full|diff]
 
 The gate is a ratchet against a baseline of reviewed findings, because all six
 current findings are false positives that cannot be fixed in code (CodeQL
@@ -32,6 +33,22 @@ change exists to remove; ignoring them would miss the seventh. So the baseline
 records each accepted finding WITH ITS REASON, and any drift from it fails --
 in either direction, because a baseline looser than reality tolerates a
 regression in silence.
+
+SCOPE matters, and getting it wrong makes the gate useless in one direction.
+On a pull_request, codeql-action runs DIFF-INFORMED: it builds the whole
+database but reports only results inside the changed line ranges ("Computing
+PR diff ranges... Persisted 11 diff range(s) across 5 file(s)"). A PR that
+touches none of the flagged files therefore reports ZERO findings, which
+against a full-tree baseline looks like every entry went stale. So:
+
+  --scope diff  (pull_request)  enforce NEW and REGRESSION only
+  --scope full  (push/schedule) enforce those AND the stale-baseline ratchet
+
+The known gap, stated rather than papered over: in diff scope a PR adding a
+THIRD sink to a file the baseline already allows two of reports 1, which is
+under the cap and passes. The full run on main catches it as a regression at
+merge time. Closing it at PR time would mean disabling diff-informed analysis
+and paying a full ~5min analysis on every PR, on billed private-repo minutes.
 
 A MISSING, empty, or unparseable SARIF is a FAILURE, not a pass. The point is
 to prove the analysis ran; a summarizer that shrugs at no input rebuilds the
@@ -210,12 +227,13 @@ def _annotate(findings: list[dict]) -> None:
         )
 
 
-def _report(findings: list[dict], summary: Path | None) -> None:
+def _report(findings: list[dict], summary: Path | None, scope: str) -> None:
     """Write the findings table to stdout and the job summary."""
-    _emit("### CodeQL (security-extended)", summary)
+    where = "full tree" if scope == "full" else "changed lines only (diff-informed)"
+    _emit(f"### CodeQL (security-extended) -- {where}", summary)
     _emit("", summary)
     if not findings:
-        _emit("Analysis ran and the query suite returned no findings.", summary)
+        _emit(f"Analysis ran and returned no findings across the {where}.", summary)
         return
 
     _emit(f"{len(findings)} finding(s):", summary)
@@ -231,7 +249,9 @@ def _report(findings: list[dict], summary: Path | None) -> None:
     _emit("", summary)
 
 
-def _gate(observed: dict, baseline: dict, summary: Path | None) -> list[str]:
+def _gate(
+    observed: dict, baseline: dict, summary: Path | None, scope: str
+) -> list[str]:
     """Compare observed findings to the baseline. Returns failure messages."""
     problems: list[str] = []
 
@@ -248,25 +268,36 @@ def _gate(observed: dict, baseline: dict, summary: Path | None) -> list[str]:
                 f"baseline allows {baseline[key].get('count')}."
             )
 
-    for key, entry in sorted(baseline.items()):
-        rule, where = key
-        expected = int(entry.get("count", 0))
-        actual = observed.get(key, 0)
-        if actual < expected:
-            problems.append(
-                f"STALE BASELINE: {rule} at {where} is now {actual}x but the "
-                f"baseline still allows {expected}x. Tighten it -- a baseline "
-                "looser than reality hides the next regression."
-            )
+    # Only a full-tree run can tell "this finding is gone" from "this run was
+    # never looking there". A diff-informed PR reports nothing outside the
+    # changed lines, so enforcing this there would fail every PR.
+    if scope == "full":
+        for key, entry in sorted(baseline.items()):
+            rule, where = key
+            expected = int(entry.get("count", 0))
+            actual = observed.get(key, 0)
+            if actual < expected:
+                problems.append(
+                    f"STALE BASELINE: {rule} at {where} is now {actual}x but the "
+                    f"baseline still allows {expected}x. Tighten it -- a baseline "
+                    "looser than reality hides the next regression."
+                )
 
     if problems:
         _emit("#### Gate failed", summary)
         for problem in problems:
             _emit(f"- {problem}", summary)
+    elif scope == "full":
+        _emit(
+            f"Gate passed (full tree): every finding is one of the "
+            f"{len(baseline)} reviewed baseline entries, at the recorded count.",
+            summary,
+        )
     else:
         _emit(
-            f"Gate passed: every finding is one of the {len(baseline)} reviewed "
-            "entries in the baseline, at the recorded count.",
+            "Gate passed (diff scope): the changed lines introduce no finding "
+            f"outside the {len(baseline)} reviewed baseline entries. The "
+            "stale-baseline check runs on the full analysis on main.",
             summary,
         )
     return problems
@@ -274,12 +305,24 @@ def _gate(observed: dict, baseline: dict, summary: Path | None) -> list[str]:
 
 def main(argv: list[str]) -> int:
     """Summarize and gate a CodeQL SARIF directory. Returns an exit code."""
-    if len(argv) != 3:
+    scope = "full"
+    args = list(argv[1:])
+    if "--scope" in args:
+        index = args.index("--scope")
+        if index + 1 >= len(args) or args[index + 1] not in ("full", "diff"):
+            print("--scope takes 'full' or 'diff'", file=sys.stderr)
+            return 2
+        scope = args[index + 1]
+        del args[index : index + 2]
+
+    if len(args) != 2:
         print(
-            f"usage: {Path(argv[0]).name} <sarif-dir> <baseline.json>",
+            f"usage: {Path(argv[0]).name} <sarif-dir> <baseline.json> "
+            "[--scope full|diff]",
             file=sys.stderr,
         )
         return 2
+    argv = [argv[0], *args]
 
     env_summary = os.environ.get("GITHUB_STEP_SUMMARY")
     summary = Path(env_summary) if env_summary else None
@@ -300,9 +343,9 @@ def main(argv: list[str]) -> int:
         print("::error::CodeQL baseline is unusable; treating as a failure")
         return 1
 
-    _report(findings, summary)
+    _report(findings, summary, scope)
     _annotate(findings)
-    problems = _gate(_counts(findings), baseline, summary)
+    problems = _gate(_counts(findings), baseline, summary, scope)
 
     if problems:
         for problem in problems:

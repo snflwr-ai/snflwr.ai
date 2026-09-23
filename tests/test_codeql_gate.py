@@ -74,9 +74,11 @@ def _write(tmp_path: Path, results: list[dict], accepted: list[dict]) -> tuple[s
     return str(sarif_dir), str(baseline)
 
 
-def _run(sarif_dir: str, baseline: str) -> int:
+def _run(sarif_dir: str, baseline: str, scope: str = "full") -> int:
     """Invoke the gate the way CI does."""
-    return gate.main(["summarize_codeql_sarif.py", sarif_dir, baseline])
+    return gate.main(
+        ["summarize_codeql_sarif.py", sarif_dir, baseline, "--scope", scope]
+    )
 
 
 def test_findings_matching_the_baseline_pass(tmp_path):
@@ -178,3 +180,47 @@ def test_the_shipped_baseline_is_well_formed():
     assert baseline, "the shipped baseline should not be empty"
     for entry in baseline.values():
         assert len(str(entry["reason"]).strip()) > 40, entry
+
+
+def test_diff_scope_does_not_fail_on_untouched_baseline_findings(tmp_path):
+    """The bug that failed PR #305 on its first run.
+
+    On a pull_request codeql-action is diff-informed: it reports only results
+    inside the changed lines. A PR touching none of the flagged files reports
+    ZERO findings, which against a full-tree baseline looks like every entry
+    went stale. That must not fail the PR.
+    """
+    sarif_dir, baseline = _write(
+        tmp_path,
+        [],
+        [{"rule": RULE, "path": WHERE, "count": 2, "reason": "reviewed"}],
+    )
+    assert _run(sarif_dir, baseline, scope="diff") == 0
+    assert _run(sarif_dir, baseline, scope="full") == 1
+
+
+def test_diff_scope_still_fails_on_a_new_finding(tmp_path):
+    """Narrowing the scope must not disarm the half that catches regressions."""
+    sarif_dir, baseline = _write(tmp_path, [_result(path="core/new_module.py")], [])
+    assert _run(sarif_dir, baseline, scope="diff") == 1
+
+
+def test_an_unknown_scope_is_rejected(tmp_path):
+    """A typo'd scope must not silently pick the lenient one."""
+    sarif_dir, baseline = _write(tmp_path, [], [])
+    assert (
+        gate.main(
+            ["summarize_codeql_sarif.py", sarif_dir, baseline, "--scope", "partial"]
+        )
+        == 2
+    )
+
+
+def test_scope_defaults_to_full(tmp_path):
+    """Omitting --scope must pick the STRICTER gate, never the lenient one."""
+    sarif_dir, baseline = _write(
+        tmp_path,
+        [],
+        [{"rule": RULE, "path": WHERE, "count": 1, "reason": "reviewed"}],
+    )
+    assert gate.main(["summarize_codeql_sarif.py", sarif_dir, baseline]) == 1

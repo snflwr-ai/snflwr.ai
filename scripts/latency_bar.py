@@ -258,7 +258,9 @@ def main() -> int:
         return 0
     print(f"  warm-up {warm_s:.1f}s (discarded)")
 
-    clean, flagged, failures = [], [], []
+    clean: list[float] = []
+    flagged: list[float] = []
+    failures: list[str] = []
     for label, probes, bucket in (
         ("clean", CLEAN_PROBES, clean),
         ("homework", HOMEWORK_PROBES, flagged),

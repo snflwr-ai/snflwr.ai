@@ -69,9 +69,24 @@ _MIN_PLAUSIBLE_S = 0.5
 # Canned strings the proxy serves with HTTP 200. Each is non-empty and would
 # otherwise score as a fast, successful turn -- which is how this check first
 # reported "OK - latency inside every bar" at p50 0.0s.
+#
+# This list was hand-written and DRIFTED from the code: it carried
+# "too many requests", but the rate limiter actually serves _BUSY_MESSAGE
+# ("Lots of learners are asking questions right now"), so a rate-limited reply
+# scored as a real measurement. Found 2026-09-23 when 5 of 6 probe requests came
+# back rate-limited and were counted as passes. _TIMEOUT_MESSAGE was missing too
+# -- a reply that literally says it took too long, scored as a fast turn.
+#
+# Every entry below is a fragment of a NAMED constant in the app, and
+# tests/test_latency_bar_sentinels.py imports those constants and fails if any
+# one of them stops being matched here. Add a canned reply to the app and the
+# test tells you to add it here; it does not drift silently twice.
 _SENTINELS = (
-    "No learning profile is set up yet",
-    "I want you to get this one yourself",
+    "No learning profile is set up yet",  # core.profile_gate.NO_PROFILE_MESSAGE
+    "I want you to get this one yourself",  # guidance_enforcer fallback
+    "Lots of learners are asking questions right now",  # chat._BUSY_MESSAGE
+    "took me too long to work out",  # chat._TIMEOUT_MESSAGE
+    "The tutor is not available on this computer",  # chat._UNSUPPORTED_MESSAGE
     "too many requests",
     "temporarily unavailable",
 )

@@ -144,6 +144,16 @@ jobs:
   docker-security:
     name: Docker Image Security Scan
     runs-on: ubuntu-latest
+    # main and the weekly schedule only. Measured 2026-09-23: 2.0 of 27.4
+    # job-minutes per PR, and it builds the image a SECOND time (ci.yml's
+    # Docker Build Test already builds it, and still runs on PRs, so a
+    # Dockerfile that does not build is still caught at PR time).
+    #
+    # What this scan adds over the PR-time checks is base-OS CVEs, which change
+    # when the base image or the lockfile changes -- not on a typical PR. Python
+    # dependency CVEs are still caught on every PR by dependency-scan (pip-audit
+    # over all five manifests), and newly-published CVEs by the weekly cron.
+    if: github.event_name != 'pull_request'
 
     steps:
     - name: Checkout code

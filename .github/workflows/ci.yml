@@ -113,7 +113,21 @@ jobs:
         # 3.11 was dropped because a break that hits 3.11 but neither 3.10 nor
         # 3.12 is a narrow class, and the middle version cost ~74 job-minutes per
         # 12 runs -- measured 2026-09-18, 20% of all CI time.
-        python-version: ['3.10', '3.12']
+        # PRs run 3.12 ONLY; main and the schedule run both. Measured
+        # 2026-09-23: the two test jobs are 14.2 of 27.4 job-minutes per PR
+        # (52%), and this repo ran out of billed Actions minutes mid-session.
+        #
+        # ⚠️ The tradeoff, stated rather than buried: a break that hits 3.10 and
+        # not 3.12 now reaches main before anything catches it. The push trigger
+        # on main runs BOTH versions, so it is caught at merge and cannot reach
+        # a release -- the exposure is one merge, not forever. 3.10 coverage is
+        # NOT dropped, because it is the floor for the non-Docker install path
+        # (start_snflwr.sh, installer/) that families actually use, and that
+        # path is the only code not exercised by our own 3.12 image.
+        python-version: >-
+          ${{ github.event_name == 'pull_request'
+              && fromJSON('["3.12"]')
+              || fromJSON('["3.10","3.12"]') }}
 
     services:
       postgres:

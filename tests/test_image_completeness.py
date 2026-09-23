@@ -196,6 +196,13 @@ def test_submodules_imported_from_partially_copied_packages_are_shipped():
         "scripts/postdeploy_smoke.py",
         # Seeds the proxy credential and the required disclosure banner.
         "scripts/owui_connect.py",
+        # Run BY postdeploy_smoke.py, not by compose -- so the regex sweep over
+        # the compose files below cannot see it. Shipped 2026-09-22 with the
+        # smoke but WITHOUT this script, and the deploy failed with
+        # "latency_bar.py is missing". Local runs had worked because the file
+        # was docker cp'd in, which is the same shape as the bind-mounted tests
+        # that hid backup_database.py.
+        "scripts/latency_bar.py",
     ],
 )
 def test_scripts_invoked_by_compose_are_in_the_image(script):

@@ -95,6 +95,10 @@ COPY --chown=snflwr:snflwr scripts/run_maintenance.py ./scripts/run_maintenance.
 # tests/test_image_completeness.py.
 COPY --chown=snflwr:snflwr scripts/preflight_db_key.py ./scripts/preflight_db_key.py
 COPY --chown=snflwr:snflwr scripts/postdeploy_smoke.py ./scripts/postdeploy_smoke.py
+# Run BY postdeploy_smoke.py inside the container. Shipping the smoke without
+# its subcheck makes the deploy fail with 'latency_bar.py is missing' -- which
+# is the check behaving correctly, and still a broken image.
+COPY --chown=snflwr:snflwr scripts/latency_bar.py ./scripts/latency_bar.py
 
 # Entrypoint (runs as root, fixes volume ownership, then drops to snflwr)
 COPY docker/entrypoint.sh /usr/local/bin/snflwr-entrypoint.sh

@@ -25,6 +25,13 @@ on:
 permissions:
   contents: read
   security-events: write
+  # Required by github/codeql-action, which calls GET /actions/runs/{run_id}.
+  # An explicit `permissions:` block sets every scope it does NOT list to
+  # `none`, so omitting this made that call fail with "Resource not accessible
+  # by integration" and took the CodeQL job down on every run from 2026-09-18
+  # until 2026-09-22 -- attributed the whole time to Advanced Security, which
+  # the job log never mentioned. Read-only.
+  actions: read
 
 concurrency:
   group: security-${{ github.ref }}
@@ -197,19 +204,29 @@ jobs:
   codeql-analysis:
     name: CodeQL Security Analysis
     runs-on: ubuntu-latest
-    # Non-blocking since 2026-09-18. CodeQL and SARIF upload are free on PUBLIC
-    # repositories; on a private one they need GitHub Advanced Security. This
-    # repo went private, so without a GHAS licence the upload step fails and
-    # every PR carries a red check that says nothing about the code.
-    # continue-on-error keeps the analysis running (so it starts working again
-    # the moment GHAS is enabled) without gating merges on a licensing state.
-    # It is deliberately still in security-summary's needs list: if it ever goes
-    # green again we want the summary to reflect that.
-    continue-on-error: true
+    # Blocking again as of 2026-09-22, and it now reports on the CODE.
+    #
+    # It had carried continue-on-error since going private, which keeps the RUN
+    # green while leaving the JOB red -- so every PR showed a red check that
+    # gated nothing and said nothing. The recorded reason was "the SARIF upload
+    # needs Advanced Security". That was never checked against the log: there is
+    # no upload attempt and no GHAS error in it. The one fatal error is a
+    # GET /actions/runs/{run_id} call refused for want of `actions: read`, fixed
+    # in the permissions block above.
+    #
+    # The upload is skipped anyway (`upload: never`). Code scanning's UI does
+    # need GHAS on a private repo, so instead of depending on an entitlement we
+    # read the SARIF in the job and gate on it -- the same move the Trivy steps
+    # above already make. Findings land in the job summary and as annotations.
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
@@ -221,7 +238,35 @@ jobs:
       uses: github/codeql-action/autobuild@v4
 
     - name: Perform CodeQL Analysis
+      id: codeql
       uses: github/codeql-action/analyze@v4
+      with:
+        # Absolute, so nothing depends on how a relative path is resolved or on
+        # the action's sarif-output being populated when the upload is skipped.
+        output: ${{ github.workspace }}/codeql-results
+        # 'never' keeps the SARIF local. upload-database hits the same gated
+        # API and nothing here consumes the database.
+        upload: never
+        upload-database: false
+
+    - name: Gate on CodeQL findings
+      # The SARIF is the only evidence the analysis ran, so a missing or
+      # unreadable one FAILS rather than passing quietly. The script compares
+      # findings against .github/codeql-baseline.json, which records every
+      # accepted finding with the reason it was accepted, and fails on any
+      # drift in either direction.
+      run: |
+        python scripts/summarize_codeql_sarif.py \
+          "${{ github.workspace }}/codeql-results" \
+          .github/codeql-baseline.json
+
+    - name: Upload CodeQL SARIF
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: codeql-sarif
+        path: ${{ github.workspace }}/codeql-results
+        if-no-files-found: warn
 
   security-summary:
     name: Security Scan Summary
@@ -242,13 +287,10 @@ jobs:
         echo "| Docker Security | ${{ needs.docker-security.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| CodeQL Analysis | ${{ needs.codeql-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
 
-    # codeql-analysis is deliberately NOT in this gate. It carries
-    # continue-on-error (see the job), which already reports success, but
-    # relying on that subtlety to keep a merge unblocked is the kind of thing
-    # that breaks silently when someone removes the flag. Stated outright
-    # instead: CodeQL needs GitHub Advanced Security on a private repo, and
-    # a licensing state must not fail a code review. Put it back the day GHAS
-    # is enabled.
+    # codeql-analysis is back in this gate as of 2026-09-22. It was excluded
+    # while its failure meant "this repo has no Advanced Security licence",
+    # which must not fail a code review. It now means "CodeQL found something
+    # that is not in the reviewed baseline", which must.
     # (This comment must stay OUTSIDE the `if: >-` block: inside a folded
     # scalar a `#` line is expression text, not a comment, and GitHub rejects
     # the whole workflow -- which is exactly what happened on 2026-09-18.)
@@ -257,7 +299,8 @@ jobs:
         needs.dependency-scan.result == 'failure' ||
         needs.code-security-scan.result == 'failure' ||
         needs.secret-scan.result == 'failure' ||
-        needs.docker-security.result == 'failure'
+        needs.docker-security.result == 'failure' ||
+        needs.codeql-analysis.result == 'failure'
       run: |
         echo "::error::One or more security scans failed. See summary above."
         exit 1

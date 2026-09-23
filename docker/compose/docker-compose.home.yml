@@ -67,6 +67,11 @@ services:
       # a revealed answer. Runs the confirm on every homework turn; fail-open.
       - GUIDANCE_ENFORCEMENT_ENABLED=${GUIDANCE_ENFORCEMENT_ENABLED:-false}
       - GUIDANCE_GATE_MODEL=${GUIDANCE_GATE_MODEL:-}
+      # Identity the latency bar uses to reach the tutor as a real student.
+      # The proxy fails CLOSED without a learning profile, so an unset value
+      # makes scripts/latency_bar.py report UNMEASURED instead of timing the
+      # no-profile refusal -- which it once scored as a passing 0.0s turn.
+      - SNFLWR_CANARY_OWUI_USER_ID=${SNFLWR_CANARY_OWUI_USER_ID:-}
       # Content-safety classifier. CPU-pinned by default: same weights as the
       # GPU build (identical blob digest, only num_gpu differs) and measured at
       # 1.9s vs 1.8s, but immune to being evicted by the tutor or IronClaw's

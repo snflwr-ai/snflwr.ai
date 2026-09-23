@@ -46,6 +46,7 @@ better; never loosen them to make a run pass.
 
 from __future__ import annotations
 
+import os
 import statistics
 import sys
 import time
@@ -146,6 +147,15 @@ def _turn(prompt: str, model: str) -> tuple[float, bool]:
 
     key = os.environ.get("INTERNAL_API_KEY", "")
     target = os.environ.get("SNFLWR_PROXY_URL", "http://snflwr-api:39150")
+    # Identify as a real student. The proxy resolves a child profile from the
+    # OWUI identity header and fails CLOSED without one -- it answered this
+    # check with "No learning profile is set up yet", HTTP 200, 0.0s, and the
+    # bar scored that canned string as a successful fast turn.
+    #
+    # The id comes from the environment, never from the repo: it keys a child
+    # profile, and a production canary's identifier does not belong in source.
+    # Unset -> main() reports UNMEASURED rather than timing the refusal.
+    canary = os.environ.get("SNFLWR_CANARY_OWUI_USER_ID", "")
     body = _json.dumps(
         {
             "model": model,
@@ -159,6 +169,9 @@ def _turn(prompt: str, model: str) -> tuple[float, bool]:
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {key}",
+            # Sent only when configured; the proxy treats a missing header as
+            # "no profile" and blocks, which main() surfaces as UNMEASURED.
+            **({"X-OpenWebUI-User-Id": canary} if canary else {}),
         },
     )
     started = time.time()
@@ -203,6 +216,19 @@ def main() -> int:
     # diagnosis. UNMEASURED is for "I know the model and could not get it
     # resident", which is a real and tolerable condition. Not knowing the
     # model is a broken check.
+    if not os.environ.get("SNFLWR_CANARY_OWUI_USER_ID", "").strip():
+        # UNMEASURED, not FAIL: an unconfigured canary is an ops gap, not a
+        # latency regression. But it must not silently "pass" either -- without
+        # a profile every probe gets the canned no-profile string in ~0.0s,
+        # which is exactly the false green this check produced before.
+        print(
+            "  [UNMEASURED] SNFLWR_CANARY_OWUI_USER_ID is not set, so every "
+            "probe would be answered by the no-profile block rather than the "
+            "tutor. Set it to the canary student's OWUI user id "
+            "(~/snflwr-artefacts/prod-canary/) and re-run."
+        )
+        return 0
+
     if not (model or "").strip():
         print(
             "  [FAIL] OLLAMA_DEFAULT_MODEL is empty -- this check does not know "

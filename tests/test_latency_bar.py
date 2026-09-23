@@ -250,3 +250,52 @@ def test_it_times_the_PATH_A_CHILD_TAKES_not_the_raw_model():
         "calling ollama directly bypasses the gate, confirm and rewrite ladder"
     )
     assert "Authorization" in code, "the proxy rejects unauthenticated callers"
+
+
+class TestItCannotPassWithoutAChildPROFILE:
+    """The false green this check actually produced.
+
+    The proxy fails CLOSED without a learning profile. Pointed at it, the bar got
+    HTTP 200, a non-empty body and 0.0s -- the canned "No learning profile is set
+    up yet" string -- scored it a successful fast turn, and printed
+    "OK - latency inside every bar" at p50 0.0s.
+
+    Two independent guards now: identify as the canary student so a real profile
+    resolves, and refuse to report a verdict at all when that identity is
+    missing.
+    """
+
+    def test_it_sends_the_student_identity_header(self):
+        src = inspect.getsource(lb._turn)
+        assert "X-OpenWebUI-User-Id" in src, (
+            "without the OWUI identity header the proxy answers every probe with "
+            "the no-profile block, which this check once timed as a fast turn"
+        )
+
+    def test_an_unset_canary_reports_UNMEASURED_not_a_pass(self):
+        src = inspect.getsource(lb.main)
+        assert "SNFLWR_CANARY_OWUI_USER_ID" in src
+        i = src.index("SNFLWR_CANARY_OWUI_USER_ID")
+        block = src[i : i + 900]
+        assert "UNMEASURED" in block, (
+            "an unconfigured canary must not read as a latency verdict"
+        )
+
+    def test_the_canary_id_is_not_hardcoded(self):
+        """It keys a child profile. A production canary's identifier does not
+        belong in source, and a hardcoded one would also rot silently."""
+        src = pathlib.Path(
+            pathlib.Path(__file__).resolve().parent.parent
+            / "scripts"
+            / "latency_bar.py"
+        ).read_text()
+        assert "os.environ.get(\"SNFLWR_CANARY_OWUI_USER_ID\"" in src
+        # a bare uuid literal would be the hardcoding this forbids
+        assert not re.search(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", src
+        ), "a profile identifier is hardcoded in the script"
+
+    def test_the_SENTINELS_still_catch_the_no_profile_string(self):
+        """Belt and braces: even correctly configured, a profile that lapses must
+        not silently score as a fast turn."""
+        assert any("No learning profile" in s for s in lb._SENTINELS)

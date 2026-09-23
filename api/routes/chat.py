@@ -21,6 +21,8 @@ from api.middleware.auth import VerifySessionAccess, audit_log, get_current_sess
 from core import gpu_placement
 from core.authentication import AuthSession, auth_manager
 from core.coppa_gate import coppa_consent_block_reason
+from core.inference import client as inference_client
+from core.inference.base import EngineOverloaded
 from core.profile_manager import ProfileManager
 from core.serving_plan import CERTIFIED_BACKBONES
 from core.session_manager import SessionError, SessionLimitError, session_manager
@@ -43,6 +45,7 @@ from utils.rate_limiter import rate_limiter
 logger = get_logger(__name__)
 
 router = APIRouter()
+
 
 # Models whose Modelfile bakes in the tutor SYSTEM prompt. Injecting a
 # {"role":"system"} message for one of these REPLACES that prompt in Ollama's
@@ -516,19 +519,53 @@ async def send_chat_message(
             user_content = request.message
 
         messages.append({"role": "user", "content": user_content})
-        success, response_text, metadata = ollama_client.chat(
-            model=model_name,
-            messages=messages,
-            options=gpu_placement.apply_to_options(
-                {
-                    "temperature": 0.7,
-                    "num_predict": _resources.num_predict,
-                    "num_ctx": _resources.num_ctx,
-                },
-                model_name,
-            ),
-            think=False,
-        )
+
+        # Take a real admission slot for this turn.
+        #
+        # core/inference/admission.py enforces `slots=N` for the BOX (a shared
+        # SQLite reservation behind the per-process semaphore), and the child
+        # path holds one via Depends(admission.inference_slot). This route did
+        # not, so a turn here was invisible to that count: it competed for the
+        # one card the tutor fits on without being admitted, which is exactly
+        # the over-admission the slot table exists to prevent. Measured
+        # 2026-09-17: at 20 concurrent turns on one card, 40 of 60 replies
+        # became the canned fallback purely from queueing.
+        #
+        # Taken INSIDE the handler rather than as a route dependency on purpose:
+        # as a dependency, EngineOverloaded becomes InferenceBusy and the app
+        # handler answers with an OLLAMA-shaped body, which is not this route's
+        # ChatResponse contract. Here it converts to a proper ChatResponse.
+        try:
+            async with inference_client.get_client().turn():
+                success, response_text, metadata = ollama_client.chat(
+                    model=model_name,
+                    messages=messages,
+                    options=gpu_placement.apply_to_options(
+                        {
+                            "temperature": 0.7,
+                            "num_predict": _resources.num_predict,
+                            "num_ctx": _resources.num_ctx,
+                        },
+                        model_name,
+                    ),
+                    think=False,
+                )
+        except EngineOverloaded:
+            logger.warning("chat/send rejected before it started: no capacity")
+            # Imported here, not re-typed: a second copy of this string is
+            # how the latency bar's sentinel list drifted and scored
+            # rate-limited replies as real measurements (#306). Local
+            # import avoids a module cycle with the proxy's chat module.
+            from api.routes.ollama_proxy.chat import _BUSY_MESSAGE
+
+            return ChatResponse(
+                message=_BUSY_MESSAGE,
+                blocked=False,
+                safety_metadata={"admission": "rejected_no_capacity"},
+                model=model_name,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                session_id=session.session_id,
+            )
 
         if not success:
             err_msg = (

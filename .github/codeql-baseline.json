@@ -1,0 +1,37 @@
+{
+  "_what": "Reviewed CodeQL findings. scripts/summarize_codeql_sarif.py fails the job on ANY drift from this file, in either direction.",
+  "_how_to_change": "Never add an entry to make CI green. Read the finding, decide whether the code is wrong, and only then record it here with the reason you decided it is not. Removing an entry when a finding disappears is required, not optional -- a baseline looser than reality hides the next regression.",
+  "_reviewed": "2026-09-22, against CodeQL bundle 2.27.1, suite codeql/python-queries:codeql-suites/python-security-extended.qls",
+  "accepted": [
+    {
+      "rule": "py/clear-text-logging-sensitive-data",
+      "path": "scripts/bootstrap_admin.py",
+      "count": 1,
+      "reason": "False positive: taint through len()/bool(). The password never reaches the log. bootstrap_admin.py:89 _get_password_traits() deliberately reduces the password to (length, has_upper, has_lower, has_digit, has_special) -- its docstring says 'breaking the taint chain' -- and validate_password_strength() takes only those ints/bools and returns FIXED STRING LITERALS. CodeQL still propagates taint through len() and re.search(), so the derived booleans read as sensitive. Not fixable in code without deleting the check."
+    },
+    {
+      "rule": "py/clear-text-logging-sensitive-data",
+      "path": "scripts/validate_env.py",
+      "count": 2,
+      "reason": "False positive, same taint-through-len() shape, and the file is hardened against exactly this: validate_jwt_secret() reads JWT_SECRET_KEY straight from os.environ ('to avoid taint propagation through config object'), derives only _jwt_len and an == comparison, then `del _jwt_raw`. Every appended issue string is a fixed literal, so no secret value can reach print_error() or the summary loop. Two sinks (the print_error helper and the end-of-run summary) report the same one source."
+    },
+    {
+      "rule": "py/weak-sensitive-data-hashing",
+      "path": "core/auth_password.py",
+      "count": 1,
+      "reason": "False positive: SHA-256 here hashes a password-RESET TOKEN for database lookup, not a password. The token is a high-entropy random value, so a computationally expensive KDF buys nothing against brute force. Real user passwords in this file go through argon2 (auth_password.py:72/86/168). Verified: the only sha256 call in the codebase touching anything password-adjacent is this token hash."
+    },
+    {
+      "rule": "py/weak-sensitive-data-hashing",
+      "path": "core/authentication.py",
+      "count": 1,
+      "reason": "False positive: hash_session_token() hashes a high-entropy SESSION token for storage, and says so in its docstring. Only the hash is persisted; the raw token goes to the client. Real passwords use argon2, with an explicit PBKDF2 fallback for environments without it (authentication.py:17-39)."
+    },
+    {
+      "rule": "py/weak-sensitive-data-hashing",
+      "path": "core/email_crypto.py",
+      "count": 1,
+      "reason": "False positive as flagged (it is not a password): hash_email() is a deterministic blind index so an encrypted email column stays searchable. CodeQL's heuristic classifies the email as 'password'. NOTE, not a defect but worth knowing: a plain SHA-256 blind index over a low-entropy space is enumerable, so this resists database theft but not a guessing attack on a known address. Revisit as a keyed HMAC if email confidentiality is ever load-bearing."
+    }
+  ]
+}

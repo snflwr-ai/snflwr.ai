@@ -87,3 +87,6 @@ judge_rerun_report.json
 # Legal documents are kept LOCAL ONLY (DRAFT / not in effect / pre-counsel-review).
 # The whole legal/ tree stays out of the public repo until finalized.
 legal/
+
+# CodeQL SARIF output (written by security-scan.yml / local codeql runs)
+codeql-results/

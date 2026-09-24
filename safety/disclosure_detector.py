@@ -121,13 +121,26 @@ _PRIVATE_ASK = re.compile(
     r"\b(?:"
     r"(?:wants?|asked|asking|telling) (?:me )?to (?:meet|video ?call|come over|show|send)"
     r"|shouldn'?t tell (?:my |anyone|my mom|my dad|my parents)"
-    r"|keep (?:it|this) (?:a )?secret"
+    # ⚠️ "keep A secret" was NOT matched until 2026-09-24 -- the pattern required
+    # "it" or "this". "a man online asked me to keep a secret from my parents"
+    # is the most natural way a child reports this, and it escalated NOTHING.
+    r"|keep (?:it|this|that|a|our|the) (?:a )?secret"
+    r"|(?:our|a|this) (?:little )?secret"
+    r"|don'?t tell (?:my |your )?(?:mom|dad|parents|anyone|mum)"
+    r"|not to tell (?:my |your |his |her )?(?:mom|dad|parents|anyone|mum|teacher)"
     r"|(?:said|says) (?:he|she|they) (?:loves?|likes?) me"
     r"|only talk to (?:him|her|them)"
     r"|stop talking to (?:my )?friends"
     r"|(?:pay|paid|pays|send) me (?:money|a gift ?card|if|to|for)"
     r"|(?:meet|meeting)\b[^.?!]{0,20}\b(?:hotel|motel|alone|in person)"
-    r"|send (?:me |them |him |her )?(?:a |some )?(?:photo|pic|picture|video|selfie)"
+    # ⚠️ ADJACENCY. This required the noun immediately after the pronoun, so ANY
+    # adjective defeated it: "send him EXPLICIT pictures" did not match while
+    # "send him pictures" did. Allow up to two words between, and cover the
+    # nouns a child actually uses (pictures, snaps, nudes, messages, texts).
+    r"|send (?:me |them |him |her |you )?(?:\w+ ){0,2}"
+    r"(?:photos?|pics?|pictures?|videos?|selfies?|snaps?|nudes?|images?)"
+    r"|(?:sending|sends|sent) (?:me |him |her |them )?(?:\w+ ){0,2}"
+    r"(?:photos?|pics?|pictures?|videos?|selfies?|snaps?|nudes?|images?|messages?|texts?)"
     r"|show (?:them|him|her|me) (?:my|your) (?:room|house|body)"
     r"|asking (?:me )?(?:about|for) my (?:school|address|room)"
     r"|gift ?card"

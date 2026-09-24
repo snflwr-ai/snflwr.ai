@@ -95,34 +95,70 @@ def _slot_db_path() -> Optional[str]:
 class _SharedSlots:
     """Box-wide slot reservations in SQLite. Every method fails open."""
 
+    # Several workers start at the same instant and all open the file at once.
+    # Switching a fresh file to WAL takes an exclusive lock, and SQLite can
+    # answer "database is locked" at once rather than waiting for its busy
+    # timeout. The init used to try ONCE and then disable the box-wide table
+    # for the life of the process, so on an 8-worker box "slots=1" silently
+    # became up to 8. Caught on CI 2026-09-24 as two OVERLAPPING admitted holds
+    # after exactly that warning. So: retry with backoff at init, and if it
+    # still fails, keep retrying lazily instead of giving up.
+    _INIT_ATTEMPTS = 8
+    _RETRY_EVERY_S = 5.0
+
     def __init__(self, path: Optional[str]):
         self._path = path
         self._ready = False
+        self._next_retry = 0.0
         if path:
-            try:
-                self._connect().close()
-                self._ready = True
-            except Exception as exc:  # noqa: BLE001 - see FAIL-OPEN above
+            for attempt in range(self._INIT_ATTEMPTS):
+                if self._try_init():
+                    break
+                time.sleep(min(0.05 * (2**attempt), 0.5))
+            if not self._ready:
                 logger.warning(
-                    "inference admission: shared slot table unavailable (%s); "
-                    "capacity will be enforced per process only",
-                    exc,
+                    "inference admission: shared slot table unavailable after "
+                    "%d attempts; capacity is per process until a retry succeeds "
+                    "(retrying every %.0fs)",
+                    self._INIT_ATTEMPTS,
+                    self._RETRY_EVERY_S,
                 )
+
+    def _try_init(self) -> bool:
+        """Create the table and put the file in WAL mode (persists in the file)."""
+        try:
+            con = sqlite3.connect(self._path, timeout=5.0, isolation_level=None)
+            try:
+                con.execute("PRAGMA busy_timeout=5000")
+                con.execute("PRAGMA journal_mode=WAL")
+                con.execute(
+                    "CREATE TABLE IF NOT EXISTS inflight ("
+                    "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    "  pid INTEGER NOT NULL,"
+                    "  acquired_at REAL NOT NULL)"
+                )
+            finally:
+                con.close()
+            self._ready = True
+        except Exception as exc:  # noqa: BLE001 - see FAIL-OPEN above
+            logger.debug("inference admission: slot table init attempt failed: %s", exc)
+            self._next_retry = time.time() + self._RETRY_EVERY_S
+        return self._ready
 
     @property
     def enabled(self) -> bool:
+        if not self._ready and self._path and time.time() >= self._next_retry:
+            if self._try_init():
+                logger.warning("inference admission: box-wide slot table recovered")
         return self._ready
 
     def _connect(self):
+        # WAL mode is set once at init and persists in the file. Re-issuing the
+        # PRAGMA here on every reserve could raise "locked" under contention,
+        # and reserve() fails OPEN on an exception, which is over-admission by
+        # another route.
         con = sqlite3.connect(self._path, timeout=5.0, isolation_level=None)
-        con.execute("PRAGMA journal_mode=WAL")
         con.execute("PRAGMA busy_timeout=5000")
-        con.execute(
-            "CREATE TABLE IF NOT EXISTS inflight ("
-            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "  pid INTEGER NOT NULL,"
-            "  acquired_at REAL NOT NULL)"
-        )
         return con
 
     def reserve(self, max_concurrent: int) -> Optional[int]:

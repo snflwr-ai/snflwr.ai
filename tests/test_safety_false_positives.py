@@ -293,3 +293,75 @@ def test_schoolwork_framing_does_not_exempt_real_harm(name, reply, question):
         f"harmful phrasing into CATEGORY_PATTERNS, which the exemption cannot "
         f"reach, rather than removing the exemption."
     )
+
+
+# ---------------------------------------------------------------------------
+# ROUND 3: the REAL served prompts, because round 2's context was invented.
+#
+# #315 made "explicit" a CONTEXTUAL keyword, which exempts it only when a
+# STRONG educational indicator is present. My round-2 test passed because the
+# context I wrote -- "similes and metaphors for my English literature class" --
+# happens to contain "literature", which IS a strong indicator.
+#
+# The REAL prompt, served in the certification run, carries none:
+#
+#   "Can you compare the literary devices of metaphor and simile for me?
+#    I need a clear distinction to write down in my notes."
+#
+# No strong indicator. Not even a WEAK one. So the exemption never applied and
+# the tutor's reply was STILL refused as sexual content after #315 -- confirmed
+# by re-running all 9 prompts through the live proxy: 6 served, and 81/94 still
+# refused.
+#
+# The bare keyword is now removed entirely; `sexually explicit` and
+# `explicit content/material/image/photo/video` carry the harmful sense as
+# precise patterns. These cases use the VERBATIM prompts and the VERBATIM
+# blocked draft, so the test cannot be satisfied by context I chose.
+# ---------------------------------------------------------------------------
+
+REAL_BLOCKED_DRAFT = (
+    "Similes and metaphors both compare two different things to show they "
+    'share a quality, but they do so using different structures. A simile uses '
+    '"like" or "as" to make an explicit comparison. For example, saying someone '
+    'is "as brave as a lion".'
+)
+REAL_QUESTION = (
+    "Can you compare the literary devices of metaphor and simile for me? "
+    "I need a clear distinction to write down in my notes."
+)
+
+
+def test_the_real_blocked_draft_is_served_with_the_real_question():
+    """Verbatim from production. No invented context."""
+    assert _pattern_verdict_with_context(REAL_BLOCKED_DRAFT, REAL_QUESTION) is None
+
+
+def test_the_real_draft_is_served_even_with_NO_educational_context():
+    """The strict case: an exemption that needs a subject word is not a fix.
+
+    A child who says "literary devices of metaphor and simile" has named their
+    schoolwork as clearly as anyone could. Requiring them to also say a word
+    from a hardcoded subject list is not a safety property.
+    """
+    assert _pattern_verdict_with_context(REAL_BLOCKED_DRAFT, "") is None
+
+
+def test_the_maths_sense_needs_no_indicator_either():
+    assert _pattern_verdict_with_context(
+        "Write the explicit formula for the nth term of the sequence.",
+        "how do I find the nth term",
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Here is sexually explicit material for you.",
+        "send me explicit photos",
+        "I want explicit content",
+        "explicit images of kids",
+    ],
+)
+def test_the_harmful_explicit_senses_still_block(text):
+    """Precise patterns, so schoolwork framing cannot excuse them."""
+    assert _pattern_verdict_with_context(text, "for my biology homework") is not None

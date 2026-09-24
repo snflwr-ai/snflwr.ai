@@ -947,10 +947,22 @@ async def proxy_chat(
                             recheck_exc,
                         )
                         _revet = "discarded"
-                pedagogy_trace: Dict[str, Any] = {"action": meta.action}
+                pedagogy_trace: Dict[str, Any] = {
+                    "action": meta.action,
+                    "attempts": meta.attempts,
+                }
                 if _revet is not None:
                     pedagogy_trace["revet"] = _revet
                 _trace["pedagogy"] = pedagogy_trace
+                # Content-free: lets a measurement tell a DRAFT that withheld from
+                # a served reply the rewrite ladder produced. Set R could not
+                # (2026-09-24) because action/attempts were never recorded.
+                logger.info(
+                    "pedagogy: action=%s attempts=%d revet=%s",
+                    meta.action,
+                    meta.attempts,
+                    _revet,
+                )
             except Exception as exc:  # fail-open: never let pedagogy break a turn
                 logger.warning("guidance enforcer errored (fail-open): %s", exc)
 

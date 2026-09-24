@@ -162,8 +162,9 @@ class TestSqlitePath:
                 "api_configs": {"0": {"enable": True, "key": key}},
             },
         }
-        # "Already correct" now also requires the disclosure banner to be present.
-        owui_connect._apply_disclosure_banner(existing)
+        # "Already correct" requires the disclosure banner AND background task
+        # generation off (title/tags/follow-ups; owner decision 2026-09-24).
+        owui_connect._apply_ui_settings(existing)
         db_path = _make_sqlite_db(tmp_path, initial_data=existing)
         monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
         monkeypatch.delenv("DATABASE_URL", raising=False)
@@ -309,8 +310,9 @@ class TestPostgresPath:
                 "api_configs": {"0": {"enable": True, "key": key}},
             },
         }
-        # "Already correct" now also requires the disclosure banner to be present.
-        owui_connect._apply_disclosure_banner(existing)
+        # "Already correct" requires the disclosure banner AND background task
+        # generation off (title/tags/follow-ups; owner decision 2026-09-24).
+        owui_connect._apply_ui_settings(existing)
         initial_row = (7, json.dumps(existing))
 
         rc, mock_cur = self._run_with_pg_mock(
@@ -528,3 +530,49 @@ class TestKeyValueSchema:
         before = _kv(db_path)
         assert owui_connect.main() == 2
         assert _kv(db_path) == before
+
+
+class TestBackgroundTasksOff:
+    """OWUI title/tags/follow-up generation ran as full tutor turns under the
+    child's identity and took the single inference slot after every reply, so a
+    quick reply got "busy" (2026-09-24). Owner decision: all three off."""
+
+    @pytest.fixture(autouse=True)
+    def _env(self, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("SNFLWR_PROXY_URL", raising=False)
+        monkeypatch.setenv("INTERNAL_API_KEY", "k")
+
+    def test_kv_schema_turns_the_three_tasks_off(
+        self, owui_connect, tmp_path, monkeypatch
+    ):
+        db_path = _make_kv_db(
+            tmp_path,
+            {
+                "task.title.enable": True,
+                "task.tags.enable": True,
+                "task.follow_up.enable": True,
+                "task.autocomplete.enable": False,
+            },
+        )
+        monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
+        assert owui_connect.main() == 0
+        kv = _kv(db_path)
+        assert kv["task.title.enable"] is False
+        assert kv["task.tags.enable"] is False
+        assert kv["task.follow_up.enable"] is False
+        assert kv["task.autocomplete.enable"] is False  # unmanaged, untouched
+
+    def test_banner_present_but_tasks_on_is_not_already_ok(
+        self, owui_connect, tmp_path, monkeypatch
+    ):
+        db_path = _make_kv_db(tmp_path)
+        monkeypatch.setattr(owui_connect, "DB_PATH", str(db_path))
+        assert owui_connect.main() == 0  # seeds everything
+        con = sqlite3.connect(str(db_path))
+        con.execute("UPDATE config SET value = 'true' WHERE key = 'task.title.enable'")
+        con.commit()
+        con.close()
+        assert owui_connect.main() == 0  # re-applies, does not report "already ok"
+        assert _kv(db_path)["task.title.enable"] is False
+        assert owui_connect.main() == 2  # now genuinely already ok

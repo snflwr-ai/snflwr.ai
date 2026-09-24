@@ -137,6 +137,39 @@ def _apply_disclosure_banner(config: dict) -> dict:
     return config
 
 
+# Open WebUI's background "tasks" (chat title, tags, follow-up suggestions) run
+# on the chat model. With no separate task model they go through the snflwr
+# proxy as full tutor turns under the CHILD's identity and take the box's single
+# inference slot right after every reply, so a child who answers quickly gets
+# "busy" (3 of 4 canary runs, 2026-09-24). They also call the break reminder,
+# so the SB 243 reminder could land on a hidden title request. Follow-up
+# suggestions are model-written prompts put in the child's mouth, which cuts
+# against the tutor's pedagogy. Owner decision 2026-09-24: all three off.
+_TASKS_OFF = ("title", "tags", "follow_up")
+
+
+def _tasks_off(config: dict) -> bool:
+    task = config.get("task") or {}
+    return all((task.get(name) or {}).get("enable") is False for name in _TASKS_OFF)
+
+
+def _apply_tasks_off(config: dict) -> dict:
+    task = config.get("task") or {}
+    for name in _TASKS_OFF:
+        task[name] = {**(task.get(name) or {}), "enable": False}
+    config["task"] = task
+    return config
+
+
+def _ui_settings_ok(config: dict) -> bool:
+    """Banner seeded AND background task generation off."""
+    return _banner_present(config) and _tasks_off(config)
+
+
+def _apply_ui_settings(config: dict) -> dict:
+    return _apply_tasks_off(_apply_disclosure_banner(config))
+
+
 # Open WebUI 0.10 replaced the single JSON-blob ``config`` row (id, data, version)
 # with one row per setting: (key, value JSON, updated_at). Only the settings this
 # script manages are read and written, so every other setting is left untouched.
@@ -144,7 +177,15 @@ def _apply_disclosure_banner(config: dict) -> dict:
 # ("config table never appeared"), the guarded upgrader swallowed that, and a key
 # rotation left Open WebUI sending the OLD key -- every chat 401'd while the
 # upgrader's smoke test (which authenticates with the API's own key) passed.
-_KV_KEYS = ("ollama.enable", "ollama.base_urls", "ollama.api_configs", "ui.banners")
+_KV_KEYS = (
+    "ollama.enable",
+    "ollama.base_urls",
+    "ollama.api_configs",
+    "ui.banners",
+    "task.title.enable",
+    "task.tags.enable",
+    "task.follow_up.enable",
+)
 
 
 def _kv_rows_to_config(rows) -> dict:
@@ -178,12 +219,12 @@ def _seed_kv(cur, placeholder: str, key: str, proxy_url: str) -> int:
     in_list = ", ".join([p] * len(_KV_KEYS))
     cur.execute(f'SELECT "key", value FROM config WHERE "key" IN ({in_list})', _KV_KEYS)
     config = _kv_rows_to_config(cur.fetchall())
-    if _already_ok(config.get("ollama") or {}, key, proxy_url) and _banner_present(
+    if _already_ok(config.get("ollama") or {}, key, proxy_url) and _ui_settings_ok(
         config
     ):
         print("Open WebUI already connected to proxy; disclosure banner present.")
         return 2
-    config = _apply_disclosure_banner(_apply_ollama(config, key, proxy_url))
+    config = _apply_ui_settings(_apply_ollama(config, key, proxy_url))
     now = int(time.time())
     for dotted, value in _config_to_kv(config):
         cur.execute(
@@ -239,14 +280,14 @@ def _sqlite_path(key: str, proxy_url: str) -> int:
         # to code defaults for absent keys (config.py get_config_value).
         config_id, config = None, {"version": 0, "ui": {}}
 
-    if _already_ok(config.get("ollama") or {}, key, proxy_url) and _banner_present(
+    if _already_ok(config.get("ollama") or {}, key, proxy_url) and _ui_settings_ok(
         config
     ):
         print("Open WebUI already connected to proxy; disclosure banner present.")
         return 2
 
     config = _apply_ollama(config, key, proxy_url)
-    config = _apply_disclosure_banner(config)
+    config = _apply_ui_settings(config)
 
     if config_id is None:
         cur.execute(
@@ -310,14 +351,14 @@ def _postgres_path(database_url: str, key: str, proxy_url: str) -> int:
     else:
         config_id, config = None, {"version": 0, "ui": {}}
 
-    if _already_ok(config.get("ollama") or {}, key, proxy_url) and _banner_present(
+    if _already_ok(config.get("ollama") or {}, key, proxy_url) and _ui_settings_ok(
         config
     ):
         print("Open WebUI already connected to proxy; disclosure banner present.")
         return 2
 
     config = _apply_ollama(config, key, proxy_url)
-    config = _apply_disclosure_banner(config)
+    config = _apply_ui_settings(config)
     data_json = json.dumps(config)
 
     if config_id is None:

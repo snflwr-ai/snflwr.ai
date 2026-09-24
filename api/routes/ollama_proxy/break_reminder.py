@@ -108,7 +108,11 @@ class BreakReminder:
                 return shared
         except Exception:  # pragma: no cover - import guard
             pass
-        return None
+        # No Redis: the SQLite file every worker shares, so the three-hour clock
+        # is per CHILD, not per worker process.
+        from utils import shared_state
+
+        return shared_state.get_shared_state()
 
     def _load(self, profile_id: str) -> Optional[Dict[str, float]]:
         backend = self._shared()

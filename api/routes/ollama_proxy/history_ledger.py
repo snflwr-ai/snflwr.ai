@@ -106,10 +106,12 @@ def message_hash(message: Dict[str, Any]) -> str:
 class HistoryLedger:
     """Remembers which messages this proxy served, per child, for a TTL window.
 
-    Backed by Redis when available (so the window is shared across workers) and
-    by an in-process dict otherwise. The in-process fallback is per-worker: a
-    multi-worker deployment without Redis will occasionally drop history that
-    another worker served. That degrades context, never safety.
+    Backed by Redis when available, otherwise by the SQLite file every worker
+    shares (``utils/shared_state.py``); both keep the window box-wide. The
+    in-process dict is the last resort, used only when neither is available.
+    It is per-worker, and "occasionally" was wrong: with 8 workers and no Redis
+    it dropped 7 follow-up turns in 8 (found 2026-09-24). That degrades context,
+    never safety.
     """
 
     def __init__(self, ttl_seconds: Optional[int] = None, cache: Any = None):
@@ -134,7 +136,12 @@ class HistoryLedger:
                 return shared
         except Exception:  # pragma: no cover - import guard
             pass
-        return None
+        # No Redis: use the SQLite file every worker shares. A per-process dict
+        # here made history vanish whenever a turn landed on another worker
+        # (8 workers on the home deploy -> 7 turns in 8; found 2026-09-24).
+        from utils import shared_state
+
+        return shared_state.get_shared_state()
 
     def _key(self, profile_id: str, digest: str) -> str:
         return f"{profile_id}:{digest}"

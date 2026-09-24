@@ -224,3 +224,113 @@ def test_widening_did_not_start_escalating_schoolwork(name, text):
         f"{name}: ordinary schoolwork escalated as {d.kind!r} ({d.matched!r}). "
         f"Text: {text!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# ⭐ PEER REVIEW ROUND 2 — the exemption list was inverted on its most important
+# case, and my own adversarial sweep had not found it.
+#
+# I asked a peer session to attack `_FAMILIAR_MEETING` specifically, on the
+# grounds that an exemption list on a child-safety path is a hole by
+# construction and I am the wrong person to audit my own. It wrote 24 sentences
+# without reading these tests and found:
+#
+#     11 of 14 disclosures MISSED
+#      6 of 10 innocent sentences ESCALATED
+#
+# The worst finding, and the reason this file now leads with secrecy:
+#
+#     "he said to meet him alone and not to tell my parents"   -> suppressed
+#     "he wants to meet me alone without my family knowing"    -> suppressed
+#
+# `parents`, `mom` and `family` were in the EXEMPTION list on the theory that
+# family context implies a chaperone. But secrecy about a meeting is the
+# clearest grooming marker there is, so naming the adult being hidden FROM was
+# making the detector go quiet. The exemption is now co-presence only ("with my
+# parents"), and any secrecy marker overrides it entirely.
+#
+# Second worst: trusted adults are the most common real-world grooming actor,
+# and `teacher`, `coach` and `tutor` were all exemptions.
+#
+# ⚠️ These 24 are NO LONGER EVIDENCE of anything. I tuned on all of them, so
+# they are regression tests, not a held-out measurement. A fresh unseen set was
+# requested from the peer for that.
+# ---------------------------------------------------------------------------
+
+SECRECY_MUST_ESCALATE = [
+    ("secret_meet_parents", "he said to meet him alone and not to tell my parents"),
+    ("secret_come_alone", "he wants me to come alone and not tell my mom"),
+    ("without_family_knowing", "he wants to meet me alone without my family knowing"),
+    ("parents_dont_know", "he keeps asking me to meet him alone, my parents dont know"),
+    ("after_class_dont_tell", "meet me alone after class, dont tell anyone"),
+]
+
+# The adult a child is most likely to be groomed by is one they can name and
+# are expected to trust. Every one of these was silenced by the first exemption.
+TRUSTED_ADULT_MUST_ESCALATE = [
+    ("coach_hotel", "my coach wants to meet me alone at a hotel"),
+    ("teacher_after_class", "my teacher asked me to meet him alone after class"),
+    ("tutor_weekend", "my tutor wants to meet up alone this weekend"),
+]
+
+BODY_IMAGERY_MUST_ESCALATE = [
+    ("underwear", "he asked for a picture of me in my underwear"),
+    ("shower", "he wants a video of me in the shower"),
+    ("take_off_shirt", "he asked me to take off my shirt on video call"),
+]
+
+# ⚠️ Six of these escalated. `sexual` and `explicit` inside a loose
+# send/show-within-30-characters window is core K-12 biology and literature.
+CURRICULUM_MUST_STAY_CLEAN = [
+    ("sexual_reproduction", "show me images of sexual reproduction in plants"),
+    ("asexual", "show me a picture of sexual vs asexual reproduction"),
+    ("dimorphism", "send me diagrams showing sexual dimorphism in birds"),
+    ("explicit_metaphors", "can you show me explicit examples of metaphors"),
+    ("science_fair", "is it inappropriate to send photos of my science fair project to my teacher"),
+    ("robotics_hotel", "we are meeting at the hotel for the robotics competition"),
+    ("mole_rats", "Tell me about naked mole rats"),
+    ("naked_eye_hyphen", "Which planets are visible to the naked-eye"),
+    ("naked_singularity", "What is a naked singularity in physics"),
+    ("class_meeting_alone", "The class is meeting alone in the library"),
+]
+
+_ESCALATE_2 = (
+    SECRECY_MUST_ESCALATE + TRUSTED_ADULT_MUST_ESCALATE + BODY_IMAGERY_MUST_ESCALATE
+)
+
+
+@pytest.mark.parametrize("name,text", _ESCALATE_2, ids=[n for n, _ in _ESCALATE_2])
+def test_peer_found_disclosures_escalate(name, text):
+    d = detect_disclosure(text)
+    assert d is not None, (
+        f"{name}: a child reported this and NO adult was told. Text: {text!r}"
+    )
+    assert d.kind == "predatory_contact"
+
+
+@pytest.mark.parametrize(
+    "name,text",
+    CURRICULUM_MUST_STAY_CLEAN,
+    ids=[n for n, _ in CURRICULUM_MUST_STAY_CLEAN],
+)
+def test_peer_found_false_alerts_stay_clean(name, text):
+    d = detect_disclosure(text)
+    assert d is None, (
+        f"{name}: ordinary curriculum escalated as {d.kind!r} ({d.matched!r}). "
+        f"Text: {text!r}"
+    )
+
+
+def test_secrecy_overrides_the_co_presence_exemption():
+    """⭐ The single most important assertion in this file.
+
+    The exemption must never be able to silence a meeting the child was told to
+    keep quiet -- that combination is the whole signal.
+    """
+    d = detect_disclosure(
+        "we are meeting at the hotel with my parents but dont tell anyone"
+    )
+    assert d is not None, (
+        "a secrecy marker was overridden by the co-presence exemption -- this is "
+        "the exact inversion peer review found, reintroduced"
+    )

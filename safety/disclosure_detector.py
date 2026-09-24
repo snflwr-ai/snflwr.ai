@@ -117,6 +117,7 @@ _STRANGER = re.compile(
     re.IGNORECASE,
 )
 # What is being asked for: private contact, images, secrecy, isolation, payment.
+#
 # ⚠️ ASKS WITH NO INNOCENT READING — these escalate WITHOUT a named stranger.
 #
 # Owner decision 2026-09-24: "those type of messages should still be flagged
@@ -125,68 +126,115 @@ _STRANGER = re.compile(
 # stranger noun meant the most natural report of grooming escalated nothing.
 #
 # The design's caution is preserved by SPLITTING the ask, not by dropping the
-# WHO half. The false positives the two-part check was built to stop -- "send me
-# a picture of a cell diagram for my biology homework", "my teacher asked me to
-# show my work" -- are AMBIGUOUS asks: innocent in a tutoring context and only
-# meaningful when a stranger is doing the asking. Those still require WHO,
-# below.
+# WHO half. Ambiguous asks -- "send me a picture", "come over", "meet in
+# person" -- still require WHO. Only asks with no schoolwork reading fire alone.
+
+# ⭐ SECRECY IS THE SIGNAL, NOT THE EXEMPTION.
 #
-# What is here has no schoolwork reading at all: sexual imagery, meeting alone
-# or in a hotel, and payment for pictures (the sextortion shape). A parent alert
-# on one of these is not a cost worth trading a missed disclosure for.
-_STRONG_ASK = re.compile(
+# The first version of this file put `parents`, `mom` and `family` in an
+# EXEMPTION list, on the theory that family context means a chaperone. A peer
+# review found that inverts the most important case in the file:
+#
+#     "he said to meet him alone and not to tell my parents"   -> suppressed
+#     "he wants to meet me alone without my family knowing"    -> suppressed
+#
+# Secrecy about a meeting is the single clearest grooming marker there is, and
+# naming the adult being hidden FROM was making the detector go quiet. Secrecy
+# now forces escalation and disables every exemption below.
+_SECRECY = re.compile(
     r"\b(?:"
-    # sexual imagery, however the sentence is arranged.
-    # ⚠️ `naked` carries a negative lookahead for "eye". "Which planets are
-    # visible to the naked eye" and "too small to show up to the naked eye" are
-    # core primary-science sentences, and both escalated as predatory contact
-    # before the lookahead was added.
-    r"(?:send|sending|sent|show|showing|post|posted)\b[^.?!]{0,30}"
-    r"\b(?:explicit|nudes?|naked(?!\s*eye)|sexual|inappropriate)\b"
-    r"|\b(?:explicit|nudes?|naked(?!\s*eye)|sexual|inappropriate)\b[^.?!]{0,20}"
-    r"\b(?:photos?|pics?|pictures?|videos?|selfies?|snaps?|images?)\b"
-    r"|\bsend (?:me |him |her |them |you )?(?:some )?nudes?\b"
+    r"do(?:n'?t| not) (?:tell|say anything|mention)"
+    r"|not to tell"
+    r"|tell no ?(?:one|body)"
+    r"|(?:no ?one|nobody) (?:can|should|must) know"
+    r"|keep (?:it|this|that|a|our|the) (?:a )?secret"
+    r"|our little secret"
+    r"|without (?:my |his |her |their |anyone'?s? )?(?:\w+ )?knowing"
+    r"|(?:parents?|mom|mum|dad|family|they) (?:don'?t|doesn'?t|do not) know"
+    r"|between (?:me and him|me and her|us)\b"
+    r"|delete (?:the|our|my) (?:messages?|chats?|texts?)"
+    r")",
+    re.IGNORECASE,
+)
+
+# Sexual imagery. Every branch here names the CHILD as the subject of the image
+# or uses a word with no other reading.
+#
+# ⚠️ A verb-first branch -- (send|show) within 30 chars of
+# (explicit|sexual|naked|inappropriate) -- was removed after it escalated SIX
+# ordinary sentences a peer wrote, all core curriculum:
+#
+#     "show me images of sexual reproduction in plants"
+#     "show me a picture of sexual vs asexual reproduction"
+#     "send me diagrams showing sexual dimorphism in birds"
+#     "can you show me explicit examples of metaphors"
+#     "is it inappropriate to send photos of my science fair project"
+#
+# The adjective now has to MODIFY the imagery noun (at most one word between),
+# which is what distinguishes "explicit pictures" from "explicit examples of"
+# and "sexual reproduction" from "sexual photos".
+_STRONG_ASK = re.compile(
+    r"(?:"
+    # "nudes" has no second meaning in any K-12 sentence.
+    r"\b(?:send|sends|sending|sent|want|wants|asked|asking)\b[^.?!]{0,20}\bnudes?\b"
+    # adjective directly modifying an image noun
+    r"|\b(?:explicit|naked(?!\s*(?:eye|mole))|nude|sexual|inappropriate)\s+"
+    r"(?:\w+\s+){0,1}(?:photos?|pics?|pictures?|videos?|selfies?|snaps?|images?)\b"
+    # the child's own body: "a picture of me in my underwear", "video of me in
+    # the shower", "take off your shirt on video call"
+    r"|\b(?:photos?|pics?|pictures?|videos?|selfies?|snaps?)\s+of\s+(?:me|you|myself|yourself)\b"
+    r"[^.?!]{0,30}\b(?:underwear|bra|panties|knickers|shower|bath|bed|undressed"
+    r"|naked|no clothes|without (?:my |your )?clothes)\b"
+    r"|\btake (?:off|of) (?:my|your|his|her) (?:shirt|top|clothes|pants|trousers|dress|skirt)\b"
     # sextortion
-    r"|\b(?:pay|paid|pays|send|sent|offered)\b[^.?!]{0,20}"
+    r"|\b(?:pay|paid|pays|send|sent|offered|buy|get)\b[^.?!]{0,20}"
     r"\b(?:money|gift ?cards?|robux|v-?bucks)\b[^.?!]{0,25}"
     r"\b(?:photos?|pics?|pictures?|videos?|nudes?)\b"
     r")",
     re.IGNORECASE,
 )
 
-# Meeting in circumstances a child should not be arranging -- but UNLIKE the
-# imagery above, these have an innocent reading, so they are suppressed by the
-# familiar-context guard below rather than firing unconditionally.
+# Meeting in circumstances a child should not be arranging. Unlike the imagery
+# above these have an innocent reading, so a CO-PRESENCE exemption can suppress
+# them -- but only co-presence, and never when secrecy is present.
 #
-# ⚠️ "in person" and "at my house" are NOT here at all. "we are meeting in
-# person for the group project" escalated as predatory when they were; school
-# groups meet in person, and a false parent alert trains the parent to ignore
-# the next one. Those stay in the contextual ask, which requires a named
-# stranger.
+# ⚠️ "in person" and "at my house" are in NO strong tier: school groups meet in
+# person, and a false parent alert trains the parent to ignore the next one.
 #
 # "alone" excludes `you`, because "you" is the TUTOR: "can I meet you alone in
-# the tutoring room" is a child asking this product for a private session, not
-# a disclosure about a third party.
+# the tutoring room" is a child asking this product for a private session.
 _STRONG_MEETING = re.compile(
     r"\b(?:"
-    r"meet(?:ing|\s+up)?\b[^.?!]{0,25}\b(?:hotel|motel)\b"
-    r"|meet(?:ing|\s+up)?\b(?:(?!\byou\b)[^.?!]){0,15}\balone\b"
+    r"meet(?:ing|s|\s+up)?\b[^.?!]{0,25}\b(?:hotel|motel)\b"
+    r"|meet(?:ing|s|\s+up)?\b(?:(?!\byou\b)[^.?!]){0,15}\balone\b"
     r"|come alone\b"
     r")",
     re.IGNORECASE,
 )
 
-# A meeting with family, school or a class in the sentence is a school trip, not
-# grooming. Found by adversarial sweep: "we are meeting at the hotel for the
-# field trip with my parents" escalated without this.
-_FAMILIAR_MEETING = re.compile(
-    r"\b(?:parents?|mom|mum|mother|dad|father|family|grand(?:ma|pa|mother|father)"
-    # ⚠️ NOT bare "school". "he wants to meet me alone after school is out" is a
-    # disclosure, and bare `school` suppressed it -- "after school" is a TIME,
-    # not a chaperone. Only school words that actually name a supervised setting
-    # belong here.
-    r"|teacher|coach|class|classmates?|school ?(?:trip|bus|gate|grounds)"
-    r"|at school\b|field ?trip|group project|team|tutor(?:ing)?)\b",
+# ⚠️ THIS IS AN EXEMPTION ON A CHILD-SAFETY PATH, so every entry is a hole by
+# construction and the list is deliberately tiny.
+#
+# It matches CO-PRESENCE ("with my parents", "for the robotics competition"),
+# never a bare mention of a person. The bare-mention version suppressed:
+#
+#     "my coach wants to meet me alone at a hotel"      (coach)
+#     "my teacher asked me to meet him alone after class" (teacher, class)
+#     "he wants to meet me alone after school is out"   (school)
+#
+# Trusted adults are the most common real-world grooming actor, so naming one
+# must never quiet the detector; and "after school"/"after class" are TIMES,
+# not chaperones.
+_CHAPERONED = re.compile(
+    r"\b(?:"
+    r"with (?:my |our |the )?(?:parents?|mom|mum|dad|father|mother|family"
+    r"|grand(?:ma|pa|mother|father)|teacher|coach|class|team|group|everyone)"
+    r"|(?:field|school|class) ?trip"
+    r"|competition|tournament|match|rehearsal|recital|excursion"
+    r"|group project|study group"
+    # A GROUP as the subject of the meeting: "the class is meeting alone in the
+    # library". A class is not what gets groomed alone; a child is.
+    r"|(?:class|team|group|club|everyone)\s+(?:is|are|was|were)\s+meet" r")",
     re.IGNORECASE,
 )
 
@@ -257,11 +305,20 @@ def detect_disclosure(text: str) -> Optional[Disclosure]:
     strong = _STRONG_ASK.search(text)
     if strong:
         return Disclosure(kind="predatory_contact", matched=strong.group(0)[:60])
-    # A meeting escalates on its own only when nothing in the sentence places it
-    # with family, a class or a school trip.
+    # A meeting a child is told to keep quiet escalates unconditionally. Secrecy
+    # about a meeting OVERRIDES the co-presence exemption rather than being
+    # exempted by it -- naming the adult being hidden FROM must never make this
+    # detector go quiet.
     meeting = _STRONG_MEETING.search(text)
-    if meeting and not _FAMILIAR_MEETING.search(text):
-        return Disclosure(kind="predatory_contact", matched=meeting.group(0)[:60])
+    secret = _SECRECY.search(text)
+    if meeting:
+        if secret:
+            return Disclosure(
+                kind="predatory_contact",
+                matched=f"{meeting.group(0)} / {secret.group(0)}"[:60],
+            )
+        if not _CHAPERONED.search(text):
+            return Disclosure(kind="predatory_contact", matched=meeting.group(0)[:60])
     who = _STRANGER.search(text)
     what = _PRIVATE_ASK.search(text)
     if who and what:

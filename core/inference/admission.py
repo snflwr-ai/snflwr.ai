@@ -184,6 +184,9 @@ class Admission:
         self._shared = _SharedSlots(_slot_db_path()) if self._max_concurrent else None
         self._waiting = 0
         self._in_flight = 0
+        # One ERROR per process when the box-wide gate is missing, not one
+        # per request. See the branch in slot().
+        self._warned_no_shared = False
         self._admitted = 0
         self._rejected = 0
         self._wait_time_total = 0.0
@@ -259,6 +262,35 @@ class Admission:
         # hand the local slot back if the box is genuinely full so the caller
         # gets the busy message rather than a place in an invisible queue.
         row_id = None
+        if not (self._shared and self._shared.enabled):
+            # ⚠️ THE BOX-WIDE GATE IS BEING SKIPPED. Say so, loudly, once.
+            #
+            # This branch is the whole failure mode of a fail-open design: with
+            # no shared table, `max_concurrent` means N turns PER WORKER. The
+            # home deploy runs 8 uvicorn workers, so a 1-slot GPU serves 8
+            # concurrent turns and the card thrashes or OOMs -- which is exactly
+            # what `slots=1` exists to prevent.
+            #
+            # Until 2026-09-24 this was SILENT. `_SharedSlots.__init__` warns
+            # once when it cannot open the file, then every request afterwards
+            # quietly took the local slot and went. `stats()["cross_process"]`
+            # carried the truth and nothing read it. ERROR, not WARNING: a
+            # degraded-context fallback is a warning; serving 8x the GPU's
+            # capacity is not.
+            #
+            # Logged once per process, not per request -- an 8x-oversubscribed
+            # box does not need a log line per turn on top of everything else.
+            if not self._warned_no_shared:
+                self._warned_no_shared = True
+                logger.error(
+                    "inference admission: NO box-wide slot table; capacity is "
+                    "enforced PER PROCESS only. max_concurrent=%d now means %d "
+                    "per worker, not %d on the box. Check INFERENCE_SLOT_DB and "
+                    "that the data directory is writable.",
+                    self._max_concurrent,
+                    self._max_concurrent,
+                    self._max_concurrent,
+                )
         if self._shared and self._shared.enabled:
             deadline = started + self._queue_wait_s
             while True:

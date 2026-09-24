@@ -91,7 +91,11 @@ def test_every_disclosure_kind_uses_a_severity_the_logger_accepts(kind):
     send "moderate", so bullying and disordered-eating were never recorded."""
     from api.routes.ollama_proxy import blocks
 
-    with patch("safety.incident_logger.incident_logger") as il:
+    # patch.object on the imported MODULE: on Python 3.10 the dotted string
+    # "safety.incident_logger.incident_logger" resolves through the `safety`
+    # package's re-exported logger INSTANCE and the patch fails.
+    il_module = importlib.import_module("safety.incident_logger")
+    with patch.object(il_module, "incident_logger") as il:
         blocks._record_disclosure_incident("p1", kind, "m", "text")
     assert il.log_incident.call_args.kwargs["severity"] in {
         "minor",

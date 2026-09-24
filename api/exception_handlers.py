@@ -82,12 +82,19 @@ async def inference_busy_handler(request: Request, exc: Exception) -> Response:
     """
     from api.routes.ollama_proxy import blocks
 
+    # IMPORTED, not re-typed. This handler used to carry its own copy of the
+    # text, byte-identical to chat._BUSY_MESSAGE -- safe only because two
+    # constants happened to be equal. Editing _BUSY_MESSAGE would have left
+    # this path serving the OLD string, which then matches no entry in
+    # scripts/latency_bar.py:_SENTINELS, so every busy reply would score as a
+    # real latency measurement again. That is the precise drift
+    # tests/test_latency_bar_sentinels.py exists to prevent, routed around by
+    # a copy the test could not see.
+    from api.routes.ollama_proxy.chat import _BUSY_MESSAGE
+
     model = getattr(exc, "model", "") or "snflwr.ai"
     stream = bool(getattr(exc, "stream", False))
-    message = (
-        "Lots of learners are asking questions right now, so I could not get to "
-        "yours. Please send it again in a moment."
-    )
+    message = _BUSY_MESSAGE
     logger.warning("Inference busy — served a wait message instead of a tutor turn")
     if stream:
         return Response(

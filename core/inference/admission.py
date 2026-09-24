@@ -124,10 +124,17 @@ class _SharedSlots:
                     self._RETRY_EVERY_S,
                 )
 
-    def _try_init(self) -> bool:
+    # The lazy retry runs on the EVENT LOOP (see `enabled`), unlike reserve()
+    # and release() which go through asyncio.to_thread. A 5s connect timeout
+    # there would stall every request for up to 5s during exactly the lock
+    # contention this retry exists to recover from, so the retry gets a short
+    # one -- it will try again in _RETRY_EVERY_S anyway.
+    _RETRY_CONNECT_TIMEOUT_S = 0.25
+
+    def _try_init(self, timeout: float = 5.0) -> bool:
         """Create the table and put the file in WAL mode (persists in the file)."""
         try:
-            con = sqlite3.connect(self._path, timeout=5.0, isolation_level=None)
+            con = sqlite3.connect(self._path, timeout=timeout, isolation_level=None)
             try:
                 con.execute("PRAGMA busy_timeout=5000")
                 con.execute("PRAGMA journal_mode=WAL")
@@ -148,17 +155,32 @@ class _SharedSlots:
     @property
     def enabled(self) -> bool:
         if not self._ready and self._path and time.time() >= self._next_retry:
-            if self._try_init():
+            if self._try_init(timeout=self._RETRY_CONNECT_TIMEOUT_S):
                 logger.warning("inference admission: box-wide slot table recovered")
         return self._ready
 
     def _connect(self):
-        # WAL mode is set once at init and persists in the file. Re-issuing the
+        # WAL mode is set once at init and persists in the file. Re-issuing THAT
         # PRAGMA here on every reserve could raise "locked" under contention,
         # and reserve() fails OPEN on an exception, which is over-admission by
-        # another route.
+        # another route. So journal_mode stays out.
+        #
+        # ⚠️ CREATE TABLE IF NOT EXISTS stays IN, and the distinction matters.
+        # It takes no write lock when the table is already there, so it is not
+        # part of the locking hazard -- but it is what heals a db file that was
+        # deleted, truncated or restored over after init (this stack does
+        # restore SQLite files; see `sqlite-restore-over-stale-wal-corrupts`).
+        # Without it, such a file gives "no such table: inflight" on EVERY
+        # reserve, and reserve fails open, so a box silently admits without
+        # limit until restart.
         con = sqlite3.connect(self._path, timeout=5.0, isolation_level=None)
         con.execute("PRAGMA busy_timeout=5000")
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS inflight ("
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  pid INTEGER NOT NULL,"
+            "  acquired_at REAL NOT NULL)"
+        )
         return con
 
     def reserve(self, max_concurrent: int) -> Optional[int]:
@@ -188,7 +210,20 @@ class _SharedSlots:
             finally:
                 con.close()
         except Exception as exc:  # noqa: BLE001 - fail open
-            logger.warning("inference admission: reserve failed (%s); admitting", exc)
+            # ⚠️ Mark the shared table unhealthy so the lazy retry in `enabled`
+            # re-initialises it. Without this the fail-open is PERMANENT: the
+            # recovery path added for startup lock contention was unreachable
+            # from here, because reserve() left `_ready` True and simply
+            # admitted every subsequent turn. Over-admitting for ~5s is a very
+            # different defect from over-admitting until someone restarts the
+            # box.
+            self._ready = False
+            self._next_retry = time.time() + self._RETRY_EVERY_S
+            logger.warning(
+                "inference admission: reserve failed (%s); admitting and marking "
+                "the box-wide table for re-init",
+                exc,
+            )
             return -1  # sentinel: admitted without a row, release is a no-op
 
     def release(self, row_id: Optional[int]) -> None:

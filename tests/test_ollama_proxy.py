@@ -1401,12 +1401,36 @@ class TestCrisisEscalation:
         assert resp.status_code == 200
         # The child still gets the safe response...
         assert "988" in resp.json()["message"]["content"]
-        # ...AND a human-escalation incident was recorded.
-        mock_incident.log_incident.assert_called_once()
-        kwargs = mock_incident.log_incident.call_args.kwargs
-        assert kwargs["profile_id"] == "profile-sh"
-        assert kwargs["incident_type"]  # category.value present
-        assert kwargs["severity"] in ("minor", "major", "critical")
+
+        # ...AND TWO incidents are recorded, which is the point of this test now.
+        #
+        # ⚠️ This asserted exactly ONE call until 2026-09-24. That single call
+        # was the BLOCK record, whose incident_type comes from the harm
+        # classifier's category -- so "i want to die" was filed as `violence`,
+        # because the disclosure detector was gated behind `if result.is_safe`
+        # and never ran on a blocked turn. A parent alert derived from that row
+        # describes a child as violent when the child said they wanted to die.
+        #
+        # Two rows is correct and they say different things: the disclosure row
+        # says what the CHILD was doing, the safety row says why the REPLY was
+        # replaced. Neither is redundant.
+        calls = mock_incident.log_incident.call_args_list
+        assert len(calls) == 2, f"expected a disclosure row and a block row, got {calls}"
+        by_type = {c.kwargs["incident_type"]: c.kwargs for c in calls}
+
+        disclosure = by_type.get("disclosure_suicidal_ideation")
+        assert disclosure is not None, (
+            "a blocked crisis message was not typed as a disclosure -- the only "
+            f"rows written were {sorted(by_type)}"
+        )
+        assert disclosure["severity"] == "major", "below major raises no parent alert"
+        assert disclosure["metadata"]["blocked"] is True
+        assert disclosure["profile_id"] == "profile-sh"
+
+        # The block record itself is unchanged.
+        block_rows = [k for t, k in by_type.items() if t != "disclosure_suicidal_ideation"]
+        assert len(block_rows) == 1
+        assert block_rows[0]["severity"] in ("minor", "major", "critical")
 
     def test_escalation_failure_does_not_break_child_response(self):
         """If incident logging raises, the child STILL gets the safe response."""

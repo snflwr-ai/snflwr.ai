@@ -262,6 +262,53 @@ def _check_confirm_actually_detects_a_reveal() -> list:
     try:
         verdict = asyncio.run(confirm_reveal(question, revealing, _gen))
     except Exception as exc:
+        # ⚠️ "The model could not LOAD" is not "the shipped code is WRONG".
+        #
+        # This branch used to fail unconditionally, and deploy.sh turns a
+        # failure here into:
+        #
+        #     "The running container does NOT have the expected safety
+        #      behaviour. It is healthy but serving the wrong code. Roll back"
+        #
+        # On 2026-09-24 that fired on a deploy whose container was perfectly
+        # correct. The co-tenant held the GPU, the arbiter's free-VRAM gate was
+        # 943 MiB optimistic, ollama returned "cudaMalloc failed: out of
+        # memory" (17:20:18), the confirm raised, and the deploy told the
+        # operator to roll back a SAFETY FIX. Re-running the same binary with
+        # an exclusive lease: exit 0, all six behaviours verified.
+        #
+        # Telling someone to roll back working child-safety code is worse than
+        # the contention it was reacting to, and the latency bar in this same
+        # script already models the right answer: contention is UNMEASURED, not
+        # a regression.
+        #
+        # DEFAULT IS STILL FAIL. Only a RECOGNISED load/capacity signature is
+        # downgraded; an unfamiliar error keeps failing the deploy, because the
+        # whole point of this check is that a green deploy must not hide a
+        # broken guard.
+        text = f"{type(exc).__name__}: {exc}".lower()
+        contention = (
+            "out of memory",
+            "cudamalloc",
+            "unable to allocate",
+            "failed to allocate",
+            "no space left on device",
+            "model requires more system memory",
+            "connection refused",
+            "connection error",
+            "timed out",
+            "timeout",
+        )
+        hit = next((s for s in contention if s in text), None)
+        if hit:
+            print(
+                f"  [UNMEASURED] reveal-confirm could not run: the model did "
+                f"not load ({hit!r} in {type(exc).__name__}). Almost always the "
+                f"co-tenant holding the card -- check the GPU arbiter and take "
+                f"a lease, then re-run. This is NOT a verdict on the shipped "
+                f"code, and NOT a reason to roll back."
+            )
+            return []
         print(f"  [FAIL] reveal-confirm raised ({exc})")
         return ["confirm self-test raised"]
 

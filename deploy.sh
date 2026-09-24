@@ -815,6 +815,34 @@ fi
 TMP_MODELFILE="$(mktemp)"
 sed "s|^FROM .*|FROM ${BASE_MODEL}|" "$MODELFILE_SRC" > "$TMP_MODELFILE"
 
+# Bake the context window this deployment actually serves.
+#
+# The committed PARAMETER num_ctx is what ANY caller gets that does not send
+# the API's per-request override -- `ollama run`, a debug script, a new code
+# path that forgets. It was 8192, which cannot hold a minimal turn: measured
+# 2026-09-24, one character of student text evaluates 8,297 prompt tokens
+# against this system prompt. Ollama does not refuse, it context-shifts
+# (n_keep = 4), so the safety instructions are silently truncated off the
+# front and the turn is served anyway.
+#
+# COMPUTED, never hardcoded -- same rule as num_gpu below. A certified
+# backbone uses its VALIDATED CEILING (what a validation run showed the box
+# can serve, and what the API serves), not the sealed `num_ctx` (what a
+# grading run measured). Those differ today: 24576 vs 16384, and baking the
+# sealed value would ship a Modelfile that disagrees with its own deployment.
+TUTOR_NUM_CTX=$(cd "$SCRIPT_DIR" 2>/dev/null; python3 -c "
+from core.serving_plan import baked_num_ctx_for
+from resource_detection import recommend_num_ctx
+ctx = baked_num_ctx_for('${WRAPPED_MODEL}')
+print(ctx or recommend_num_ctx(${TOTAL_RAM_GB:-0}, vram_gb=${DETECTED_VRAM_GB:-0}, model_tag='${BASE_MODEL}'))
+" 2>/dev/null)
+if [[ -n "$TUTOR_NUM_CTX" && "$TUTOR_NUM_CTX" =~ ^[0-9]+$ ]]; then
+    sed -i "s|^PARAMETER num_ctx .*|PARAMETER num_ctx ${TUTOR_NUM_CTX}|" "$TMP_MODELFILE"
+    info "tutor context window baked at ${TUTOR_NUM_CTX}"
+else
+    warn "could not compute num_ctx; leaving the committed value in the Modelfile"
+fi
+
 # gemma4:e4b ships `PARAMETER num_gpu 0` in its OWN manifest, and `FROM` inherits
 # it, so without this line the tutor runs on CPU even on a machine with a large
 # idle GPU — about 20x slower, and silent. Found 2026-09-09 on a 23GB card.

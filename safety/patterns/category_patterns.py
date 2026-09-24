@@ -49,7 +49,39 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\babo\b", "ethnic slur (EN)"),
         (r"\bhalf\s*breed\b", "racial slur (EN)"),
         (r"\bmixed\s*breed\b", "racial slur (EN)"),
-        (r"\bcracker\b", "racial slur (EN)"),
+        # ⚠️ `\bcracker\b` was REMOVED as a deterministic match 2026-09-24.
+        #
+        # It blocked a 5-7 year old asking "i dropped a cracker in water and it
+        # got squishy why does water eat the crunch" as HATE SPEECH, served in
+        # production during the 2026-09-24 certification run. Also caught: a
+        # graham-cracker rock-layer experiment, and the computing sense of
+        # "cracker" vs "hacker".
+        #
+        # The word is overwhelmingly food and science vocabulary in K-12, and a
+        # mild slur only in a hostile frame that a regex cannot see. Hate is
+        # never deferrable, so every match was a hard MAJOR block with no
+        # context check and no visibility to anyone.
+        #
+        # ⚠️ Deferring to the Stage 4 classifier alone was MEASURED AND IS NOT
+        # ENOUGH. With the bare pattern gone, the classifier blocked "my
+        # classmate is a dumb cracker and I hate him" (bullying) but ALLOWED
+        # "you are such a cracker, go away". So the deterministic layer is
+        # replaced, not dropped: the pattern below requires a HOSTILE FRAME.
+        #
+        # Measured 5/5 on hostile uses ("you are such a cracker", "stupid
+        # cracker", "he is a cracker and I hate him", "shut up you cracker") and
+        # 0/7 false positives on food, science and computing senses (a cracker
+        # in water, graham cracker, crackers and cheese, "a cracker is someone
+        # who breaks into computer systems", firecracker, Christmas crackers).
+        #
+        # Every other slur in this list is unambiguous and stays deterministic;
+        # only this one needed a frame, because only this one is also a snack.
+        (
+            r"\b(?:(?:dumb|stupid|damn|filthy|lousy|dirty|white)\s+crackers?\b"
+            r"|(?:you|u|he|she|they)\s+(?:are|is|'re|'s|r)?\s*(?:such\s+)?an?\s+cracker\b"
+            r"|\byou\s+cracker\b)",
+            "racial slur (EN)",
+        ),
         (r"\bwhite\s*trash\b", "racial slur (EN)"),
         (r"\bredneck\b", "derogatory (EN)"),
         (r"\bhillbilly\b", "derogatory (EN)"),

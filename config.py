@@ -813,7 +813,18 @@ class _SafetyConfig:
         "self_harm": ["suicide", "kill myself", "self-harm", "cut myself"],
         "sexual": ["sex", "porn", "naked", "nude"],
         "drugs": ["drugs", "cocaine", "heroin", "marijuana", "weed"],
-        "personal_info": ["social security", "ssn", "credit card", "address"],
+        # ⚠️ "address" was REMOVED 2026-09-24. As a bare keyword it matched
+        # "destination address", "IP address", "address the prompt", and "the
+        # Gettysburg Address" — every one of which a K-12 tutor must be able to
+        # discuss. PII is not deferrable, so each was a hard MAJOR block served
+        # to a child as "I shouldn't share personal information."
+        #
+        # Nothing real is lost: actual PII is still caught by the PRECISE
+        # patterns in pattern_matcher.py — `(?:my|your)\s+address`, the street
+        # -address regex, email, SSN, phone and credit-card. Measured: all 9
+        # true positives still block, including "what is your address so I can
+        # come over" and "my address is 123 Main Street".
+        "personal_info": ["social security", "ssn", "credit card"],
         "bullying": ["bully", "bullying", "harass", "threat"],
         "dangerous_activity": ["how to make bomb", "how to hurt"],
     }

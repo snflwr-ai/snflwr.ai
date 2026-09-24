@@ -215,37 +215,48 @@ def _gpu_corroborates_contention() -> str:
 
     Returns a reason string, or "" when nothing corroborates. Any error here
     yields "" -- absence of evidence must not become evidence.
-    """
-    try:
-        import httpx
 
-        from config import system_config
-    except Exception:  # noqa: BLE001
-        return ""
-    try:
-        url = (system_config.OLLAMA_PROXY_TARGET or "http://ollama:11434").rstrip("/")
-        ps = httpx.get(url + "/api/ps", timeout=5).json()
-        resident = [m.get("name", "") for m in ps.get("models", [])]
-        tutor = system_config.OLLAMA_DEFAULT_MODEL
-        if tutor and not any(tutor.split(":")[0] in n for n in resident):
-            return f"the tutor {tutor!r} is not resident (loaded: {resident or 'none'})"
-    except Exception:  # noqa: BLE001
-        pass
+    ⚠️ TWO SIGNALS WERE REMOVED IN REVIEW because they are NORMAL on this box,
+    and a signal that fires in the healthy state cannot corroborate anything:
+
+    * "the tutor is not resident" -- true right after deploy.sh restarts the
+      container, before anything has loaded. Worse, a confirm pointed at the
+      WRONG HOST never loads the tutor, so a real misconfiguration would read as
+      contention forever, including on the operator's re-run under a lease. The
+      NOT-VERIFIED loop would send them hunting a GPU problem that does not
+      exist while the bug sits in config. Dropped entirely.
+
+    * bare "free_mib < 2000" -- that is the steady state when OUR OWN tutor is
+      resident. Measured 2026-09-24 with snflwr.ai-31b on the card: 428 MiB and
+      248 MiB free, both perfectly healthy. Now counted only when
+      `snflwr_on_gpu` is EMPTY, i.e. something that is not ours is filling the
+      card.
+
+    What remains are signals that cannot be true in the healthy state: another
+    tenant holding the card, or a lease held by someone who is not us.
+    """
     for host in ("http://172.24.0.1:11460", "http://localhost:11460"):
         try:
             import httpx
 
             st = httpx.get(host + "/status", timeout=3).json()
-            other = st.get("ironclaw_on_gpu") or []
-            lease = st.get("lease") or {}
-            if other:
-                return f"the co-tenant holds the card ({other})"
-            if lease and lease.get("who") not in (None, "snflwr"):
-                return f"another lease is held by {lease.get('who')!r}"
-            if (st.get("free_mib") or 0) < 2000:
-                return f"only {st.get('free_mib')} MiB of card is free"
         except Exception:  # noqa: BLE001
             continue
+        other = st.get("ironclaw_on_gpu") or []
+        if other:
+            return f"the co-tenant holds the card ({other})"
+        lease = st.get("lease") or {}
+        who = lease.get("who") if lease else None
+        if who and who != "snflwr":
+            return f"a lease is held by {who!r}"
+        ours = st.get("snflwr_on_gpu") or []
+        free = st.get("free_mib")
+        if not ours and isinstance(free, int) and free < 2000:
+            return (
+                f"only {free} MiB free and none of it is ours "
+                f"(something else is filling the card)"
+            )
+        return ""  # the arbiter answered and reports nothing wrong
     return ""
 
 

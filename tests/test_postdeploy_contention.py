@@ -175,3 +175,89 @@ def test_the_operator_is_told_what_to_do():
     deploy = (_SMOKE.parent.parent / "deploy.sh").read_text(encoding="utf-8")
     assert "Take a GPU lease" in deploy
     assert "postdeploy_smoke.py" in deploy
+
+
+# ---------------------------------------------------------------------------
+# A corroboration signal that is TRUE IN THE HEALTHY STATE corroborates nothing.
+# Both of these were in the first version and were caught in review.
+# ---------------------------------------------------------------------------
+
+def _corroborate(status: dict) -> str:
+    """Run the real probe against a stubbed arbiter /status."""
+    mod = _smoke()
+
+    class _Resp:
+        def __init__(self, payload):
+            self._p = payload
+
+        def json(self):
+            return self._p
+
+    class _Httpx:
+        @staticmethod
+        def get(url, timeout=None):
+            return _Resp(status)
+
+    import sys
+
+    sys.modules["httpx"] = _Httpx  # type: ignore[assignment]
+    try:
+        return mod._gpu_corroborates_contention()
+    finally:
+        del sys.modules["httpx"]
+
+
+def test_our_own_tutor_filling_the_card_is_not_contention():
+    """428 MiB free with snflwr.ai-31b resident is the HEALTHY steady state.
+
+    Measured 2026-09-24: 428 and 248 MiB free, both fine. A bare
+    `free_mib < 2000` test fires on every healthy deploy, so a real
+    misconfiguration would be excused as contention forever.
+    """
+    assert _corroborate({
+        "free_mib": 428,
+        "snflwr_on_gpu": ["snflwr.ai-31b:latest"],
+        "ironclaw_on_gpu": [],
+        "lease": None,
+    }) == "", "our own resident tutor was treated as evidence of contention"
+
+
+def test_an_empty_card_that_is_not_ours_does_corroborate():
+    assert "filling the card" in _corroborate({
+        "free_mib": 300,
+        "snflwr_on_gpu": [],
+        "ironclaw_on_gpu": [],
+        "lease": None,
+    })
+
+
+def test_a_co_tenant_holding_the_card_corroborates():
+    assert "co-tenant" in _corroborate({
+        "free_mib": 900,
+        "snflwr_on_gpu": [],
+        "ironclaw_on_gpu": ["qwen3.8-ctx112k:latest"],
+        "lease": None,
+    })
+
+
+def test_our_own_lease_is_not_foreign():
+    assert _corroborate({
+        "free_mib": 21000,
+        "snflwr_on_gpu": [],
+        "ironclaw_on_gpu": [],
+        "lease": {"who": "snflwr", "mode": "exclusive"},
+    }) == ""
+
+
+def test_an_idle_healthy_box_corroborates_nothing():
+    """The case that matters most: a wrong confirm host on a quiet box.
+
+    Nothing is contending. The error must stay FAIL so the operator looks at
+    config instead of chasing the GPU.
+    """
+    assert _corroborate({
+        "free_mib": 21800,
+        "snflwr_on_gpu": [],
+        "ironclaw_on_gpu": [],
+        "lease": None,
+    }) == ""

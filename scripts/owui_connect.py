@@ -95,7 +95,8 @@ _DISCLOSURE_BANNER_CONTENT = (
     "provide medical, mental-health, legal, or emergency advice; if you or someone "
     "you know is struggling or in danger, talk to a trusted adult, teacher, or "
     "counselor, or call or text the 988 Suicide & Crisis Lifeline. In an emergency, "
-    "call 911."
+    "call 911. AI chatbots may not be suitable for some minors; a parent can see "
+    "and manage this account from the parent dashboard."
 )
 
 

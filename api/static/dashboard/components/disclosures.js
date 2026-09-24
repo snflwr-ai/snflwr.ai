@@ -24,7 +24,8 @@ const SUPERVISION_NOTICE =
   'snflwr.ai is intended for K-12 learners used with parental or school ' +
   'supervision. A parent, guardian, or school must set up the account and provide ' +
   'the consent described during setup. Formal Terms of Service and Privacy Policy ' +
-  'are in preparation; per-child parental consent is collected in the consent flow.';
+  'are in preparation; per-child parental consent is collected in the consent flow. ' +
+  'AI chatbots may not be suitable for some minors.';
 
 // Persistent, app-wide footer: the two highest-priority notices (AI-generated
 // content + crisis resources). Appears under the main content on every view.

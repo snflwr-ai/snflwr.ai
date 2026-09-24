@@ -1826,6 +1826,30 @@ class TestHoldbackStreaming:
         assert b"different question" in body  # fallback for the rest
         assert mp.check_output.call_count == 2
 
+    def test_break_reminder_leads_the_stream_and_is_recorded(self):
+        """SB 243 §22602(c)(2) on the progressive path: the reminder goes out as
+        the first chunk, and the ledger records reminder + answer, which is what
+        Open WebUI will concatenate, store and resend."""
+        import json as _j
+
+        from api.routes.ollama_proxy import break_reminder as br
+        from api.routes.ollama_proxy import history_ledger as hl
+
+        orig_r, orig_l = br.break_reminder, hl.history_ledger
+        br.break_reminder = MagicMock(due=MagicMock(return_value=True))
+        hl.history_ledger = MagicMock(filter_history=lambda pid, m: m)
+        try:
+            resp, _ = self._run(_safe_result(), [self.SENT1, self.SENT2])
+        finally:
+            recorded = hl.history_ledger.record_turn.call_args
+            br.break_reminder, hl.history_ledger = orig_r, orig_l
+        lines = [_j.loads(x) for x in resp.content.splitlines() if x.strip()]
+        text = "".join(x["message"]["content"] for x in lines)
+        assert lines[0]["done"] is False
+        assert text.startswith(br.REMINDER_TEXT)
+        assert text.endswith("It uses sunlight.")
+        assert recorded.args[2] == text
+
     def test_flag_off_uses_buffered_path(self):
         resp, mp = self._run(_safe_result(), [self.SENT1, self.SENT2], enabled=False)
         assert resp.status_code == 200
@@ -2093,20 +2117,22 @@ class TestConversationTurnCap:
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
         mock_pipeline.check_output.return_value = safe
-        with patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=("uid-clip", "user"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._get_profile_for_user",
-            new=AsyncMock(return_value="p-clip"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._resolve_age", return_value=None
-        ), patch(
-            "api.routes.ollama_proxy.transport._forward_request",
-            new_callable=AsyncMock,
-            return_value=ollama_resp,
-        ) as mock_fwd, patch(
-            "safety.pipeline.safety_pipeline", mock_pipeline
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-clip", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="p-clip"),
+            ),
+            patch("api.routes.ollama_proxy.profile._resolve_age", return_value=None),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ) as mock_fwd,
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             client.post(
                 "/api/chat",
@@ -2159,18 +2185,21 @@ class TestProxyInputHardening:
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
         mock_pipeline.check_output.return_value = safe
-        with patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=("uid-sys", "user"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._get_profile_for_user",
-            new=AsyncMock(return_value="p-sys"),
-        ), patch(
-            "api.routes.ollama_proxy.transport._forward_request",
-            new_callable=AsyncMock,
-            return_value=ollama_resp,
-        ) as mock_fwd, patch(
-            "safety.pipeline.safety_pipeline", mock_pipeline
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-sys", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="p-sys"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ) as mock_fwd,
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             client.post(
                 "/api/chat",
@@ -2217,18 +2246,21 @@ class TestProxyInputHardening:
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
         mock_pipeline.check_output.return_value = safe
-        with patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=("uid-scan", "user"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._get_profile_for_user",
-            new=AsyncMock(return_value="p-scan"),
-        ), patch(
-            "api.routes.ollama_proxy.transport._forward_request",
-            new_callable=AsyncMock,
-            return_value=ollama_resp,
-        ), patch(
-            "safety.pipeline.safety_pipeline", mock_pipeline
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-scan", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="p-scan"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             client.post(
                 "/api/chat",
@@ -2265,20 +2297,22 @@ class TestCrossSessionHistoryLedger:
         mock_pipeline = MagicMock()
         mock_pipeline.check_input.return_value = safe
         mock_pipeline.check_output.return_value = safe
-        with patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=(uid, "user"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._get_profile_for_user",
-            new=AsyncMock(return_value=profile),
-        ), patch(
-            "api.routes.ollama_proxy.profile._resolve_age", return_value=None
-        ), patch(
-            "api.routes.ollama_proxy.transport._forward_request",
-            new_callable=AsyncMock,
-            return_value=ollama_resp,
-        ) as mock_fwd, patch(
-            "safety.pipeline.safety_pipeline", mock_pipeline
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=(uid, "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value=profile),
+            ),
+            patch("api.routes.ollama_proxy.profile._resolve_age", return_value=None),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ) as mock_fwd,
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
         ):
             client.post(
                 "/api/chat",
@@ -2342,7 +2376,9 @@ class TestCrossSessionHistoryLedger:
         from fastapi.testclient import TestClient
 
         client = TestClient(_make_app())
-        self._post(client, [{"role": "user", "content": "child one secret"}], profile="p-a")
+        self._post(
+            client, [{"role": "user", "content": "child one secret"}], profile="p-a"
+        )
 
         sent = self._post(
             client,
@@ -2396,14 +2432,17 @@ class TestCrossSessionHistoryLedger:
             {"role": "assistant", "content": "also never seen"},
             {"role": "user", "content": "now"},
         ]
-        with patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=("admin_1", "admin"),
-        ), patch(
-            "api.routes.ollama_proxy.transport._forward_request",
-            new_callable=AsyncMock,
-            return_value=ollama_resp,
-        ) as mock_fwd:
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("admin_1", "admin"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ) as mock_fwd,
+        ):
             client.post(
                 "/api/chat",
                 json={"model": "test-model", "stream": False, "messages": msgs},
@@ -2439,20 +2478,22 @@ class TestCrossSessionHistoryLedger:
         mock_pipeline.check_input.return_value = safe
         mock_pipeline.check_output.return_value = safe
         client = TestClient(_make_app())
-        with patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=("uid-hb", "user"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._get_profile_for_user",
-            new=AsyncMock(return_value="p-hb"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._resolve_age", return_value=None
-        ), patch(
-            "api.routes.ollama_proxy.transport._stream_chunks_from_ollama", _fake_stream
-        ), patch(
-            "safety.pipeline.safety_pipeline", mock_pipeline
-        ), patch.object(
-            system_config, "CHAT_STREAMING_ENABLED", True
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-hb", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="p-hb"),
+            ),
+            patch("api.routes.ollama_proxy.profile._resolve_age", return_value=None),
+            patch(
+                "api.routes.ollama_proxy.transport._stream_chunks_from_ollama",
+                _fake_stream,
+            ),
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+            patch.object(system_config, "CHAT_STREAMING_ENABLED", True),
         ):
             resp = client.post(
                 "/api/chat",
@@ -2473,9 +2514,7 @@ class TestCrossSessionHistoryLedger:
         ), "hold-back streaming must record the user turn"
         assert hl.history_ledger._seen(
             "p-hb",
-            hl.message_hash(
-                {"role": "assistant", "content": "a full sentence reply."}
-            ),
+            hl.message_hash({"role": "assistant", "content": "a full sentence reply."}),
         ), "hold-back streaming must record the assistant reply"
 
 
@@ -2501,24 +2540,28 @@ class TestTopicGate:
         if mock_pipeline is None:
             pipeline.check_input.return_value = safe
             pipeline.check_output.return_value = safe
-        with patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=("uid-tg", "user"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._get_profile_for_user",
-            new=AsyncMock(return_value="p-tg"),
-        ), patch(
-            # 15, not <13: an under-13 profile trips the COPPA consent gate,
-            # which sits upstream and would block before the topic gate is
-            # reached — making these tests pass vacuously.
-            "api.routes.ollama_proxy.profile._resolve_age",
-            return_value=15,
-        ), patch(
-            "api.routes.ollama_proxy.transport._forward_request",
-            new_callable=AsyncMock,
-            return_value=ollama_resp,
-        ) as mock_fwd, patch(
-            "safety.pipeline.safety_pipeline", pipeline
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-tg", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="p-tg"),
+            ),
+            patch(
+                # 15, not <13: an under-13 profile trips the COPPA consent gate,
+                # which sits upstream and would block before the topic gate is
+                # reached — making these tests pass vacuously.
+                "api.routes.ollama_proxy.profile._resolve_age",
+                return_value=15,
+            ),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ) as mock_fwd,
+            patch("safety.pipeline.safety_pipeline", pipeline),
         ):
             resp = client.post(
                 "/api/chat",
@@ -2548,8 +2591,11 @@ class TestTopicGate:
 
         from config import system_config
 
-        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
-            "core.topic_gate._default_classifier", new=AsyncMock(return_value="NO")
+        with (
+            patch.object(system_config, "TOPIC_GATE_ENABLED", True),
+            patch(
+                "core.topic_gate._default_classifier", new=AsyncMock(return_value="NO")
+            ),
         ):
             _resp, mock_fwd, _ = self._post(
                 TestClient(_make_app()), "what movie should I watch"
@@ -2561,8 +2607,11 @@ class TestTopicGate:
 
         from config import system_config
 
-        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
-            "core.topic_gate._default_classifier", new=AsyncMock(return_value="YES")
+        with (
+            patch.object(system_config, "TOPIC_GATE_ENABLED", True),
+            patch(
+                "core.topic_gate._default_classifier", new=AsyncMock(return_value="YES")
+            ),
         ):
             _resp, mock_fwd, _ = self._post(
                 TestClient(_make_app()), "how do I factor x^2 + 5x + 6"
@@ -2586,8 +2635,11 @@ class TestTopicGate:
         pipeline.check_input.return_value = _safe_result()
         pipeline.check_output.return_value = _safe_result()
 
-        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
-            "core.topic_gate._default_classifier", new=AsyncMock(return_value="NO")
+        with (
+            patch.object(system_config, "TOPIC_GATE_ENABLED", True),
+            patch(
+                "core.topic_gate._default_classifier", new=AsyncMock(return_value="NO")
+            ),
         ):
             self._post(
                 TestClient(_make_app()),
@@ -2608,9 +2660,12 @@ class TestTopicGate:
 
         from config import system_config
 
-        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
-            "core.topic_gate._default_classifier",
-            new=AsyncMock(side_effect=RuntimeError("ollama down")),
+        with (
+            patch.object(system_config, "TOPIC_GATE_ENABLED", True),
+            patch(
+                "core.topic_gate._default_classifier",
+                new=AsyncMock(side_effect=RuntimeError("ollama down")),
+            ),
         ):
             _resp, mock_fwd, _ = self._post(
                 TestClient(_make_app()), "can you tell me about that thing"
@@ -2625,9 +2680,12 @@ class TestTopicGate:
 
         from config import system_config
 
-        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
-            "core.topic_gate._default_classifier",
-            new=AsyncMock(side_effect=RuntimeError("ollama down")),
+        with (
+            patch.object(system_config, "TOPIC_GATE_ENABLED", True),
+            patch(
+                "core.topic_gate._default_classifier",
+                new=AsyncMock(side_effect=RuntimeError("ollama down")),
+            ),
         ):
             _resp, mock_fwd, _ = self._post(
                 TestClient(_make_app()), "how do I factor x^2 + 5x + 6"
@@ -2662,39 +2720,51 @@ class TestTopicGate:
 
         ollama_resp = httpx.Response(
             200,
-            json={"model": "test-model", "done": True,
-                  "message": {"role": "assistant", "content": "ok"}},
+            json={
+                "model": "test-model",
+                "done": True,
+                "message": {"role": "assistant", "content": "ok"},
+            },
         )
         safe = _safe_result()
         pipeline = MagicMock()
         pipeline.check_input.return_value = safe
         pipeline.check_output.return_value = safe
 
-        with patch.object(system_config, "TOPIC_GATE_ENABLED", True), patch(
-            "core.topic_gate._default_classifier", new=_capture
-        ), patch(
-            "api.routes.ollama_proxy.access._get_user_from_headers",
-            return_value=("uid-ctx", "user"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._get_profile_for_user",
-            new=AsyncMock(return_value="p-ctx"),
-        ), patch(
-            "api.routes.ollama_proxy.profile._resolve_age", return_value=15
-        ), patch(
-            "api.routes.ollama_proxy.transport._forward_request",
-            new_callable=AsyncMock, return_value=ollama_resp,
-        ), patch(
-            "safety.pipeline.safety_pipeline", pipeline
+        with (
+            patch.object(system_config, "TOPIC_GATE_ENABLED", True),
+            patch("core.topic_gate._default_classifier", new=_capture),
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-ctx", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="p-ctx"),
+            ),
+            patch("api.routes.ollama_proxy.profile._resolve_age", return_value=15),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ),
+            patch("safety.pipeline.safety_pipeline", pipeline),
         ):
             TestClient(_make_app()).post(
                 "/api/chat",
-                json={"model": "test-model", "stream": False, "messages": [
-                    {"role": "user", "content": "why did the roman empire fall"},
-                    {"role": "assistant", "content": "Several pressures at once."},
-                    {"role": "user", "content": "but why though"},
-                ]},
-                headers={"X-OpenWebUI-User-Id": "uid-ctx",
-                         "X-OpenWebUI-User-Role": "user"},
+                json={
+                    "model": "test-model",
+                    "stream": False,
+                    "messages": [
+                        {"role": "user", "content": "why did the roman empire fall"},
+                        {"role": "assistant", "content": "Several pressures at once."},
+                        {"role": "user", "content": "but why though"},
+                    ],
+                },
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-ctx",
+                    "X-OpenWebUI-User-Role": "user",
+                },
             )
 
         assert "roman empire" in seen.get("prompt", "").lower()
@@ -2769,3 +2839,115 @@ class TestTutorTimeoutIsVisibleToTheStudent:
         resp = self._post(False, httpx.ReadTimeout("timed out"))
         assert resp.status_code == 200
         assert "too long" in resp.json()["message"]["content"]
+
+
+class TestBreakReminderOnProxy:
+    """SB 243 §22602(c)(2): at least every three hours of continuing chat the
+    child is told to take a break and that the tutor is an AI, not a human.
+    The reply that carries it must also be what the history ledger records, or
+    the next turn would drop it as foreign history."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_state(self):
+        from api.routes.ollama_proxy import break_reminder as br
+        from api.routes.ollama_proxy import history_ledger as hl
+
+        self.clock = [1_000_000.0]
+        rem = br.BreakReminder(
+            interval_seconds=3 * 3600,
+            idle_reset_seconds=10 * 3600,
+            cache=None,
+            use_shared=False,
+        )
+        rem._now = lambda: self.clock[0]
+        orig_r, orig_l = br.break_reminder, hl.history_ledger
+        br.break_reminder = rem
+        hl.history_ledger = hl.HistoryLedger(ttl_seconds=12 * 3600, cache=None)
+        yield
+        br.break_reminder, hl.history_ledger = orig_r, orig_l
+
+    @staticmethod
+    def _post(client, msgs):
+        import json as _j
+
+        ollama_resp = httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "done": True,
+                "message": {"role": "assistant", "content": "the reply"},
+            },
+        )
+        safe = _safe_result()
+        mock_pipeline = MagicMock()
+        mock_pipeline.check_input.return_value = safe
+        mock_pipeline.check_output.return_value = safe
+        with (
+            patch(
+                "api.routes.ollama_proxy.access._get_user_from_headers",
+                return_value=("uid-br", "user"),
+            ),
+            patch(
+                "api.routes.ollama_proxy.profile._get_profile_for_user",
+                new=AsyncMock(return_value="p-br"),
+            ),
+            patch("api.routes.ollama_proxy.profile._resolve_age", return_value=None),
+            patch(
+                "api.routes.ollama_proxy.transport._forward_request",
+                new_callable=AsyncMock,
+                return_value=ollama_resp,
+            ) as mock_fwd,
+            patch("safety.pipeline.safety_pipeline", mock_pipeline),
+        ):
+            resp = client.post(
+                "/api/chat",
+                json={"model": "test-model", "stream": False, "messages": msgs},
+                headers={
+                    "X-OpenWebUI-User-Id": "uid-br",
+                    "X-OpenWebUI-User-Role": "user",
+                },
+            )
+        sent = _j.loads(mock_fwd.call_args.kwargs["content"])["messages"]
+        return resp.json()["message"]["content"], sent
+
+    def test_no_reminder_at_session_start(self):
+        from fastapi.testclient import TestClient
+
+        from api.routes.ollama_proxy import break_reminder as br
+
+        reply, _ = self._post(
+            TestClient(_make_app()), [{"role": "user", "content": "hi"}]
+        )
+        assert br.REMINDER_TEXT not in reply
+
+    def test_reminder_leads_the_reply_after_three_hours_and_is_replayable(self):
+        from fastapi.testclient import TestClient
+
+        from api.routes.ollama_proxy import break_reminder as br
+
+        client = TestClient(_make_app())
+        turn1 = {"role": "user", "content": "what is a fraction"}
+        self._post(client, [turn1])
+
+        self.clock[0] += 3 * 3600
+        turn2 = {"role": "user", "content": "and one half?"}
+        reply2, _ = self._post(
+            client,
+            [turn1, {"role": "assistant", "content": "the reply"}, turn2],
+        )
+        assert reply2.startswith(br.REMINDER_TEXT)
+        assert reply2.endswith("the reply")
+
+        # Open WebUI resends what it was given; the ledger must recognise it.
+        self.clock[0] += 60
+        _, sent = self._post(
+            client,
+            [
+                turn1,
+                {"role": "assistant", "content": "the reply"},
+                turn2,
+                {"role": "assistant", "content": reply2},
+                {"role": "user", "content": "thanks"},
+            ],
+        )
+        assert len(sent) == 5, "the reminder-carrying reply must survive as history"

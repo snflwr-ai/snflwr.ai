@@ -57,6 +57,26 @@ safety pipeline — see `safety/pipeline.py` `get_safe_response`.)*
 > By creating an account you agree to the **Terms of Service** (kept local until published)
 > and **Privacy Policy** (kept local until published).
 
+## 7. State chatbot-law notices  *(live — chat banner + in-chat reminder)*
+
+California SB 243 (Bus. & Prof. Code §§22601–22606, in force 2026-01-01) applies to
+"companion chatbots". Whether snflwr is one is arguable; the posture is to comply
+regardless, because the statute carries a private right of action.
+
+> AI chatbots may not be suitable for some minors; a parent can see and manage
+> this account from the parent dashboard.
+
+*(§22604. Appended to the chat banner in `scripts/owui_connect.py` and to the
+dashboard supervision notice.)*
+
+> ⏰ Break reminder: you've been chatting for a while, so this is a good time to
+> stand up, stretch, or get a drink of water. Remember, I'm an AI, not a human.
+
+*(§22602(c)(2): at least every three hours of continuing chat. Enforced per child
+on the proxy path by `api/routes/ollama_proxy/break_reminder.py`; placed at the top
+of the reply. The persistent banner covers the "not human" disclosure at session
+start, §22602(a)/(c)(1).)*
+
 ---
 
 ## ⛔ Entity-dependent disclosures — REQUIRED by COPPA § 312.4(d)(1), BLOCKED

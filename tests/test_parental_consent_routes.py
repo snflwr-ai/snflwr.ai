@@ -428,6 +428,73 @@ class TestRevokeConsent:
         assert exc.value.status_code == 404
 
 
+class TestRevokeRemovesOpenWebUIAccount:
+    """§312.6(a)(4): revocation must delete the child's data everywhere. Open
+    WebUI keeps its own copy of the chats under the child's OWUI account, which
+    the database cascade cannot reach."""
+
+    @staticmethod
+    def _wire_cascade(mock_db, owui_user_id):
+        mock_db.execute_query.return_value = [
+            {"parent_id": "parent123", "owui_user_id": owui_user_id}
+        ]
+        cur = MagicMock()
+        cur.fetchone.return_value = (1,)
+        cur.rowcount = 1
+        mock_db.transaction.return_value.__enter__.return_value.cursor.return_value = cur
+
+    @pytest.mark.asyncio
+    async def test_owui_account_deleted_when_token_available(
+        self, parent_session, mock_auth_manager, mock_audit, mock_db
+    ):
+        from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
+
+        self._wire_cascade(mock_db, "owui-kid-1")
+        with patch("api.routes.admin._common._get_owui_token", return_value="tok"), patch(
+            "api.routes.admin._common._owui_delete_user", return_value=True
+        ) as delete, patch(
+            "api.routes.parental_consent.email_service"
+        ) as email:
+            result = await revoke_parental_consent(
+                ConsentRevocation(profile_id="prof1"), parent_session
+            )
+        assert delete.call_args.args[2] == "owui-kid-1"
+        assert result["chat_account_removed"] is True
+        email.send_operator_alert.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_operator_alerted_when_owui_account_cannot_be_removed(
+        self, parent_session, mock_auth_manager, mock_audit, mock_db
+    ):
+        from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
+
+        self._wire_cascade(mock_db, "owui-kid-2")
+        with patch("api.routes.admin._common._get_owui_token", return_value=""), patch(
+            "api.routes.parental_consent.email_service"
+        ) as email:
+            result = await revoke_parental_consent(
+                ConsentRevocation(profile_id="prof1"), parent_session
+            )
+        assert result["status"] == "success"  # snflwr's own data IS deleted
+        assert result["chat_account_removed"] is False
+        email.send_operator_alert.assert_called_once()
+        assert "owui-kid-2" in email.send_operator_alert.call_args.kwargs["description"]
+
+    @pytest.mark.asyncio
+    async def test_no_owui_account_needs_no_action(
+        self, parent_session, mock_auth_manager, mock_audit, mock_db
+    ):
+        from api.routes.parental_consent import revoke_parental_consent, ConsentRevocation
+
+        self._wire_cascade(mock_db, None)
+        with patch("api.routes.parental_consent.email_service") as email:
+            result = await revoke_parental_consent(
+                ConsentRevocation(profile_id="prof1"), parent_session
+            )
+        assert result["chat_account_removed"] is True
+        email.send_operator_alert.assert_not_called()
+
+
 # --------------------------------------------------------------------------
 # get_consent_status
 # --------------------------------------------------------------------------

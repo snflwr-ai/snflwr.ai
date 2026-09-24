@@ -627,10 +627,22 @@ PARAMETER top_k 40
 # when working through the lengthy K-12 safety instructions in the system prompt.
 PARAMETER repeat_penalty 1.15
 PARAMETER repeat_last_n 256
-# num_ctx is overridden at runtime by the Snflwr API based on detected system RAM
-# (see resource_detection.py:recommend_num_ctx). This value is only used when
-# invoking Ollama directly outside the API (e.g. `ollama run snflwr.ai`).
-PARAMETER num_ctx 8192
+# SUBSTITUTED AT BUILD TIME by deploy.sh / start_snflwr.sh, which replace this
+# line with the certified ceiling for the backbone being wrapped
+# (core.serving_plan.baked_num_ctx_for), falling back to
+# resource_detection.recommend_num_ctx on an uncertified base. The value below
+# is only what a raw `ollama create` with this file unmodified would use.
+#
+# ⚠️ It was 8192, and 8192 CANNOT HOLD A MINIMAL TURN. Measured 2026-09-24 on
+# the deployed tutor: one character of student text evaluates 8,297 prompt
+# tokens, because this system prompt is ~34,650 characters. And it does not
+# refuse -- Ollama context-shifts (`n_keep = 4`), so the front of THIS FILE's
+# safety instructions is silently dropped and the turn is served anyway.
+#
+# So this fallback is not a conservative default; it is the one value
+# guaranteed to serve an unsafe turn without reporting it. It now names a
+# window that fits the prompt plus a full response.
+PARAMETER num_ctx 24576
 # num_predict is similarly overridden at runtime by recommend_num_predict().
 PARAMETER num_predict 4096
 PARAMETER stop "</s>"

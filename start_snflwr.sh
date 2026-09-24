@@ -371,6 +371,32 @@ from resource_detection import recommend_num_gpu
 print(recommend_num_gpu('${CHAT_MODEL}', vram_gb=${_VRAM_GB:-0}))
 " 2>/dev/null)
     [ -n "$_NUM_GPU" ] && printf '\nPARAMETER num_gpu %s\n' "$_NUM_GPU" >> "$TMP_MODELFILE"
+    # Bake the context window this box actually serves. The committed value is
+    # what any caller gets without the API's per-request override, and 8192
+    # could not hold a minimal turn (8,297 prompt tokens measured 2026-09-24)
+    # -- Ollama context-shifts rather than refusing, so the safety
+    # instructions were silently truncated. Certified ceiling, not the sealed
+    # num_ctx: see deploy.sh for why those differ.
+    _NUM_CTX=$(cd "$SCRIPT_DIR" 2>/dev/null; python3 -c "
+from core.serving_plan import baked_num_ctx_for
+from resource_detection import recommend_num_ctx
+_ram = 0.0
+try:
+    with open('/proc/meminfo') as fh:
+        for line in fh:
+            if line.startswith('MemTotal:'):
+                _ram = int(line.split()[1]) / 1048576.0
+                break
+except OSError:
+    pass
+ctx = baked_num_ctx_for('${TUTOR_MODEL}')
+print(ctx or recommend_num_ctx(_ram, vram_gb=${_VRAM_GB:-0}, model_tag='${CHAT_MODEL}'))
+" 2>/dev/null)
+    case "$_NUM_CTX" in
+        ''|*[!0-9]*) echo "  (could not compute num_ctx; keeping the committed value)" ;;
+        *) sed -i "s|^PARAMETER num_ctx .*|PARAMETER num_ctx ${_NUM_CTX}|" "$TMP_MODELFILE"
+           echo "  tutor context window baked at ${_NUM_CTX}" ;;
+    esac
     if ollama create "$TUTOR_MODEL" -f "$TMP_MODELFILE" >/dev/null 2>&1; then
         echo -e "${GREEN}'${TUTOR_MODEL}' built successfully.${NC}"
     else

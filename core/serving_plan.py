@@ -217,6 +217,33 @@ def sealed_prompt_for(model: str) -> str:
     return ""
 
 
+def baked_num_ctx_for(model: str) -> int:
+    """The context window to BAKE into the Modelfile, or 0 if uncertified.
+
+    The Modelfile's `PARAMETER num_ctx` is the value used whenever a caller
+    reaches the model WITHOUT the API's per-request override -- `ollama run`,
+    a debug script, any new code path that forgets. Measured 2026-09-24, the
+    committed default of 8192 could not hold a minimal turn: one character of
+    student text evaluates 8,297 prompt tokens on the deployed tutor.
+
+    ⚠️ That does not refuse. Ollama context-shifts (`n_keep = 4` in its own
+    log), so the failure is a SILENTLY TRUNCATED SYSTEM PROMPT -- the K-12
+    safety instructions are dropped off the front and the turn is served
+    anyway. On a children's product that is worse than an error, because
+    nothing reports it.
+
+    Returns `validated_ceiling`, NOT `num_ctx`. `num_ctx` is what a sealed run
+    measured; the ceiling is what a validation run showed the box can serve,
+    and it is what the API actually serves. Using `num_ctx` here would bake
+    16384 on a box running 24576 -- a Modelfile that disagrees with the
+    deployment it ships with.
+    """
+    for entry in CERTIFIED_BACKBONES:
+        if entry.model == model:
+            return entry.validated_ceiling
+    return 0
+
+
 def grade_carries_for(model: str) -> tuple[bool, str]:
     """(does the sealed grade describe the shipping prompt, why not).
 

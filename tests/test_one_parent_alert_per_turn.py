@@ -30,9 +30,11 @@ def sent(monkeypatch):
     rows = []
 
     class _Logger:
+        ok = True
+
         def log_incident(self, **kw):
             rows.append(kw)
-            return True, len(rows)
+            return (True, len(rows)) if self.ok else (False, None)
 
     monkeypatch.setattr(
         importlib.import_module("safety.incident_logger"), "incident_logger", _Logger()
@@ -131,4 +133,95 @@ def test_the_route_suppresses_only_on_an_actual_alert():
     assert "send_alert=_disclosure is None" not in src, (
         "suppression is keyed on a disclosure EXISTING, which silences the only "
         "alert for the minor kinds"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Peer review of the first version found two silent holes, both ending with the
+# parent receiving LESS than before the fix. Both are the same mistake one
+# level deeper than the one already avoided: gate on what actually HAPPENED,
+# not on what the kind implies.
+# ---------------------------------------------------------------------------
+
+
+def test_a_failed_write_must_not_claim_it_alerted(sent, monkeypatch):
+    """⚠️ Hole 1: `log_incident` can fail WITHOUT raising.
+
+    It returns (False, None) on its validation path and on its outer DB-error
+    path, and sends no alert. The `except` in the recorder only catches raises,
+    so deriving "alerted" from the KIND claimed an alert that never happened —
+    the route then suppressed the safety alert and the parent got NOTHING.
+    """
+    import importlib
+
+    logger = importlib.import_module("safety.incident_logger").incident_logger
+    logger.ok = False
+
+    alerted = blocks._record_disclosure_incident(
+        "p1", "suicidal_ideation", "m", "the child's words", blocked=True,
+        block_severity="critical",
+    )
+    assert alerted is False, (
+        "the disclosure write FAILED and the recorder still reported an alert; "
+        "the route will suppress the safety alert and the parent gets zero "
+        "emails for a blocked crisis message"
+    )
+
+
+def test_a_blocked_crisis_keeps_its_URGENCY(sent):
+    """⚠️ Hole 2, and the worst case in the file.
+
+    `email_service.send_safety_alert` picks the URGENT template only for
+    `severity in ["critical", "high"]`, and escalation passes severity straight
+    through with no major->high translation. A blocked suicidal-ideation turn
+    writes a CRITICAL safety row and a MAJOR disclosure row — so suppressing
+    the critical one in favour of the major one turned "[ALERT] URGENT" into a
+    routine notice on the one case where urgency matters most.
+
+    The disclosure row must therefore inherit the block's severity.
+    """
+    alerted = blocks._record_disclosure_incident(
+        "p1", "suicidal_ideation", "m", "the child's words", blocked=True,
+        block_severity="critical",
+    )
+    assert alerted is True
+    assert len(sent) == 1
+    assert sent[0]["severity"] == "critical", (
+        f"the surviving alert is {sent[0]['severity']!r}, so the parent gets an "
+        f"ordinary notice where they previously got an URGENT one"
+    )
+    assert sent[0]["incident_type"] == "disclosure_suicidal_ideation", (
+        "urgency was preserved but the framing was lost"
+    )
+
+
+def test_a_minor_kind_blocked_critically_alerts_and_says_so(sent):
+    """Falls out of severity-not-kind, and is right: a child reporting bullying
+    on a turn blocked as critical should still produce one URGENT alert, framed
+    as the disclosure rather than as the block's category."""
+    alerted = blocks._record_disclosure_incident(
+        "p1", "bullying_victim", "m", "the child's words", blocked=True,
+        block_severity="critical",
+    )
+    assert alerted is True
+    assert sent[0]["severity"] == "critical"
+
+
+def test_an_unblocked_minor_kind_is_unchanged(sent):
+    """Guard: the merge must not promote anything on the ordinary path."""
+    alerted = blocks._record_disclosure_incident(
+        "p1", "bullying_victim", "m", "the child's words"
+    )
+    assert alerted is False
+    assert sent[0]["severity"] == "minor"
+
+
+def test_the_route_passes_the_blocks_severity():
+    import inspect
+
+    from api.routes.ollama_proxy import chat
+
+    assert "block_severity=(" in inspect.getsource(chat), (
+        "the route does not hand the block's severity to the disclosure row, so "
+        "a blocked crisis alert is downgraded"
     )

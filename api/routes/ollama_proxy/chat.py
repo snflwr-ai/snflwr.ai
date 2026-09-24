@@ -488,6 +488,12 @@ async def proxy_chat(
                 _disclosure.matched,
                 text,
                 blocked=not result.is_safe,
+                # The block's own severity, so the disclosure row can carry it.
+                # A blocked crisis message is CRITICAL on the safety row and
+                # only MAJOR on the disclosure row, and major is an ORDINARY
+                # parent email while critical is an URGENT one -- so without
+                # this the suppression below downgrades the alert.
+                block_severity=(None if result.is_safe else str(result.severity.value)),
             )
             _trace["disclosure"] = {
                 "kind": _disclosure.kind,

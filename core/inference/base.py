@@ -1,8 +1,25 @@
 """Engine-neutral inference types and errors.
 
-Every model call in the product goes through this interface: the student turn in
-the proxy, the guidance enforcer's gate/confirm/rewrite calls, the safety
-classifier and the topic gate. Callers never see an engine's wire format.
+Every TUTORING model call goes through this interface: the student turn in the
+proxy, the legacy `/api/chat/send` route, and the guidance enforcer's
+gate/confirm/rewrite calls. Callers never see an engine's wire format.
+
+⚠️ The safety classifier and the topic gate do NOT, and should not. This
+docstring claimed they did until 2026-09-23, which a `grep` disproves in one
+line -- they call `utils/ollama_client` directly. That is deliberate, and
+routing them through here would be a regression on two counts:
+
+* this interface gates on the SERVING PLAN, and a safety classifier must run
+  even when the plan has disabled tutoring. Safety is not a tutoring feature.
+* this interface takes a box-wide GPU admission slot, and the safety models are
+  CPU-PINNED (`llama-guard3-cpu`, `PARAMETER num_gpu 0`, 0.0 GB VRAM in
+  `/api/ps`). Charging them a GPU slot would starve real tutoring turns for a
+  model that is not on the card.
+
+What matters for safety is that the classifier is pinned to `llama-guard3` and
+never falls back to the tutor backbone -- a classifier that follows the backbone
+degrades silently on a swap. `scripts/postdeploy_smoke.py` asserts the live
+model is the configured one and not a fallback.
 
 The types are deliberately small. A driver's job is to translate, not to add
 behaviour: policy (what to send, what to do with the answer) stays in the

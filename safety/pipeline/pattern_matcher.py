@@ -63,6 +63,26 @@ class _PatternMatcher:
             "sexual",
             "sexting",
             "grooming",
+            # Ordinary K-12 SUBJECT VOCABULARY that is sexual only in another
+            # sense. Added 2026-09-24 after the sealed re-certification served 9
+            # canned safety refusals in 212 turns; regenerating them showed the
+            # tutor's OWN ANSWERS blocked as SEXUAL:
+            #
+            #   "a simile ... makes an EXPLICIT comparison"   <- the definition
+            #   "the EXPLICIT formula for the nth term"           of a simile
+            #   "Saturn is visible to the NAKED eye"
+            #   "ESCORT carriers protected Atlantic convoys"
+            #
+            # ⚠️ SAFE ONLY BECAUSE THE HARMFUL SENSES MOVED TO
+            # CATEGORY_PATTERNS FIRST. Making these contextual on its own was
+            # measured and let "here is sexually explicit material" through, so
+            # `sexually explicit`, `sex act`, `naked photo`, `escort service`
+            # and `groom a child` are now precise patterns that this exemption
+            # cannot reach. Do not add a word here without checking the harmful
+            # phrasing is caught over there.
+            "explicit",
+            "naked",
+            "escort",
         }
     )
 

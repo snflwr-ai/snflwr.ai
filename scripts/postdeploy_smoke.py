@@ -181,6 +181,96 @@ def _check_the_running_prompt_is_the_certified_one() -> list:
     return []
 
 
+# Sentinel distinguishing "the check could not run" from "the check failed".
+# It must NOT be counted as a pass: deploy.sh reads exit 0 as "verified".
+_UNMEASURED = "__unmeasured__"
+
+# Unambiguous capacity failures. Nothing a SHIPPED bug produces looks like this;
+# they mean the card could not hold the model.
+_CAPACITY_SIGNATURES = (
+    "out of memory",
+    "cudamalloc",
+    "unable to allocate",
+    "failed to allocate",
+    "no space left on device",
+    "model requires more system memory",
+)
+
+# ⚠️ AMBIGUOUS. A confirm pointed at the wrong OLLAMA host, a renamed service or
+# a dead port produces exactly these -- which is the 0/20-recall-behind-a-green
+# -deploy class this whole check exists for. So they are FAIL unless the GPU
+# independently corroborates contention. Raised in review by a peer session;
+# the first version of this fix downgraded them unconditionally and would have
+# hidden a shipped misconfiguration.
+_AMBIGUOUS_SIGNATURES = (
+    "connection refused",
+    "connection error",
+    "timed out",
+    "timeout",
+)
+
+
+def _gpu_corroborates_contention() -> str:
+    """Independent evidence that the CARD, not the config, is the problem.
+
+    Returns a reason string, or "" when nothing corroborates. Any error here
+    yields "" -- absence of evidence must not become evidence.
+    """
+    try:
+        import httpx
+
+        from config import system_config
+    except Exception:  # noqa: BLE001
+        return ""
+    try:
+        url = (system_config.OLLAMA_PROXY_TARGET or "http://ollama:11434").rstrip("/")
+        ps = httpx.get(url + "/api/ps", timeout=5).json()
+        resident = [m.get("name", "") for m in ps.get("models", [])]
+        tutor = system_config.OLLAMA_DEFAULT_MODEL
+        if tutor and not any(tutor.split(":")[0] in n for n in resident):
+            return f"the tutor {tutor!r} is not resident (loaded: {resident or 'none'})"
+    except Exception:  # noqa: BLE001
+        pass
+    for host in ("http://172.24.0.1:11460", "http://localhost:11460"):
+        try:
+            import httpx
+
+            st = httpx.get(host + "/status", timeout=3).json()
+            other = st.get("ironclaw_on_gpu") or []
+            lease = st.get("lease") or {}
+            if other:
+                return f"the co-tenant holds the card ({other})"
+            if lease and lease.get("who") not in (None, "snflwr"):
+                return f"another lease is held by {lease.get('who')!r}"
+            if (st.get("free_mib") or 0) < 2000:
+                return f"only {st.get('free_mib')} MiB of card is free"
+        except Exception:  # noqa: BLE001
+            continue
+    return ""
+
+
+def classify_confirm_failure(exc: BaseException) -> tuple:
+    """(\"FAIL\"|\"UNMEASURED\", reason) for an exception from the confirm test.
+
+    DEFAULT IS FAIL. Only a recognised capacity failure, or an ambiguous
+    connection/timeout error CORROBORATED by the GPU's own state, is downgraded.
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    hit = next((s for s in _CAPACITY_SIGNATURES if s in text), None)
+    if hit:
+        return "UNMEASURED", f"the model could not load ({hit!r})"
+    hit = next((s for s in _AMBIGUOUS_SIGNATURES if s in text), None)
+    if hit:
+        why = _gpu_corroborates_contention()
+        if why:
+            return "UNMEASURED", f"{hit!r}, and {why}"
+        return "FAIL", (
+            f"{hit!r} with NO GPU evidence of contention -- treat as a shipped "
+            f"misconfiguration (wrong host/port/service name), not as load"
+        )
+    return "FAIL", f"unrecognised error ({type(exc).__name__})"
+
+
 def _check_confirm_actually_detects_a_reveal() -> list:
     """The reveal confirm must DETECT a blatant reveal, not merely run.
 
@@ -262,53 +352,17 @@ def _check_confirm_actually_detects_a_reveal() -> list:
     try:
         verdict = asyncio.run(confirm_reveal(question, revealing, _gen))
     except Exception as exc:
-        # ⚠️ "The model could not LOAD" is not "the shipped code is WRONG".
-        #
-        # This branch used to fail unconditionally, and deploy.sh turns a
-        # failure here into:
-        #
-        #     "The running container does NOT have the expected safety
-        #      behaviour. It is healthy but serving the wrong code. Roll back"
-        #
-        # On 2026-09-24 that fired on a deploy whose container was perfectly
-        # correct. The co-tenant held the GPU, the arbiter's free-VRAM gate was
-        # 943 MiB optimistic, ollama returned "cudaMalloc failed: out of
-        # memory" (17:20:18), the confirm raised, and the deploy told the
-        # operator to roll back a SAFETY FIX. Re-running the same binary with
-        # an exclusive lease: exit 0, all six behaviours verified.
-        #
-        # Telling someone to roll back working child-safety code is worse than
-        # the contention it was reacting to, and the latency bar in this same
-        # script already models the right answer: contention is UNMEASURED, not
-        # a regression.
-        #
-        # DEFAULT IS STILL FAIL. Only a RECOGNISED load/capacity signature is
-        # downgraded; an unfamiliar error keeps failing the deploy, because the
-        # whole point of this check is that a green deploy must not hide a
-        # broken guard.
-        text = f"{type(exc).__name__}: {exc}".lower()
-        contention = (
-            "out of memory",
-            "cudamalloc",
-            "unable to allocate",
-            "failed to allocate",
-            "no space left on device",
-            "model requires more system memory",
-            "connection refused",
-            "connection error",
-            "timed out",
-            "timeout",
-        )
-        hit = next((s for s in contention if s in text), None)
-        if hit:
+        # ⚠️ "The model could not LOAD" is not "the shipped code is WRONG" --
+        # but it is NOT "verified" either. See classify_confirm_failure.
+        verdict_class, why = classify_confirm_failure(exc)
+        if verdict_class == "UNMEASURED":
             print(
-                f"  [UNMEASURED] reveal-confirm could not run: the model did "
-                f"not load ({hit!r} in {type(exc).__name__}). Almost always the "
-                f"co-tenant holding the card -- check the GPU arbiter and take "
-                f"a lease, then re-run. This is NOT a verdict on the shipped "
-                f"code, and NOT a reason to roll back."
+                f"  [UNMEASURED] reveal-confirm could not run: {why}. This is "
+                f"NOT a verdict on the shipped code and NOT a reason to roll "
+                f"back -- but the safety check DID NOT RUN. Take a GPU lease "
+                f"and re-run postdeploy_smoke before any child uses this."
             )
-            return []
+            return [_UNMEASURED]
         print(f"  [FAIL] reveal-confirm raised ({exc})")
         return ["confirm self-test raised"]
 
@@ -472,10 +526,18 @@ def main() -> int:
     failures.extend(_check_ollama_can_still_reach_the_gpu())
     failures.extend(_check_the_child_is_not_waiting_longer_than_the_bar())
 
-    if failures:
+    # UNMEASURED is neither. Exit 3 so deploy.sh can say "not verified" without
+    # saying "verified" (exit 0) or "roll back" (exit 1). Returning [] here --
+    # as the first version of this fix did -- makes deploy.sh print "Shipped
+    # behaviour verified." for a check that never ran, which is the false green
+    # this whole script exists to prevent. Caught in review by a peer session.
+    unmeasured = [f for f in failures if f == _UNMEASURED]
+    real = [f for f in failures if f != _UNMEASURED]
+
+    if real:
         print(
-            f"\nFAIL: {len(failures)} of {len(CASES)} behaviours are not live: "
-            + ", ".join(failures),
+            f"\nFAIL: {len(real)} of {len(CASES)} behaviours are not live: "
+            + ", ".join(real),
             file=sys.stderr,
         )
         print(
@@ -483,6 +545,14 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    if unmeasured:
+        print(
+            f"\nNOT VERIFIED: {len(unmeasured)} check(s) could not run. The "
+            f"deploy is NOT confirmed safe and is NOT known broken. Take a GPU "
+            f"lease and re-run this script before any child uses this build.",
+            file=sys.stderr,
+        )
+        return 3
     print(
         f"\nOK — all {len(CASES)} shipped behaviours verified in the running container."
     )

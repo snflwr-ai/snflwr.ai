@@ -323,6 +323,53 @@ _REDIRECT_KEYWORDS: Dict[str, list] = {
 
 # =============================================================================
 # 7. SafetyPipeline -- orchestrator
+# ⚠️ Deliberately BROAD, and that is correct here even though a broad keyword
+# list has repeatedly been the wrong tool elsewhere in this subsystem.
+#
+# The difference is the denominator and the cost asymmetry. This runs ONLY on
+# text the pipeline has ALREADY blocked, so it never sees ordinary tutoring and
+# cannot add latency or refuse anything. A false positive means a child who was
+# not in crisis sees a crisis line appended to a refusal they were getting
+# anyway -- near-zero harm. A miss means a child asking how many pills would
+# kill them is told to focus on their schoolwork.
+#
+# Recall is bought at the price of precision ON PURPOSE, which is the same
+# reasoning disclosure_detector's module docstring records for itself.
+#
+# ⚠️ KNOWN false positive, recorded rather than left to be discovered: "the
+# lethal dose of caffeine for my biology report" matches. If such a question is
+# blocked upstream, the child gets a crisis line on a biology question. That is
+# the wrong trade to fix by narrowing `lethal dose` -- the phrase is far more
+# often a child in trouble than a coursework question, and narrowing it is how
+# the miss came back. If this becomes a real complaint, the fix is an academic
+# frame exemption (see disclosure_detector._ACADEMIC_FRAME), not a shorter list.
+_CRISIS_TEXT = re.compile(
+    r"\b(?:"
+    # ideation
+    r"want(?:s|ed)? to die|wanna die|kill (?:myself|me)|killing myself"
+    r"|end (?:my life|it all|things)|take my (?:own )?life"
+    r"|don'?t want to (?:be here|live|exist|wake up)|not want to be here"
+    r"|wish i (?:was|were) dead|better off dead|no reason to live"
+    r"|hurt(?:ing)? myself|harm(?:ing)? myself|cut(?:ting)? myself"
+    r"|suicidal|suicide"
+    # method and plan -- the class the label-only routing missed
+    r"|overdose|over ?dose|how many (?:pills|tablets|paracetamol|tylenol|aspirin)"
+    r"|lethal dose|how much .{0,20}(?:would|to) kill"
+    r"|hang myself|hanging myself|bleed out|slit my|jump off|jump from"
+    r"|painless way|quickest way to die|easiest way to die"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_crisis(text: str) -> bool:
+    """True when the child's own words indicate ideation, self-harm or a method.
+
+    Independent of whatever category the classifier chose.
+    """
+    return bool(text) and bool(_CRISIS_TEXT.search(text))
+
+
 # =============================================================================
 
 
@@ -593,20 +640,39 @@ class SafetyPipeline:
             )
 
     # ------------------------------------------------------------------ #
+
     # get_safe_response
     # ------------------------------------------------------------------ #
 
-    def get_safe_response(self, result: SafetyResult) -> str:
+    def get_safe_response(self, result: SafetyResult, text: str = "") -> str:
         """
         Generate a child-friendly redirect message from a block result.
 
         CRITICAL: for SELF_HARM, always include the 988 crisis text.
+
+        ⚠️ That guarantee used to rest ENTIRELY on the classifier having chosen
+        the SELF_HARM label, and a peer session measured it failing on
+        2026-09-24: a child asking about an overdose METHOD was blocked as
+        VIOLENCE, and so received "I can't help with that topic. Let's focus on
+        your schoolwork instead." -- with no crisis line at all.
+
+        The intent in the line above was right and the trigger was wrong. A
+        crisis referral must not depend on one classifier picking the right
+        category out of nine, so `text` is now checked directly and wins over
+        the label. Same shape as `default-safe-only-by-coincidence`: a
+        protection that holds only while a separate component gets something
+        right is not a protection.
+
+        `text` is optional so existing callers keep working, but a caller that
+        omits it gets label-only routing -- i.e. the old behaviour, with the old
+        gap. Pass it.
         """
         if result.is_safe:
             return ""
 
-        # Self-harm requires crisis resource information -- this is non-negotiable
-        if result.category == Category.SELF_HARM:
+        # Self-harm requires crisis resource information -- this is non-negotiable.
+        # Checked on the TEXT first, then the label.
+        if result.category == Category.SELF_HARM or _looks_like_crisis(text):
             return (
                 "I'm really sorry you're feeling this way. You are not alone, and help is available. "
                 "If you or someone you know is struggling, please talk to a trusted adult, teacher, "

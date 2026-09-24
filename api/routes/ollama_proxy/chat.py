@@ -482,7 +482,11 @@ async def proxy_chat(
     if not result.is_safe:
         block_message = (
             result.modified_content
-            or safety_pipeline.get_safe_response(result)
+            # `text` is passed so a crisis referral does not depend on the
+            # classifier having chosen SELF_HARM out of nine categories: an
+            # overdose-method question blocked as VIOLENCE used to get the
+            # schoolwork redirect and no 988 line.
+            or safety_pipeline.get_safe_response(result, text)
             or "I'm not able to help with that right now. Let's try something else!"
         )
         logger.info(
@@ -584,7 +588,9 @@ async def proxy_chat(
         def _fallback_for(out_result) -> str:
             return (
                 out_result.modified_content
-                or safety_pipeline.get_safe_response(out_result)
+                # The blocked text here is the TUTOR's reply, so the child's own
+                # question is what the crisis check needs to see.
+                or safety_pipeline.get_safe_response(out_result, user_question)
                 or "I'm not able to share that. Let's try something else!"
             )
 
@@ -800,7 +806,9 @@ async def proxy_chat(
         if not out_result.is_safe:
             block_msg = (
                 out_result.modified_content
-                or safety_pipeline.get_safe_response(out_result)
+                # The blocked text here is the TUTOR's reply, so the child's own
+                # question is what the crisis check needs to see.
+                or safety_pipeline.get_safe_response(out_result, user_question)
                 or "I'm not able to share that. Let's try something else!"
             )
             logger.info(

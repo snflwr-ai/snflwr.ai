@@ -81,7 +81,16 @@ def _ollama_block_response(model: str, block_message: str) -> dict:
     }
 
 
-def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
+# The disclosure kinds whose incidents are MAJOR, and therefore the only ones
+# that raise a parent alert (escalation routes major/critical). Defined once
+# because two call sites now depend on it agreeing -- duplicating the rule is
+# how it drifts, and a drift here means either two alerts or none.
+ALERTING_DISCLOSURE_KINDS = ("suicidal_ideation", "predatory_contact")
+
+
+def _record_safety_incident(
+    profile_id, result, content_snippet: str, send_alert: bool = True
+) -> None:
     """Best-effort human-in-the-loop escalation for a blocked student message.
 
     Records a DB incident and — for major/critical severities such as a
@@ -92,11 +101,19 @@ def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
     Students reach the model through this proxy (not api/routes/chat.py), so the
     escalation has to live here too. Fail-safe by design: any error is swallowed
     so the child's safe response is always delivered.
+
+    ⚠️ `send_alert=False` records the incident WITHOUT alerting, and exists for
+    exactly one case: the turn was blocked AND a disclosure was detected, so
+    `_record_disclosure_incident` has already alerted with the correct framing.
+    Both rows are still written -- this row remains the record of why the reply
+    was replaced -- but a parent gets ONE message, not two, and not one that
+    describes their child as having requested harmful content.
     """
     try:
         from safety.incident_logger import incident_logger
 
         incident_logger.log_incident(
+            send_alert=send_alert,
             profile_id=profile_id or "unknown",
             session_id=None,
             incident_type=result.category.value,
@@ -122,7 +139,7 @@ def _record_disclosure_incident(
     matched: str,
     content_snippet: str,
     blocked: bool = False,
-) -> None:
+) -> bool:
     """Escalate a child's risk DISCLOSURE without blocking their turn.
 
     Distinct from _record_safety_incident, which is only reached when a message is
@@ -149,9 +166,7 @@ def _record_disclosure_incident(
         # "minor", not "moderate": log_incident accepts only minor/major/critical
         # and REJECTED "moderate", so bullying and disordered-eating disclosures
         # were never recorded and no parent could ever see them.
-        severity = (
-            "major" if kind in ("suicidal_ideation", "predatory_contact") else "minor"
-        )
+        severity = "major" if kind in ALERTING_DISCLOSURE_KINDS else "minor"
         incident_logger.log_incident(
             profile_id=profile_id or "unknown",
             session_id=None,
@@ -174,10 +189,17 @@ def _record_disclosure_incident(
                 "blocked": blocked,
             },
         )
+        # Whether a parent was alerted by THIS row. The caller uses it to avoid
+        # a second alert for the same turn -- and returning the fact, rather
+        # than re-deriving the severity rule at the call site, is what keeps
+        # the two in agreement.
+        return kind in ALERTING_DISCLOSURE_KINDS
     except Exception as exc:  # never let escalation break the child's response
         logger.error(
             "Failed to record disclosure incident (non-fatal): %s", exc, exc_info=True
         )
+        # Nothing was alerted, so the caller must NOT suppress the safety alert.
+        return False
 
 
 def _extract_text_from_ndjson_chunks(chunks: list[bytes]) -> str:

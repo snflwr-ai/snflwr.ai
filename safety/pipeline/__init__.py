@@ -290,8 +290,13 @@ _CIVICS_INDICATORS = (
 # Keyword lists for redirect topics
 _REDIRECT_KEYWORDS: Dict[str, list] = {
     "politics": [
+        # "political" was removed on 2026-09-24 by owner decision. It redirected
+        # the tutor's OWN correct answers: a WWII-propaganda definition for a
+        # history assignment ("...promote a particular political cause") was
+        # replaced with a canned redirect (recert-R idx 80). The output path
+        # has no educational override, so any history or civics answer using
+        # the word was at risk. The remaining words still redirect.
         "politics",
-        "political",
         "election",
         "vote",
         "democrat",

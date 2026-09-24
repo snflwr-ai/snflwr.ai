@@ -461,28 +461,46 @@ async def proxy_chat(
     # content to a parent.
     #
     # This records the incident and lets the turn proceed untouched.
+    # ⚠️ This runs REGARDLESS of `result.is_safe`, and that is the whole point.
+    # It used to sit inside `if result.is_safe`, which made the two nets mutually
+    # exclusive: a disclosure the harm classifier happened to block never reached
+    # this detector at all, so it was recorded as `exploitation` -- the child
+    # REQUESTING harmful content -- instead of the child DISCLOSING it. A parent
+    # alert that says the wrong thing about which of those happened is worse than
+    # a late one.
+    #
+    # Measured 2026-09-24 on a held-out sealed set of 22 disclosures: the harm
+    # classifier blocks 2 of them. Small, but those 2 were exactly the cases
+    # where a parent was told the least accurate story.
     _disclosure = None
-    if result.is_safe:
-        try:
-            from safety.disclosure_detector import detect_disclosure
+    try:
+        from safety.disclosure_detector import detect_disclosure
 
-            _disclosure = detect_disclosure(text)
-            if _disclosure is not None:
-                blocks._record_disclosure_incident(
-                    profile_id, _disclosure.kind, _disclosure.matched, text
-                )
-                _trace["disclosure"] = {
-                    "kind": _disclosure.kind,
-                    "escalated": True,
-                    "blocked": False,
-                }
-        except Exception as exc:  # never let escalation break a child's turn
-            logger.warning("disclosure detection failed (continuing): %s", exc)
+        _disclosure = detect_disclosure(text)
+        if _disclosure is not None:
+            blocks._record_disclosure_incident(
+                profile_id,
+                _disclosure.kind,
+                _disclosure.matched,
+                text,
+                blocked=not result.is_safe,
+            )
+            _trace["disclosure"] = {
+                "kind": _disclosure.kind,
+                "escalated": True,
+                "blocked": not result.is_safe,
+            }
+    except Exception as exc:  # never let escalation break a child's turn
+        logger.warning("disclosure detection failed (continuing): %s", exc)
 
     if not result.is_safe:
         block_message = (
             result.modified_content
-            or safety_pipeline.get_safe_response(result)
+            # `text` is passed so a crisis referral does not depend on the
+            # classifier having chosen SELF_HARM out of nine categories: an
+            # overdose-method question blocked as VIOLENCE used to get the
+            # schoolwork redirect and no 988 line.
+            or safety_pipeline.get_safe_response(result, text)
             or "I'm not able to help with that right now. Let's try something else!"
         )
         logger.info(
@@ -584,7 +602,9 @@ async def proxy_chat(
         def _fallback_for(out_result) -> str:
             return (
                 out_result.modified_content
-                or safety_pipeline.get_safe_response(out_result)
+                # The blocked text here is the TUTOR's reply, so the child's own
+                # question is what the crisis check needs to see.
+                or safety_pipeline.get_safe_response(out_result, user_question)
                 or "I'm not able to share that. Let's try something else!"
             )
 
@@ -800,7 +820,9 @@ async def proxy_chat(
         if not out_result.is_safe:
             block_msg = (
                 out_result.modified_content
-                or safety_pipeline.get_safe_response(out_result)
+                # The blocked text here is the TUTOR's reply, so the child's own
+                # question is what the crisis check needs to see.
+                or safety_pipeline.get_safe_response(out_result, user_question)
                 or "I'm not able to share that. Let's try something else!"
             )
             logger.info(

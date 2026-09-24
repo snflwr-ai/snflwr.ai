@@ -117,7 +117,11 @@ def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
 
 
 def _record_disclosure_incident(
-    profile_id, kind: str, matched: str, content_snippet: str
+    profile_id,
+    kind: str,
+    matched: str,
+    content_snippet: str,
+    blocked: bool = False,
 ) -> None:
     """Escalate a child's risk DISCLOSURE without blocking their turn.
 
@@ -127,6 +131,13 @@ def _record_disclosure_incident(
     still reach escalation.py so a parent is told. Measured before this existed:
     1 of 12 disclosures escalated, and analytics carries no transcript, so the rest
     were invisible to every adult permanently.
+
+    ⚠️ `blocked=True` is NOT a contradiction of the above. The caller now runs the
+    disclosure detector on blocked turns too, so a disclosure the harm classifier
+    happened to catch is recorded as a DISCLOSURE rather than only as
+    `exploitation` -- which reads as the child requesting harmful content, the
+    opposite of what happened. Both rows are written for such a turn: this one
+    says what the child was doing, the safety row says why the reply was replaced.
 
     Severity is MAJOR for ideation and predatory contact so the parent alert fires;
     escalation.py routes major/critical. Fail-safe: any error is swallowed, because
@@ -152,8 +163,15 @@ def _record_disclosure_incident(
                 "stage": "disclosure_detector",
                 "disclosure_kind": kind,
                 "matched": matched,
-                # The turn was NOT blocked; the child received the tutor's reply.
-                "blocked": False,
+                # Usually False: a disclosure is escalated WITHOUT blocking, so
+                # the child received the tutor's own reply.
+                #
+                # True means the harm classifier blocked this turn as well, so
+                # the child got a canned refusal. Recorded because a reviewer
+                # needs to know which of the two a parent alert describes -- and
+                # because a blocked disclosure is the case where the child was
+                # both reaching out AND refused, which is worth seeing.
+                "blocked": blocked,
             },
         )
     except Exception as exc:  # never let escalation break the child's response

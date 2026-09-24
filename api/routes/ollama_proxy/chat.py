@@ -16,6 +16,7 @@ from api.routes.ollama_proxy import (
     access,
     admission,
     blocks,
+    break_reminder,
     guards,
     history_ledger,
     profile,
@@ -610,6 +611,7 @@ async def proxy_chat(
             _emit_trace()
 
         async def _holdback_stream():
+            _reminder_prefix = ""
             collected: list[bytes] = []
             flushed = 0
             checkpoint_done = False
@@ -636,6 +638,13 @@ async def proxy_chat(
                     collected = blocks._strip_age_scaffolding_from_ndjson_chunks(
                         collected
                     )
+                    # SB 243 §22602(c)(2) break reminder, leading the reply.
+                    if break_reminder.due(profile_id):
+                        _reminder_prefix = break_reminder.REMINDER_TEXT + "\n\n"
+                        yield blocks._ollama_content_chunk_bytes(
+                            model, _reminder_prefix
+                        )
+                        _trace["break_reminder"] = True
                     for c in collected[flushed:]:
                         yield c
                     flushed = len(collected)
@@ -660,7 +669,9 @@ async def proxy_chat(
                 # Only on the fully-vetted success path: a blocked or errored
                 # stream returns early above and must NOT be recorded, or the
                 # withheld text would be replayable as "known" history.
-                history_ledger.record_turn(profile_id, messages[-1], full)
+                history_ledger.record_turn(
+                    profile_id, messages[-1], _reminder_prefix + full
+                )
             except httpx.ConnectError:
                 _trace["safety"] = {"blocked_layer": "error"}
                 _emit_trace()
@@ -1029,6 +1040,22 @@ async def proxy_chat(
         if _after != _before:
             upstream_json["message"]["content"] = _after
             _pedagogy_modified = True
+
+    # SB 243 §22602(c)(2): at least every three hours of continuing chat, tell
+    # the child to take a break and that this is an AI, not a human. Placed
+    # after every rewrite so it is part of the text that ships (and that the
+    # history ledger records), and at the TOP so it is conspicuous.
+    if (
+        messages
+        and isinstance(upstream_json, dict)
+        and isinstance(upstream_json.get("message"), dict)
+        and break_reminder.due(profile_id)
+    ):
+        upstream_json["message"]["content"] = break_reminder.with_reminder(
+            upstream_json["message"].get("content") or ""
+        )
+        _pedagogy_modified = True  # forces the re-serialize below
+        _trace["break_reminder"] = True
 
     _trace["blocked"] = False
     _trace["safety"] = {"blocked_layer": None}

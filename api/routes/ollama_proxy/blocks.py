@@ -135,10 +135,11 @@ def _record_disclosure_incident(
     try:
         from safety.incident_logger import incident_logger
 
+        # "minor", not "moderate": log_incident accepts only minor/major/critical
+        # and REJECTED "moderate", so bullying and disordered-eating disclosures
+        # were never recorded and no parent could ever see them.
         severity = (
-            "major"
-            if kind in ("suicidal_ideation", "predatory_contact")
-            else "moderate"
+            "major" if kind in ("suicidal_ideation", "predatory_contact") else "minor"
         )
         incident_logger.log_incident(
             profile_id=profile_id or "unknown",
@@ -205,6 +206,16 @@ def _ollama_stream_bytes_for_text(
     if usage:
         payload["prompt_eval_count"] = usage.get("input", 0)
         payload["eval_count"] = usage.get("output", 0)
+    return (_json.dumps(payload) + "\n").encode()
+
+
+def _ollama_content_chunk_bytes(model: str, text: str) -> bytes:
+    """One NON-final NDJSON chunk carrying ``text`` -- used to put a notice
+    (the break reminder) ahead of a streamed reply without ending the stream."""
+    payload = _ollama_block_response(model, text)
+    payload["done"] = False
+    for key in ("done_reason", "total_duration", "eval_count"):
+        payload.pop(key, None)
     return (_json.dumps(payload) + "\n").encode()
 
 

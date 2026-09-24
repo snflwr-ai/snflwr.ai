@@ -507,6 +507,8 @@ class TestKeyValueSchema:
         assert banners[0]["id"] == owui_connect._DISCLOSURE_BANNER_ID
         assert banners[0]["dismissible"] is False
         assert "988" in banners[0]["content"]
+        # SB 243 §22604 suitability notice rides on the same banner.
+        assert "may not be suitable for some minors" in banners[0]["content"]
         assert other in banners
 
     def test_fresh_kv_table_inserts_rows(self, owui_connect, tmp_path, monkeypatch):

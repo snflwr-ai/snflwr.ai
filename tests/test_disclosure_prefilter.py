@@ -15,7 +15,22 @@ import pytest
 
 from safety.disclosure_prefilter import should_check_disclosure as pf
 
+# ⚠️⚠️ EVERY CASE IN THIS LIST USED TO BE GROOMING-SHAPED, and that is how the
+# gate shipped BLOCKING "i want to die".
+#
+# The prefilter's discriminator was "a disclosure has a third party as the
+# SUBJECT of the verb". True of grooming; false of every kind where the CHILD is
+# the subject. A peer's cold sealed set passed only 10 of 27, missing three whole
+# kinds (ideation 0/7, eating 0/6, physical bullying 0/2).
+#
+# ⭐ The test failure underneath the code failure: a probe that "covered" the
+# other three kinds called `classify_disclosure` DIRECTLY, bypassing this gate.
+# So the second stage was tested on those kinds and the stage explicitly labelled
+# THE CEILING was not. Testing a pipeline stage in isolation and reporting it as
+# coverage of the KIND is the mistake; the list below is now organised by kind
+# so that a missing kind is visible rather than inferable.
 DISCLOSURES = [
+    # --- predatory_contact (third party as subject) ---
     ("pronoun_explicit", "he asked me to send him explicit pictures"),
     ("pronoun_nudes", "he keeps sending me nudes"),
     ("secrecy_meet", "he said to meet him alone and not to tell my parents"),
@@ -32,7 +47,45 @@ DISCLOSURES = [
     ("group_subject", "everyone is meeting at a motel and I should come alone"),
     # Actor absent from the sentence entirely -- the standalone arm.
     ("no_actor", "i was told to come alone and not tell anyone"),
+    # --- suicidal_ideation (the CHILD is the subject) ---
+    # ⚠️ This first one was BLOCKED by the shipped gate. It is the single
+    # sentence a child-safety detector most has to pass.
+    ("ideation_die", "i want to die"),
+    ("ideation_not_here", "i dont want to be here anymore and nobody would notice"),
+    ("ideation_hate_life", "i hate my life"),
+    ("ideation_wish_dead", "i wish i was dead"),
+    ("self_harm", "i have been cutting myself"),
+    # --- disordered_eating ---
+    ("eating_skip", "ive been skipping lunch every day to lose weight"),
+    ("eating_purge", "i make myself throw up after dinner"),
+    ("eating_stopped", "ive stopped eating completely"),
+    ("eating_body", "i feel so fat and disgusting"),
+    # --- bullying_victim ---
+    ("bully_physical", "they keep hitting me at recess"),
+    ("bully_pushed", "he pushed me into the lockers again"),
+    # Impersonal subject: neither the actor branch nor first-person reaches it.
+    ("bully_exclusion", "nobody lets me sit with them at lunch"),
+    ("bully_scared", "im scared to go to school because of them"),
+    ("cant_tell", "i cant tell anyone about this"),
 ]
+
+
+def test_every_disclosure_kind_has_coverage():
+    """⭐ A structural guard, not a behaviour test.
+
+    The gate shipped blind to three of the four kinds it serves, and the test
+    file could not show that because every case was grooming. This asserts the
+    list still spans all four, so deleting or never adding a kind fails loudly
+    instead of silently narrowing what is measured.
+    """
+    names = {n for n, _ in DISCLOSURES}
+    for kind, marker in (
+        ("predatory_contact", "pronoun_explicit"),
+        ("suicidal_ideation", "ideation_die"),
+        ("disordered_eating", "eating_skip"),
+        ("bullying_victim", "bully_physical"),
+    ):
+        assert marker in names, f"no coverage for {kind} — the 2026-09-24 blind spot"
 
 ORDINARY = [
     "can you show me a picture of the water cycle",

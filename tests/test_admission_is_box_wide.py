@@ -21,7 +21,7 @@ SLOTS = 1
 WORKERS = 4
 
 
-def _hold(db_path: str, hold_s: float, results, index: int) -> None:
+def _hold(db_path: str, hold_s: float, results, index: int, barrier) -> None:
     """Try to take a slot in a fresh process; report admitted/refused."""
     import asyncio
 
@@ -33,6 +33,13 @@ def _hold(db_path: str, hold_s: float, results, index: int) -> None:
 
     async def run():
         adm = Admission(max_concurrent=SLOTS, queue_wait_s=0.5, max_queue=0)
+        # Every worker has finished its (slow, variable) imports before ANY of
+        # them reaches for a slot. Without this the test measured import skew:
+        # a spawned worker that finished importing more than hold_s + wait after
+        # the first was admitted AFTER the slot was released -- sequentially,
+        # correctly -- and the test read it as two concurrent admissions. It
+        # failed ~1 in 5 on CI and 6/6 pinned to one core (taskset -c 0).
+        barrier.wait(timeout=60)
         try:
             async with adm.slot():
                 await asyncio.sleep(hold_s)
@@ -47,8 +54,10 @@ def _run_workers(db_path: str, hold_s: float, n: int) -> list:
     ctx = mp.get_context("spawn")
     manager = ctx.Manager()
     shared = manager.list([""] * n)
+    barrier = ctx.Barrier(n)
     procs = [
-        ctx.Process(target=_hold, args=(db_path, hold_s, shared, i)) for i in range(n)
+        ctx.Process(target=_hold, args=(db_path, hold_s, shared, i, barrier))
+        for i in range(n)
     ]
     for p in procs:
         p.start()

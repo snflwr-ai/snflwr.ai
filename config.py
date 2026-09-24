@@ -331,6 +331,10 @@ class _SystemConfig:
 
     # Base URL for the application
     BASE_URL: str = os.getenv("BASE_URL", "http://localhost:39150")
+    # Public URL of the parent-facing privacy notice. COPPA §312.4(c)(1)(iv)
+    # requires the consent email to link it; the email omits the link (and logs
+    # a warning) while this is unset, because the policy is not yet published.
+    PRIVACY_POLICY_URL: str = os.getenv("PRIVACY_POLICY_URL", "")
 
     # Open WebUI URL (for admin auth bridge — proxy login through Open WebUI)
     OPEN_WEBUI_URL: str = os.getenv(

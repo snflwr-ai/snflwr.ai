@@ -7,7 +7,8 @@ preceding calendar year." The incidents that carry those referrals are purged
 90 days after resolution (SAFETY_LOG_RETENTION_DAYS), so counting them at
 report time would undercount. This table keeps only a number per year and
 kind — no profile, no content, no timestamp finer than the year.
-Idempotent."""
+Idempotent. Deliberately no down(): dropping the table would destroy counts the
+annual report depends on (same irreversible precedent as 0002)."""
 
 revision = "0005"
 name = "crisis_referral_counts"

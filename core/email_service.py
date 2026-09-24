@@ -643,6 +643,21 @@ class EmailService:
             safe_child_name = _clean(child_name)
             safe_child_age = html_escape(str(child_age))
             subject = f"Parental Consent Required for {safe_child_name}'s Profile"
+            # COPPA §312.4(c)(1)(iv): link the online privacy notice. Unset while
+            # the policy is unpublished — omit rather than link to nothing.
+            _policy_url = getattr(system_config, "PRIVACY_POLICY_URL", "")
+            if isinstance(_policy_url, str) and _policy_url.strip():
+                privacy_link_html = (
+                    '<p style="font-size: 14px;">Read our full privacy notice: '
+                    f'<a href="{_safe_url(_policy_url.strip())}">'
+                    f"{html_escape(_policy_url.strip())}</a></p>"
+                )
+            else:
+                privacy_link_html = ""
+                logger.warning(
+                    "Consent email sent WITHOUT a privacy-notice link: "
+                    "PRIVACY_POLICY_URL is unset (COPPA 312.4(c)(1)(iv))."
+                )
 
             html_body = f"""
 <!DOCTYPE html>
@@ -654,7 +669,7 @@ class EmailService:
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 28px;">[SAFE] Parental Consent Required</h1>
+        <h1 style="color: white; margin: 0; font-size: 28px;">Parental Consent Required</h1>
     </div>
 
     <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
@@ -668,11 +683,37 @@ class EmailService:
 
         <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <p style="margin: 0; font-size: 14px; color: #856404;">
-                <strong>[WARN] COPPA Compliance Notice</strong><br>
+                <strong>Why you are receiving this</strong><br>
                 Under the Children's Online Privacy Protection Act (COPPA), we require verifiable parental consent
                 before activating profiles for children under 13 years of age.
             </p>
         </div>
+
+        <h2 style="font-size: 18px; margin: 25px 0 10px 0;">What we collect from {safe_child_name}, and why</h2>
+        <ul style="font-size: 14px;">
+            <li><strong>First name, age and grade</strong> (entered by you) &mdash; to match the tutor's explanations to {safe_child_name}'s level.</li>
+            <li><strong>The questions {safe_child_name} asks and the tutor's replies</strong> &mdash; to answer them, to let you review them in your parent dashboard, and to run safety checks on every message.</li>
+            <li><strong>Safety alerts</strong> &mdash; if a message raises a safety concern (for example, self-harm), we keep a record and notify you.</li>
+        </ul>
+        <p style="font-size: 14px;">
+            Conversations are deleted automatically 180 days after they are written. You can review
+            or delete {safe_child_name}'s information, or withdraw consent, at any time from your
+            parent dashboard; withdrawing consent deletes {safe_child_name}'s data.
+        </p>
+
+        <h2 style="font-size: 18px; margin: 25px 0 10px 0;">Who else receives it</h2>
+        <p style="font-size: 14px;">
+            {safe_child_name}'s information is <strong>not sold, not used for advertising, and never
+            used to train or develop AI models</strong>. It is shared only with service providers we
+            need to run the service &mdash; for example, the email provider that delivers alerts to
+            you &mdash; and only for that purpose. We will ask for your separate consent before
+            sharing it for any other reason.
+        </p>
+        {privacy_link_html}
+        <p style="font-size: 14px;">
+            <strong>Your consent is required.</strong> We will not collect any information from
+            {safe_child_name} unless you give it. If you do not, the profile stays inactive.
+        </p>
 
         <p style="font-size: 16px; margin-bottom: 20px;">
             To activate {safe_child_name}'s profile, please verify your consent by clicking the button below:
@@ -682,7 +723,7 @@ class EmailService:
             <a href="{_safe_url(consent_url)}"
                style="display: inline-block; background: #28a745; color: white; padding: 15px 40px;
                       text-decoration: none; border-radius: 5px; font-size: 16px; font-weight: bold;">
-                [OK] Verify Parental Consent
+                Verify Parental Consent
             </a>
         </div>
 
@@ -696,17 +737,6 @@ class EmailService:
             <li>{safe_child_name}'s profile will be activated</li>
         </ol>
 
-        <div style="background: #e9ecef; padding: 15px; margin: 20px 0; border-radius: 4px; font-size: 13px;">
-            <p style="margin: 0 0 10px 0;"><strong>Privacy & Safety Features:</strong></p>
-            <ul style="margin: 0; padding-left: 20px;">
-                <li>All conversations monitored by 4-layer safety pipeline</li>
-                <li>Age-appropriate content filtering</li>
-                <li>Parent dashboard for activity monitoring</li>
-                <li>Safety incident alerts</li>
-                <li>Data stored locally (no cloud sharing)</li>
-            </ul>
-        </div>
-
         <p style="font-size: 13px; color: #666; margin-top: 30px;">
             This verification link expires in <strong>7 days</strong>.
         </p>
@@ -719,12 +749,7 @@ class EmailService:
         <hr style="border: none; border-top: 1px solid #dee2e6; margin: 30px 0;">
 
         <p style="font-size: 12px; color: #999; text-align: center;">
-            snflwr.ai - K-12 Safe AI Learning Platform<br>
-            Privacy-First - COPPA Compliant - Offline Operation
-        </p>
-
-        <p style="font-size: 11px; color: #999; text-align: center; margin-top: 20px;">
-            Questions? Contact us or visit our privacy policy page.
+            snflwr.ai - K-12 AI tutor
         </p>
     </div>
 </body>

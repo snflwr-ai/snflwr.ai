@@ -21,9 +21,13 @@ SLOTS = 1
 WORKERS = 4
 
 
-def _hold(db_path: str, hold_s: float, results, index: int) -> None:
-    """Try to take a slot in a fresh process; report admitted/refused."""
+def _hold(db_path, hold_s, results, index, barrier, spans=None) -> None:
+    """Try to take a slot in a fresh process; report admitted/refused.
+
+    `spans[index]` gets (acquired, released) wall times for an admitted worker.
+    """
     import asyncio
+    import time
 
     os.environ["INFERENCE_SLOT_DB"] = db_path
     os.environ["INFERENCE_SLOT_TTL_S"] = "30"
@@ -33,9 +37,20 @@ def _hold(db_path: str, hold_s: float, results, index: int) -> None:
 
     async def run():
         adm = Admission(max_concurrent=SLOTS, queue_wait_s=0.5, max_queue=0)
+        # Every worker has finished its (slow, variable) imports before ANY of
+        # them reaches for a slot. Without this the test measured import skew:
+        # a spawned worker that finished importing more than hold_s + wait after
+        # the first was admitted AFTER the slot was released -- sequentially,
+        # correctly -- and the test read it as two concurrent admissions. It
+        # failed ~1 in 5 on CI and 6/6 pinned to one core (taskset -c 0).
+        barrier.wait(timeout=60)
         try:
             async with adm.slot():
+                acquired = time.time()
                 await asyncio.sleep(hold_s)
+                released = time.time()
+            if spans is not None:
+                spans[index] = (acquired, released)
             return "admitted"
         except EngineOverloaded:
             return "refused"
@@ -43,31 +58,55 @@ def _hold(db_path: str, hold_s: float, results, index: int) -> None:
     results[index] = asyncio.run(run())
 
 
-def _run_workers(db_path: str, hold_s: float, n: int) -> list:
+def _run_workers_timed(db_path: str, hold_s: float, n: int):
     ctx = mp.get_context("spawn")
     manager = ctx.Manager()
     shared = manager.list([""] * n)
+    spans = manager.list([None] * n)
+    barrier = ctx.Barrier(n)
     procs = [
-        ctx.Process(target=_hold, args=(db_path, hold_s, shared, i)) for i in range(n)
+        ctx.Process(target=_hold, args=(db_path, hold_s, shared, i, barrier, spans))
+        for i in range(n)
     ]
     for p in procs:
         p.start()
     for p in procs:
         p.join(120)
         assert p.exitcode == 0, f"worker exited {p.exitcode}"
-    return list(shared)
+    return list(shared), [sp for sp in spans if sp is not None]
+
+
+def _run_workers(db_path: str, hold_s: float, n: int) -> list:
+    return _run_workers_timed(db_path, hold_s, n)[0]
 
 
 @pytest.mark.skipif(os.name != "posix", reason="spawns real worker processes")
 def test_one_slot_admits_one_process_at_a_time(tmp_path: Path):
-    """The defect: four processes each took their own slot and all four ran."""
-    outcomes = _run_workers(str(tmp_path / "slots.db"), hold_s=2.0, n=WORKERS)
-    admitted = outcomes.count("admitted")
-    assert admitted == SLOTS, (
-        f"{admitted} of {WORKERS} processes were admitted against slots={SLOTS}; "
-        f"outcomes={outcomes}. A per-process semaphore gives 4 here."
+    """The defect: four processes each took their own slot and all four ran.
+
+    ⚠️ The property is "no two turns hold a slot AT THE SAME TIME", so that is
+    what is asserted: admitted HOLD INTERVALS must not overlap. Counting
+    admissions is not the same thing. A worker that is legitimately admitted
+    AFTER the first released (a slow reserve on a loaded CI runner can finish
+    past the holder's release) counted as a second admission and failed this
+    test ~1 in 5 on CI, while the admission code was correct. Four OVERLAPPING
+    holds is the real defect, and it still fails here.
+    """
+    outcomes, spans = _run_workers_timed(
+        str(tmp_path / "slots.db"), hold_s=2.0, n=WORKERS
     )
-    assert outcomes.count("refused") == WORKERS - SLOTS
+    assert outcomes.count("admitted") >= SLOTS, f"nobody was admitted: {outcomes}"
+    assert outcomes.count("refused") >= 1, (
+        f"no worker was ever refused against slots={SLOTS}: {outcomes}. "
+        "A per-process semaphore gives this."
+    )
+    spans = sorted(spans)
+    for (a0, a1), (b0, b1) in zip(spans, spans[1:]):
+        assert b0 >= a1 - 0.05, (
+            f"two admitted holds OVERLAPPED against slots={SLOTS}: "
+            f"[{a0:.2f},{a1:.2f}] and [{b0:.2f},{b1:.2f}]; outcomes={outcomes}. "
+            "A per-process semaphore gives this."
+        )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="spawns real worker processes")

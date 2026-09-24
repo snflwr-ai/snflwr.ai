@@ -237,7 +237,7 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         # unambiguous phrasings belong here.
         (r"\bsexually\s+explicit\b", "explicit term (EN)"),
         (
-            r"\bexplicit\s+(?:content|material|image|images|photo|photos|video|videos|pic|pics)\b",
+            r"\bexplicit\s+(?:content|material|image|images|picture|pictures|photo|photos|video|videos|pic|pics|snap|snaps|message|messages|text|texts)\b",
             "explicit term (EN)",
         ),
         (r"\bsex\s+act\b", "explicit term (EN)"),

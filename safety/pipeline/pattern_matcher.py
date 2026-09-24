@@ -80,7 +80,8 @@ class _PatternMatcher:
             # and `groom a child` are now precise patterns that this exemption
             # cannot reach. Do not add a word here without checking the harmful
             # phrasing is caught over there.
-            "explicit",
+            # "explicit" is no longer a prohibited keyword at all (see the
+            # sexual list below), so it needs no exemption.
             "naked",
             "escort",
         }
@@ -514,7 +515,22 @@ class _PatternMatcher:
                 "sexual",
                 "masturbate",
                 "escort",
-                "explicit",
+                # ⚠️ bare "explicit" REMOVED 2026-09-24. It is core K-12
+                # vocabulary -- "a simile makes an EXPLICIT comparison", "the
+                # EXPLICIT formula for the nth term" -- and the harmful sense is
+                # now covered precisely in CATEGORY_PATTERNS by
+                # `sexually explicit` and `explicit content/material/image`.
+                #
+                # Making it a CONTEXTUAL keyword (#315) was not enough, and the
+                # proof is a real served prompt: "Can you compare the literary
+                # devices of metaphor and simile for me? I need a clear
+                # distinction to write down in my notes." carries NO strong
+                # educational indicator -- not even a weak one -- so the
+                # exemption never applied and the reply was still refused as
+                # SEXUAL. My #315 test passed only because the context I
+                # invented ("...for my English literature class") happened to
+                # contain "literature", which IS a strong indicator. The real
+                # prompts were sitting in the artefacts unused.
                 "rape",
                 "sex",
                 "sexting",

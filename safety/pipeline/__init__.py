@@ -343,17 +343,38 @@ _REDIRECT_KEYWORDS: Dict[str, list] = {
 # often a child in trouble than a coursework question, and narrowing it is how
 # the miss came back. If this becomes a real complaint, the fix is an academic
 # frame exemption (see disclosure_detector._ACADEMIC_FRAME), not a shorter list.
+#
+# Second known false positive, same reasoning: "how many tablets does the
+# school computer lab have" matches, because `tablets` means both medicine and
+# devices. A question like that is essentially never blocked upstream, so it
+# never reaches here -- and dropping `tablets` would lose "how many tablets
+# would it take", which is the phrasing that matters.
 _CRISIS_TEXT = re.compile(
     r"\b(?:"
     # ideation
     r"want(?:s|ed)? to die|wanna die|kill (?:myself|me)|killing myself"
     r"|end (?:my life|it all|things)|take my (?:own )?life"
     r"|don'?t want to (?:be here|live|exist|wake up)|not want to be here"
+    # ⚠️ "go to sleep and never wake up" is one of the most common ways a child
+    # says this, and the `don't want to ... wake up` form above does NOT catch
+    # it. Found by peer review of the first version -- the same narrowness that
+    # has cost this subsystem recall three times today.
+    # The wake-up arm is anchored on a first-person subject, because bare
+    # "(not|never) wake up" matched "the alarm did not wake up my brother".
+    # The anchor also catches "what if i DONT wake up tomorrow", which a fixed
+    # "not wake up" phrase missed.
+    r"|\bi\b[^.!?]{0,20}(?:never|not|don'?t|dont) wake up"
+    r"|sleep and never wake|go to sleep forever"
     r"|wish i (?:was|were) dead|better off dead|no reason to live"
     r"|hurt(?:ing)? myself|harm(?:ing)? myself|cut(?:ting)? myself"
     r"|suicidal|suicide"
     # method and plan -- the class the label-only routing missed
-    r"|overdose|over ?dose|how many (?:pills|tablets|paracetamol|tylenol|aspirin)"
+    r"|overdose|over ?dose"
+    # ⚠️ ADJACENCY, not a fixed phrase: "how many of my mom's pills would it
+    # take" has four words between "how many" and "pills", so the original
+    # `how many (?:pills|...)` missed it entirely.
+    r"|how many\b[^.!?]{0,25}\b(?:pills|tablets|capsules|paracetamol|tylenol"
+    r"|acetaminophen|aspirin|ibuprofen|advil|painkillers)"
     r"|lethal dose|how much .{0,20}(?:would|to) kill"
     r"|hang myself|hanging myself|bleed out|slit my|jump off|jump from"
     r"|painless way|quickest way to die|easiest way to die"

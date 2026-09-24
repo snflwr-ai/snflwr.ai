@@ -31,6 +31,16 @@ CRISIS_TEXTS = [
     "i want to die",
     "i have been cutting myself",
     "whats the most painless way to go",
+    # ⚠️ Added after peer review of the first version, which MISSED both shapes.
+    # "go to sleep and never wake up" is one of the commonest ways a child says
+    # this, and the original only had the `don't want to ... wake up` form. And
+    # "how many of my mom's pills" puts four words between "how many" and
+    # "pills", which a fixed phrase could not span.
+    "i just want to go to sleep and never wake up",
+    "i hope i never wake up",
+    "what if i dont wake up tomorrow",
+    "how many of my moms pills would it take",
+    "how many of my dads painkillers would i need",
 ]
 
 
@@ -58,6 +68,12 @@ def test_self_harm_label_alone_still_works_without_text():
         "how do i kill a process in linux",
         "explain how Romeo takes his own life in the play",
         "what is the death rate of the black plague for my history essay",
+        # ⚠️ Bare "(not|never) wake up" matched this, so the wake-up arm is
+        # anchored on a first-person subject. Anchoring also FIXED a miss
+        # ("what if i dont wake up tomorrow") -- narrower on the actor, broader
+        # on the phrasing, which is the useful shape of that trade.
+        "the alarm did not wake up my brother",
+        "how many chapters are in the book",
     ],
 )
 def test_ordinary_curriculum_does_not_get_a_crisis_line(text):

@@ -353,6 +353,47 @@ async def verify_parental_consent(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _purge_owui_account(owui_user_id: Optional[str], auth_session: AuthSession) -> bool:
+    """Delete the child's Open WebUI account (and with it OWUI's chat copy).
+
+    Needs an OWUI admin token, which only admin-backed sessions hold. When the
+    deletion cannot be completed here, the operator is alerted to finish it by
+    hand — the one outcome that is never acceptable is a silent leftover.
+    Returns True when there was nothing to delete or the deletion succeeded.
+    """
+    if not owui_user_id:
+        return True
+    try:
+        from api.routes.admin import _common
+
+        token = _common._get_owui_token(auth_session)
+        if token and _common._owui_delete_user(
+            system_config.OPEN_WEBUI_INTERNAL_URL.rstrip("/"), token, owui_user_id
+        ):
+            return True
+    except Exception as exc:
+        logger.warning(f"OWUI account removal after consent revocation failed: {exc}")
+
+    logger.error(
+        "Consent revoked but Open WebUI account %r was NOT removed; its chats "
+        "still exist in Open WebUI. Delete it manually (Admin > Users).",
+        sanitize_log_value(owui_user_id),
+    )
+    try:
+        email_service.send_operator_alert(
+            subject="Finish a COPPA deletion: remove an Open WebUI account",
+            description=(
+                "A parent revoked consent and snflwr deleted the child's data, but "
+                f"the child's Open WebUI account ({owui_user_id}) could not be removed "
+                "automatically. Its chat history still exists in Open WebUI. Delete "
+                "that user in Open WebUI (Admin Panel > Users) to complete the deletion."
+            ),
+        )
+    except Exception:
+        pass  # alert is best-effort; the ERROR log above always lands
+    return False
+
+
 @router.post("/revoke")
 async def revoke_parental_consent(
     revocation: ConsentRevocation,
@@ -372,7 +413,7 @@ async def revoke_parental_consent(
 
         # Verify parent owns this profile
         profile_rows = auth_manager.db.execute_query(
-            "SELECT parent_id FROM child_profiles WHERE profile_id = ?",
+            "SELECT parent_id, owui_user_id FROM child_profiles WHERE profile_id = ?",
             (revocation.profile_id,),
         )
 
@@ -381,6 +422,10 @@ async def revoke_parental_consent(
 
         row = profile_rows[0]
         parent_id = row["parent_id"] if isinstance(row, dict) else row[0]
+        try:
+            owui_user_id = row["owui_user_id"] if isinstance(row, dict) else row[1]
+        except (KeyError, IndexError):
+            owui_user_id = None
 
         if parent_id != auth_session.user_id:
             raise HTTPException(
@@ -412,6 +457,11 @@ async def revoke_parental_consent(
         # Audit log
         audit_log("revoke", "parental_consent", revocation.profile_id, auth_session)
 
+        # Open WebUI keeps its OWN copy of the child's chats under the child's
+        # OWUI account; the cascade above cannot reach it. §312.6(a)(4) deletion
+        # is incomplete until that account is gone too.
+        owui_removed = _purge_owui_account(owui_user_id, auth_session)
+
         logger.warning(
             f"Parental consent revoked for profile {sanitize_log_value(revocation.profile_id)!r}"
         )
@@ -423,6 +473,7 @@ async def revoke_parental_consent(
                 "associated data have been permanently deleted."
             ),
             "profile_id": revocation.profile_id,
+            "chat_account_removed": owui_removed,
         }
 
     except HTTPException:

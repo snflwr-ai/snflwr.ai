@@ -392,6 +392,37 @@ async function loadProfiles(container) {
     exportBtn.addEventListener('click', () => exportProfile(p.profile_id, p.name));
     actions.appendChild(exportBtn);
 
+    // COPPA §312.6: a parent can refuse further collection and have the child's
+    // data deleted. Revocation cascade-deletes every record (irreversible).
+    const deleteBtn = el('button', { class: 'btn btn-sm btn-danger', type: 'button', text: 'Delete All Data' });
+    deleteBtn.addEventListener('click', () => {
+      confirmDialog({
+        title: 'Delete all of ' + p.name + "'s data?",
+        message:
+          "This withdraws your consent and permanently deletes " + p.name + "'s " +
+          'profile, conversations, safety records and learning history. It cannot ' +
+          'be undone. Use Export Data first if you want a copy.',
+        confirmText: 'Delete permanently',
+        danger: true,
+      }).then((ok) => {
+        if (!ok) return;
+        apiRequest('POST', '/api/parental-consent/revoke', {
+          profile_id: p.profile_id,
+          reason: 'Parent deleted data from dashboard',
+        })
+          .then((res) => {
+            showToast(
+              res && res.chat_account_removed === false
+                ? p.name + "'s data was deleted. Their chat login is being removed by the administrator."
+                : p.name + "'s data was permanently deleted.",
+            );
+            loadProfiles(container);
+          })
+          .catch((err) => showToast(err.detail || 'Deletion failed'));
+      });
+    });
+    actions.appendChild(deleteBtn);
+
     const incidentsBtn = el('button', { class: 'btn btn-sm btn-outline', type: 'button', text: 'Incidents' });
     incidentsBtn.addEventListener('click', () => {
       location.hash = '#/safety?profileId=' + encodeURIComponent(p.profile_id) +

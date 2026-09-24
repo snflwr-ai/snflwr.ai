@@ -123,15 +123,18 @@ def _owui_activate_user(open_webui_url: str, owui_token: str, user: dict):
         return False
 
 
-def _owui_delete_user(open_webui_url: str, owui_token: str, owui_user_id: str):
-    """Delete an OWU user account. Best-effort — errors are logged, not raised."""
+def _owui_delete_user(open_webui_url: str, owui_token: str, owui_user_id: str) -> bool:
+    """Delete an OWU user account. Best-effort — errors are logged, not raised.
+
+    Returns True only when Open WebUI confirmed the deletion, so callers that
+    MUST finish a deletion (COPPA consent revocation) can escalate otherwise."""
     import requests as http_client  # type: ignore[import-untyped]
 
     from utils.logger import get_logger as _get_logger
 
     _log = _get_logger(__name__)
     if not owui_user_id or not owui_token:
-        return
+        return False
     headers = {"Authorization": f"Bearer {owui_token}"}
     try:
         resp = http_client.delete(
@@ -143,8 +146,11 @@ def _owui_delete_user(open_webui_url: str, owui_token: str, owui_user_id: str):
             _log.warning(
                 f"OWU delete user {owui_user_id!r} returned {resp.status_code}"
             )
+            return False
+        return True
     except Exception as e:
         _log.warning(f"OWU delete user {owui_user_id!r} failed: {e}")
+        return False
 
 
 def _owui_create_user(

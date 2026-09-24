@@ -31,7 +31,9 @@ def clock():
 
 @pytest.fixture
 def rem(clock):
-    r = br.BreakReminder(interval_seconds=3 * 3600, idle_reset_seconds=1800, cache=None)
+    r = br.BreakReminder(
+        interval_seconds=3 * 3600, idle_reset_seconds=1800, cache=None, use_shared=False
+    )
     r._now = clock
     return r
 

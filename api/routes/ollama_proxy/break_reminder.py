@@ -80,12 +80,15 @@ class BreakReminder:
         interval_seconds: Optional[int] = None,
         idle_reset_seconds: int = DEFAULT_IDLE_RESET_SECONDS,
         cache: Any = None,
+        use_shared: bool = True,
     ):
         self.interval_seconds = (
             interval_seconds if interval_seconds is not None else _interval_from_env()
         )
         self.idle_reset_seconds = idle_reset_seconds
         self._cache = cache
+        # False = in-process state only (tests; never reach a live Redis).
+        self._use_shared = use_shared
         self._local: Dict[str, Dict[str, float]] = {}
         self._now = time.time
 
@@ -94,6 +97,8 @@ class BreakReminder:
     def _shared(self):
         if self._cache is not None:
             return self._cache
+        if not self._use_shared:
+            return None
         try:
             from utils.cache import cache as shared
 

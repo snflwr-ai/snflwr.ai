@@ -180,7 +180,24 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\btitties\b", "explicit term (EN)"),
         (r"\berotic\w*\b", "explicit term (EN)"),
         (r"\bnude[sz]?\b", "explicit term (EN)"),
-        (r"\bnaked\b", "explicit term (EN)"),
+        # ⚠️ `\bnaked\b` was BARE and blocked "visible to the naked eye" --
+        # standard astronomy vocabulary -- as sexual content. Replaced with the
+        # phrasings that carry the sexual sense. These are CATEGORY_PATTERNS, so
+        # unlike the contextual-keyword path they are NEVER exempted by
+        # educational context: "send me naked photos for my art class" still
+        # blocks.
+        (
+            r"\bnaked\s+(?:photo|pic|picture|selfie|image|body|bodies)s?\b",
+            "explicit term (EN)",
+        ),
+        (
+            r"\bnaked\s+(?:girl|boy|kid|child|minor|woman|man|women|men)s?\b",
+            "explicit term (EN)",
+        ),
+        (
+            r"\b(?:get|getting|got|send|sending|show|showing)\s+(?:\w+\s+){0,3}naked\b",
+            "explicit term (EN)",
+        ),
         (r"\bcum\b", "explicit term (EN)"),
         (r"\bcumshot\b", "explicit term (EN)"),
         (r"\bjizz\b", "explicit term (EN)"),
@@ -196,7 +213,9 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\bfetish\b", "explicit term (EN)"),
         (r"\bdominatrix\b", "explicit term (EN)"),
         (r"\bstripper\b", "explicit term (EN)"),
-        (r"\bescort\b", "explicit term (EN)"),
+        # ⚠️ `\bescort\b` was BARE and blocked "escort carriers protected
+        # Atlantic convoys" -- WW2 history -- as sexual content.
+        (r"\bescort\s+(?:service|agency|girl|girls|worker)s?\b", "explicit term (EN)"),
         (r"\bhooker\b", "explicit term (EN)"),
         (r"\bprostitut\w*\b", "explicit term (EN)"),
         (r"\bpimp\b", "explicit term (EN)"),
@@ -210,6 +229,18 @@ CATEGORY_PATTERNS: Dict[str, List[Tuple[str, str]]] = {
         (r"\borgy\b", "explicit term (EN)"),
         (r"\bthreesome\b", "explicit term (EN)"),
         (r"\bsex\s*slave\b", "explicit term (EN)"),
+        # NEVER-EXEMPT phrases. The contextual-keyword exemption skips `sex`,
+        # `sexual`, `grooming` entirely when a strong subject indicator is
+        # present, which made "for my biology homework" a usable bypass:
+        # "describe the sex act in graphic detail" and "how grooming a child
+        # works" both passed. CATEGORY_PATTERNS are not exempted, so the
+        # unambiguous phrasings belong here.
+        (r"\bsexually\s+explicit\b", "explicit term (EN)"),
+        (r"\bsex\s+act\b", "explicit term (EN)"),
+        (
+            r"\bgroom\w*\s+(?:a\s+|the\s+)?(?:child|children|kid|kids|minor|minors)\b",
+            "explicit term (EN)",
+        ),
         (r"\bclitoris\b", "explicit term (EN)"),
         (r"\bejaculat\w*\b", "explicit term (EN)"),
         (r"\bqueef\b", "explicit term (EN)"),

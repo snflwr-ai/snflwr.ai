@@ -81,6 +81,13 @@ class IncidentLogger(_IncidentQueryMixin, _IncidentEscalationMixin):
                 logger.error(f"Invalid severity: {severity}")
                 return False, None
 
+            # SB 243 §22603: count 988 referrals in a table that outlives
+            # incident retention. Before the insert, so a failed insert still
+            # counts the referral the child already saw. Never raises.
+            from safety import crisis_referral_counter
+
+            crisis_referral_counter.record(self.db, incident_type)
+
             # Encrypt content snippet for privacy
             encrypted_snippet = self.encryption.encrypt_string(content_snippet[:500])
 

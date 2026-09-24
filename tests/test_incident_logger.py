@@ -1364,7 +1364,12 @@ class TestCrisisIncidentNotDropped:
             sqlite3.IntegrityError("FOREIGN KEY constraint failed"),
             None,  # unlinked re-INSERT succeeds
         ]
-        with patch("core.email_service.email_service") as email:
+        # self_harm also bumps the crisis-referral count (its own write, tested
+        # in test_crisis_referral_counter.py); this test is about the incident
+        # INSERT sequence only.
+        with patch("safety.crisis_referral_counter.record"), patch(
+            "core.email_service.email_service"
+        ) as email:
             ok, iid = logger.log_incident(
                 profile_id="safety_required_x",
                 incident_type="self_harm",
@@ -1461,13 +1466,16 @@ class TestLogIncidentUnlinkedOnFKFailure:
 
         mock_db.execute_write.side_effect = fake_write
 
-        ok, incident_id = logger.log_incident(
-            profile_id="safety_required_abc",
-            incident_type="self_harm",
-            severity="critical",
-            content_snippet="...",
-            metadata={"source": "ollama_proxy"},
-        )
+        # The crisis-referral count is a separate write (see
+        # test_crisis_referral_counter.py); count incident INSERTs only.
+        with patch("safety.crisis_referral_counter.record"):
+            ok, incident_id = logger.log_incident(
+                profile_id="safety_required_abc",
+                incident_type="self_harm",
+                severity="critical",
+                content_snippet="...",
+                metadata={"source": "ollama_proxy"},
+            )
         assert ok is True
         # retry ran (2 inserts), second used NULL profile_id
         assert len(calls) == 2

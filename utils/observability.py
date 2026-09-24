@@ -99,10 +99,22 @@ def trace_chat_turn(
     safety: dict,
     latency_ms: dict,
     tokens: Optional[dict] = None,
+    pedagogy: Optional[dict] = None,
+    sycophancy: Optional[dict] = None,
+    disclosure: Optional[dict] = None,
+    escalation: Optional[dict] = None,
+    break_reminder: Optional[bool] = None,
 ) -> None:
     """Emit one metadata-only trace for a chat turn. Never raises.
 
     NOTE: there is deliberately NO parameter for prompt/response text.
+
+    The proxy calls this with ``**_trace``. Every key it sets must be a named
+    parameter here: an unknown key raised TypeError, the caller swallowed it,
+    and the trace was DROPPED. That hit exactly the turns worth tracing (the
+    enforcer ran, a disclosure escalated, a break reminder fired). The extra
+    fields are labels and counts only; test_trace_accepts_every_key_the_proxy_sets
+    keeps this list in step with the proxy.
     """
     if not system_config.LANGFUSE_ENABLED:
         return
@@ -117,6 +129,17 @@ def trace_chat_turn(
                 "age_band": age_band,
                 "blocked": blocked,
                 "safety": safety,
+                **{
+                    k: v
+                    for k, v in {
+                        "pedagogy": pedagogy,
+                        "sycophancy": sycophancy,
+                        "disclosure": disclosure,
+                        "escalation": escalation,
+                        "break_reminder": break_reminder,
+                    }.items()
+                    if v is not None
+                },
             },
             tags=["blocked"] if blocked else ["allowed"],
         )

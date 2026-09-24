@@ -114,3 +114,46 @@ def test_exception_is_swallowed(monkeypatch):
             safety={},
             latency_ms={"total": 1.0},
         )
+
+
+def test_trace_accepts_every_key_the_proxy_sets():
+    """The proxy calls trace_chat_turn(**_trace). An unknown key raised TypeError
+    and the caller swallowed it, so the trace for every enforced / escalated /
+    reminded turn was silently dropped (found 2026-09-24). Parse the keys the
+    proxy actually sets and require each to be a named parameter."""
+    import re
+    from pathlib import Path
+
+    src = (
+        Path(__file__).resolve().parents[1] / "api/routes/ollama_proxy/chat.py"
+    ).read_text()
+    set_keys = set(re.findall(r'_trace\["([a-z_]+)"\]\s*=', src))
+    init = re.search(r"_trace: Dict\[str, Any\] = \{(.*?)\n    \}", src, re.S)
+    init_keys = set(re.findall(r'"([a-z_]+)":', init.group(1))) if init else set()
+    params = set(inspect.signature(obs.trace_chat_turn).parameters)
+    # "revet" is a key of the pedagogy sub-dict, not of _trace itself.
+    missing = (set_keys | init_keys) - params - {"revet"}
+    assert set_keys, "could not find any _trace keys; the parser is broken"
+    assert (
+        not missing
+    ), f"proxy sets trace keys trace_chat_turn cannot accept: {missing}"
+
+
+def test_extra_fields_reach_the_trace_metadata(monkeypatch):
+    monkeypatch.setattr(system_config, "LANGFUSE_ENABLED", True)
+    client = MagicMock()
+    monkeypatch.setattr(obs, "_get_client", lambda: client)
+    obs.trace_chat_turn(
+        model="m",
+        age_band="<13",
+        profile_hash="h",
+        blocked=False,
+        safety={},
+        latency_ms={},
+        pedagogy={"action": "reprompt_clean", "attempts": 2},
+        break_reminder=True,
+    )
+    meta = client.trace.call_args.kwargs["metadata"]
+    assert meta["pedagogy"] == {"action": "reprompt_clean", "attempts": 2}
+    assert meta["break_reminder"] is True
+    assert "sycophancy" not in meta

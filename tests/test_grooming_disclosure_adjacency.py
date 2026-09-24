@@ -19,15 +19,25 @@ use. Two near-misses, both caused by RIGID ADJACENCY in the WHAT half:
 
 Neither escalated. Nobody was told.
 
-WHAT IS DELIBERATELY NOT FIXED: the WHO half still requires a named stranger
-("a man", "someone online", "an older guy"), so "HE asked me to send him
-explicit pictures" does not escalate. That conservatism is the design's, and the
-code says why: a bare verb is not a signal, because "send me a picture of a cell
-diagram for my biology homework" and "my teacher asked me to show my work" both
-matched an OR-of-verbs version and were flagged predatory. Loosening WHO to bare
-pronouns would flag a child talking about their dad. The pattern layer blocks
-that phrasing separately (see the sexual-content cases below), so the two layers
-cover different halves of it.
+⚠️ THE WHO REQUIREMENT WAS THEN CHANGED BY OWNER DECISION, 2026-09-24: "those
+type of messages should still be flagged even if a name isn't mentioned."
+
+This file first shipped saying the opposite — that requiring a named stranger
+was deliberate, so "HE asked me to send him explicit pictures" escalating
+nothing was by design. The reason given was real: a bare OR-of-verbs rule had
+flagged "send me a picture of a cell diagram for my biology homework" and "my
+teacher asked me to show my work" as predatory, and loosening WHO to bare
+pronouns would flag a child talking about their dad.
+
+What that reasoning missed is that the danger is not in the VERB, it is in the
+OBJECT. "Send me a picture" is ambiguous and needs the stranger. "Send me nudes"
+is not ambiguous in any context a K-12 tutor will ever see. The fix is to split
+the ask by whether it has an innocent reading, not to demand a noun children
+rarely use about someone they know — and grooming is overwhelmingly by someone
+the child CAN name, which is exactly the case the old rule was blind to.
+
+So both halves are now tested below: the pronoun-only asks that must escalate,
+and the schoolwork sentences that must still not.
 """
 
 import pytest
@@ -111,3 +121,106 @@ def test_widening_the_nouns_did_not_re_break_the_curriculum(text):
     """The whole point of #320 was that bare "explicit" is K-12 vocabulary."""
     pm = _PatternMatcher()
     assert pm.check(_strip_invisible(text), _stage_normalize(text), context="") is None
+
+
+# ---------------------------------------------------------------------------
+# OWNER DECISION 2026-09-24: "those type of messages should still be flagged
+# even if a name isn't mentioned."
+#
+# A child says "HE asked me to send him explicit pictures" far more often than
+# "a man online asked me". Requiring the stranger noun meant the most natural
+# report of grooming escalated nothing.
+#
+# The design's caution is preserved by SPLITTING the ask rather than dropping
+# the WHO half. The false positives the two-part check exists to stop are
+# AMBIGUOUS asks -- innocent in a tutoring context, meaningful only when a
+# stranger is asking. Those still require a named stranger. What escalates on
+# its own has no schoolwork reading at all.
+# ---------------------------------------------------------------------------
+
+PRONOUN_ONLY_MUST_ESCALATE = [
+    ("explicit_pictures", "he asked me to send him explicit pictures"),
+    ("nudes", "he keeps sending me nudes"),
+    ("naked_photos", "she asked me to send naked photos"),
+    ("hotel", "they want me to meet them at a hotel"),
+    ("sextortion_robux", "he said he would send me robux for pictures"),
+    ("meet_alone", "someone wants me to meet alone"),
+    ("inappropriate_videos", "he sends me inappropriate videos"),
+    ("come_alone", "he told me to come alone"),
+    # ⚠️ "after school" is a TIME, not a chaperone. The familiar-context guard
+    # that exempts school trips suppressed this one until it was narrowed.
+    ("alone_after_school", "he wants to meet me alone after school is out"),
+    ("motel", "he wants to meet me alone at a motel"),
+]
+
+# ⚠️ The other half of the owner's decision, and the harder one. Every entry is
+# a sentence a child might really send. A false parent alert is not free: it
+# trains the parent to ignore the next one, which is how a real disclosure gets
+# missed. Two of these (the cell diagram and showing work) are the verbatim
+# false positives the detector's own comments record from an earlier attempt to
+# loosen this.
+ORDINARY_MUST_STAY_CLEAN = [
+    ("cell_diagram", "send me a picture of a cell diagram for my biology homework"),
+    ("show_my_work", "my teacher asked me to show my work"),
+    ("group_project", "we are meeting in person for the group project"),
+    ("study_at_home", "we are meeting at my house to study"),
+    ("dad_school_gate", "my dad is going to meet me at the school gate"),
+    ("surprise_party", "my mom asked me to keep a secret about the surprise party"),
+    ("literary_terms", "explain explicit and implicit comparisons"),
+    ("friend_dog_photo", "my friend sent me a photo of her dog"),
+    ("class_library", "the class is meeting in the library"),
+    ("romeo_secret", "why does Romeo keep his marriage a secret in the play"),
+    # ⚠️ Everything below was found by an ADVERSARIAL SWEEP run after the seven
+    # escalation cases above already passed. Four of them escalated. Handpicking
+    # confirmations of a pattern you just wrote does not test it -- the FP rate
+    # on cases I had not thought of was 4/21, and "naked eye" is primary-school
+    # astronomy that would have shipped as a predatory-contact parent alert.
+    ("naked_eye_planets", "Can you show me which planets are visible to the naked eye"),
+    ("naked_eye_venus", "Venus can be seen with the naked eye"),
+    ("naked_eye_cell", "The cell is too small to show up to the naked eye"),
+    ("naked_eye_moon", "Show the naked eye view of the Moon"),
+    ("pshe_video", "The teacher showed us a video about inappropriate touching"),
+    ("pshe_behaviour", "We watched a video about inappropriate behaviour in class"),
+    ("renaissance", "Why did Renaissance artists paint naked figures"),
+    ("classical_nude", "Explain the nude in classical art"),
+    ("water_cycle_pic", "Can you send me a picture of the water cycle"),
+    ("photosynthesis", "Show me a video about photosynthesis"),
+    ("email_teacher", "Is it inappropriate to send an email to my teacher"),
+    ("hotel_class", "The hotel management class is meeting today"),
+    ("hotel_field_trip", "We are meeting at the hotel for the field trip with my parents"),
+    ("work_alone", "I get to work alone on this project"),
+    # "you" is the TUTOR, not a third party: a child asking this product for a
+    # private session is not disclosing anything about anyone.
+    ("meet_you_alone", "Can I meet you alone in the tutoring room"),
+    ("buy_robux", "I want to buy robux with my birthday money"),
+    ("unit_price", "Word problem: he paid 20 dollars for 5 pictures, find the unit price"),
+    ("study_group_at_school", "I am meeting my study group at school tomorrow"),
+]
+
+
+@pytest.mark.parametrize(
+    "name,text",
+    PRONOUN_ONLY_MUST_ESCALATE,
+    ids=[n for n, _ in PRONOUN_ONLY_MUST_ESCALATE],
+)
+def test_no_name_needed_when_the_ask_has_no_innocent_reading(name, text):
+    d = detect_disclosure(text)
+    assert d is not None, (
+        f"{name}: a child reported this and NO adult was told, because no "
+        f"stranger was named. Text: {text!r}"
+    )
+    assert d.kind == "predatory_contact"
+
+
+@pytest.mark.parametrize(
+    "name,text",
+    ORDINARY_MUST_STAY_CLEAN,
+    ids=[n for n, _ in ORDINARY_MUST_STAY_CLEAN],
+)
+def test_widening_did_not_start_escalating_schoolwork(name, text):
+    """The cost of getting this wrong is a parent who stops reading alerts."""
+    d = detect_disclosure(text)
+    assert d is None, (
+        f"{name}: ordinary schoolwork escalated as {d.kind!r} ({d.matched!r}). "
+        f"Text: {text!r}"
+    )

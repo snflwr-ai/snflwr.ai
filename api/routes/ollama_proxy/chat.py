@@ -58,30 +58,17 @@ def _gate_block(model: str, message: str, *, stream: bool) -> Response:
 # fallback because the reveal confirm spent its 30 s budget QUEUED. The tutor was
 # fine; the queue was not. So over-capacity turns say so, plainly, and are not
 # recorded in the history ledger.
-_BUSY_MESSAGE = (
-    "Lots of learners are asking questions right now, so I could not get to "
-    "yours. Please send it again in a moment."
-)
+#
+# The three canned messages MOVED to core.proxy_messages, for the same reason
+# the classifier system override moved to core.pedagogy (see the note below):
+# scripts/latency_bar.py must know every canned reply, and importing an API
+# ROUTE from scripts/ makes mypy resolve scripts/ under two module names. They
+# are re-exported here so every existing import keeps working.
+from core.proxy_messages import BUSY_MESSAGE as _BUSY_MESSAGE
+from core.proxy_messages import TIMEOUT_MESSAGE as _TIMEOUT_MESSAGE
+from core.proxy_messages import UNSUPPORTED_MESSAGE as _UNSUPPORTED_MESSAGE
 
-# A turn that ran out of time must SAY so. Measured 2026-09-19: with a
-# co-tenant holding the GPU, the tutor fell back to CPU, the read timeout fired
-# at 5 minutes, httpx.ReadTimeout escaped the stream generator unhandled, and the
-# child was left looking at an EMPTY bubble with no error -- the stream simply
-# ended. Only httpx.ConnectError was caught here; a timeout is not a connect
-# error. Same lesson as #188: say something, in the format the client asked for.
-_TIMEOUT_MESSAGE = (
-    "That one took me too long to work out. Please send your question again."
-)
-
-
-# Hardware below the quality floor does not tutor with a smaller model: e4b and
-# 12b never met the tutoring bars (4-13 wrong replies per 121 against a bar of 6,
-# or acceptable correctness only by stonewalling 38 times), so the honest answer
-# is that this machine cannot run the tutor.
-_UNSUPPORTED_MESSAGE = (
-    "The tutor is not available on this computer right now. Ask a grown-up to "
-    "check the snflwr.ai setup guide for the hardware it needs."
-)
+__all__ = ["_BUSY_MESSAGE", "_TIMEOUT_MESSAGE", "_UNSUPPORTED_MESSAGE"]
 
 
 async def _pedagogy_reissue(

@@ -94,9 +94,15 @@ _SOURCE_DIRS = ("api", "core", "scripts")
 # DEFINES it, plus latency_bar's sentinel list, which must hold fragments by
 # design and is pinned by the tests above.
 _LITERAL_HOMES = {
-    "chat._BUSY_MESSAGE": {"api/routes/ollama_proxy/chat.py"},
-    "chat._TIMEOUT_MESSAGE": {"api/routes/ollama_proxy/chat.py"},
-    "chat._UNSUPPORTED_MESSAGE": {"api/routes/ollama_proxy/chat.py"},
+    # These three MOVED to core/proxy_messages.py. scripts/latency_bar.py must
+    # know every canned reply, and importing an API ROUTE from scripts/ makes
+    # mypy resolve scripts/ under two module names -- the same failure that
+    # moved the classifier system override to core.pedagogy. chat.py re-exports
+    # them, so `from ...chat import _BUSY_MESSAGE` still works; the LITERAL now
+    # lives in exactly one place, which is what this test enforces.
+    "chat._BUSY_MESSAGE": {"core/proxy_messages.py"},
+    "chat._TIMEOUT_MESSAGE": {"core/proxy_messages.py"},
+    "chat._UNSUPPORTED_MESSAGE": {"core/proxy_messages.py"},
     "profile_gate.NO_PROFILE_MESSAGE": {"core/profile_gate.py"},
     "guidance_enforcer._WITHHOLDING_FALLBACK": {
         "core/pedagogy/guidance_enforcer.py"},

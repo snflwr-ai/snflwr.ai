@@ -66,30 +66,42 @@ BAR_OVER_BUDGET = 0.08  # measured 0.03 of flagged ladders exceed the budget
 # Below this, a "reply" is an error or a canned string, not a tutor turn. A 19 GB
 # model does not answer in 0.4s.
 _MIN_PLAUSIBLE_S = 0.5
+
+
 # Canned strings the proxy serves with HTTP 200. Each is non-empty and would
 # otherwise score as a fast, successful turn -- which is how this check first
 # reported "OK - latency inside every bar" at p50 0.0s.
 #
-# This list was hand-written and DRIFTED from the code: it carried
-# "too many requests", but the rate limiter actually serves _BUSY_MESSAGE
-# ("Lots of learners are asking questions right now"), so a rate-limited reply
-# scored as a real measurement. Found 2026-09-23 when 5 of 6 probe requests came
-# back rate-limited and were counted as passes. _TIMEOUT_MESSAGE was missing too
-# -- a reply that literally says it took too long, scored as a fast turn.
+# It was hand-written twice and drifted twice: first carrying "too many requests"
+# while the rate limiter serves _BUSY_MESSAGE (5 of 6 probes scored as real
+# measurements, #306), then covering 5 of the 39 canned replies that exist.
 #
-# Every entry below is a fragment of a NAMED constant in the app, and
-# tests/test_latency_bar_sentinels.py imports those constants and fails if any
-# one of them stops being matched here. Add a canned reply to the app and the
-# test tells you to add it here; it does not drift silently twice.
-_SENTINELS = (
-    "No learning profile is set up yet",  # core.profile_gate.NO_PROFILE_MESSAGE
-    "I want you to get this one yourself",  # guidance_enforcer fallback
-    "Lots of learners are asking questions right now",  # chat._BUSY_MESSAGE
-    "took me too long to work out",  # chat._TIMEOUT_MESSAGE
-    "The tutor is not available on this computer",  # chat._UNSUPPORTED_MESSAGE
-    "too many requests",
-    "temporarily unavailable",
-)
+# ⚠️ DERIVED, not written. The hand-written version of this list covered 5 of
+# the 39 canned replies that actually exist -- it knew the infrastructure and
+# pedagogy strings and NOTHING about safety/. The 2026-09-24 certification run
+# served 9 safety refusals in 212 turns; a latency check with the old list would
+# have scored every one as a fast, successful tutor turn.
+#
+# core.canned_replies enumerates them by CALLING the emitters, so a new canned
+# reply cannot hide from this check. An ImportError aborts: a partial list is
+# worse than none, because it looks complete.
+def _load_sentinels() -> tuple:
+    try:
+        from core.canned_replies import all_canned_replies
+
+        derived = tuple(sorted(all_canned_replies().values(), key=len, reverse=True))
+    except Exception as exc:  # noqa: BLE001 - must be loud, never silent
+        raise SystemExit(
+            f"latency_bar: cannot enumerate canned replies ({type(exc).__name__}: "
+            f"{exc}). Refusing to run with an incomplete sentinel list -- it "
+            f"would score canned strings as real tutor turns, which is the "
+            f"false green this check exists to remove."
+        ) from exc
+    # Generic gateway/proxy strings that are not named constants anywhere.
+    return derived + ("too many requests", "temporarily unavailable")
+
+
+_SENTINELS = _load_sentinels()
 
 # Probes: half genuine questions that must NOT trigger, half homework demands
 # that must. Both halves matter -- a clean turn pays two confirm calls and is

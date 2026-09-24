@@ -617,8 +617,21 @@ info "API is healthy."
 # fix that motivated the deploy -- after PR #243 the live container served the
 # OLD homework gate while every artefact in the repo said otherwise.
 info "Verifying shipped safety behaviour in the running container..."
-if docker exec snflwr-api python scripts/postdeploy_smoke.py; then
+SMOKE_RC=0
+docker exec snflwr-api python scripts/postdeploy_smoke.py || SMOKE_RC=$?
+if [[ $SMOKE_RC -eq 0 ]]; then
     info "Shipped behaviour verified."
+elif [[ $SMOKE_RC -eq 3 ]]; then
+    # NEITHER verified NOR broken. A contended GPU stops the confirm self-test
+    # from running at all; on 2026-09-24 that was reported as "serving the wrong
+    # code" and told the operator to roll back a child-safety fix. It must also
+    # not be reported as success -- the check did not run.
+    warn "SAFETY BEHAVIOUR NOT VERIFIED: a check could not run (usually the"
+    warn "co-tenant holding the GPU). This deploy is NOT confirmed safe and is"
+    warn "NOT known broken. Take a GPU lease and re-run before any child uses it:"
+    warn "  curl -s -X POST http://localhost:11460/lease -H 'Content-Type: application/json' \\"
+    warn "       -d '{\"who\":\"snflwr\",\"reason\":\"postdeploy verify\",\"seconds\":600,\"mode\":\"exclusive\"}'"
+    warn "  docker exec snflwr-api python scripts/postdeploy_smoke.py"
 else
     error "The running container does NOT have the expected safety behaviour."
     error "It is healthy but serving the wrong code. Roll back with:"

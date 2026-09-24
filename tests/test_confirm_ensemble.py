@@ -37,7 +37,22 @@ def _replies(*verdicts):
 
 
 class TestTheOrSemantics:
-    def test_any_member_flagging_is_a_flag(self):
+    def test_any_member_flagging_is_a_flag(self, monkeypatch):
+        """OR semantics, asserted as a PROPERTY of the code, not of the current
+        membership.
+
+        The shipped ensemble is one member as of 2026-09-24, so this patches in
+        a second rather than deleting the test: if anyone adds a member back,
+        the OR behaviour they are relying on must still hold. A property test
+        that only passes for today's configuration is not a property test.
+        """
+        members = dict(_CONFIRM_ENSEMBLE)
+        only = next(iter(members))
+        monkeypatch.setattr(
+            rd,
+            "_CONFIRM_ENSEMBLE",
+            (("a", members[only]), ("b", members[only])),
+        )
         gen, seen = _replies('{"revealed": false}', '{"revealed": true}')
         assert _run(confirm_reveal("q", "r", gen)).revealed is True
         assert len(seen) == 2, "it stopped before asking the second member"
@@ -128,34 +143,67 @@ class TestItFailsClosedWhenNothingChecks:
 
 
 class TestTheEnsembleIsTheMeasuredOne:
-    def test_it_has_exactly_the_two_certified_members(self):
-        """Shipping an unmeasured member is shipping an unmeasured detector.
-        Both were scored on 488 blind-labelled cases from 500 distinct requests
-        spanning realistic traffic; candA/candB/candC/candD were scored and lost.
+    """⚠️ RE-MEASURED 2026-09-24 against the RE-GRADED labels.
+
+    Every number this class previously asserted was scored under the PRE-RE-GRADE
+    rubric. The 2026-09-23 owner ruling (concept explanation is not a reveal)
+    reclassified ~72% of flagged drafts as Tier 1/1b ALLOWED, so the same
+    detector flagging the same replies is now flagging CLEAN ones. candE alone
+    read 91.4% specificity under the old labels and reads 60.2% under the new
+    ones. The detector did not get worse; the definition of correct moved.
+
+    Re-measured on the 118 re-graded drafts (agreed labels only, kappa 0.936),
+    production call shape, exclusive GPU lease:
+
+        prompt   recall        specificity   false flags on 88 CLEAN drafts
+        v3       76.7%         65.9%         ~30
+        candE    28/29 96.6%   60.2%          35
+        candF    28/29 96.6%   84.1%          14
+        candE OR candF  29/29 100%   60.2%    35
+    """
+
+    def test_it_ships_exactly_the_measured_member(self):
+        """Shipping an unmeasured member is shipping an unmeasured detector."""
+        assert [n for n, _ in _CONFIRM_ENSEMBLE] == ["candF"]
+
+    def test_the_shipped_member_carries_the_assembly_clause(self):
+        """The class v3 was blind to by construction.
+
+        Five of v3's seven misses were piecewise assembly -- an answer handed
+        over in fragments the child concatenates ("beau"+"ti"+"ful", a
+        word-by-word gloss of a sentence they must translate). A rubric whose
+        rule 3 makes assembled chunks BE the item cannot be served by a prompt
+        that never mentions the class.
         """
-        assert [n for n, _ in _CONFIRM_ENSEMBLE] == ["v3", "candE"]
+        cf = dict(_CONFIRM_ENSEMBLE)["candF"].lower()
+        assert "assemble" in cf and "gloss" in cf, "the assembly clause is gone"
 
-    def test_cande_is_v3_plus_the_assembly_clause(self):
-        """The one difference, asserted so a future edit cannot quietly drop it.
+    def test_the_hundred_percent_option_is_deliberately_NOT_shipped(self):
+        """candE OR candF reaches 29/29 recall and was REJECTED.
 
-        The labels are scored against a rubric whose rule 3 makes chunks and
-        glosses that assemble into the item BE the item. v3 never mentioned that
-        class, so the detector was blind to a labelled category by construction.
-        Naming it did not raise recall (prediction wrong) -- it raised precision,
-        cutting false alarms 50 -> 39 at identical recall.
+        A union inherits the WORSE specificity of its members, so the extra
+        catch costs 21 extra false flags (14 -> 35). Each false flag forces a
+        regeneration of correct teaching (guidance_enforcer line ~370), which is
+        the mechanism PREREG.md named for A3 (fallback served) and A4
+        (stonewall), and a flagged turn pays the whole ladder, so it is the A6
+        tail too. One more reveal caught, 21 more rewrites: the wrong direction
+        on the measured rates.
         """
-        v3 = dict(_CONFIRM_ENSEMBLE)["v3"]
-        ce = dict(_CONFIRM_ENSEMBLE)["candE"]
-        low = ce.lower()
-        assert "assemble" in low and "gloss" in low, "the assembly clause is gone"
-        assert "assemble" not in v3.lower(), "v3 changed; the pair is no longer diverse"
-        assert len(ce) > len(v3)
+        assert len(_CONFIRM_ENSEMBLE) == 1, (
+            "a second member re-introduces the union's specificity cost; if one "
+            "is added, measure the false-flag count, not just recall"
+        )
 
-    def test_the_rejected_candidate_is_not_what_ships(self):
-        """candE ALONE reaches 91.4% specificity by missing three MORE reveals,
-        and served reveals already fail their bar at 8.0%. The pair keeps v3's
-        recall and takes candE's precision."""
-        assert len(_CONFIRM_ENSEMBLE) == 2, "a single-member ensemble loses recall"
+    def test_a_single_member_is_now_defensible_because_recall_is_not_the_floor(self):
+        """The ensemble existed because recall set the floor. It no longer does.
+
+        The old rationale: `draft x (1 - recall)` is irreducible by repair, so
+        OR was chosen for being monotone in recall. At 96.6%, candF alone gives
+        recall x fix = 0.859 against the 0.803 the 5% bar needs. Recall stopped
+        being the binding term; specificity became it.
+        """
+        cf = dict(_CONFIRM_ENSEMBLE)["candF"]
+        assert cf is not rd._CONFIRM_PROMPT_V3, "v3 alone was 76.7% recall"
 
     def test_the_old_single_prompt_is_not_what_runs(self):
         """`_CONFIRM_PROMPT` is kept for the tests that record what it cost to

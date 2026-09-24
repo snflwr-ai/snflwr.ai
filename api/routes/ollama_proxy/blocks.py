@@ -216,8 +216,21 @@ def _record_disclosure_incident(
                 "blocked": blocked,
             },
         )
-        # ⚠️ Whether a parent was actually alerted by THIS row -- OBSERVED, not
-        # derived. `log_incident` can fail WITHOUT raising: it returns
+        # ⚠️ Whether this row's alert was DISPATCHED -- observed, not derived.
+        #
+        # Precisely: `ok` means the incident row was written and escalation was
+        # INVOKED. It does not mean an email left the box, and it must not be
+        # read that way. `_send_parent_alert` can still find no resolvable
+        # parent (it then escalates to the operator), and SMTP is disabled on
+        # this box entirely, so nothing is delivered here at all.
+        #
+        # That is the right condition for this decision anyway: the question is
+        # whether the SAFETY row would add a second escalation for the same
+        # turn, and both rows go through the identical dispatch path. A
+        # delivery failure affects them equally, so it cannot make suppressing
+        # one of them wrong.
+        #
+        # `log_incident` can fail WITHOUT raising: it returns
         # (False, None) on its validation path and on its outer DB-error path,
         # and no alert is sent. The `except` below only catches raises, so
         # returning `kind in ALERTING_DISCLOSURE_KINDS` here would claim an

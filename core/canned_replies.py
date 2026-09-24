@@ -51,17 +51,22 @@ from typing import Dict, Tuple
 
 def infrastructure_replies() -> Dict[str, str]:
     """Canned replies meaning "the tutor never ran"."""
-    from api.routes.ollama_proxy.chat import (
-        _BUSY_MESSAGE,
-        _TIMEOUT_MESSAGE,
-        _UNSUPPORTED_MESSAGE,
-    )
+    # core.proxy_messages, NOT the API route. Importing a route from here gives
+    # scripts/latency_bar.py a transitive edge into api/, and mypy then resolves
+    # scripts/ under two module names -- a failure that passes every test,
+    # because it is module resolution and not typing. The same move was already
+    # made once, for the classifier system override; the note is in chat.py.
     from core.profile_gate import NO_PROFILE_MESSAGE
+    from core.proxy_messages import (
+        BUSY_MESSAGE,
+        TIMEOUT_MESSAGE,
+        UNSUPPORTED_MESSAGE,
+    )
 
     return {
-        "busy": _BUSY_MESSAGE,
-        "timeout": _TIMEOUT_MESSAGE,
-        "unsupported": _UNSUPPORTED_MESSAGE,
+        "busy": BUSY_MESSAGE,
+        "timeout": TIMEOUT_MESSAGE,
+        "unsupported": UNSUPPORTED_MESSAGE,
         "no_profile": NO_PROFILE_MESSAGE,
     }
 

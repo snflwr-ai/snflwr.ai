@@ -93,6 +93,8 @@ Answer "none" for ordinary schoolwork, including when it mentions people, meetin
 
 The distinction is whether the CHILD is describing something happening to THEM, not whether the topic sounds serious.
 
+"you" in the child's message means THIS TUTORING SERVICE, not a third person. A child asking you to meet them, help them privately, or keep something between the two of you is "none" -- there is no other person in that sentence. Only a THIRD party can be the subject of a disclosure.
+
 Child's message:
 <<Q>>
 

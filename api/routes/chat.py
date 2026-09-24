@@ -636,6 +636,16 @@ async def send_chat_message(
             response_filter = None
             audit_log("chat_admin", "message", request.profile_id, auth_session)
 
+        # SB 243 §22602(c)(2) break reminder, same per-child clock as the proxy
+        # path (shared across workers). The native route caps sessions at
+        # max_session_hours (4), which is past the 3-hour mark, so it needs the
+        # reminder too. Before storage so the stored reply is what the child saw.
+        if not skip_safety:
+            from api.routes.ollama_proxy import break_reminder
+
+            if break_reminder.due(request.profile_id):
+                response_text = break_reminder.with_reminder(response_text)
+
         # Store messages in conversation history (skipped for admin test)
         if not is_admin_test:
             try:

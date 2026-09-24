@@ -897,6 +897,39 @@ class TestSuccessfulResponsePath(_HandlerTestBase):
         assert result.message == "Unrestricted response."
 
 
+class TestNativeBreakReminder(_HandlerTestBase):
+    """SB 243 §22602(c)(2) on the native route. Sessions here cap at 4 hours,
+    which is past the 3-hour mark, so the reminder must fire here too, using the
+    same per-child clock as the proxy path."""
+
+    def test_reminder_leads_the_reply_when_due(self):
+        from api.routes.ollama_proxy import break_reminder as br
+
+        with patch.object(br, "due", return_value=True):
+            result = self._run_handler(ollama_text="The answer is 42.")
+        assert result.message.startswith(br.REMINDER_TEXT)
+        assert result.message.endswith("The answer is 42.")
+
+    def test_no_reminder_when_not_due(self):
+        from api.routes.ollama_proxy import break_reminder as br
+
+        with patch.object(br, "due", return_value=False):
+            result = self._run_handler(ollama_text="The answer is 42.")
+        assert result.message == "The answer is 42."
+
+    def test_admin_path_never_gets_the_reminder(self):
+        from api.routes.ollama_proxy import break_reminder as br
+
+        with patch.object(br, "due", return_value=True) as due:
+            result = self._run_handler(
+                auth_role="admin",
+                profile_id="no_profile_admin",
+                ollama_text="Unrestricted response.",
+            )
+        assert result.message == "Unrestricted response."
+        due.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Rate limiter dependency (line 64-80)
 # ---------------------------------------------------------------------------

@@ -693,7 +693,7 @@ async def proxy_chat(
             # EVERY release in production -- swallowed by the except below,
             # logged "unavailable", and the adjudicator never released a single
             # turn. Fourth instance of that shape on this feature.
-            from safety.pipeline import Category, Severity
+            from safety.pipeline import Category, Severity, pattern_stage_category
             from safety.pipeline import SafetyResult as _SafetyResult
             from safety.speech_act_adjudicator import (
                 ADJUDICATOR_MODEL,
@@ -702,6 +702,7 @@ async def proxy_chat(
                 should_block as _adjudicate,
             )
 
+            _released_by_history = pattern_stage_category(user_question) != "derogatory"
             _adj_gen = _make_adjudicator_generate(fwd_headers, model)
             # ⚠️ NOT wrapped in _stage("adjudicate"): that helper lives on the
             # unmerged stage-timers branch, and referencing it here would raise
@@ -722,8 +723,39 @@ async def proxy_chat(
             #
             # It also matches what cold set 6 validated: single messages.
             # Multi-turn input is unmeasured either way, and that is in the PR.
-            _keep = await _adjudicate(user_question, _adj_gen)
-            if not _keep:
+            # ⭐ SHORT-CIRCUIT, which prevents a latency CASCADE.
+            #
+            # A RELEASED turn is SERVED, so it IS recorded in the history
+            # ledger -- unlike a blocked turn, which is not, and which is why
+            # today's word list does not keep re-firing after a refusal. So
+            # once the adjudicator releases "they call me a freak", that text
+            # stays in history, the concatenation keeps tripping the word list,
+            # and EVERY later turn of the session would pay another ~6s
+            # classifier call to be released again.
+            #
+            # If the CURRENT turn does not trip the pattern stage by itself,
+            # the flag came only from already-served history, so release with
+            # NO model call. Deterministic, sub-millisecond, and it caps the
+            # cost of a release at one call rather than one per remaining turn.
+            # Found by prime-69.
+            _keep = (
+                False
+                if _released_by_history
+                else await _adjudicate(user_question, _adj_gen)
+            )
+            if _released_by_history:
+                logger.info(
+                    "adjudicator SKIPPED: the flag came from already-served "
+                    "history, not the current turn"
+                )
+                _trace["adjudicator"] = "skipped_history"
+                result = _SafetyResult(
+                    is_safe=True,
+                    severity=Severity.NONE,
+                    category=Category.VALID,
+                    reason="flagged only by already-served history",
+                )
+            elif not _keep:
                 logger.warning(
                     "adjudicator RELEASED a DEROGATORY-flagged turn (model=%s)",
                     ADJUDICATOR_MODEL,

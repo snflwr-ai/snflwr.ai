@@ -243,3 +243,72 @@ def test_the_adjudicator_judges_the_CURRENT_turn_not_the_history():
         "the adjudicator was given the CONCATENATED history; a single past "
         "insult would then block every later turn"
     )
+
+
+def test_a_flag_from_SERVED_HISTORY_skips_the_model_call():
+    """⭐ The latency cascade prime-69 found.
+
+    A RELEASED turn is served, so it IS recorded in the history ledger (a
+    BLOCKED turn is not, which is why today's word list doesn't keep re-firing
+    after a refusal). So once "they call me a freak" is released, the
+    concatenation keeps tripping the word list and every later turn of the
+    session would pay another ~6s classifier call to be released again.
+
+    If the CURRENT turn doesn't trip the pattern stage by itself, the flag came
+    only from served history: release with NO model call.
+    """
+    from fastapi.testclient import TestClient
+
+    calls = []
+
+    async def _gen(prompt):
+        calls.append(prompt)
+        return '{"act":"curriculum","decision":"release"}'
+
+    client = TestClient(_make_app(), raise_server_exceptions=False)
+    pipeline = MagicMock(spec=SafetyPipeline)
+    pipeline.check_input.return_value = _derogatory_block()
+    pipeline.check_output.return_value = _safe_result()
+    pipeline.get_safe_response.return_value = BLOCK_TEXT
+
+    body = {
+        "model": "test-model",
+        "stream": False,
+        "messages": [
+            {"role": "user", "content": "they call me a freak at school"},
+            {"role": "assistant", "content": "That sounds hard."},
+            # Trips NOTHING by itself; the flag can only have come from above.
+            {"role": "user", "content": "what is the water cycle"},
+        ],
+    }
+
+    with (
+        patch(
+            "api.routes.ollama_proxy.profile._get_profile_for_user",
+            new=AsyncMock(return_value="12"),
+        ),
+        patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new=AsyncMock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "model": "test-model",
+                        "done": True,
+                        "message": {"role": "assistant", "content": TUTOR_REPLY},
+                    },
+                )
+            ),
+        ),
+        patch.object(chat_mod.safety_config, "SPEECH_ACT_ADJUDICATOR_ENABLED", True),
+        patch.object(chat_mod, "_make_adjudicator_generate", lambda h, m: _gen),
+        patch("safety.pipeline.safety_pipeline", pipeline),
+    ):
+        resp = client.post("/api/chat", json=body)
+
+    served = (resp.json().get("message") or {}).get("content", "")
+    assert served == TUTOR_REPLY, "the innocent current turn was not released"
+    assert calls == [], (
+        f"a model call was made for a flag that came only from served history: "
+        f"{calls!r} — every later turn of the session would pay ~6s"
+    )

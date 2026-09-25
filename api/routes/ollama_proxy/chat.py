@@ -1091,6 +1091,7 @@ async def proxy_chat(
                 pedagogy_trace: Dict[str, Any] = {
                     "action": meta.action,
                     "attempts": meta.attempts,
+                    "gate": getattr(meta, "gate", "none"),
                 }
                 if _revet is not None:
                     pedagogy_trace["revet"] = _revet
@@ -1099,10 +1100,15 @@ async def proxy_chat(
                 # a served reply the rewrite ladder produced. Set R could not
                 # (2026-09-24) because action/attempts were never recorded.
                 logger.info(
-                    "pedagogy: action=%s attempts=%d revet=%s",
+                    "pedagogy: action=%s attempts=%d revet=%s gate=%s",
                     meta.action,
                     meta.attempts,
                     _revet,
+                    # "llm" | "regex_fallback" | "none". A gate that times out
+                    # falls back to the weaker regex SILENTLY and FAST, so latency
+                    # cannot show it; this field is the only signal (needed to
+                    # watch the disclosure queue's contention with the gate, #326).
+                    getattr(meta, "gate", "none"),
                 )
             except Exception as exc:  # fail-open: never let pedagogy break a turn
                 logger.warning("guidance enforcer errored (fail-open): %s", exc)

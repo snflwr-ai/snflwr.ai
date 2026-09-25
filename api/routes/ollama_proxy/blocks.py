@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json as _json
 from datetime import datetime, timezone
+from typing import Optional
 
 from utils.logger import get_logger
 
@@ -81,7 +82,36 @@ def _ollama_block_response(model: str, block_message: str) -> dict:
     }
 
 
-def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
+# The disclosure kinds whose incidents are MAJOR, and therefore the only ones
+# that raise a parent alert (escalation routes major/critical). Defined once
+# because two call sites now depend on it agreeing -- duplicating the rule is
+# how it drifts, and a drift here means either two alerts or none.
+ALERTING_DISCLOSURE_KINDS = ("suicidal_ideation", "predatory_contact")
+
+# Severity ordering, because "which of these two rows is more urgent" has to be
+# computed and not eyeballed. escalation.py passes severity STRAIGHT THROUGH to
+# email_service.send_safety_alert, which selects the URGENT template on
+# `severity.lower() in ["critical", "high"]` -- there is no major->high
+# translation anywhere in between (checked, not assumed).
+#
+# ⚠️ So "major" is an ORDINARY email and "critical" is an URGENT one, and that
+# is why the merge below exists: a blocked suicidal-ideation turn writes a
+# CRITICAL self_harm row and a MAJOR disclosure row, and suppressing the
+# critical one in favour of the major one would turn "[ALERT] URGENT" into a
+# routine notice on the single case where urgency matters most.
+_SEVERITY_RANK = {"minor": 0, "major": 1, "critical": 2}
+
+
+def _max_severity(a: str, b: Optional[str]) -> str:
+    """The more urgent of two severities; unknown values never win."""
+    if not b:
+        return a
+    return a if _SEVERITY_RANK.get(a, 0) >= _SEVERITY_RANK.get(b, 0) else b
+
+
+def _record_safety_incident(
+    profile_id, result, content_snippet: str, send_alert: bool = True
+) -> None:
     """Best-effort human-in-the-loop escalation for a blocked student message.
 
     Records a DB incident and — for major/critical severities such as a
@@ -92,11 +122,19 @@ def _record_safety_incident(profile_id, result, content_snippet: str) -> None:
     Students reach the model through this proxy (not api/routes/chat.py), so the
     escalation has to live here too. Fail-safe by design: any error is swallowed
     so the child's safe response is always delivered.
+
+    ⚠️ `send_alert=False` records the incident WITHOUT alerting, and exists for
+    exactly one case: the turn was blocked AND a disclosure was detected, so
+    `_record_disclosure_incident` has already alerted with the correct framing.
+    Both rows are still written -- this row remains the record of why the reply
+    was replaced -- but a parent gets ONE message, not two, and not one that
+    describes their child as having requested harmful content.
     """
     try:
         from safety.incident_logger import incident_logger
 
         incident_logger.log_incident(
+            send_alert=send_alert,
             profile_id=profile_id or "unknown",
             session_id=None,
             incident_type=result.category.value,
@@ -122,7 +160,8 @@ def _record_disclosure_incident(
     matched: str,
     content_snippet: str,
     blocked: bool = False,
-) -> None:
+    block_severity: Optional[str] = None,
+) -> bool:
     """Escalate a child's risk DISCLOSURE without blocking their turn.
 
     Distinct from _record_safety_incident, which is only reached when a message is
@@ -149,10 +188,13 @@ def _record_disclosure_incident(
         # "minor", not "moderate": log_incident accepts only minor/major/critical
         # and REJECTED "moderate", so bullying and disordered-eating disclosures
         # were never recorded and no parent could ever see them.
-        severity = (
-            "major" if kind in ("suicidal_ideation", "predatory_contact") else "minor"
-        )
-        incident_logger.log_incident(
+        severity = "major" if kind in ALERTING_DISCLOSURE_KINDS else "minor"
+        # ⚠️ When the turn was ALSO blocked, this row has to carry at least the
+        # block's urgency, because it is about to become the only alert the
+        # parent receives. Without this, a blocked crisis message is downgraded
+        # from URGENT to routine by the very fix meant to improve it.
+        severity = _max_severity(severity, block_severity if blocked else None)
+        ok, _incident_id = incident_logger.log_incident(
             profile_id=profile_id or "unknown",
             session_id=None,
             incident_type=f"disclosure_{kind}",
@@ -174,10 +216,36 @@ def _record_disclosure_incident(
                 "blocked": blocked,
             },
         )
+        # ⚠️ Whether this row's alert was DISPATCHED -- observed, not derived.
+        #
+        # Precisely: `ok` means the incident row was written and escalation was
+        # INVOKED. It does not mean an email left the box, and it must not be
+        # read that way. `_send_parent_alert` can still find no resolvable
+        # parent (it then escalates to the operator), and SMTP is disabled on
+        # this box entirely, so nothing is delivered here at all.
+        #
+        # That is the right condition for this decision anyway: the question is
+        # whether the SAFETY row would add a second escalation for the same
+        # turn, and both rows go through the identical dispatch path. A
+        # delivery failure affects them equally, so it cannot make suppressing
+        # one of them wrong.
+        #
+        # `log_incident` can fail WITHOUT raising: it returns
+        # (False, None) on its validation path and on its outer DB-error path,
+        # and no alert is sent. The `except` below only catches raises, so
+        # returning `kind in ALERTING_DISCLOSURE_KINDS` here would claim an
+        # alert that never happened, the caller would suppress the safety
+        # alert, and the parent would get ZERO emails for a blocked disclosure.
+        #
+        # Severity, not kind, decides: after the merge above a MINOR kind that
+        # was blocked critically does alert, and must say so.
+        return bool(ok) and severity in ("major", "critical")
     except Exception as exc:  # never let escalation break the child's response
         logger.error(
             "Failed to record disclosure incident (non-fatal): %s", exc, exc_info=True
         )
+        # Nothing was alerted, so the caller must NOT suppress the safety alert.
+        return False
 
 
 def _extract_text_from_ndjson_chunks(chunks: list[bytes]) -> str:

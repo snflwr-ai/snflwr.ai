@@ -473,17 +473,27 @@ async def proxy_chat(
     # classifier blocks 2 of them. Small, but those 2 were exactly the cases
     # where a parent was told the least accurate story.
     _disclosure = None
+    # Whether the disclosure row below already alerted a parent. Only the MAJOR
+    # kinds do, so a bullying or disordered-eating disclosure must NOT suppress
+    # the safety alert further down -- that would trade two alerts for none.
+    _disclosure_alerted = False
     try:
         from safety.disclosure_detector import detect_disclosure
 
         _disclosure = detect_disclosure(text)
         if _disclosure is not None:
-            blocks._record_disclosure_incident(
+            _disclosure_alerted = blocks._record_disclosure_incident(
                 profile_id,
                 _disclosure.kind,
                 _disclosure.matched,
                 text,
                 blocked=not result.is_safe,
+                # The block's own severity, so the disclosure row can carry it.
+                # A blocked crisis message is CRITICAL on the safety row and
+                # only MAJOR on the disclosure row, and major is an ORDINARY
+                # parent email while critical is an URGENT one -- so without
+                # this the suppression below downgrades the alert.
+                block_severity=(None if result.is_safe else str(result.severity.value)),
             )
             _trace["disclosure"] = {
                 "kind": _disclosure.kind,
@@ -508,7 +518,16 @@ async def proxy_chat(
             profile_id,
             result.category,
         )
-        blocks._record_safety_incident(profile_id, result, text)
+        # ⚠️ One alert per turn. A blocked disclosure writes BOTH rows, but only
+        # one may reach the parent, and it must be the disclosure row: the safety
+        # row's incident_type is the classifier's category, which for a grooming
+        # report reads `exploitation` -- the child REQUESTING harmful content,
+        # the opposite of what happened. Two emails for one message, one of them
+        # framing the child as the offender, would partly undo the fix that
+        # wrote the disclosure row in the first place.
+        blocks._record_safety_incident(
+            profile_id, result, text, send_alert=not _disclosure_alerted
+        )
         _trace["safety"] = {
             "category": str(result.category),
             "severity": str(result.severity),

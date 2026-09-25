@@ -614,6 +614,26 @@ async def proxy_chat(
             _trace["latency_ms"]["tutor_chunks"] = _chunks
             yield chunk
 
+    def _timed_call(name: str, fn):
+        """Wrap a one-argument async closure so its wall time lands in `name`.
+
+        Returns None for None so a disabled stage (e.g. no GUIDANCE_GATE_MODEL)
+        stays disabled rather than becoming a no-op callable the enforcer would
+        then treat as configured.
+
+        Takes ONE positional arg explicitly rather than *a/**kw: all three
+        enforcer closures are single-argument, and a transparent *args wrapper
+        here would hide a signature change instead of failing on it.
+        """
+        if fn is None:
+            return None
+
+        async def _wrapped(arg):
+            with _stage(name):
+                return await fn(arg)
+
+        return _wrapped
+
     def _emit_trace():
         _trace["latency_ms"]["total"] = round((time.perf_counter() - _t0) * 1000, 2)
         # Logged as well as traced, deliberately: `trace_chat_turn` is a no-op
@@ -622,15 +642,19 @@ async def proxy_chat(
         _lat = _trace["latency_ms"]
         try:
             logger.info(
-                "turn timing total=%sms gate=%s guard_in=%s guard_out=%s "
-                "tutor=%s tutor_ttfb=%s enforce=%s chunks=%s counts=%s",
+                "turn timing total=%sms topic_gate=%s guid_gate=%s "
+                "guard_in=%s guard_out=%s tutor=%s tutor_ttfb=%s "
+                "enforce=%s confirm=%s regen=%s chunks=%s counts=%s",
                 _lat.get("total"),
-                _lat.get("gate"),
+                _lat.get("topic_gate"),
+                _lat.get("guid_gate"),
                 _lat.get("guard_in"),
                 _lat.get("guard_out"),
                 _lat.get("tutor"),
                 _lat.get("tutor_ttfb"),
                 _lat.get("enforce"),
+                _lat.get("confirm"),
+                _lat.get("regen"),
                 _lat.get("tutor_chunks"),
                 {k: v for k, v in _lat.items() if k.endswith("_n")},
             )
@@ -999,7 +1023,7 @@ async def proxy_chat(
         for m in messages[:-1]
         if isinstance(m, dict) and m.get("content")
     ]
-    with _stage("gate"):
+    with _stage("topic_gate"):
         topic_msg = await topic_gate.off_topic_block_reason(
             user_question, age=age, history=_topic_history
         )
@@ -1454,13 +1478,18 @@ async def proxy_chat(
                             prompt, system_config.GUIDANCE_GATE_MODEL, fwd_headers
                         )
 
+                # guid_gate is the series #326 predicts will be BIMODAL
+                # under sequential turns, when a prior turn's disclosure
+                # classify still holds the CPU e4b runner. regen_n is the
+                # ladder's rung count, which is the number its cost should be
+                # read per.
                 with _stage("enforce"):
                     new_text, meta = await enforce_guidance(
                         user_question,
                         assistant_text,
-                        _regenerate,
-                        confirm_generate=_confirm_generate,
-                        gate_generate=_gate_generate,
+                        _timed_call("regen", _regenerate),
+                        confirm_generate=_timed_call("confirm", _confirm_generate),
+                        gate_generate=_timed_call("guid_gate", _gate_generate),
                     )
                 _revet: Optional[str] = None
                 if new_text != assistant_text and isinstance(

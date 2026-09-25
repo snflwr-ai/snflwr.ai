@@ -875,6 +875,14 @@ class _SafetyConfig:
     # installed.  If neither the preferred model nor any fallback is present,
     # the semantic classifier disables itself and the deterministic stages
     # (1-3, 5) continue to protect.
+    # Speech-act adjudicator: main's DEROGATORY word list becomes a high-recall
+    # TRIGGER and this decides. OFF by default -- it passed every accuracy bar on
+    # cold set 6 but the WIRED latency measurement (AMENDMENT-1 split bars) has
+    # not been taken, and its p90 over 262 calls was 9.03s against an 8s
+    # feasibility bar scored on only 40.
+    SPEECH_ACT_ADJUDICATOR_ENABLED: bool = (
+        os.getenv("SPEECH_ACT_ADJUDICATOR_ENABLED", "false").lower() == "true"
+    )
     SAFETY_MODEL: str = os.getenv("SAFETY_MODEL", "llama-guard3:8b")
     SAFETY_MODEL_FALLBACKS: tuple = tuple(
         s.strip()

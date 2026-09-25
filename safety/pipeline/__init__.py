@@ -383,6 +383,32 @@ _CRISIS_TEXT = re.compile(
 )
 
 
+_PATTERN_ONLY_MATCHER: Optional[_PatternMatcher] = None
+
+
+def pattern_stage_category(text: str) -> Optional[str]:
+    """The DETERMINISTIC pattern stage's category for `text`, or None.
+
+    No classifier, no model call -- patterns only. Exists so a caller can ask
+    "would the word list fire on THIS message by itself?" cheaply.
+
+    ⚠️ A module-level FUNCTION, deliberately, not a method reached through the
+    `safety_pipeline` singleton. `safety_pipeline` is an INSTANCE, and reaching
+    for an attribute on it is precisely what made the adjudicator's release
+    path raise AttributeError on every production turn -- swallowed by a
+    fail-closed except, so a dead feature looked like a working one. Importing
+    a module-level function cannot fail that way, and a `MagicMock(spec=...)`
+    of the pipeline cannot accidentally satisfy it either.
+    """
+    global _PATTERN_ONLY_MATCHER
+    if _PATTERN_ONLY_MATCHER is None:
+        _PATTERN_ONLY_MATCHER = _PatternMatcher()
+    res = _PATTERN_ONLY_MATCHER.check(_strip_invisible(text), _stage_normalize(text))
+    if res is None:
+        return None
+    return getattr(res.category, "value", None)
+
+
 def _looks_like_crisis(text: str) -> bool:
     """True when the child's own words indicate ideation, self-harm or a method.
 

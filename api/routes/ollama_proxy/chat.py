@@ -168,6 +168,33 @@ def _make_disclosure_generate(fwd_headers: dict, tutor_model: str):
     return _generate
 
 
+def _make_adjudicator_generate(fwd_headers: dict, tutor_model: str):
+    """One-shot call for the speech-act adjudicator.
+
+    Reuses `_pedagogy_oneshot`, so it gets the production shape the hard way
+    round: `think: False` at the TOP level (without it gemma4 burns its whole
+    budget on thinking tokens and returns an empty response with
+    `done_reason=length`), `keep_alive` to hold the CPU-pinned classifier
+    resident, and `tutor_model` so the CPU pin applies -- the adjudicator is
+    NOT the tutor and must stay off the contended card.
+
+    `system` is replaced so the classifier cannot inherit a tutor persona whose
+    brevity rules truncate JSON verdicts to `{"`.
+    """
+    from safety.speech_act_adjudicator import ADJUDICATOR_MODEL, ADJUDICATOR_SYSTEM
+
+    async def _generate(prompt: str) -> str:
+        return await _pedagogy_oneshot(
+            prompt,
+            ADJUDICATOR_MODEL,
+            fwd_headers,
+            system=ADJUDICATOR_SYSTEM,
+            tutor_model=tutor_model,
+        )
+
+    return _generate
+
+
 async def _pedagogy_oneshot(
     prompt: str,
     model: str,
@@ -622,6 +649,133 @@ async def proxy_chat(
             )
         except Exception as exc:  # noqa: BLE001 - a child is waiting
             logger.warning("disclosure enqueue failed (non-fatal): %s", exc)
+
+    # ---- Speech-act adjudicator, behind a flag -----------------------------
+    #
+    # main's DEROGATORY word list is the TRIGGER, not the decision. It flags
+    # ~90% of everything containing these words -- 85.4% of insults and 90.2%
+    # of benign turns, a 0.95x discrimination ratio, so as a filter it carries
+    # almost no information about intent. That indiscriminacy is exactly what
+    # makes it a good high-recall PREFILTER.
+    #
+    # Measured on cold set 6 (269 items, main_flags pinned to e3f457e):
+    #   insults blocked      46/48   (false-release 4.2%, bar <=5%)
+    #   reports released     44/44   (main: 0/44, V1: 32/44)
+    #   denials released     40/42
+    #   asking_about         47/47
+    #   curriculum           35/35
+    #   K-2 insults/reports    8/8   (V1: 1/8 and 6/8)
+    #
+    # ⚠️ It can only RELEASE, never block something the trigger let through --
+    # so it cannot introduce a false positive. It CAN release a real insult the
+    # trigger caught, which is a new false negative:
+    #     recall = trigger flag rate x (1 - false-release rate)
+    # That is the term with the tight bound, and it is why the flag defaults
+    # off until the wired latency measurement lands.
+    #
+    # ⭐ Fail-closed here IS today's behaviour: any error keeps the block, which
+    # is what the word list does now. The failure mode is "no improvement",
+    # never "new harm" -- the inverse of the reveal confirm, which swallowed
+    # errors into a negative verdict and served the leak.
+    #
+    # ⚠️ INPUT ONLY. The taxonomy asks what the STUDENT is doing with the word;
+    # a tutor explaining "pathetic fallacy" is an OUTPUT block and is out of
+    # scope for this classifier.
+    if (
+        not result.is_safe
+        and safety_config.SPEECH_ACT_ADJUDICATOR_ENABLED
+        and getattr(result.category, "value", None) == "derogatory"
+    ):
+        try:
+            # ⚠️ The TYPES, not attributes of the instance. `safety_pipeline`
+            # is a SafetyPipeline INSTANCE with no `SafetyResult` attribute, so
+            # `safety_pipeline.SafetyResult(...)` raised AttributeError on
+            # EVERY release in production -- swallowed by the except below,
+            # logged "unavailable", and the adjudicator never released a single
+            # turn. Fourth instance of that shape on this feature.
+            from safety.pipeline import Category, Severity, pattern_stage_category
+            from safety.pipeline import SafetyResult as _SafetyResult
+            from safety.speech_act_adjudicator import (
+                ADJUDICATOR_MODEL,
+            )
+            from safety.speech_act_adjudicator import (
+                should_block as _adjudicate,
+            )
+
+            _released_by_history = pattern_stage_category(user_question) != "derogatory"
+            _adj_gen = _make_adjudicator_generate(fwd_headers, model)
+            # ⚠️ NOT wrapped in _stage("adjudicate"): that helper lives on the
+            # unmerged stage-timers branch, and referencing it here would raise
+            # NameError -> caught by the except below -> fail-closed -> the
+            # adjudicator would silently never run. Exactly how the first
+            # version of this wiring failed (a missing module did the same).
+            # Add the timer once obs/stage-timers merges.
+            # ⚠️ `user_question` (the CURRENT turn), NOT `text` (every student
+            # turn CONCATENATED, which is what the word-list trigger sees).
+            #
+            # The blob is what tripped the trigger, but judging it would let a
+            # single past insult block EVERY later turn: for a child who once
+            # wrote "you are such a loser" and now asks "what are fatty acids",
+            # the concatenation is "you are such a loser\nwhat are fatty acids"
+            # -- which any honest classifier calls insulting. That earlier turn
+            # was already blocked when it was sent; re-blocking the innocent one
+            # is punishment for history.
+            #
+            # It also matches what cold set 6 validated: single messages.
+            # Multi-turn input is unmeasured either way, and that is in the PR.
+            # ⭐ SHORT-CIRCUIT, which prevents a latency CASCADE.
+            #
+            # A RELEASED turn is SERVED, so it IS recorded in the history
+            # ledger -- unlike a blocked turn, which is not, and which is why
+            # today's word list does not keep re-firing after a refusal. So
+            # once the adjudicator releases "they call me a freak", that text
+            # stays in history, the concatenation keeps tripping the word list,
+            # and EVERY later turn of the session would pay another ~6s
+            # classifier call to be released again.
+            #
+            # If the CURRENT turn does not trip the pattern stage by itself,
+            # the flag came only from already-served history, so release with
+            # NO model call. Deterministic, sub-millisecond, and it caps the
+            # cost of a release at one call rather than one per remaining turn.
+            # Found by prime-69.
+            _keep = (
+                False
+                if _released_by_history
+                else await _adjudicate(user_question, _adj_gen)
+            )
+            if _released_by_history:
+                logger.info(
+                    "adjudicator SKIPPED: the flag came from already-served "
+                    "history, not the current turn"
+                )
+                _trace["adjudicator"] = "skipped_history"
+                result = _SafetyResult(
+                    is_safe=True,
+                    severity=Severity.NONE,
+                    category=Category.VALID,
+                    reason="flagged only by already-served history",
+                )
+            elif not _keep:
+                logger.warning(
+                    "adjudicator RELEASED a DEROGATORY-flagged turn (model=%s)",
+                    ADJUDICATOR_MODEL,
+                )
+                _trace["adjudicator"] = "released"
+                result = _SafetyResult(
+                    is_safe=True,
+                    severity=Severity.NONE,
+                    category=Category.VALID,
+                    reason="released by the speech-act adjudicator",
+                )
+            else:
+                _trace["adjudicator"] = "kept"
+        except Exception as exc:  # noqa: BLE001 - fail CLOSED: keep the block
+            logger.warning(
+                "adjudicator unavailable (%s); KEEPING the block, i.e. today's "
+                "behaviour",
+                exc,
+            )
+            _trace["adjudicator"] = "unavailable"
 
     if not result.is_safe:
         block_message = (

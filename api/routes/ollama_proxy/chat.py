@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
+import os
 import time
 from typing import Any, Dict, Optional
 
@@ -27,6 +28,7 @@ from core import serving_plan, topic_gate
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_gate import no_profile_block_reason
+from safety import disclosure_response
 from utils import observability
 from utils.logger import get_logger, sanitize_log_value
 
@@ -69,6 +71,36 @@ from core.proxy_messages import TIMEOUT_MESSAGE as _TIMEOUT_MESSAGE
 from core.proxy_messages import UNSUPPORTED_MESSAGE as _UNSUPPORTED_MESSAGE
 
 __all__ = ["_BUSY_MESSAGE", "_TIMEOUT_MESSAGE", "_UNSUPPORTED_MESSAGE"]
+
+
+# How long the route will wait for a semantic verdict it has already asked for.
+# Small on purpose: the verdict is normally ALREADY THERE (submitted before the
+# tutor call, ~6s, against a 13-32s turn), so this is a backstop for a degraded
+# queue, not a budget. A miss costs the override, never the reply.
+_DISCLOSURE_VERDICT_WAIT_S = float(os.getenv("DISCLOSURE_VERDICT_WAIT_S", "2.0"))
+
+
+async def _await_disclosure_verdict(fut) -> "str | None":
+    """The semantic kind for this turn, or None to leave the reply alone.
+
+    Total: every failure mode -- no future, timeout, cancellation, a raising
+    future -- returns None, which means "no override" and so reproduces today's
+    behaviour. The failure direction has to be "no improvement", never a
+    changed or blank reply.
+
+    `asyncio.wait` rather than `wait_for`: `wait_for` CANCELS the awaitable on
+    timeout, which would break the worker's `set_result` on a future it still
+    owns.
+    """
+    if fut is None:
+        return None
+    try:
+        done, _pending = await asyncio.wait({fut}, timeout=_DISCLOSURE_VERDICT_WAIT_S)
+        if fut not in done or fut.cancelled():
+            return None
+        return fut.result()
+    except Exception:  # noqa: BLE001 - never raise into a child's turn
+        return None
 
 
 async def _pedagogy_reissue(
@@ -570,6 +602,10 @@ async def proxy_chat(
         if k.lower() not in ("host", "content-length")
     }
 
+    # The route awaits THIS turn's semantic verdict before serving, so the
+    # response router can act on it. Fire-and-forget (verdict=None) remains the
+    # behaviour whenever there is no running loop.
+    _disclosure_verdict = None
     _disclosure = None
     # Whether the disclosure row below already alerted a parent. Only the MAJOR
     # kinds do, so a bullying or disordered-eating disclosure must NOT suppress
@@ -627,9 +663,11 @@ async def proxy_chat(
         try:
             from safety.disclosure_queue import _Job as _DisclosureJob
 
+            _disclosure_verdict = _disclosure_queue().new_verdict_future()
             _disclosure_queue().submit(
                 _DisclosureJob(
                     profile_id=profile_id,
+                    verdict=_disclosure_verdict,
                     # ⚠️ The CHILD's turns only. #331: the crisis and severity
                     # decisions must never read the model's output, and the
                     # worker is handed nothing else.
@@ -1100,6 +1138,11 @@ async def proxy_chat(
     # on every path (incl. non-dict upstream_json). Set True only if the pedagogy
     # enforcer rewrote the content.
     _pedagogy_modified = False
+    # Set when the disclosure router replaced the reply, so the block below
+    # re-serialises. Separate from `_pedagogy_modified` because conflating them
+    # would make the trace attribute a safeguarding override to the pedagogy
+    # enforcer.
+    _disclosure_overridden = False
     # ⚠️ SAME REASON, and it was missed the first time. `assistant_text` is only
     # assigned inside the `isinstance(upstream_json, dict)` branch below, but the
     # history-ledger block near the end reads it unconditionally -- so when
@@ -1415,6 +1458,36 @@ async def proxy_chat(
     # `message.thinking` (blank render) and the raw chain-of-thought is unvetted
     # content that must never reach a child. `content` is untouched. (Streaming
     # paths strip per-line in transport._stream_chunks_from_ollama.)
+    # ---- Disclosure response router (BUFFERED paths only) -------------------
+    #
+    # The semantic verdict is normally already here: the job was submitted
+    # BEFORE the tutor call and takes ~6s (e4b, CPU, measured), against a
+    # 13-32s tutor turn. So this await usually returns instantly -- the queue
+    # was simply throwing away a result it already had in time.
+    #
+    # ⚠️ Reached by the non-streaming path AND the buffered-stream path (which
+    # re-emits the whole reply as one chunk). NOT by the progressive stream,
+    # which flushes ~1-3s in, long before a ~6s verdict -- holding that flush
+    # would add 3-5s of time-to-first-token to EVERY streamed turn for a rare
+    # event, and TTFB is what a child actually perceives. That path needs an
+    # APPEND instead, which is not in this commit.
+    #
+    # ⚠️ So requirement 4 (no schoolwork pivot) is satisfiable only here: an
+    # append cannot un-say text already flushed. That is an OWNER decision,
+    # stated in the PR rather than settled by me.
+    _disclosure_kind = await _await_disclosure_verdict(_disclosure_verdict)
+    _disclosure_override = disclosure_response.response_for(_disclosure_kind)
+    if (
+        _disclosure_override
+        and isinstance(upstream_json, dict)
+        and isinstance(upstream_json.get("message"), dict)
+    ):
+        upstream_json["message"]["content"] = _disclosure_override
+        _disclosure_overridden = True
+        logger.warning(
+            "disclosure router replaced the reply for kind=%s", _disclosure_kind
+        )
+
     out_content = upstream.content if upstream is not None else b""
     if isinstance(upstream_json, dict) and isinstance(
         upstream_json.get("message"), dict
@@ -1423,7 +1496,12 @@ async def proxy_chat(
         # Re-serialize when the enforcer rewrote the content OR when we need to
         # strip the model's reasoning field (OWUI >=0.10 blank-renders it and
         # chain-of-thought must never reach a child unvetted).
-        if "thinking" in msg or _pedagogy_modified or _streamed:
+        if (
+            "thinking" in msg
+            or _pedagogy_modified
+            or _streamed
+            or _disclosure_overridden
+        ):
             msg.pop("thinking", None)
             out_content = _json.dumps(upstream_json).encode()
     # Remember this exchange so the client may replay it next turn. Record the

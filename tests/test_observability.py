@@ -157,3 +157,17 @@ def test_extra_fields_reach_the_trace_metadata(monkeypatch):
     assert meta["pedagogy"] == {"action": "reprompt_clean", "attempts": 2}
     assert meta["break_reminder"] is True
     assert "sycophancy" not in meta
+
+
+def test_pedagogy_log_line_carries_the_gate_used():
+    """A gate that times out falls back to the weaker regex SILENTLY and FAST, so
+    latency cannot reveal it. The per-turn log line must carry `gate=` (llm vs
+    regex_fallback) or that regression is invisible (needed to watch the #326
+    disclosure queue, which shares the gate's model)."""
+    from pathlib import Path
+
+    src = (
+        Path(__file__).resolve().parents[1] / "api/routes/ollama_proxy/chat.py"
+    ).read_text()
+    assert "pedagogy: action=%s attempts=%d revet=%s gate=%s" in src
+    assert '"gate": getattr(meta, "gate", "none")' in src

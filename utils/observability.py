@@ -104,6 +104,11 @@ def trace_chat_turn(
     disclosure: Optional[dict] = None,
     escalation: Optional[dict] = None,
     break_reminder: Optional[bool] = None,
+    # "released" | "kept" | "unavailable" -- the speech-act adjudicator's
+    # decision on a DEROGATORY-flagged turn. Named here because an unknown key
+    # raises TypeError, the caller swallows it, and the WHOLE trace is dropped
+    # (#328) -- on exactly the turns worth tracing.
+    adjudicator: Optional[str] = None,
 ) -> None:
     """Emit one metadata-only trace for a chat turn. Never raises.
 
@@ -137,6 +142,7 @@ def trace_chat_turn(
                         "disclosure": disclosure,
                         "escalation": escalation,
                         "break_reminder": break_reminder,
+                        "adjudicator": adjudicator,
                     }.items()
                     if v is not None
                 },

@@ -266,6 +266,15 @@ class _SystemConfig:
     SYCOPHANCY_CHECK_ENABLED: bool = os.getenv(
         "SYCOPHANCY_CHECK_ENABLED", "false"
     ).lower() in ("1", "true", "yes")
+    # Deterministic check of the arithmetic a child SHOWS (core.pedagogy.
+    # arith_check). When a shown step is arithmetically wrong, a note naming the
+    # step -- never the correct value -- rides on the forwarded turn. OFF by
+    # default until the live A/B (2026-09-25-arith-verify) says it helps.
+    ARITH_CHECK_ENABLED: bool = os.getenv("ARITH_CHECK_ENABLED", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     SYCOPHANCY_CHECK_TIMEOUT_S: float = float(
         os.getenv("SYCOPHANCY_CHECK_TIMEOUT_S", "8")
     )

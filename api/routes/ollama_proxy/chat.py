@@ -644,7 +644,8 @@ async def proxy_chat(
             logger.info(
                 "turn timing total=%sms topic_gate=%s guid_gate=%s "
                 "guard_in=%s guard_out=%s tutor=%s tutor_ttfb=%s "
-                "enforce=%s confirm=%s regen=%s chunks=%s counts=%s",
+                "enforce=%s confirm=%s regen=%s adjudicate=%s "
+                "disclosure_wait=%s chunks=%s counts=%s",
                 _lat.get("total"),
                 _lat.get("topic_gate"),
                 _lat.get("guid_gate"),
@@ -655,6 +656,8 @@ async def proxy_chat(
                 _lat.get("enforce"),
                 _lat.get("confirm"),
                 _lat.get("regen"),
+                _lat.get("adjudicate"),
+                _lat.get("disclosure_wait"),
                 _lat.get("tutor_chunks"),
                 {k: v for k, v in _lat.items() if k.endswith("_n")},
             )
@@ -890,12 +893,6 @@ async def proxy_chat(
 
             _released_by_history = pattern_stage_category(user_question) != "derogatory"
             _adj_gen = _make_adjudicator_generate(fwd_headers, model)
-            # ⚠️ NOT wrapped in _stage("adjudicate"): that helper lives on the
-            # unmerged stage-timers branch, and referencing it here would raise
-            # NameError -> caught by the except below -> fail-closed -> the
-            # adjudicator would silently never run. Exactly how the first
-            # version of this wiring failed (a missing module did the same).
-            # Add the timer once obs/stage-timers merges.
             # ⚠️ `user_question` (the CURRENT turn), NOT `text` (every student
             # turn CONCATENATED, which is what the word-list trigger sees).
             #
@@ -924,11 +921,15 @@ async def proxy_chat(
             # NO model call. Deterministic, sub-millisecond, and it caps the
             # cost of a release at one call rather than one per remaining turn.
             # Found by prime-69.
-            _keep = (
-                False
-                if _released_by_history
-                else await _adjudicate(user_question, _adj_gen)
-            )
+            # Timed now that `_stage` is on this branch -- the follow-up the
+            # wiring commit documented. It is the marginal cost the owner's
+            # switch-it-on decision turns on: measured +1.6s p50 / +3.0s p90
+            # against an ordinary turn.
+            if _released_by_history:
+                _keep = False
+            else:
+                with _stage("adjudicate"):
+                    _keep = await _adjudicate(user_question, _adj_gen)
             if _released_by_history:
                 logger.info(
                     "adjudicator SKIPPED: the flag came from already-served "
@@ -1177,7 +1178,8 @@ async def proxy_chat(
                 _rest, _done_chunk = _split_trailing_done(collected[flushed:])
                 for c in _rest:
                     yield c
-                _stream_kind = await _await_disclosure_verdict(_disclosure_verdict)
+                with _stage("disclosure_wait"):
+                    _stream_kind = await _await_disclosure_verdict(_disclosure_verdict)
                 _stream_override = disclosure_response.response_for(_stream_kind)
                 if _stream_override:
                     _DISCLOSURE_STREAM_MISSES["appended"] += 1
@@ -1680,7 +1682,8 @@ async def proxy_chat(
     # ⚠️ So requirement 4 (no schoolwork pivot) is satisfiable only here: an
     # append cannot un-say text already flushed. That is an OWNER decision,
     # stated in the PR rather than settled by me.
-    _disclosure_kind = await _await_disclosure_verdict(_disclosure_verdict)
+    with _stage("disclosure_wait"):
+        _disclosure_kind = await _await_disclosure_verdict(_disclosure_verdict)
     _disclosure_override = disclosure_response.response_for(_disclosure_kind)
     if (
         _disclosure_override

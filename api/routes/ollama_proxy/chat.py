@@ -118,6 +118,56 @@ from core.pedagogy import CLASSIFIER_SYSTEM as _CLASSIFIER_SYSTEM  # noqa: E402
 _CLASSIFIER_KEEP_ALIVE = "30m"
 
 
+# ---------------------------------------------------------------------------
+# Semantic disclosure pass, OFF the child's critical path.
+#
+# The regex detector reached 9 of 23 disclosures on a cold sealed set while the
+# classifier behind it was right on 18 of the 19 turns it was ever shown. The
+# gate was the ceiling, it existed to protect a latency budget nobody measured,
+# and this work never had to be on the critical path: it only writes an
+# incident row -- `disclosure_detector`'s docstring opens with "This detector
+# NEVER blocks".
+# ---------------------------------------------------------------------------
+
+_DISCLOSURE_QUEUE = None
+
+
+def _disclosure_queue():
+    """Lazily build the per-process queue. Imports stay off the load path."""
+    global _DISCLOSURE_QUEUE
+    if _DISCLOSURE_QUEUE is None:
+        from safety.disclosure_queue import DisclosureQueue
+
+        _DISCLOSURE_QUEUE = DisclosureQueue(recorder=blocks._record_disclosure_incident)
+    return _DISCLOSURE_QUEUE
+
+
+def _make_disclosure_generate(fwd_headers: dict, tutor_model: str):
+    """One-shot call for the disclosure classifier.
+
+    Reuses `_pedagogy_oneshot`, so this call gets the same production shape as
+    the reveal confirm: `think: False` (without it gemma4 returns an EMPTY
+    response with done_reason=length), `keep_alive` to hold the CPU-pinned
+    classifier resident, and `tutor_model` so the CPU pin is applied -- the
+    disclosure model is NOT the tutor, so it stays off the contended card.
+
+    `system` is replaced because the model must not inherit a tutor persona; an
+    unreadable verdict is what made the reveal confirm fail open.
+    """
+    from safety.disclosure_semantic import CLASSIFIER_SYSTEM, DISCLOSURE_MODEL
+
+    async def _generate(prompt: str) -> str:
+        return await _pedagogy_oneshot(
+            prompt,
+            DISCLOSURE_MODEL,
+            fwd_headers,
+            system=CLASSIFIER_SYSTEM,
+            tutor_model=tutor_model,
+        )
+
+    return _generate
+
+
 async def _pedagogy_oneshot(
     prompt: str,
     model: str,
@@ -511,6 +561,46 @@ async def proxy_chat(
             }
     except Exception as exc:  # never let escalation break a child's turn
         logger.warning("disclosure detection failed (continuing): %s", exc)
+
+    # ---- Semantic disclosure pass: enqueue, never await --------------------
+    #
+    # Submitted here, BEFORE the tutor call, so the CPU classify overlaps GPU
+    # generation instead of following it. It is non-blocking either way; this
+    # only makes the row land sooner.
+    #
+    # ⚠️ Submitted even when the turn was BLOCKED -- #325's lesson is that a
+    # blocked disclosure still needs typing, and it is the case where the child
+    # was both reaching out AND refused.
+    #
+    # ⚠️ Skipped only when the inline row ALREADY ALERTED (the observed flag,
+    # not the kind). An upgrade cannot add anything a parent has already been
+    # told, and a second alerting row would be the #330 double-alert.
+    if not _disclosure_alerted:
+        try:
+            from safety.disclosure_queue import _Job as _DisclosureJob
+
+            _disclosure_queue().submit(
+                _DisclosureJob(
+                    profile_id=profile_id,
+                    # ⚠️ The CHILD's turns only. #331: the crisis and severity
+                    # decisions must never read the model's output, and the
+                    # worker is handed nothing else.
+                    child_text=text,
+                    fallback_kind=(_disclosure.kind if _disclosure else None),
+                    fallback_alerted=_disclosure_alerted,
+                    blocked=not result.is_safe,
+                    block_severity=(
+                        None
+                        if result.is_safe
+                        else blocks.crisis_escalation_severity(
+                            result, text, category_describes_child=True
+                        )
+                    ),
+                    generate=_make_disclosure_generate(fwd_headers, model),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - a child is waiting
+            logger.warning("disclosure enqueue failed (non-fatal): %s", exc)
 
     if not result.is_safe:
         block_message = (

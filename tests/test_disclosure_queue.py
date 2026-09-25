@@ -363,3 +363,85 @@ async def test_a_blocked_crisis_turn_produces_exactly_ONE_alert_in_total():
     )
     assert worker_rows == [], f"the worker should add nothing here: {worker_rows}"
     await q.stop()
+
+
+# ---------------------------------------------------------------------------
+# The ROUTE's side of the contract, asserted on the source.
+#
+# ⚠️ Every real defect in this subsystem today lived in a CALL SITE, not in a
+# helper: the crisis check fed the model's text on output blocks, the alert
+# suppression keyed on a disclosure existing rather than on one alerting. So
+# these assert what the route does, not what the queue can do.
+# ---------------------------------------------------------------------------
+
+
+def test_the_route_enqueues_before_the_tutor_call_and_never_awaits():
+    import inspect
+
+    from api.routes.ollama_proxy import chat
+
+    src = inspect.getsource(chat)
+    assert "_disclosure_queue().submit(" in src, "the route never enqueues"
+    assert "await _disclosure_queue()" not in src, (
+        "the route AWAITS the disclosure queue — that puts a ~3s CPU model call "
+        "on the child's critical path, which is the whole thing this design "
+        "exists to avoid"
+    )
+    # Enqueued before the block/serve decision, so the classify overlaps
+    # generation rather than following it.
+    assert src.index("_disclosure_queue().submit(") < src.index(
+        "if not result.is_safe:"
+    ), "the submit moved after the block path; it should overlap generation"
+
+
+def test_the_route_submits_on_BLOCKED_turns_too():
+    """#325: a blocked disclosure still needs typing. Gating the submit on
+    `result.is_safe` would silently exclude the case where the child was both
+    reaching out AND refused."""
+    import inspect
+    import re
+
+    from api.routes.ollama_proxy import chat
+
+    src = inspect.getsource(chat)
+    block = src[
+        src.index("if not _disclosure_alerted:") : src.index(
+            "_disclosure_queue().submit("
+        )
+    ]
+    assert not re.search(r"if\s+result\.is_safe", block), (
+        "the submit is gated on the turn being safe, so blocked disclosures are "
+        "never semantically classified"
+    )
+
+
+def test_the_route_skips_only_on_the_OBSERVED_alert():
+    """Not on the kind. A minor kind promoted to critical by a block has already
+    alerted, and an upgrade row would reach the parent twice (#330)."""
+    import inspect
+
+    from api.routes.ollama_proxy import chat
+
+    src = inspect.getsource(chat)
+    assert "if not _disclosure_alerted:" in src
+    assert "fallback_alerted=_disclosure_alerted" in src, (
+        "the job does not carry the observed alert flag, so the worker will "
+        "re-derive it from the kind"
+    )
+
+
+def test_the_route_passes_only_the_childs_text():
+    import inspect
+
+    from api.routes.ollama_proxy import chat
+
+    src = inspect.getsource(chat)
+    job = src[
+        src.index("_DisclosureJob(") : src.index("generate=_make_disclosure_generate")
+    ]
+    assert "child_text=text" in job
+    for leak in ("assistant_text", "out_result", "reply"):
+        assert leak not in job, (
+            f"the disclosure job carries {leak!r} — the classifier must see the "
+            f"CHILD's words only (#331)"
+        )

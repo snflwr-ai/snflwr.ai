@@ -121,6 +121,11 @@ class _Job:
     fallback_matched: str = ""
     blocked: bool = False
     block_severity: Optional[str] = None
+    # ⚠️ The model call is carried PER JOB rather than held by the queue,
+    # because the proxy's one-shot helper needs the request's forwarded headers
+    # (internal auth) and a background worker cannot reconstruct them. The
+    # closure captures a small header dict, not the request object.
+    generate: Optional[Callable[[str], Awaitable[str]]] = None
 
 
 @dataclass
@@ -149,8 +154,8 @@ class DisclosureQueue:
 
     def __init__(
         self,
-        generate: Callable[[str], Awaitable[str]],
-        recorder: Callable[..., bool],
+        generate: Optional[Callable[[str], Awaitable[str]]] = None,
+        recorder: Optional[Callable[..., bool]] = None,
         workers: int = DEFAULT_WORKERS,
         maxsize: int = DEFAULT_MAXSIZE,
     ):
@@ -268,7 +273,14 @@ class DisclosureQueue:
             # severity decisions must never read the model's output. The worker
             # is only given the child's turn, and this comment is here so a
             # future edit does not helpfully add the reply "for context".
-            kind = await classify_disclosure(job.child_text, self._generate)
+            gen = job.generate or self._generate
+            if gen is None:
+                # No way to call the classifier for this turn. The inline regex
+                # row stands; count it rather than failing silently.
+                self.stats.unavailable += 1
+                logger.error("disclosure job had no generate and no default")
+                return
+            kind = await classify_disclosure(job.child_text, gen)
             self.stats.classified += 1
         except DisclosureClassifierUnavailable as exc:
             # NOT a negative verdict -- that conflation is how a safety layer
@@ -323,6 +335,9 @@ class DisclosureQueue:
     # ---- recording ------------------------------------------------------
 
     def _record(self, job: _Job, kind: str, matched: str) -> None:
+        if self._recorder is None:
+            logger.error("disclosure queue has no recorder; row NOT written")
+            return
         try:
             self._recorder(
                 job.profile_id,

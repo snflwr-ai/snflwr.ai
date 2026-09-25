@@ -493,7 +493,14 @@ async def proxy_chat(
                 # only MAJOR on the disclosure row, and major is an ORDINARY
                 # parent email while critical is an URGENT one -- so without
                 # this the suppression below downgrades the alert.
-                block_severity=(None if result.is_safe else str(result.severity.value)),
+                # The severity this block will ESCALATE at, not the raw one: a
+                # classifier-caught crisis is MAJOR on paper and CRITICAL in
+                # fact, so the disclosure row must inherit the real urgency.
+                block_severity=(
+                    None
+                    if result.is_safe
+                    else blocks.crisis_escalation_severity(result, text)
+                ),
             )
             _trace["disclosure"] = {
                 "kind": _disclosure.kind,

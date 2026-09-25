@@ -6,6 +6,7 @@ import json as _json
 from datetime import datetime, timezone
 from typing import Optional
 
+from safety.pipeline import _looks_like_crisis
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -109,6 +110,34 @@ def _max_severity(a: str, b: Optional[str]) -> str:
     return a if _SEVERITY_RANK.get(a, 0) >= _SEVERITY_RANK.get(b, 0) else b
 
 
+# ⚠️ A crisis must not get a routine parent email because of WHICH STAGE caught
+# it. Measured in production 2026-09-24, right after the batch deploy:
+#
+#   "i want to die"                              -> PATTERN stage  -> CRITICAL -> URGENT email
+#   "i just want to go to sleep and never wake up" -> CLASSIFIER    -> MAJOR    -> ordinary email
+#
+# Both are the same child in the same danger. The classifier emits
+# `Severity.MAJOR` and NOTHING ELSE (7 sites, zero CRITICAL), while the pattern
+# stage can emit CRITICAL -- so a child who phrases ideation softly enough to
+# slip the regex is quietly downgraded to a routine notice.
+#
+# This is exactly #327's lesson one stage further along: there, the crisis TEXT
+# could not depend on the classifier picking the SELF_HARM label; here, the
+# crisis URGENCY cannot depend on which stage did the catching. The rule is on
+# the outcome (is this a crisis?), never on the machinery that noticed.
+def crisis_escalation_severity(result, text: str = "") -> str:
+    """The severity a block should ESCALATE at, independent of stage.
+
+    Returns "critical" for anything that is a self-harm crisis, otherwise the
+    severity the pipeline assigned.
+    """
+    base = str(getattr(getattr(result, "severity", None), "value", "") or "minor")
+    category = str(getattr(getattr(result, "category", None), "value", "") or "")
+    if category == "self_harm" or _looks_like_crisis(text):
+        return "critical"
+    return base
+
+
 def _record_safety_incident(
     profile_id, result, content_snippet: str, send_alert: bool = True
 ) -> None:
@@ -138,7 +167,8 @@ def _record_safety_incident(
             profile_id=profile_id or "unknown",
             session_id=None,
             incident_type=result.category.value,
-            severity=result.severity.value,
+            # NOT result.severity.value -- see crisis_escalation_severity above.
+            severity=crisis_escalation_severity(result, content_snippet),
             content_snippet=(content_snippet or "")[:200],
             metadata={
                 "source": "ollama_proxy",

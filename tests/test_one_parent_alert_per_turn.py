@@ -95,7 +95,14 @@ def test_safety_row_is_still_written_when_its_alert_is_suppressed(sent):
         stage = "classifier"
         triggered_keywords = ()
 
-    blocks._record_safety_incident("p1", _Result(), "the child's words", send_alert=False)
+    blocks._record_safety_incident(
+        "p1",
+        _Result(),
+        "the child's words",
+        send_alert=False,
+        child_text="the child's words",
+        category_describes_child=True,
+    )
     assert len(sent) == 1, "the safety incident was not recorded at all"
     assert sent[0]["incident_type"] == "exploitation"
     assert sent[0]["send_alert"] is False

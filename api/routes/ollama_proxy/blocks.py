@@ -165,8 +165,8 @@ def _record_safety_incident(
     content_snippet: str,
     send_alert: bool = True,
     *,
-    child_text: str = "",
-    category_describes_child: bool = False,
+    child_text: str,
+    category_describes_child: bool,
 ) -> None:
     """Best-effort human-in-the-loop escalation for a blocked student message.
 
@@ -178,6 +178,18 @@ def _record_safety_incident(
     Students reach the model through this proxy (not api/routes/chat.py), so the
     escalation has to live here too. Fail-safe by design: any error is swallowed
     so the child's safe response is always delivered.
+
+    ⚠️ `child_text` and `category_describes_child` are REQUIRED, with no
+    defaults, and that is deliberate. A default would let a future call site
+    compile while silently losing crisis promotion -- the missed-crisis
+    direction -- which is precisely the failure this function exists to stop.
+    Undefaulted, mypy names the site. `send_alert` keeps its default because
+    ITS safe direction is the default (alert unless told otherwise).
+
+    `child_text` is THE CHILD'S OWN WORDS. On an output block the
+    `content_snippet` is the MODEL'S draft, and feeding that to the crisis
+    check promoted a child who asked "summarize act 5" to a CRITICAL alert
+    because the blocked reply said "Juliet's suicide".
 
     ⚠️ `send_alert=False` records the incident WITHOUT alerting, and exists for
     exactly one case: the turn was blocked AND a disclosure was detected, so

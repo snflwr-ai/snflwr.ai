@@ -196,6 +196,15 @@ _CAPACITY_SIGNATURES = (
     "model requires more system memory",
 )
 
+# The empty-verdict subset of the ambiguous signatures. Kept separate ONLY so
+# the FAIL message can name the right suspects; they are classified identically.
+_EMPTY_VERDICT_SIGNATURES = (
+    "returned nothing",
+    "returned no content",
+    "empty response",
+    "no verdict",
+)
+
 # ⚠️ AMBIGUOUS. A confirm pointed at the wrong OLLAMA host, a renamed service or
 # a dead port produces exactly these -- which is the 0/20-recall-behind-a-green
 # -deploy class this whole check exists for. So they are FAIL unless the GPU
@@ -207,7 +216,28 @@ _AMBIGUOUS_SIGNATURES = (
     "connection error",
     "timed out",
     "timeout",
-)
+    # ⚠️ AN EMPTY VERDICT. Measured in production 2026-09-24, minutes after a
+    # batch deploy: the smoke test raised "reveal-confirm raised (confirm model
+    # returned nothing)" and, matching NO signature, fell through to the
+    # default FAIL -- so deploy.sh told the operator to ROLL BACK a good
+    # deploy. The card was in fact held by the co-tenant and the tutor was
+    # 100% CPU in /api/ps, i.e. textbook contention.
+    #
+    # ⭐ AMBIGUOUS AND NOT CAPACITY, deliberately, because "returned nothing"
+    # has three causes and only one is load:
+    #
+    #   1. contention -- the tutor is on CPU and effectively unusable  -> UNMEASURED
+    #   2. the confirm inherits the TUTOR PERSONA and its brevity rules
+    #      truncate the verdict to `{"` -- the 0/20-recall-behind-a-
+    #      green-deploy incident this whole check exists to catch  -> FAIL
+    #   3. a thinking-capable model with `think` unset returns an EMPTY
+    #      `response` with done_reason=length, at any num_predict
+    #      (measured on gemma4 2026-09-24)  -> FAIL, a config bug
+    #
+    # Downgrading it unconditionally would hide (2) and (3) -- and (2) is the
+    # exact silent failure that motivated this file. So it requires independent
+    # GPU corroboration, like the connection errors above.
+) + _EMPTY_VERDICT_SIGNATURES
 
 
 def _gpu_corroborates_contention() -> str:
@@ -275,6 +305,20 @@ def classify_confirm_failure(exc: BaseException) -> tuple:
         why = _gpu_corroborates_contention()
         if why:
             return "UNMEASURED", f"{hit!r}, and {why}"
+        # ⚠️ Name the RIGHT suspects. An operator reads this line at the moment
+        # a deploy is failing, and "wrong host/port" is actively misleading for
+        # an empty verdict: nothing is unreachable, the model answered with
+        # nothing. The two classes have disjoint causes, so they get disjoint
+        # advice.
+        if hit in _EMPTY_VERDICT_SIGNATURES:
+            return "FAIL", (
+                f"{hit!r} with NO GPU evidence of contention -- the model "
+                f"ANSWERED and said nothing. Check (a) whether the confirm is "
+                f"running on the TUTOR and inheriting its brevity rules (the "
+                f"0/20-recall incident), and (b) whether `think` is unset on a "
+                f"thinking-capable model, which returns an empty response with "
+                f"done_reason=length at any num_predict"
+            )
         return "FAIL", (
             f"{hit!r} with NO GPU evidence of contention -- treat as a shipped "
             f"misconfiguration (wrong host/port/service name), not as load"

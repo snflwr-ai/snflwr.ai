@@ -109,6 +109,10 @@ def trace_chat_turn(
     # raises TypeError, the caller swallows it, and the WHOLE trace is dropped
     # (#328) -- on exactly the turns worth tracing.
     adjudicator: Optional[str] = None,
+    # {"flagged": True} when the deterministic arithmetic check found a wrong
+    # step and a note rode on the forwarded turn. Named for the same #328
+    # reason as `adjudicator`.
+    arith_check: Optional[dict] = None,
 ) -> None:
     """Emit one metadata-only trace for a chat turn. Never raises.
 
@@ -143,6 +147,7 @@ def trace_chat_turn(
                         "escalation": escalation,
                         "break_reminder": break_reminder,
                         "adjudicator": adjudicator,
+                        "arith_check": arith_check,
                     }.items()
                     if v is not None
                 },

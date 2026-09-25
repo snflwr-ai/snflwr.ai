@@ -1074,6 +1074,38 @@ async def proxy_chat(
     # The asymmetry favours over-buffering -- a wrongly buffered turn costs only
     # progressive rendering, while a wrongly streamed homework turn costs
     # enforcement entirely.
+    # ---- Arithmetic check on the child's shown working (students only) ----
+    # Measured 2026-09-25: on check-my-work turns with a WRONG answer the tutor
+    # told the child it was correct in 5 of 30, every case a calculator settles.
+    # When a shown step is arithmetically wrong, a note naming THE STEP (never
+    # the correct value) rides on the forwarded copy of the child's turn.
+    #
+    # ⚠️ NOT a system message: in Ollama a system message REPLACES the tutor's
+    # Modelfile prompt, which would discard the persona and safety instructions.
+    # ⚠️ A NEW list, never a mutation of `messages[-1]`: the history ledger
+    # records that object, and OWUI will resend the child's text without the
+    # note, so a mutated record would stop matching on the next turn.
+    if system_config.ARITH_CHECK_ENABLED and messages:
+        try:
+            from core.pedagogy.arith_check import build_note
+
+            _arith_note = build_note(user_question)
+        except Exception as exc:  # noqa: BLE001 - never fail a child's turn over this
+            logger.warning("arith_check failed (continuing without it): %s", exc)
+            _arith_note = None
+        _last = messages[-1]
+        if _arith_note and isinstance(_last, dict) and _last.get("role") == "user":
+            body["messages"] = messages[:-1] + [
+                {
+                    **_last,
+                    "content": f"{_last.get('content', '')}\n\n"
+                    f"[Note for the tutor, not written by the student: {_arith_note}]",
+                }
+            ]
+            body_bytes = _json.dumps(body).encode()
+            _trace["arith_check"] = {"flagged": True}
+            logger.info("arith_check: a shown step is wrong; note added to the turn")
+
     _buffer_for_enforcer = False
     if stream and system_config.GUIDANCE_ENFORCEMENT_ENABLED:
         try:

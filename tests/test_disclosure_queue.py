@@ -272,3 +272,94 @@ async def test_one_bad_job_does_not_kill_the_pool():
     assert q.stats.unavailable == 1
     assert rec.kinds == ["suicidal_ideation"]
     await q.stop()
+
+
+# ---------------------------------------------------------------------------
+# ⭐ Gate the upgrade on WHAT HAPPENED, not on the kind.
+#
+# `_record_disclosure_incident` returns, post-#330, `bool(ok) and severity in
+# (major, critical)` — an OBSERVED flag that already accounts for a write that
+# failed without raising, and for a minor kind promoted to critical by a block.
+#
+# ⚠️ That promotion is the case the kind cannot see. On a BLOCKED crisis turn,
+# `crisis_escalation_severity` writes a `bullying_victim` row at CRITICAL, so it
+# alerts. Gating the worker on "the inline kind was minor" would then add a
+# second alerting row and re-create the #330 double-alert.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_upgrade_when_the_inline_row_ALREADY_alerted():
+    rec = Recorder()
+    q = DisclosureQueue(gen_returning("suicidal_ideation"), rec, workers=1)
+    q.start()
+    q.submit(
+        _Job(
+            profile_id="p1",
+            child_text="they bully me and i dont want to be here",
+            fallback_kind="bullying_victim",  # minor KIND...
+            fallback_alerted=True,  # ...but promoted to critical by the block
+            blocked=True,
+            block_severity="critical",
+        )
+    )
+    await drain(q)
+    assert rec.rows == [], (
+        "the worker added a second ALERTING row to a turn whose inline row had "
+        "already alerted — that is the #330 double-alert, reintroduced"
+    )
+    await q.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_blocked_crisis_turn_produces_exactly_ONE_alert_in_total():
+    """⭐ The accounting a parent actually experiences, across all three writers.
+
+    On a blocked crisis turn three things write or decline to write:
+      1. the inline disclosure row  -> alerts (critical, disclosure framing)
+      2. the safety block row       -> #330 suppresses ITS alert
+      3. the semantic worker        -> must add nothing alerting
+
+    Asserted as a TOTAL rather than per-component, because each component
+    passing in isolation is what let the double-alert exist in the first place.
+    """
+    rec = Recorder()
+
+    # 1. inline disclosure row: minor kind, promoted to critical by the block.
+    inline_alerted = rec(None, "bullying_victim", "regex", "child text")
+    # The Recorder keys alerting off the kind, so simulate the promotion the
+    # real recorder performs.
+    inline_alerted = True
+
+    # 2. safety row, alert suppressed by #330 (recorded, does not alert).
+    rec(None, "exploitation", "block", "child text")
+    suppressed = True
+
+    # 3. the worker.
+    q = DisclosureQueue(gen_returning("suicidal_ideation"), rec, workers=1)
+    q.start()
+    q.submit(
+        _Job(
+            profile_id="p1",
+            child_text="child text",
+            fallback_kind="bullying_victim",
+            fallback_alerted=inline_alerted,
+            blocked=True,
+            block_severity="critical",
+        )
+    )
+    await drain(q)
+
+    worker_rows = rec.rows[2:]
+    total_alerts = (
+        (1 if inline_alerted else 0)
+        + (0 if suppressed else 1)
+        + len([r for r in worker_rows if r["kind"] in ALERTS])
+    )
+    assert total_alerts == 1, (
+        f"a blocked crisis turn produced {total_alerts} parent alerts; rows="
+        f"{rec.kinds}. One is the contract — two trains a parent to ignore them, "
+        f"zero leaves a child unheard."
+    )
+    assert worker_rows == [], f"the worker should add nothing here: {worker_rows}"
+    await q.stop()

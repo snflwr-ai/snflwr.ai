@@ -106,6 +106,18 @@ class _Job:
     profile_id: Optional[str]
     child_text: str
     fallback_kind: Optional[str] = None
+    # ⭐ Whether the inline row ACTUALLY alerted, as OBSERVED from
+    # `_record_disclosure_incident`'s return value -- not re-derived from the
+    # kind here. Post-#330 that return is `bool(ok) and severity in
+    # (major, critical)`, so it already accounts for a write that failed
+    # without raising AND for a minor kind promoted to critical by a block.
+    #
+    # ⚠️ The promoted-minor case is exactly why the kind is not enough: a
+    # `bullying_victim` row on a BLOCKED crisis turn is written at critical by
+    # `crisis_escalation_severity`, so it alerts. Gating the worker's upgrade on
+    # "the inline kind was minor" would then add a SECOND alerting row and
+    # re-create the #330 double-alert. Gate on what happened.
+    fallback_alerted: bool = False
     fallback_matched: str = ""
     blocked: bool = False
     block_severity: Optional[str] = None
@@ -290,21 +302,22 @@ class DisclosureQueue:
             # Agreement. Already recorded inline; a second row would be noise.
             return
 
-        if kind in _ALERTING and job.fallback_kind not in _ALERTING:
-            # ⭐ UPGRADE. The inline row alerts nobody; this one does.
+        if kind in _ALERTING and not job.fallback_alerted:
+            # ⭐ UPGRADE. The inline row did not alert; this one does.
             self.stats.upgraded += 1
             logger.warning(
                 "disclosure UPGRADED by the semantic pass: %s -> %s "
-                "(the inline row alerted nobody; this one does)",
+                "(the inline row did not alert; this one does)",
                 job.fallback_kind,
                 kind,
             )
             self._record(job, kind, matched="semantic-upgrade")
             return
 
-        # A lateral disagreement between two non-alerting kinds (e.g. bullying
-        # vs disordered eating). The inline row stands; a second minor row adds
-        # a row and no alert, which is noise on a reviewer's queue.
+        # Either a lateral disagreement between two non-alerting kinds (bullying
+        # vs disordered eating), or the inline row ALREADY ALERTED so a second
+        # alerting row would reach the parent twice. In both cases the inline
+        # row stands and the worker adds nothing.
         self.stats.lateral_ignored += 1
 
     # ---- recording ------------------------------------------------------

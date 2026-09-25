@@ -295,3 +295,54 @@ def test_the_wait_DOES_happen_when_a_template_is_configured(monkeypatch):
         "unsettled verdict — the route is not waiting, so an in-flight "
         "verdict could never be appended"
     )
+
+
+def test_an_UNCONFIGURED_turn_is_not_counted_as_a_too_late_MISS(monkeypatch, caplog):
+    """⚠️ The metric bug the no-wait gate created.
+
+    With no wording configured the route returns early WITHOUT awaiting, so the
+    future is legitimately not-done — and "not done" was being read as "arrived
+    too late". too_late therefore fired on every streamed turn, which would
+    have read as ~100% misses and polluted the very rate the owner's A/B
+    decision needs.
+
+    An unconfigured turn is not a miss. Nothing was attempted.
+    """
+    import logging
+
+    before = dict(chat_mod._DISCLOSURE_STREAM_MISSES)
+    app_logger = logging.getLogger("snflwr")
+    app_logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING):
+            _drive_stream(
+                FakeQueue("predatory_contact", settle=False),
+                monkeypatch,
+                template=None,
+            )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+
+    offending = [r.getMessage() for r in caplog.records if "too_late" in r.getMessage()]
+    assert not offending, f"counted an unconfigured turn as a miss: {offending}"
+    assert chat_mod._DISCLOSURE_STREAM_MISSES["too_late"] == before["too_late"]
+
+
+def test_a_CONFIGURED_late_verdict_IS_still_counted(monkeypatch, caplog):
+    """The positive control: with wording present a genuine late verdict must
+    still be counted, or the fix above would have silenced the metric."""
+    import logging
+
+    before = dict(chat_mod._DISCLOSURE_STREAM_MISSES)
+    app_logger = logging.getLogger("snflwr")
+    app_logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING):
+            _drive_stream(FakeQueue("predatory_contact", settle=False), monkeypatch)
+    finally:
+        app_logger.removeHandler(caplog.handler)
+
+    assert chat_mod._DISCLOSURE_STREAM_MISSES["too_late"] == before["too_late"] + 1, (
+        "a real late verdict went uncounted; the unconfigured fix silenced the "
+        "metric it was meant to clean"
+    )

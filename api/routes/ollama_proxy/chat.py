@@ -1197,10 +1197,25 @@ async def proxy_chat(
                     yield blocks._ollama_content_chunk_bytes(
                         model, "\n\n" + _stream_override
                     )
-                elif _disclosure_verdict is not None and not _disclosure_verdict.done():
-                    # The verdict never arrived in time; nothing could be
-                    # appended. Counted so the rate is visible instead of
-                    # being invisible by construction.
+                elif (
+                    # ⚠️ `is_configured()` FIRST. Without it this branch fired
+                    # on EVERY streamed turn, because the no-wait gate returns
+                    # early without awaiting, so the future is legitimately
+                    # not-done and "not done" was read as "arrived too late".
+                    #
+                    # The gate I added to remove the latency cost therefore
+                    # CREATED a metric bug: too_late would read ~100% while no
+                    # wording is configured, and would keep polluting the rate
+                    # after wording ships unless the history were filtered --
+                    # and that rate is the number the owner's A/B decision
+                    # needs. An unconfigured turn is not a MISS; nothing was
+                    # ever attempted. Found by prime-69 in the deploy logs.
+                    disclosure_response.is_configured()
+                    and _disclosure_verdict is not None
+                    and not _disclosure_verdict.done()
+                ):
+                    # A real miss: wording exists, the wait happened, and the
+                    # verdict still did not arrive before the stream closed.
                     _DISCLOSURE_STREAM_MISSES["too_late"] += 1
                     logger.warning(
                         "disclosure router: too_late kind=unknown wait_s=%s "

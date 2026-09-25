@@ -499,7 +499,9 @@ async def proxy_chat(
                 block_severity=(
                     None
                     if result.is_safe
-                    else blocks.crisis_escalation_severity(result, text)
+                    else blocks.crisis_escalation_severity(
+                        result, text, category_describes_child=True
+                    )
                 ),
             )
             _trace["disclosure"] = {
@@ -533,7 +535,14 @@ async def proxy_chat(
         # framing the child as the offender, would partly undo the fix that
         # wrote the disclosure row in the first place.
         blocks._record_safety_incident(
-            profile_id, result, text, send_alert=not _disclosure_alerted
+            profile_id,
+            result,
+            text,
+            send_alert=not _disclosure_alerted,
+            # INPUT block: `text` is the child's own turns, so the classifier's
+            # category describes the CHILD and a self_harm label is a crisis.
+            child_text=text,
+            category_describes_child=True,
         )
         _trace["safety"] = {
             "category": str(result.category),
@@ -635,7 +644,16 @@ async def proxy_chat(
             )
 
         def _emit_block(out_result, text) -> None:
-            blocks._record_safety_incident(profile_id, out_result, text)
+            # OUTPUT block: `text` here is the TUTOR'S draft. The crisis
+            # decision must read the CHILD'S question instead, and the category
+            # describes the model's output, so it must not promote on its own.
+            blocks._record_safety_incident(
+                profile_id,
+                out_result,
+                text,
+                child_text=user_question,
+                category_describes_child=False,
+            )
             _trace["safety"] = {
                 "category": str(out_result.category),
                 "severity": str(out_result.severity),
@@ -856,7 +874,14 @@ async def proxy_chat(
                 profile_id,
                 out_result.category,
             )
-            blocks._record_safety_incident(profile_id, out_result, assistant_text)
+            # OUTPUT block: `assistant_text` is the TUTOR'S reply; see above.
+            blocks._record_safety_incident(
+                profile_id,
+                out_result,
+                assistant_text,
+                child_text=user_question,
+                category_describes_child=False,
+            )
             _trace["safety"] = {
                 "category": str(out_result.category),
                 "severity": str(out_result.severity),

@@ -7,6 +7,16 @@ release a real insult the trigger caught, which is a new false negative.
 ⚠️ `test_a_release_verdict_UNBLOCKS_the_turn` is the positive control and is
 load-bearing: every "the block was kept" assertion below is green by
 construction if the adjudicator can never fire at all. Mutation-checked.
+
+⚠️ AND A POSITIVE CONTROL IS ONLY AS GOOD AS ITS FIXTURE. The first version of
+this file did `pipeline.SafetyResult = SafetyResult` on a bare MagicMock, which
+ADDS whatever attribute you touch. That built the interface the route ASSUMED
+rather than the one production has, so the control passed while the release
+path raised AttributeError on every real turn.
+
+**A mock that can have any attribute cannot catch an interface error: spec it.**
+Hence `MagicMock(spec=SafetyPipeline)` below. Mutation-checked: restoring
+`safety_pipeline.SafetyResult(` in the route now FAILS the control.
 """
 
 from __future__ import annotations
@@ -17,7 +27,7 @@ import httpx
 import pytest
 
 import api.routes.ollama_proxy.chat as chat_mod
-from safety.pipeline import Category, SafetyResult, Severity
+from safety.pipeline import Category, SafetyPipeline, SafetyResult, Severity
 from tests.test_ollama_proxy import _chat_body, _make_app, _safe_result
 
 TUTOR_REPLY = "Pond scum is algae and bacteria."
@@ -39,11 +49,16 @@ def _drive(verdict_json, enabled=True, result=None, raises=None):
     from fastapi.testclient import TestClient
 
     client = TestClient(_make_app(), raise_server_exceptions=False)
-    pipeline = MagicMock()
+    # ⚠️ spec=SafetyPipeline. A bare MagicMock grows ANY attribute you touch,
+    # so the previous version's `pipeline.SafetyResult = SafetyResult` ADDED
+    # the attribute the route wrongly assumed -- building the interface the
+    # code expected instead of the one production has. The positive control
+    # then could not fail, while the release path raised AttributeError on
+    # every real turn.
+    pipeline = MagicMock(spec=SafetyPipeline)
     pipeline.check_input.return_value = result or _derogatory_block()
     pipeline.check_output.return_value = _safe_result()
     pipeline.get_safe_response.return_value = BLOCK_TEXT
-    pipeline.SafetyResult = SafetyResult
 
     async def _gen(_prompt):
         if raises is not None:
@@ -162,4 +177,69 @@ def test_a_SAFE_turn_is_untouched():
     assert (
         _drive('{"act":"insulting","decision":"block"}', result=_safe_result())
         == TUTOR_REPLY
+    )
+
+
+def test_the_adjudicator_judges_the_CURRENT_turn_not_the_history():
+    """⚠️ The word-list trigger fires on every student turn CONCATENATED, but
+    the adjudicator must judge only the current one.
+
+    A child who once wrote an insult has it in the concatenation forever, so
+    judging the blob would block EVERY later turn -- punishment for history,
+    when that earlier turn was already blocked when it was sent. It also
+    matches what cold set 6 validated: single messages.
+    """
+    from fastapi.testclient import TestClient
+
+    seen = {}
+
+    async def _gen(prompt):
+        seen["prompt"] = prompt
+        return '{"act":"curriculum","decision":"release"}'
+
+    client = TestClient(_make_app(), raise_server_exceptions=False)
+    pipeline = MagicMock(spec=SafetyPipeline)
+    pipeline.check_input.return_value = _derogatory_block()
+    pipeline.check_output.return_value = _safe_result()
+    pipeline.get_safe_response.return_value = BLOCK_TEXT
+
+    body = {
+        "model": "test-model",
+        "stream": False,
+        "messages": [
+            {"role": "user", "content": "you are such a loser"},
+            {"role": "assistant", "content": BLOCK_TEXT},
+            {"role": "user", "content": "what are fatty acids"},
+        ],
+    }
+
+    with (
+        patch(
+            "api.routes.ollama_proxy.profile._get_profile_for_user",
+            new=AsyncMock(return_value="12"),
+        ),
+        patch(
+            "api.routes.ollama_proxy.transport._forward_request",
+            new=AsyncMock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "model": "test-model",
+                        "done": True,
+                        "message": {"role": "assistant", "content": TUTOR_REPLY},
+                    },
+                )
+            ),
+        ),
+        patch.object(chat_mod.safety_config, "SPEECH_ACT_ADJUDICATOR_ENABLED", True),
+        patch.object(chat_mod, "_make_adjudicator_generate", lambda h, m: _gen),
+        patch("safety.pipeline.safety_pipeline", pipeline),
+    ):
+        client.post("/api/chat", json=body)
+
+    assert "prompt" in seen, "the adjudicator was never called"
+    assert "fatty acids" in seen["prompt"], "the current turn was not sent"
+    assert "loser" not in seen["prompt"], (
+        "the adjudicator was given the CONCATENATED history; a single past "
+        "insult would then block every later turn"
     )

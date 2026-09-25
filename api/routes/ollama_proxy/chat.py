@@ -687,6 +687,14 @@ async def proxy_chat(
         and getattr(result.category, "value", None) == "derogatory"
     ):
         try:
+            # ⚠️ The TYPES, not attributes of the instance. `safety_pipeline`
+            # is a SafetyPipeline INSTANCE with no `SafetyResult` attribute, so
+            # `safety_pipeline.SafetyResult(...)` raised AttributeError on
+            # EVERY release in production -- swallowed by the except below,
+            # logged "unavailable", and the adjudicator never released a single
+            # turn. Fourth instance of that shape on this feature.
+            from safety.pipeline import Category, Severity
+            from safety.pipeline import SafetyResult as _SafetyResult
             from safety.speech_act_adjudicator import (
                 ADJUDICATOR_MODEL,
             )
@@ -701,17 +709,30 @@ async def proxy_chat(
             # adjudicator would silently never run. Exactly how the first
             # version of this wiring failed (a missing module did the same).
             # Add the timer once obs/stage-timers merges.
-            _keep = await _adjudicate(text, _adj_gen)
+            # ⚠️ `user_question` (the CURRENT turn), NOT `text` (every student
+            # turn CONCATENATED, which is what the word-list trigger sees).
+            #
+            # The blob is what tripped the trigger, but judging it would let a
+            # single past insult block EVERY later turn: for a child who once
+            # wrote "you are such a loser" and now asks "what are fatty acids",
+            # the concatenation is "you are such a loser\nwhat are fatty acids"
+            # -- which any honest classifier calls insulting. That earlier turn
+            # was already blocked when it was sent; re-blocking the innocent one
+            # is punishment for history.
+            #
+            # It also matches what cold set 6 validated: single messages.
+            # Multi-turn input is unmeasured either way, and that is in the PR.
+            _keep = await _adjudicate(user_question, _adj_gen)
             if not _keep:
                 logger.warning(
                     "adjudicator RELEASED a DEROGATORY-flagged turn (model=%s)",
                     ADJUDICATOR_MODEL,
                 )
                 _trace["adjudicator"] = "released"
-                result = safety_pipeline.SafetyResult(
+                result = _SafetyResult(
                     is_safe=True,
-                    severity=result.severity.__class__.NONE,
-                    category=result.category.__class__.VALID,
+                    severity=Severity.NONE,
+                    category=Category.VALID,
                     reason="released by the speech-act adjudicator",
                 )
             else:

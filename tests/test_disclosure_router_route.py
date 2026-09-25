@@ -171,7 +171,7 @@ def test_a_queue_with_no_future_leaves_the_turn_unchanged(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _drive_stream(queue, monkeypatch, template=APPROVED):
+def _drive_stream(queue, monkeypatch, template=APPROVED, wait_s=0.15):
     """Drive the PROGRESSIVE stream: stream=True and not homework-shaped."""
     from fastapi.testclient import TestClient
     import api.routes.ollama_proxy.transport as transport_mod
@@ -180,7 +180,11 @@ def _drive_stream(queue, monkeypatch, template=APPROVED):
         monkeypatch.delenv("DISCLOSURE_RESPONSE_PREDATORY_CONTACT", raising=False)
     else:
         monkeypatch.setenv("DISCLOSURE_RESPONSE_PREDATORY_CONTACT", template)
-    monkeypatch.setattr(chat_mod, "_DISCLOSURE_VERDICT_WAIT_S", 0.15)
+    # ⚠️ Parameterised. It used to be hard-coded at 0.15s, which silently
+    # overrode any value a caller set -- making the no-wait test below VACUOUS
+    # (it would pass whether or not the gate existed) and the positive control
+    # fail for the wrong reason. Caught by the control.
+    monkeypatch.setattr(chat_mod, "_DISCLOSURE_VERDICT_WAIT_S", wait_s)
     monkeypatch.setattr(chat_mod.system_config, "CHAT_STREAMING_ENABLED", True)
 
     async def _fake_stream(_body, _headers):
@@ -250,3 +254,44 @@ def test_STREAM_no_append_when_the_template_is_UNSET(monkeypatch):
     ).text
     assert APPROVED not in body
     assert "schoolwork" in body, "the tutor's own reply must still be served"
+
+
+def test_NO_WAIT_when_no_template_is_configured(monkeypatch):
+    """⭐ With the template unset -- production TODAY, pending owner wording --
+    an override is IMPOSSIBLE, so waiting for the verdict is pure cost on 100%
+    of streamed turns for a strictly unreachable benefit.
+
+    Asserted by timing with a wide margin: a 5s wait budget and a future that
+    never settles. If the route still awaited, this turn would take >5s.
+    """
+    import time
+
+    t0 = time.monotonic()
+    resp = _drive_stream(
+        FakeQueue("predatory_contact", settle=False),
+        monkeypatch,
+        template=None,
+        wait_s=5.0,
+    )
+    elapsed = time.monotonic() - t0
+
+    assert resp.status_code == 200
+    assert elapsed < 2.0, (
+        f"the route waited {elapsed:.1f}s for a verdict that could not change "
+        "anything; with no template configured it must not wait at all"
+    )
+
+
+def test_the_wait_DOES_happen_when_a_template_is_configured(monkeypatch):
+    """The positive control for the gate above: with wording present the route
+    must still wait, or the append could never fire."""
+    import time
+
+    t0 = time.monotonic()
+    _drive_stream(FakeQueue("predatory_contact", settle=False), monkeypatch, wait_s=1.0)
+    elapsed = time.monotonic() - t0
+    assert elapsed >= 0.9, (
+        f"only {elapsed:.2f}s elapsed with a template configured and an "
+        "unsettled verdict — the route is not waiting, so an in-flight "
+        "verdict could never be appended"
+    )

@@ -101,6 +101,18 @@ def _split_trailing_done(chunks: list) -> tuple:
 
 
 async def _await_disclosure_verdict(fut) -> "str | None":
+    # ⭐ NO WAIT WHEN NO OVERRIDE IS POSSIBLE.
+    #
+    # With `DISCLOSURE_RESPONSE_PREDATORY_CONTACT` unset -- which is
+    # production TODAY, pending the owner's wording -- `response_for()` can
+    # only ever return None. Waiting up to DISCLOSURE_VERDICT_WAIT_S for a
+    # verdict that cannot change anything would be a latency cost on 100% of
+    # streamed turns for a strictly impossible benefit.
+    #
+    # So the cost is zero until wording exists, and the too_late RATE stays
+    # measurable by setting a template in a harness environment.
+    if not disclosure_response.is_configured():
+        return None
     """The semantic kind for this turn, or None to leave the reply alone.
 
     Total: every failure mode -- no future, timeout, cancellation, a raising
@@ -1051,9 +1063,16 @@ async def proxy_chat(
                 _stream_override = disclosure_response.response_for(_stream_kind)
                 if _stream_override:
                     _DISCLOSURE_STREAM_MISSES["appended"] += 1
+                    # ⚠️ LOGGED, not just counted. `_DISCLOSURE_STREAM_MISSES`
+                    # is per PROCESS across 8 uvicorn workers and is reset by
+                    # every restart, so nothing could read the rate the owner's
+                    # A/B decision needs. One line per outcome, in #332's
+                    # `gate=` style, puts it straight in the container logs and
+                    # survives restarts.
                     logger.warning(
-                        "disclosure router APPENDED to a streamed reply (kind=%s)",
+                        "disclosure router: appended kind=%s wait_s=%s",
                         _stream_kind,
+                        _DISCLOSURE_VERDICT_WAIT_S,
                     )
                     yield blocks._ollama_content_chunk_bytes(
                         model, "\n\n" + _stream_override
@@ -1064,10 +1083,9 @@ async def proxy_chat(
                     # being invisible by construction.
                     _DISCLOSURE_STREAM_MISSES["too_late"] += 1
                     logger.warning(
-                        "disclosure verdict too late to append (streamed turn); "
-                        "too_late=%d appended=%d",
-                        _DISCLOSURE_STREAM_MISSES["too_late"],
-                        _DISCLOSURE_STREAM_MISSES["appended"],
+                        "disclosure router: too_late kind=unknown wait_s=%s "
+                        "(nothing could be appended)",
+                        _DISCLOSURE_VERDICT_WAIT_S,
                     )
                 for c in _done_chunk:
                     yield c

@@ -35,6 +35,7 @@ bullying-plus-ideation case that motivated it.
 
 import asyncio
 import logging
+import time as _time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, Optional
 
@@ -54,6 +55,10 @@ DEFAULT_WORKERS = 2
 # lag nobody sees.
 DEFAULT_MAXSIZE = 64
 
+# A sustained shed is the dangerous state; a burst is not. Rate-limited so the
+# operator marker cannot flood the log.
+_OPERATOR_ALERT_EVERY_S = 600.0
+
 # Kinds whose incident is MAJOR and therefore raises a parent alert. Mirrors
 # api.routes.ollama_proxy.blocks.ALERTING_DISCLOSURE_KINDS; imported lazily in
 # the recorder to avoid a route import here.
@@ -64,31 +69,38 @@ _ALERTING = ("suicidal_ideation", "predatory_contact")
 class _Job:
     """One turn awaiting semantic classification.
 
-    `fallback_kind` is the regex detector's verdict when it found something the
-    semantic pass may OVERRIDE -- i.e. a MINOR kind. It is carried rather than
-    already recorded, and that is the whole trick for "one row per turn":
+    `fallback_kind` is what the regex detector ALREADY RECORDED INLINE for this
+    turn, or None. It is carried so the worker can tell an UPGRADE from a
+    duplicate -- it is not a deferred write.
 
-    * regex found a MAJOR kind  -> the route records it inline and never
-      enqueues. It already alerted; a second row would re-create the
-      double-alert that #330 fixed.
-    * regex found a MINOR kind  -> the route does NOT record. It enqueues with
-      `fallback_kind` set, and the WORKER writes the single row, using the
-      semantic kind if there is one and the regex kind otherwise.
-    * regex found nothing       -> enqueued with `fallback_kind=None`.
+    ⭐ THE INVARIANT IS ONE ALERT PER TURN, NOT ONE ROW. Getting that wrong cost
+    me a design round, so it is written down:
 
-    ⚠️ The minor-kind case is the one a peer review caught me about. The regex
-    picks kinds by pattern order, so "they bully me every day and honestly i
-    don't want to be here anymore" can land as `bullying_victim` (MINOR,
-    record-only, alerts nobody) where the semantic pass says
-    `suicidal_ideation` (MAJOR, alerts). Skipping the semantic call there
-    because "the regex already fired" would mean an ideation disclosure alerts
-    NOBODY -- the silent direction.
+    * regex MAJOR  -> recorded inline AND alerted. Never enqueued: a second row
+      would re-create the double-alert #330 fixed.
+    * regex MINOR  -> recorded inline (minor kinds alert nobody) AND enqueued.
+      The worker adds a SECOND row only if the semantic pass upgrades it to a
+      kind that alerts.
+    * regex nothing -> enqueued. The worker records whatever it finds.
 
-    Deferring beats insert-then-update: `incident_logger` has no API to change a
-    row's kind or severity, and adding a mutation path to the safety DB is more
-    surface than this needs. The cost is that a MINOR row is written a few
-    seconds late. Minor rows alert nobody, so that cost is record latency only,
-    and it is stated rather than hidden.
+    ⚠️ My first version DEFERRED the minor row -- no inline write, the worker
+    wrote the single row. Peer review killed it, correctly: that converts a
+    latency cost into a LOSS risk. A regex-MINOR disclosure is recorded today
+    and would have gone MISSING, silently, in exactly the failure modes the
+    queue introduces -- a shed queue, a worker error after dequeue, or a process
+    restart with items still queued. **Every deploy restarts all 8 workers and
+    drops the in-memory queue, and deploys go out in batches.**
+
+    So the deterministic record is never at the mercy of the queue. Two rows
+    appear only on a genuine upgrade, which #330 already accepts for blocked
+    turns, and only ONE of them ever alerts.
+
+    ⚠️ The minor-kind case is why the semantic pass must run at all when the
+    regex fired: the regex picks kinds by pattern ORDER, so "they bully me every
+    day and honestly i don't want to be here anymore" lands as
+    `bullying_victim` (MINOR, alerts nobody) where the semantic pass says
+    `suicidal_ideation` (MAJOR, alerts). Skipping it there means an ideation
+    disclosure alerts NOBODY.
     """
 
     profile_id: Optional[str]
@@ -109,6 +121,7 @@ class _Stats:
     fallback_used: int = 0
     unavailable: int = 0
     nothing_recorded: int = 0
+    lateral_ignored: int = 0
 
     def as_dict(self) -> Dict[str, int]:
         return dict(self.__dict__)
@@ -135,6 +148,7 @@ class DisclosureQueue:
         self._maxsize = max(1, maxsize)
         self._queue: Optional["asyncio.Queue[_Job]"] = None
         self._tasks: list = []
+        self._last_operator_alert = 0.0
         self.stats = _Stats()
 
     # ---- lifecycle ------------------------------------------------------
@@ -168,9 +182,11 @@ class DisclosureQueue:
         Non-blocking and total: any failure is swallowed, because this is
         called while a child is waiting for their answer.
 
-        ⚠️ On a shed we immediately write the regex fallback if there is one, so
-        the deterministic floor is never lost to a full queue. That is the
-        difference between a measurable degradation and a silent one.
+        ⚠️ A shed loses only the semantic UPGRADE chance, never the record: the
+        route has already written the regex row inline. It is still the
+        dangerous state, because "shedding for hours and nobody knows" is how a
+        degradation becomes permanent -- so it is logged at ERROR, counted, and
+        surfaced through `stats` for /health.
         """
         try:
             if self._queue is None:
@@ -180,21 +196,37 @@ class DisclosureQueue:
             self.stats.submitted += 1
             return True
         except asyncio.QueueFull:
-            self.stats.shed += 1
-            logger.warning(
-                "disclosure queue FULL (maxsize=%d); shedding to the regex floor. "
-                "shed=%d submitted=%d",
-                self._maxsize,
+            self._shed("queue full (maxsize=%d)" % self._maxsize)
+            return False
+        except Exception as exc:  # noqa: BLE001 - never raise into a child's turn
+            self._shed("submit failed: %s" % exc)
+            return False
+
+    def _shed(self, why: str) -> None:
+        """Count and SHOUT. The regex row is already written by the route."""
+        self.stats.shed += 1
+        # ERROR, not WARNING: a sustained shed means disclosures are going
+        # unclassified, and the failure is invisible from the outside.
+        logger.error(
+            "DISCLOSURE QUEUE SHED (%s): shed=%d of submitted=%d. The regex "
+            "floor still recorded this turn, but it was NOT semantically "
+            "classified.",
+            why,
+            self.stats.shed,
+            self.stats.submitted,
+        )
+        now = _time.monotonic()
+        if now - self._last_operator_alert >= _OPERATOR_ALERT_EVERY_S:
+            self._last_operator_alert = now
+            # Rate-limited so a burst cannot flood, but loud enough that a
+            # sustained shed is visible. ⚠️ FOLLOW-UP: this is a log marker,
+            # not a page -- wiring it to the operator alert path is a separate
+            # change and is named here so it is not mistaken for done.
+            logger.error(
+                "OPERATOR_ALERT disclosure_queue_shedding shed=%d submitted=%d",
                 self.stats.shed,
                 self.stats.submitted,
             )
-            self._record_fallback(job)
-            return False
-        except Exception as exc:  # noqa: BLE001 - never raise into a child's turn
-            self.stats.shed += 1
-            logger.error("disclosure queue submit failed (non-fatal): %s", exc)
-            self._record_fallback(job)
-            return False
 
     # ---- worker ---------------------------------------------------------
 
@@ -214,7 +246,11 @@ class DisclosureQueue:
                 self._queue.task_done()
 
     async def _run_one(self, job: _Job) -> None:
-        """Classify one turn and write AT MOST ONE row for it."""
+        """Classify one turn; write at most one row FROM THE WORKER.
+
+        The route may already have written an inline regex row for this turn.
+        The invariant is one ALERT per turn, not one row -- see `_Job`.
+        """
         try:
             # ⚠️ Only the CHILD's text is ever passed. #331: the crisis and
             # severity decisions must never read the model's output. The worker
@@ -223,34 +259,53 @@ class DisclosureQueue:
             kind = await classify_disclosure(job.child_text, self._generate)
             self.stats.classified += 1
         except DisclosureClassifierUnavailable as exc:
-            # NOT a negative verdict. Fall back to the regex floor and count it,
-            # so an outage is visible instead of looking like a quiet corpus.
+            # NOT a negative verdict -- that conflation is how a safety layer
+            # reports success while doing nothing. Nothing is written here: the
+            # route's inline regex row (if any) already stands, and there is no
+            # semantic verdict to add. Counted so an outage is visible instead
+            # of looking like a quiet corpus.
             self.stats.unavailable += 1
             logger.warning(
-                "disclosure classifier unavailable (%s); falling back to the "
-                "regex floor. unavailable=%d",
+                "disclosure classifier unavailable (%s); this turn was NOT "
+                "semantically classified. unavailable=%d",
                 exc,
                 self.stats.unavailable,
             )
-            self._record_fallback(job)
             return
 
-        if kind is not None:
-            self.stats.semantic_found += 1
-            if job.fallback_kind and kind != job.fallback_kind:
-                self.stats.upgraded += 1
-                logger.info(
-                    "disclosure upgraded by the semantic pass: %s -> %s",
-                    job.fallback_kind,
-                    kind,
-                )
+        if kind is None:
+            # No disclosure. The regex row, if any, already stands -- the
+            # semantic pass is additive and never a veto on the regex.
+            self.stats.nothing_recorded += 1
+            return
+
+        self.stats.semantic_found += 1
+
+        if job.fallback_kind is None:
+            # The regex missed this entirely; this is the whole point.
             self._record(job, kind, matched="semantic")
             return
 
-        # The semantic pass says no disclosure. If the regex had found a MINOR
-        # kind, it is still the deterministic floor and still gets recorded --
-        # the semantic pass is additive, never a veto on the regex.
-        self._record_fallback(job)
+        if kind == job.fallback_kind:
+            # Agreement. Already recorded inline; a second row would be noise.
+            return
+
+        if kind in _ALERTING and job.fallback_kind not in _ALERTING:
+            # ⭐ UPGRADE. The inline row alerts nobody; this one does.
+            self.stats.upgraded += 1
+            logger.warning(
+                "disclosure UPGRADED by the semantic pass: %s -> %s "
+                "(the inline row alerted nobody; this one does)",
+                job.fallback_kind,
+                kind,
+            )
+            self._record(job, kind, matched="semantic-upgrade")
+            return
+
+        # A lateral disagreement between two non-alerting kinds (e.g. bullying
+        # vs disordered eating). The inline row stands; a second minor row adds
+        # a row and no alert, which is noise on a reviewer's queue.
+        self.stats.lateral_ignored += 1
 
     # ---- recording ------------------------------------------------------
 
@@ -268,13 +323,6 @@ class DisclosureQueue:
             logger.error(
                 "failed to record disclosure (non-fatal): %s", exc, exc_info=True
             )
-
-    def _record_fallback(self, job: _Job) -> None:
-        if job.fallback_kind:
-            self.stats.fallback_used += 1
-            self._record(job, job.fallback_kind, job.fallback_matched or "regex")
-        else:
-            self.stats.nothing_recorded += 1
 
 
 def alerting_kinds() -> tuple:

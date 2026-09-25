@@ -300,13 +300,34 @@ async def _pedagogy_oneshot(
             # keep_alive: hold the CPU-pinned classifier RESIDENT between turns.
             #
             # The input gate runs on EVERY child turn and its cold load was
-            # measured at 29.9s against a 6s timeout, while steady state is
-            # p50 0.43s. One idle period therefore times the gate out, and the
-            # enforcer silently falls back to the REGEX -- which is 25 points
-            # weaker on framed demands (dodge catch 90% -> 65% on a blind
-            # holdout, 2026-09-21). At the moment this was added the gate model
-            # was NOT resident, so the next child's turn would have taken the
-            # weak path.
+            # measured at 29.9s, while steady state is p50 0.43s. At the moment
+            # this was added the gate model was NOT resident, so the next
+            # child's turn would have paid that 29.9s.
+            #
+            # ⚠️ CORRECTED 2026-09-25. This comment used to read "29.9s against
+            # a 6s timeout ... one idle period therefore times the gate out, and
+            # the enforcer silently falls back to the REGEX". That inference is
+            # BACKWARDS, because THERE IS NO 6s TIMEOUT.
+            # `GUIDANCE_GATE_TIMEOUT_S` (config.py:194) is read by NOTHING: the
+            # only references in the tree are its definition and a comment in
+            # disclosure_semantic.py. The gate call is not wrapped in
+            # `wait_for`, so the only bound is transport's
+            # `_OLLAMA_READ_TIMEOUT = 300.0`.
+            #
+            # So a cold gate does not fall back to the weaker regex -- it
+            # BLOCKS THE CHILD'S TURN for up to five minutes and returns
+            # `gate=llm`. Confirmed live 2026-09-25: a 16s gate call logged
+            # `gate=llm` with no timeout firing. The documented fear was
+            # degraded enforcement; the real failure is an unbounded wait, and
+            # keep_alive is still the right fix for both.
+            #
+            # (The regex IS 25 points weaker on framed demands -- dodge catch
+            # 90% -> 65%, blind holdout 2026-09-21 -- which is why enforcing a
+            # 6s bound is a genuine trade rather than an obvious fix, and is in
+            # the owner brief. The TOPIC gate does read TOPIC_GATE_TIMEOUT_S,
+            # and the enforcer wraps its own calls against a 15s budget, so
+            # this is an omission on one call path rather than a missing
+            # convention.)
             #
             # Cheap because this classifier is num_gpu 0: it costs RAM (53 GiB
             # free on this box), not the contended 23 GiB card, so it cannot

@@ -49,10 +49,21 @@ logger = logging.getLogger(__name__)
 # ⚠️ ONE, deliberately, and not for throughput.
 #
 # The classifier shares `gemma4:e4b` with the INPUT GATE, which runs on every
-# child turn with a 6s timeout. A background classify can queue ahead of it on
-# the same model, and a gate timeout falls back to the REGEX -- 25 points weaker
-# on framed demands. So the cost of extra workers is not CPU, it is a silent
-# quality regression on the critical path. One in flight at a time.
+# child turn. A background classify can queue ahead of it on the same model,
+# so the cost of extra workers is not CPU -- it is added latency on the
+# critical path, in front of a child waiting for an answer.
+#
+# ⚠️ CORRECTED 2026-09-25. This rationale used to say the gate has "a 6s
+# timeout" and that "a gate timeout falls back to the REGEX -- 25 points
+# weaker", i.e. that extra workers risked a silent QUALITY regression.
+# `GUIDANCE_GATE_TIMEOUT_S` is read by NOTHING (config.py:194 and one comment
+# are its only references), so there is no timeout to trip and no fallback to
+# cause. The budget this worker count was reasoned from did not exist.
+#
+# ONE is still right, for the corrected reason: with no bound on the gate call,
+# a background classify queued ahead of it adds its full duration to the
+# child's turn -- measured live at guid_gate 10-16s under CPU contention. The
+# risk is an unbounded WAIT, not a silent downgrade.
 #
 # Throughput saturates at 4 (0.49/s), so this trades ~0.3/s for that safety.
 DEFAULT_WORKERS = 1

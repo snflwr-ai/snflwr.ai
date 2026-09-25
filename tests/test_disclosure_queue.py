@@ -389,6 +389,19 @@ def test_the_route_enqueues_before_the_tutor_call_and_never_awaits():
     )
     # Enqueued before the block/serve decision, so the classify overlaps
     # generation rather than following it.
+    #
+    # ⚠️ DEMOTED: necessary, NOT sufficient, and on its own it was WORSE than
+    # nothing. This assertion pinned the submit above the block path -- which
+    # was also above where `fwd_headers` was assigned, so every submit raised
+    # UnboundLocalError and the semantic pass never ran on a single turn from
+    # deploy until 2026-09-25. The test stayed green throughout, because it
+    # checks WHERE the code sits, not whether it RUNS.
+    #
+    # Kept only because the ordering is a real design property (the classify
+    # must not follow generation). The property that actually matters is
+    # asserted behaviourally in tests/test_disclosure_queue_actually_runs.py,
+    # which drives /api/chat and fails if the submit throws. Do not add further
+    # source-order assertions here; add behavioural ones there.
     assert src.index("_disclosure_queue().submit(") < src.index(
         "if not result.is_safe:"
     ), "the submit moved after the block path; it should overlap generation"

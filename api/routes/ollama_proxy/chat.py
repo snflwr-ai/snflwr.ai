@@ -80,6 +80,26 @@ __all__ = ["_BUSY_MESSAGE", "_TIMEOUT_MESSAGE", "_UNSUPPORTED_MESSAGE"]
 _DISCLOSURE_VERDICT_WAIT_S = float(os.getenv("DISCLOSURE_VERDICT_WAIT_S", "2.0"))
 
 
+# Progressive-stream misses: the verdict settled AFTER the stream closed, so no
+# safeguarding text could be appended. Counted rather than shrugged at, because
+# the owner needs the RATE to choose between option (A) and option (B) -- an
+# unmeasured miss reads as zero.
+_DISCLOSURE_STREAM_MISSES = {"appended": 0, "too_late": 0}
+
+
+def _split_trailing_done(chunks: list) -> tuple:
+    """(chunks before the final done chunk, [the done chunk] or []).
+
+    The template must be appended BEFORE `done`: a client that stops reading at
+    `done` would never render a block emitted after it.
+    """
+    for i in range(len(chunks) - 1, -1, -1):
+        line = chunks[i]
+        if b'"done"' in line and b"true" in line:
+            return chunks[:i], [chunks[i]]
+    return chunks, []
+
+
 async def _await_disclosure_verdict(fut) -> "str | None":
     """The semantic kind for this turn, or None to leave the reply alone.
 
@@ -1009,7 +1029,47 @@ async def proxy_chat(
                     _emit_block(res, full)
                     yield blocks._ollama_block_stream_bytes(model, _fallback_for(res))
                     return
-                for c in collected[flushed:]:
+                # ---- Disclosure append, OPTION (B) ----------------------
+                #
+                # ⚠️ THIS is the path production actually uses for a
+                # disclosure. A turn only buffers when
+                # `is_homework_request(user_question)` is true, and a child
+                # disclosing grooming does not phrase it like homework
+                # (measured: 0 of 3 grooming probes trip the homework regex).
+                # So wiring the router to the buffered paths alone would have
+                # given it near-zero reach in production -- the same
+                # wrong-subset error as inline-only routing, caught by
+                # prime-69 for the second time on this feature.
+                #
+                # APPEND, not replace: the reply is already partly flushed, so
+                # requirement 4 (no schoolwork pivot) is NOT satisfiable here.
+                # That limit is an owner decision, stated in the PR.
+                _rest, _done_chunk = _split_trailing_done(collected[flushed:])
+                for c in _rest:
+                    yield c
+                _stream_kind = await _await_disclosure_verdict(_disclosure_verdict)
+                _stream_override = disclosure_response.response_for(_stream_kind)
+                if _stream_override:
+                    _DISCLOSURE_STREAM_MISSES["appended"] += 1
+                    logger.warning(
+                        "disclosure router APPENDED to a streamed reply (kind=%s)",
+                        _stream_kind,
+                    )
+                    yield blocks._ollama_content_chunk_bytes(
+                        model, "\n\n" + _stream_override
+                    )
+                elif _disclosure_verdict is not None and not _disclosure_verdict.done():
+                    # The verdict never arrived in time; nothing could be
+                    # appended. Counted so the rate is visible instead of
+                    # being invisible by construction.
+                    _DISCLOSURE_STREAM_MISSES["too_late"] += 1
+                    logger.warning(
+                        "disclosure verdict too late to append (streamed turn); "
+                        "too_late=%d appended=%d",
+                        _DISCLOSURE_STREAM_MISSES["too_late"],
+                        _DISCLOSURE_STREAM_MISSES["appended"],
+                    )
+                for c in _done_chunk:
                     yield c
                 _trace["blocked"] = False
                 _trace["safety"] = {"blocked_layer": None}

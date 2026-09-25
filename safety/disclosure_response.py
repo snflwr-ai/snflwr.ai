@@ -25,6 +25,39 @@ something to draft without safeguarding review, so the template is
 CONFIGURATION, unset by default, and while unset this module changes nothing.
 See `REQUIREMENTS` for the spec the wording must satisfy.
 
+⛔ TIMING DEFECT, and it is why this module is not wired. `response_for()`
+needs the disclosure KIND before the reply is served. But the case that
+motivated the whole thing -- the swim-coach canary -- was caught ONLY by the
+SEMANTIC pass, which is a queued worker whose verdict arrives AFTER the reply
+has gone out. So as written this can only ever act on INLINE (regex)
+detections, and the regex is blind precisely where grooming hides.
+
+Measured on fresh probes across the classifier's own predatory_contact
+sub-shapes:
+
+    gifts_for_pictures     2/2      caught inline
+    explicit_meeting       1/3
+    sexual_images          1/3
+    extortion              0/2
+    trusted_adult_actor    0/3      <-- referral is DANGEROUS here
+    secrecy_only           0/4      <-- referral is DANGEROUS here
+    ------------------------------------------------
+    inline coverage        4/17 = 24%
+
+⭐ And the split is the wrong way round. For the shapes the regex DOES catch
+(a stranger offering gifts, an explicit meeting), the actor is not a trusted
+adult, so "talk to an adult you trust" is roughly correct advice. For the
+shapes it MISSES, the actor IS the trusted adult and the referral can route
+the child back to them. **Inline-only routing therefore has close to zero
+safeguarding value: it reaches the cases that need it least.**
+
+⭐ The fix is cheaper than it looks. The semantic job is submitted BEFORE the
+tutor call and takes ~6s (e4b, CPU, measured); a non-streaming tutor turn is
+~13-32s. So the verdict is normally READY BEFORE THE REPLY IS -- the queue is
+simply fire-and-forget. Awaiting an already-in-flight verdict with a short
+bounded timeout costs ~0 added latency in the common case. The streaming path
+is the real work, since it flushes early. Needs a per-job future on the queue.
+
 ⚠️ AND IT MUST NOT BE AUTO-GRADED BY KEYWORDS. "Says it is not the child's
 fault" is semantic; a keyword list for it would be the same
 enumerate-the-cases defect fixed three times in this codebase this week
@@ -76,9 +109,18 @@ def response_for(kind: Optional[str]) -> Optional[str]:
 
 
 def is_configured() -> bool:
-    """Whether owner-approved wording is present. Surfaced by /health so a
-    deploy cannot quietly ship the routing with no wording behind it -- the
-    `verify-the-artifact-that-runs` failure, where a merged fix did nothing."""
+    """Whether owner-approved wording is present.
+
+    ⚠️ NOT YET WIRED. Nothing calls `response_for()` and no health endpoint
+    surfaces this: the module is scaffolding awaiting (a) owner wording and
+    (b) the timing fix described below. The docstring previously claimed
+    /health surfaced it, which was the `verify-the-artifact-that-runs` trap
+    written INTO the comment -- describing intended behaviour as though it
+    existed. Caught in review by prime-69.
+
+    It SHOULD be surfaced by /health once wired, so a deploy cannot ship the
+    routing with no wording behind it.
+    """
     return response_for("predatory_contact") is not None
 
 

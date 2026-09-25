@@ -522,6 +522,27 @@ async def proxy_chat(
     # Measured 2026-09-24 on a held-out sealed set of 22 disclosures: the harm
     # classifier blocks 2 of them. Small, but those 2 were exactly the cases
     # where a parent was told the least accurate story.
+    # ⚠️ Built HERE, above the disclosure submit, not at the "forward to
+    # Ollama" comment below where it used to live.
+    #
+    # `_make_disclosure_generate(fwd_headers, ...)` is called inside the submit
+    # block, which sits ABOVE that point. So every submit raised
+    # UnboundLocalError, the broad `except` logged it "non-fatal", and the
+    # SEMANTIC DISCLOSURE PASS NEVER RAN -- 18 turns, every one, from deploy
+    # until 2026-09-25. Child disclosures fell back to the regex detector alone
+    # (9 of 23 on a cold set) while the classifier behind it was right on 18 of
+    # 19. The feature was deployed and absent.
+    #
+    # HOISTED rather than made lazy on purpose: a lazy closure would still read
+    # a variable that is unassigned on some paths and merely move the failure
+    # into the worker. This construction depends only on `request.headers`, so
+    # moving it up removes the failure CLASS instead of relocating it.
+    fwd_headers = {
+        k: v
+        for k, v in request.headers.items()
+        if k.lower() not in ("host", "content-length")
+    }
+
     _disclosure = None
     # Whether the disclosure row below already alerted a parent. Only the MAJOR
     # kinds do, so a bullying or disordered-eating disclosure must NOT suppress
@@ -675,11 +696,6 @@ async def proxy_chat(
         return _gate_block(model, topic_msg, stream=stream)
 
     # Safe — forward to Ollama
-    fwd_headers = {
-        k: v
-        for k, v in request.headers.items()
-        if k.lower() not in ("host", "content-length")
-    }
 
     # TODO(pedagogy): force-buffer homework turns when stream=True so the
     # enforcer can run — requires adding the hook to the buffered-stream path too.

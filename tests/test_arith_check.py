@@ -40,6 +40,8 @@ AFFIRMED_WRONG = [
 WRONG_BY_RULE = [
     ("worksheet question 5: 6 in a box, 9 boxes. i said 6 x 9 = 56 so 56 pencils", "6 * 9 = 56"),
     ("7x8=54 on my sheet right??", "7 * 8 = 54"),
+    # a mixed number read as one value
+    ("2 1/2 + 1 1/4 = 3 1/2 on my worksheet", "(2 + 1/2) + (1 + 1/4) = (3 + 1/2)"),
     # a sentence-ending period is not a decimal point
     ("i did 50 + 20 = 70 and 6 + 7 = 13 so 70 + 13 = 73. is that right?", "70 + 13 = 73"),
 ]
@@ -54,6 +56,12 @@ CORRECT_WORK = [
     "i got 3.33 for 10 / 3 = 3.33 is that right",          # rounding to the places written
     "7x8=56 on my sheet right??",                          # digit-x-digit is multiplication
     "1,200 + 300 = 1,500 on my homework",                  # thousands separators
+    # Held-out items the first frozen parser falsely flagged, moved to DEV
+    # (arith-verify RESULT-parser.md): mixed numbers, and a left side cut off by
+    # a verbal operator ("1/2 OF 3/4").
+    "2 1/2 + 1 3/4... i made it 2 2/4 + 1 3/4 = 3 5/4 = 4 1/4",
+    "1/2 of 3/4 = 1/2 * 3/4 = 3/8. is that right?",
+    "2/3 + 3/5 = 10/15 + 9/15 = 19/15 = 1 4/15. is that right?",
     "10 ÷ 4 = 2.5 and 3 × 4 = 12",               # unicode operators
 ]
 

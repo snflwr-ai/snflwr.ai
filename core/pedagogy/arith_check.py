@@ -53,6 +53,11 @@ _MINUS = str.maketrans(
 _X_MUL = re.compile(r"(?<=[\d)])\s*[xX]\s*(?=[\d(])")
 _THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
 _MONEY = re.compile(r"\$\s*")
+_MIXED = re.compile(r"(?<![\d/.])(\d+)\s+(\d+)/(\d+)(?![\d/]|\.\d)")
+# A word that continues an expression leftwards in English: "1/2 OF 3/4 = ...".
+# When one sits immediately before the left side, the run was cut mid-expression
+# and what remains is a fragment, so the step is skipped rather than misjudged.
+_VERBAL_OP_BEFORE = re.compile(r"\b(?:of|times|plus|minus|by|over)\s*$", re.IGNORECASE)
 
 # A run of characters that can belong to an arithmetic expression.
 _EXPR_CHARS = r"[0-9.+\-*/()%\s]"
@@ -65,6 +70,9 @@ def _normalise(text: str) -> str:
     t = _MONEY.sub("", t)
     t = _THOUSANDS.sub("", t)
     t = _X_MUL.sub(" * ", t)
+    # A mixed number is ONE value: "3 5/4" is 3 + 5/4, not 3 followed by 5/4.
+    # Read as two tokens it made correct work look wrong ("3 5/4 = 4 1/4").
+    t = _MIXED.sub(r"(\1 + \2/\3)", t)
     return t
 
 
@@ -237,8 +245,14 @@ def check_shown_arithmetic(user_text: str) -> List[Step]:
     t = _normalise(user_text)
     steps: List[Step] = []
     for m in re.finditer(r"=", t):
-        lhs = _trim_left(_operand_run_before(t, m.start()))
+        run = _operand_run_before(t, m.start())
+        lhs = _trim_left(run)
         if not lhs:
+            continue
+        lhs_start = (
+            m.start() - len(run) + run.index(lhs.split()[0]) if lhs.split() else 0
+        )
+        if _VERBAL_OP_BEFORE.search(t[:lhs_start]):
             continue
         rhs = _trim_right_value(_operand_run_after(t, m.end()))
         if not rhs:

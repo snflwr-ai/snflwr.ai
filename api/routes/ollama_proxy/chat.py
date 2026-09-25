@@ -946,6 +946,18 @@ async def proxy_chat(
     # on every path (incl. non-dict upstream_json). Set True only if the pedagogy
     # enforcer rewrote the content.
     _pedagogy_modified = False
+    # ⚠️ SAME REASON, and it was missed the first time. `assistant_text` is only
+    # assigned inside the `isinstance(upstream_json, dict)` branch below, but the
+    # history-ledger block near the end reads it unconditionally -- so when
+    # `upstream.json()` raises and the handler above sets `upstream_json = None`
+    # ON PURPOSE, the deliberate fallback was followed by an UnboundLocalError
+    # and the child got a 500 instead of the graceful message.
+    #
+    # Reachable whenever upstream returns a non-JSON body: a proxy error page, a
+    # truncated response, an OOM message -- all of which this box produces under
+    # GPU contention. Found by pyright (`possibly unbound`), invisible to tests,
+    # and the second instance of this class on this function after `fwd_headers`.
+    assistant_text = ""
     if isinstance(upstream_json, dict):
         msg = upstream_json.get("message")
         assistant_text = msg.get("content", "") if isinstance(msg, dict) else ""
@@ -1263,7 +1275,10 @@ async def proxy_chat(
     # Remember this exchange so the client may replay it next turn. Record the
     # text actually DELIVERED (the pedagogy enforcer may have rewritten it) —
     # that is what Open WebUI stores and will resend.
-    if messages:
+    # `isinstance(upstream_json, dict)` as well as `messages`: with a non-JSON
+    # upstream there IS no exchange to remember, and recording an empty assistant
+    # turn would put a blank reply into the history the client replays next turn.
+    if messages and isinstance(upstream_json, dict):
         _delivered = assistant_text
         if isinstance(upstream_json, dict) and isinstance(
             upstream_json.get("message"), dict

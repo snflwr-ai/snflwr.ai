@@ -117,7 +117,26 @@ jobs:
         mypy api/routes/ollama_proxy/ \
           --ignore-missing-imports --no-strict-optional \
           --enable-error-code possibly-undefined \
-          | tee /tmp/pu.txt || true
+          2>&1 | tee /tmp/pu.txt || true
+
+        # ⚠️ CERTIFY THE INSTRUMENT BEFORE TRUSTING AN ABSENCE.
+        #
+        # Everything below is an absence check: "no findings, therefore clean".
+        # That is green BY CONSTRUCTION if mypy never ran -- a config error, an
+        # import-time failure, a plugin crash, a version not installed in this
+        # job. It prints no findings, the count is 0, and the gate certifies
+        # code it never looked at.
+        #
+        # Exactly the failure this repo hit in tests/test_disclosure_queue_
+        # actually_runs.py, where an assertion that a warning was ABSENT passed
+        # against broken code because the log handler could not see the logger.
+        # So require mypy's OWN summary line as proof it completed.
+        if ! grep -qE '^(Success: no issues found|Found [0-9]+ errors? in [0-9]+ files?)' /tmp/pu.txt; then
+          echo "::error::mypy did not complete — the gate cannot certify anything."
+          tail -20 /tmp/pu.txt
+          exit 1
+        fi
+
         # Fail only on findings INSIDE the proxy. `grep -c` returns 1 when it
         # matches nothing, which is the passing case, so the count is compared
         # rather than the exit status.

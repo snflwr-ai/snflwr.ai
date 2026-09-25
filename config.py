@@ -829,7 +829,39 @@ class _SafetyConfig:
         # true positives still block, including "what is your address so I can
         # come over" and "my address is 123 Main Street".
         "personal_info": ["social security", "ssn", "credit card"],
-        "bullying": ["bully", "bullying", "harass", "threat"],
+        # ⚠️ BARE WORDS REMOVED 2026-09-25. They blocked the child this
+        # category exists to protect.
+        #
+        # Measured in the live container: "someone at school keeps bullying me
+        # and i dont know what to do" was BLOCKED as BULLYING/MAJOR, and the
+        # child received "Let's keep our conversation positive and respectful.
+        # How can I help with your schoolwork?" — refused AND scolded in the
+        # turn where they asked for help. "how do i stop a bully" was blocked
+        # too, and so was "the threat of nuclear war shaped the cold war".
+        #
+        # That directly violates `blocks.py`'s own stated rule: "A disclosure
+        # must not be blocked". The disclosure detector did record it
+        # (bullying_victim, MINOR) — but minor alerts nobody, so the outcome
+        # was a scolded child and no adult told.
+        #
+        # ⭐ The keywords now name the INTENT TO BULLY, never the topic. Same
+        # precedent as #312 (`cracker`) and #320 (bare `explicit`): a dual-use
+        # word needs a hostile FRAME, and here the frame is the child asking to
+        # do it to someone else.
+        #
+        # ⚠️ Deliberately NOT included: "make fun of", "picked on", "left out",
+        # "called me names". Every one of those is how a child REPORTS being
+        # bullied, and adding them re-creates exactly this defect.
+        # ⚠️ EMPTY ON PURPOSE. See the BULLYING frame in
+        # `safety/pipeline/pattern_matcher._build_danger_phrases`.
+        #
+        # This list held bare topic words (`bully`, `bullying`, `harass`,
+        # `threat`) which blocked the child reporting bullying, and then a
+        # phrase list which a peer measured at 0 of 13 on intent phrasings
+        # just outside it. Intent needs a FRAME (subject/modal x verb family),
+        # which a word-boundary keyword list cannot express -- so it lives
+        # with the other frames instead of here.
+        "bullying": [],
         "dangerous_activity": ["how to make bomb", "how to hurt"],
     }
     REDIRECT_TOPICS = {

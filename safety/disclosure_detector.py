@@ -61,7 +61,19 @@ _CLASSES: Tuple[Tuple[str, str], ...] = (
     (
         "bullying_victim",
         r"\b(?:"
-        r"(?:being|getting) (?:bullied|picked on|teased|targeted|left out|excluded)"
+        r"(?:being|getting|get) (?:bullied|picked on|teased|targeted|left out|excluded)"
+        # ⚠️ ADDED 2026-09-25. The pattern above required the PASSIVE voice, so
+        # "someone at school keeps BULLYING ME" -- the most natural way a child
+        # says this -- matched nothing and no adult was told.
+        #
+        # Found while fixing the opposite defect: the bullying KEYWORD list was
+        # blocking that same sentence as BULLYING/MAJOR, so the child was
+        # refused and scolded. Removing the block without widening this would
+        # have traded a scolded child for a silently unheard one.
+        r"|(?:keeps?|kept|is|are|was|were) (?:bullying|harassing|teasing|"
+        r"picking on|threatening|intimidating|excluding) me"
+        r"|(?:bullies|harasses|teases|threatens|intimidates) me"
+        r"|(?:bullied|harassed|teased|threatened) me"
         r"|they keep (?:saying|calling|ignoring|making fun)"
         r"|everyone (?:is )?(?:laughing at|looking at) me"
         r"|feel like a ghost"

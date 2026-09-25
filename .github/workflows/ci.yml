@@ -86,6 +86,69 @@ jobs:
         # (combining it with the above trips a module-path mapping error).
         mypy scripts/ --ignore-missing-imports --no-strict-optional
 
+    # ⛔ MERGE-BLOCKING: a variable read on a path where it was never assigned.
+    #
+    # This class has now shipped TWICE on the ollama proxy, both times behind a
+    # DELIBERATE fallback so the code looked handled, and both times INVISIBLE
+    # TO TESTS because the failure is swallowed by an `except` that exists so a
+    # child is not left waiting:
+    #
+    #   #335  `fwd_headers`     called above its own assignment. EVERY semantic
+    #                           disclosure submit raised UnboundLocalError, so
+    #                           the pass never ran on a single turn from deploy
+    #                           until it was found in the container logs.
+    #   #336  `assistant_text`  assigned only inside `isinstance(upstream_json,
+    #                           dict)`, read unconditionally by the history
+    #                           ledger. A non-JSON upstream body (proxy error
+    #                           page, truncation, OOM) 500'd the child's turn.
+    #
+    # ⭐ Verified against the pre-fix commit 21c8f82: this invocation flags
+    # BOTH, at chat.py:599 and chat.py:1251. A gate that would not have caught
+    # the bugs justifying it is theatre, so that check is the reason it is here.
+    #
+    # Scoped to the proxy because that is the child-facing request path and it
+    # is clean today. Errors outside it are filtered out rather than silenced:
+    # there are 3 elsewhere (storage/db_adapters.py psycopg2,
+    # scripts/backup_database.py temp_file x2) which are NOT dismissed, just
+    # not this gate's business yet. Widen the path once they are triaged.
+    - name: Possibly-undefined names on the child-facing proxy (merge-blocking)
+      run: |
+        set -o pipefail
+        mypy api/routes/ollama_proxy/ \
+          --ignore-missing-imports --no-strict-optional \
+          --enable-error-code possibly-undefined \
+          2>&1 | tee /tmp/pu.txt || true
+
+        # ⚠️ CERTIFY THE INSTRUMENT BEFORE TRUSTING AN ABSENCE.
+        #
+        # Everything below is an absence check: "no findings, therefore clean".
+        # That is green BY CONSTRUCTION if mypy never ran -- a config error, an
+        # import-time failure, a plugin crash, a version not installed in this
+        # job. It prints no findings, the count is 0, and the gate certifies
+        # code it never looked at.
+        #
+        # Exactly the failure this repo hit in tests/test_disclosure_queue_
+        # actually_runs.py, where an assertion that a warning was ABSENT passed
+        # against broken code because the log handler could not see the logger.
+        # So require mypy's OWN summary line as proof it completed.
+        if ! grep -qE '^(Success: no issues found|Found [0-9]+ errors? in [0-9]+ files?)' /tmp/pu.txt; then
+          echo "::error::mypy did not complete — the gate cannot certify anything."
+          tail -20 /tmp/pu.txt
+          exit 1
+        fi
+
+        # Fail only on findings INSIDE the proxy. `grep -c` returns 1 when it
+        # matches nothing, which is the passing case, so the count is compared
+        # rather than the exit status.
+        COUNT=$(grep -c '^api/routes/ollama_proxy/.*possibly-undefined' /tmp/pu.txt || true)
+        echo "possibly-undefined findings in the proxy: ${COUNT:-0}"
+        if [ "${COUNT:-0}" -ne 0 ]; then
+          grep '^api/routes/ollama_proxy/.*possibly-undefined' /tmp/pu.txt
+          echo "::error::A name is read on a path where it is never assigned."
+          echo "This class shipped twice (#335, #336) and tests did not catch either."
+          exit 1
+        fi
+
   # Job 2: Security Scanning
   # The "Security Scan" job that used to live here ran pip-audit and bandit with
   # the SAME targets and flags as security-scan.yml's dependency-scan and

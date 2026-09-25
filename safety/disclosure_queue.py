@@ -46,9 +46,16 @@ from safety.disclosure_semantic import (
 
 logger = logging.getLogger(__name__)
 
-# Where throughput saturates; more workers buy nothing and only add CPU
-# contention with llama-guard, which also runs per turn on CPU.
-DEFAULT_WORKERS = 2
+# ⚠️ ONE, deliberately, and not for throughput.
+#
+# The classifier shares `gemma4:e4b` with the INPUT GATE, which runs on every
+# child turn with a 6s timeout. A background classify can queue ahead of it on
+# the same model, and a gate timeout falls back to the REGEX -- 25 points weaker
+# on framed demands. So the cost of extra workers is not CPU, it is a silent
+# quality regression on the critical path. One in flight at a time.
+#
+# Throughput saturates at 4 (0.49/s), so this trades ~0.3/s for that safety.
+DEFAULT_WORKERS = 1
 
 # A bound, not a buffer. Past this the shed is recorded and the regex floor is
 # used, which is a measurable loss rather than an unbounded queue and a growing
@@ -167,6 +174,15 @@ class DisclosureQueue:
         self._tasks: list = []
         self._last_operator_alert = 0.0
         self.stats = _Stats()
+        # Surface the residency footgun at construction, not in a postmortem.
+        try:
+            from safety.disclosure_semantic import warn_if_model_adds_a_load_slot
+
+            warning = warn_if_model_adds_a_load_slot()
+            if warning:
+                logger.error("disclosure queue: %s", warning)
+        except Exception:  # noqa: BLE001 - a warning must never break startup
+            pass
 
     # ---- lifecycle ------------------------------------------------------
 

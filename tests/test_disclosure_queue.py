@@ -445,3 +445,55 @@ def test_the_route_passes_only_the_childs_text():
             f"the disclosure job carries {leak!r} — the classifier must see the "
             f"CHILD's words only (#331)"
         )
+
+
+def test_the_model_matches_the_gates_so_it_adds_no_load_slot():
+    """⚠️ `OLLAMA_MAX_LOADED_MODELS=3` and the serving stack already needs
+    exactly three: the 31b tutor (GPU), llama-guard3-cpu, and the input gate's
+    model. The disclosure classifier must be the SAME model as the gate, or it
+    becomes a fourth resident model and the eviction lands on the tutor —
+    costing a cold load on every child turn after a classify.
+
+    Checked on the running box: `GUIDANCE_GATE_MODEL=gemma4:e4b`, which is this
+    default. Not luck, but not guaranteed either, hence the warning.
+    """
+    from safety.disclosure_semantic import (
+        DISCLOSURE_MODEL,
+        warn_if_model_adds_a_load_slot,
+    )
+
+    assert DISCLOSURE_MODEL == "gemma4:e4b", (
+        "the default no longer matches GUIDANCE_GATE_MODEL on this deployment; "
+        "under a limit of 3 loaded models that evicts the tutor"
+    )
+
+    import os
+
+    prev = os.environ.get("GUIDANCE_GATE_MODEL")
+    try:
+        os.environ["GUIDANCE_GATE_MODEL"] = "some-other-model"
+        assert warn_if_model_adds_a_load_slot() is not None, (
+            "a mismatch between the disclosure model and the gate model is "
+            "silent; it must warn, because the eviction is invisible until the "
+            "tutor starts cold-loading"
+        )
+        os.environ["GUIDANCE_GATE_MODEL"] = DISCLOSURE_MODEL
+        assert warn_if_model_adds_a_load_slot() is None
+    finally:
+        if prev is None:
+            os.environ.pop("GUIDANCE_GATE_MODEL", None)
+        else:
+            os.environ["GUIDANCE_GATE_MODEL"] = prev
+
+
+def test_one_worker_by_default_because_the_gate_shares_the_model():
+    """Not a throughput choice. The gate runs the same model with a 6s timeout,
+    and a gate timeout falls back to the regex — 25 points weaker on framed
+    demands. Extra workers buy throughput and risk a SILENT quality regression
+    on the critical path."""
+    from safety.disclosure_queue import DEFAULT_WORKERS
+
+    assert DEFAULT_WORKERS == 1, (
+        "more than one concurrent classify can queue ahead of the input gate on "
+        "the shared model and time it out into its weaker regex fallback"
+    )

@@ -51,6 +51,53 @@ logger = logging.getLogger(__name__)
 #     re-creates the coupling this constant exists to prevent
 DISCLOSURE_MODEL: str = os.getenv("DISCLOSURE_MODEL", "gemma4:e4b")
 
+# ⚠️⚠️ THE DEFAULT IS NOT ARBITRARY, AND CHANGING IT IS NOT FREE.
+#
+# `gemma4:e4b` is ALSO `GUIDANCE_GATE_MODEL` -- the input gate already runs it
+# on every child turn. Two consequences, checked on this box rather than
+# assumed:
+#
+# ✅ RESIDENCY: `OLLAMA_MAX_LOADED_MODELS=3`, and the serving stack already
+#    needs exactly three: the 31b tutor (GPU), llama-guard3-cpu, and this. So
+#    the disclosure pass costs ZERO extra model slots. Point it at any OTHER
+#    model and it becomes a FOURTH under a limit of three -- most likely
+#    evicting the 31b, so every child turn after a disclosure classify pays a
+#    cold load. See `ironclaw-evicts-snflwr-tutor-from-gpu`: eviction is a live
+#    problem here, not a hypothetical.
+#
+# ⚠️ CONTENTION: sharing the model means a background classify can queue ahead
+#    of the gate's call on the same model, and `GUIDANCE_GATE_TIMEOUT_S` is 6s.
+#    A gate timeout does NOT fail loudly -- the enforcer falls back to the
+#    REGEX, which is 25 points weaker on framed demands (dodge catch 90% -> 65%
+#    on a blind holdout). So the failure mode of this queue is a SILENT quality
+#    regression in the homework gate, not a latency number.
+#
+#    ⭐ That means "homework p90 did not move" is NOT evidence this is safe: a
+#    gate that times out and falls back to the regex is FAST. The signal to
+#    watch is the gate's timeout/fallback RATE, not latency.
+#
+# Mitigated by `DEFAULT_WORKERS = 1` (at most one classify in flight) and by
+# the queue being off the critical path. NOT eliminated.
+
+
+def warn_if_model_adds_a_load_slot() -> Optional[str]:
+    """Return a warning when DISCLOSURE_MODEL is not the gate's model.
+
+    Called at queue construction. A mismatch is legal and may be deliberate --
+    but under `OLLAMA_MAX_LOADED_MODELS=3` it silently adds a fourth model and
+    the eviction lands on the tutor.
+    """
+    gate = os.getenv("GUIDANCE_GATE_MODEL", "")
+    if gate and DISCLOSURE_MODEL != gate:
+        return (
+            f"DISCLOSURE_MODEL={DISCLOSURE_MODEL!r} differs from "
+            f"GUIDANCE_GATE_MODEL={gate!r}. Under OLLAMA_MAX_LOADED_MODELS=3 "
+            f"this adds a FOURTH resident model and the eviction will land on "
+            f"the tutor, costing a cold load on every turn after a classify."
+        )
+    return None
+
+
 # Kinds this returns. Must match `disclosure_detector.Disclosure.kind` so both
 # nets feed one escalation path and one incident vocabulary.
 KINDS = (

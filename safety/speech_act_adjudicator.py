@@ -63,16 +63,52 @@ ADJUDICATOR_SYSTEM = (
     "You label one line written by a school student. You reply with JSON only."
 )
 
-# ⚠️ Kept SHORT on purpose: the latency bound is p90 <= 8s on a 4b model on
-# CPU, and every token of prompt is paid on every flagged turn. The four
-# examples are the boundaries two regex implementations got wrong -- aiming vs
-# reporting, negation, and the academic sense -- not a general few-shot set.
+# ⚠️ Kept SHORT on purpose: every prompt token is paid on every flagged turn.
+#
+# v3 (after cold set 7) makes EXACTLY THREE changes, per THEORY-v3.md, frozen
+# into PREREG-set8 BEFORE set 8 was generated. That theory's fourth falsifier
+# is "untestable if v3 changes more than three things", so this diff is itself
+# part of the test.
+#
+# v2 fixed both shapes it targeted (negimp 20/20, proxy 20/20) and REGRESSED
+# two others -- in OPPOSITE directions, which is why there are two mechanisms:
+#   denying__std    OVER-blocked   3 -> 6 of 30   (denials read as insults)
+#   insulting__std  UNDER-blocked  4.2% -> 8.3%   (insults read as something else)
+#
+# 1. RESTORE THE INTENT MARKER, keep commissioning.
+#    v1: "aiming it at another person, in their own voice"
+#    v2: "saying it OF another person, or asking you to say it to them"
+#    ⭐ "Aiming at" encodes intent and direction; "saying it of" is neutral
+#    DESCRIPTION -- and "my classmate was called a freak" is also "saying it of
+#    another person", so v2 blurred `insulting` into `reporting` for the plain
+#    case. I dropped "aiming" as COLLATERAL while adding commissioning; it was
+#    not a considered change, which is part of why I suspect it.
+#
+# 2. REBALANCE THE EXEMPLARS to one per act. v2 ran 3 insulting / 2 denying /
+#    1 reporting / 1 curriculum where v1 was 1/1/1/1 (counts read from the
+#    file, after I first wrote them from memory and got them wrong -- erratum
+#    in THEORY-v3.md). Few-shot examples bias a model toward the classes they
+#    over-represent, the observed direction of the `denying` regression.
+#    ⚠️ REPLACING, not adding: the negimp and proxy SHAPES now live in the
+#    DEFINITIONS, so examples carry BALANCE rather than coverage. If negimp or
+#    proxy regress, that falsifies BOTH mechanisms -- the gains would have come
+#    from example COUNT, the opposite of (2). Recorded in advance, not
+#    discovered afterwards.
+#
+# 3. `denying`'s WORDING IS UNCHANGED FROM v2. Assert/deny/mention scored
+#    negimp 20/20 and mention 19/20; mechanism A blames the regression on
+#    example COUNT, not this wording. Changing both at once would make a
+#    failure undiagnosable.
+#
+# ⚠️ Set 8 tests the OUTCOME, not the mechanism. A and B are inferred from
+# AGGREGATE cell rates -- weaker than the per-item diagnosis that produced v2,
+# and that one was still WRONG. A pass does not confirm either mechanism.
 ADJUDICATOR_PROMPT = """The line below contains a word that can be an insult.
 Decide what the student is DOING with that word.
 
-insulting = aiming it at another person, in their own voice
+insulting = aiming it at another person, in their own voice — or asking you to say it
 reporting = saying someone else used it about them, or telling on someone
-denying = the word sits inside a negation or a disavowal
+denying = the sentence DENIES the word fits someone, or says not to use it
 asking_about = asking about the word itself: meaning, spelling, is it rude
 self_describing = applying it to themselves
 curriculum = the academic or technical sense, no person targeted
@@ -82,7 +118,9 @@ Pick exactly one. decision is "block" only for insulting, else "release".
 Examples:
 line: my desk partner is a total freak -> {"act":"insulting","decision":"block"}
 line: the year 5s keep calling me a freak -> {"act":"reporting","decision":"release"}
-line: he is not a freak he is just quiet -> {"act":"denying","decision":"release"}
+line: ur not insane ur just mad -> {"act":"denying","decision":"release"}
+line: is freak a rude word -> {"act":"asking_about","decision":"release"}
+line: im such a freak at this -> {"act":"self_describing","decision":"release"}
 line: what is a freak wave in the ocean -> {"act":"curriculum","decision":"release"}
 
 line: <<<LINE>>>

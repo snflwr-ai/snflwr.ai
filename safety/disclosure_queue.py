@@ -133,6 +133,17 @@ class _Job:
     # (internal auth) and a background worker cannot reconstruct them. The
     # closure captures a small header dict, not the request object.
     generate: Optional[Callable[[str], Awaitable[str]]] = None
+    # ⭐ Set when the ROUTE wants to await this turn's verdict before serving
+    # the reply (the response router needs the kind BEFORE the child sees the
+    # answer; the incident row does not).
+    #
+    # ⚠️ It MUST be settled on EVERY path -- classified, no-disclosure,
+    # classifier unavailable, worker crash, and SHED. An unsettled future makes
+    # the route wait out its whole timeout for a verdict that is never coming,
+    # turning a safety improvement into a latency regression on exactly the
+    # turns where the queue is already degraded. `_settle` is idempotent so the
+    # backstop in the worker's `finally` cannot double-set.
+    verdict: Optional["asyncio.Future"] = None
 
 
 @dataclass
@@ -209,6 +220,33 @@ class DisclosureQueue:
 
     # ---- submission (called from the request path) ----------------------
 
+    def new_verdict_future(self) -> Optional["asyncio.Future"]:
+        """A future the caller can await for THIS turn's semantic kind.
+
+        Returns None with no running loop, so a caller outside async context
+        degrades to today's fire-and-forget rather than raising.
+        """
+        try:
+            return asyncio.get_running_loop().create_future()
+        except RuntimeError:
+            return None
+
+    @staticmethod
+    def _settle(job: _Job, kind: Optional[str]) -> None:
+        """Resolve a route's verdict future. Idempotent and total.
+
+        Swallows everything: this runs on the path of a child's turn, and a
+        plumbing error must never change what they receive.
+        """
+        fut = job.verdict
+        if fut is None:
+            return
+        try:
+            if not fut.done():
+                fut.set_result(kind)
+        except Exception:  # noqa: BLE001 - never raise into a child's turn
+            pass
+
     def submit(self, job: _Job) -> bool:
         """Enqueue a turn. Returns False when SHED.
 
@@ -230,9 +268,11 @@ class DisclosureQueue:
             return True
         except asyncio.QueueFull:
             self._shed("queue full (maxsize=%d)" % self._maxsize)
+            self._settle(job, None)
             return False
         except Exception as exc:  # noqa: BLE001 - never raise into a child's turn
             self._shed("submit failed: %s" % exc)
+            self._settle(job, None)
             return False
 
     def _shed(self, why: str) -> None:
@@ -270,12 +310,18 @@ class DisclosureQueue:
             try:
                 await self._run_one(job)
             except asyncio.CancelledError:
+                self._settle(job, None)
                 raise
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - one bad turn must not kill the pool
                 logger.error("disclosure worker %d: %s", n, exc, exc_info=True)
             finally:
+                # Backstop: idempotent, so it fires only on a path that did not
+                # settle -- e.g. a crash between dequeue and classification.
+                # Without it the route waits out its timeout on exactly the
+                # turns where something already went wrong.
+                self._settle(job, None)
                 self._queue.task_done()
 
     async def _run_one(self, job: _Job) -> None:
@@ -298,6 +344,11 @@ class DisclosureQueue:
                 return
             kind = await classify_disclosure(job.child_text, gen)
             self.stats.classified += 1
+            # Settled HERE, before the recording logic below, so the route
+            # waits the minimum. The recording decisions (upgrade, lateral,
+            # duplicate) concern the incident ROW and are irrelevant to what
+            # the child should be told.
+            self._settle(job, kind)
         except DisclosureClassifierUnavailable as exc:
             # NOT a negative verdict -- that conflation is how a safety layer
             # reports success while doing nothing. Nothing is written here: the
@@ -311,6 +362,9 @@ class DisclosureQueue:
                 exc,
                 self.stats.unavailable,
             )
+            # An outage is NOT a negative verdict for the ROW, but for the
+            # ROUTE it means "no override" -- today's behaviour.
+            self._settle(job, None)
             return
 
         if kind is None:

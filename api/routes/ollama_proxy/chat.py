@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
+import os
 import time
 from typing import Any, Dict, Optional
 
@@ -27,6 +28,7 @@ from core import serving_plan, topic_gate
 from core.authentication import AuthSession
 from core.coppa_gate import coppa_consent_block_reason
 from core.profile_gate import no_profile_block_reason
+from safety import disclosure_response
 from utils import observability
 from utils.logger import get_logger, sanitize_log_value
 
@@ -69,6 +71,68 @@ from core.proxy_messages import TIMEOUT_MESSAGE as _TIMEOUT_MESSAGE
 from core.proxy_messages import UNSUPPORTED_MESSAGE as _UNSUPPORTED_MESSAGE
 
 __all__ = ["_BUSY_MESSAGE", "_TIMEOUT_MESSAGE", "_UNSUPPORTED_MESSAGE"]
+
+
+# How long the route will wait for a semantic verdict it has already asked for.
+# Small on purpose: the verdict is normally ALREADY THERE (submitted before the
+# tutor call, ~6s, against a 13-32s turn), so this is a backstop for a degraded
+# queue, not a budget. A miss costs the override, never the reply.
+_DISCLOSURE_VERDICT_WAIT_S = float(os.getenv("DISCLOSURE_VERDICT_WAIT_S", "2.0"))
+
+
+# Progressive-stream misses: the verdict settled AFTER the stream closed, so no
+# safeguarding text could be appended. Counted rather than shrugged at, because
+# the owner needs the RATE to choose between option (A) and option (B) -- an
+# unmeasured miss reads as zero.
+_DISCLOSURE_STREAM_MISSES = {"appended": 0, "too_late": 0}
+
+
+def _split_trailing_done(chunks: list) -> tuple:
+    """(chunks before the final done chunk, [the done chunk] or []).
+
+    The template must be appended BEFORE `done`: a client that stops reading at
+    `done` would never render a block emitted after it.
+    """
+    for i in range(len(chunks) - 1, -1, -1):
+        line = chunks[i]
+        if b'"done"' in line and b"true" in line:
+            return chunks[:i], [chunks[i]]
+    return chunks, []
+
+
+async def _await_disclosure_verdict(fut) -> "str | None":
+    # ⭐ NO WAIT WHEN NO OVERRIDE IS POSSIBLE.
+    #
+    # With `DISCLOSURE_RESPONSE_PREDATORY_CONTACT` unset -- which is
+    # production TODAY, pending the owner's wording -- `response_for()` can
+    # only ever return None. Waiting up to DISCLOSURE_VERDICT_WAIT_S for a
+    # verdict that cannot change anything would be a latency cost on 100% of
+    # streamed turns for a strictly impossible benefit.
+    #
+    # So the cost is zero until wording exists, and the too_late RATE stays
+    # measurable by setting a template in a harness environment.
+    if not disclosure_response.is_configured():
+        return None
+    """The semantic kind for this turn, or None to leave the reply alone.
+
+    Total: every failure mode -- no future, timeout, cancellation, a raising
+    future -- returns None, which means "no override" and so reproduces today's
+    behaviour. The failure direction has to be "no improvement", never a
+    changed or blank reply.
+
+    `asyncio.wait` rather than `wait_for`: `wait_for` CANCELS the awaitable on
+    timeout, which would break the worker's `set_result` on a future it still
+    owns.
+    """
+    if fut is None:
+        return None
+    try:
+        done, _pending = await asyncio.wait({fut}, timeout=_DISCLOSURE_VERDICT_WAIT_S)
+        if fut not in done or fut.cancelled():
+            return None
+        return fut.result()
+    except Exception:  # noqa: BLE001 - never raise into a child's turn
+        return None
 
 
 async def _pedagogy_reissue(
@@ -570,6 +634,10 @@ async def proxy_chat(
         if k.lower() not in ("host", "content-length")
     }
 
+    # The route awaits THIS turn's semantic verdict before serving, so the
+    # response router can act on it. Fire-and-forget (verdict=None) remains the
+    # behaviour whenever there is no running loop.
+    _disclosure_verdict = None
     _disclosure = None
     # Whether the disclosure row below already alerted a parent. Only the MAJOR
     # kinds do, so a bullying or disordered-eating disclosure must NOT suppress
@@ -627,9 +695,11 @@ async def proxy_chat(
         try:
             from safety.disclosure_queue import _Job as _DisclosureJob
 
+            _disclosure_verdict = _disclosure_queue().new_verdict_future()
             _disclosure_queue().submit(
                 _DisclosureJob(
                     profile_id=profile_id,
+                    verdict=_disclosure_verdict,
                     # ⚠️ The CHILD's turns only. #331: the crisis and severity
                     # decisions must never read the model's output, and the
                     # worker is handed nothing else.
@@ -971,7 +1041,53 @@ async def proxy_chat(
                     _emit_block(res, full)
                     yield blocks._ollama_block_stream_bytes(model, _fallback_for(res))
                     return
-                for c in collected[flushed:]:
+                # ---- Disclosure append, OPTION (B) ----------------------
+                #
+                # ⚠️ THIS is the path production actually uses for a
+                # disclosure. A turn only buffers when
+                # `is_homework_request(user_question)` is true, and a child
+                # disclosing grooming does not phrase it like homework
+                # (measured: 0 of 3 grooming probes trip the homework regex).
+                # So wiring the router to the buffered paths alone would have
+                # given it near-zero reach in production -- the same
+                # wrong-subset error as inline-only routing, caught by
+                # prime-69 for the second time on this feature.
+                #
+                # APPEND, not replace: the reply is already partly flushed, so
+                # requirement 4 (no schoolwork pivot) is NOT satisfiable here.
+                # That limit is an owner decision, stated in the PR.
+                _rest, _done_chunk = _split_trailing_done(collected[flushed:])
+                for c in _rest:
+                    yield c
+                _stream_kind = await _await_disclosure_verdict(_disclosure_verdict)
+                _stream_override = disclosure_response.response_for(_stream_kind)
+                if _stream_override:
+                    _DISCLOSURE_STREAM_MISSES["appended"] += 1
+                    # ⚠️ LOGGED, not just counted. `_DISCLOSURE_STREAM_MISSES`
+                    # is per PROCESS across 8 uvicorn workers and is reset by
+                    # every restart, so nothing could read the rate the owner's
+                    # A/B decision needs. One line per outcome, in #332's
+                    # `gate=` style, puts it straight in the container logs and
+                    # survives restarts.
+                    logger.warning(
+                        "disclosure router: appended kind=%s wait_s=%s",
+                        _stream_kind,
+                        _DISCLOSURE_VERDICT_WAIT_S,
+                    )
+                    yield blocks._ollama_content_chunk_bytes(
+                        model, "\n\n" + _stream_override
+                    )
+                elif _disclosure_verdict is not None and not _disclosure_verdict.done():
+                    # The verdict never arrived in time; nothing could be
+                    # appended. Counted so the rate is visible instead of
+                    # being invisible by construction.
+                    _DISCLOSURE_STREAM_MISSES["too_late"] += 1
+                    logger.warning(
+                        "disclosure router: too_late kind=unknown wait_s=%s "
+                        "(nothing could be appended)",
+                        _DISCLOSURE_VERDICT_WAIT_S,
+                    )
+                for c in _done_chunk:
                     yield c
                 _trace["blocked"] = False
                 _trace["safety"] = {"blocked_layer": None}
@@ -1100,6 +1216,11 @@ async def proxy_chat(
     # on every path (incl. non-dict upstream_json). Set True only if the pedagogy
     # enforcer rewrote the content.
     _pedagogy_modified = False
+    # Set when the disclosure router replaced the reply, so the block below
+    # re-serialises. Separate from `_pedagogy_modified` because conflating them
+    # would make the trace attribute a safeguarding override to the pedagogy
+    # enforcer.
+    _disclosure_overridden = False
     # ⚠️ SAME REASON, and it was missed the first time. `assistant_text` is only
     # assigned inside the `isinstance(upstream_json, dict)` branch below, but the
     # history-ledger block near the end reads it unconditionally -- so when
@@ -1415,6 +1536,36 @@ async def proxy_chat(
     # `message.thinking` (blank render) and the raw chain-of-thought is unvetted
     # content that must never reach a child. `content` is untouched. (Streaming
     # paths strip per-line in transport._stream_chunks_from_ollama.)
+    # ---- Disclosure response router (BUFFERED paths only) -------------------
+    #
+    # The semantic verdict is normally already here: the job was submitted
+    # BEFORE the tutor call and takes ~6s (e4b, CPU, measured), against a
+    # 13-32s tutor turn. So this await usually returns instantly -- the queue
+    # was simply throwing away a result it already had in time.
+    #
+    # ⚠️ Reached by the non-streaming path AND the buffered-stream path (which
+    # re-emits the whole reply as one chunk). NOT by the progressive stream,
+    # which flushes ~1-3s in, long before a ~6s verdict -- holding that flush
+    # would add 3-5s of time-to-first-token to EVERY streamed turn for a rare
+    # event, and TTFB is what a child actually perceives. That path needs an
+    # APPEND instead, which is not in this commit.
+    #
+    # ⚠️ So requirement 4 (no schoolwork pivot) is satisfiable only here: an
+    # append cannot un-say text already flushed. That is an OWNER decision,
+    # stated in the PR rather than settled by me.
+    _disclosure_kind = await _await_disclosure_verdict(_disclosure_verdict)
+    _disclosure_override = disclosure_response.response_for(_disclosure_kind)
+    if (
+        _disclosure_override
+        and isinstance(upstream_json, dict)
+        and isinstance(upstream_json.get("message"), dict)
+    ):
+        upstream_json["message"]["content"] = _disclosure_override
+        _disclosure_overridden = True
+        logger.warning(
+            "disclosure router replaced the reply for kind=%s", _disclosure_kind
+        )
+
     out_content = upstream.content if upstream is not None else b""
     if isinstance(upstream_json, dict) and isinstance(
         upstream_json.get("message"), dict
@@ -1423,7 +1574,12 @@ async def proxy_chat(
         # Re-serialize when the enforcer rewrote the content OR when we need to
         # strip the model's reasoning field (OWUI >=0.10 blank-renders it and
         # chain-of-thought must never reach a child unvetted).
-        if "thinking" in msg or _pedagogy_modified or _streamed:
+        if (
+            "thinking" in msg
+            or _pedagogy_modified
+            or _streamed
+            or _disclosure_overridden
+        ):
             msg.pop("thinking", None)
             out_content = _json.dumps(upstream_json).encode()
     # Remember this exchange so the client may replay it next turn. Record the

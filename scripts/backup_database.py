@@ -14,6 +14,7 @@ import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional, Tuple
 
 # A valid rclone remote target looks like `remote:path/segment`, e.g.
 # `b2:snflwr-backups-prod`. We pass it as an argv element (never through a
@@ -763,35 +764,53 @@ class DatabaseBackup:
         return success
 
 
+def _move_sidecars(db_path: Path, dest: Path) -> None:
+    """Move a SQLite file's -wal/-shm so they sit beside ``dest`` instead.
+
+    A -wal describes the image it was written against. Left beside a different
+    main file it is replayed onto it, which is how webui.db was corrupted in
+    July (tests/test_owui_db_snapshot.py). Moving it beside the pre-restore copy
+    also keeps its committed rows in that copy, where they belong.
+    """
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(f"{db_path}{suffix}")
+        if sidecar.exists():
+            shutil.move(str(sidecar), f"{dest}{suffix}")
+
+
+def _decompress_if_needed(backup_file: Path) -> Tuple[Path, Optional[Path]]:
+    """Return (restore_source, temp_to_delete). temp is None for an uncompressed file."""
+    if backup_file.suffix != ".gz":
+        return backup_file, None
+    temp_file = backup_file.with_suffix("")
+    with gzip.open(backup_file, "rb") as f_in:
+        with open(temp_file, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    return temp_file, temp_file
+
+
 def restore_sqlite(backup_file: Path) -> bool:
-    """Restore SQLite database from backup"""
+    """Restore SQLite database from backup. Run with the app stopped."""
     logger.info(f"Restoring SQLite database from: {backup_file}")
 
+    temp_file: Optional[Path] = None
     try:
         db_path = system_config.DB_PATH
 
-        # Backup current database
+        # Backup current database, with its WAL, and clear the sidecars so they
+        # are not replayed onto the restored file.
         if db_path.exists():
             backup_current = db_path.with_suffix(".db.pre-restore")
             shutil.copy2(db_path, backup_current)
+            _move_sidecars(db_path, backup_current)
             logger.info(f"Current database backed up to: {backup_current}")
-
-        # Decompress if needed
-        if backup_file.suffix == ".gz":
-            temp_file = backup_file.with_suffix("")
-            with gzip.open(backup_file, "rb") as f_in:
-                with open(temp_file, "wb") as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            restore_source = temp_file
         else:
-            restore_source = backup_file
+            _move_sidecars(db_path, db_path.with_suffix(".db.pre-restore"))
+
+        restore_source, temp_file = _decompress_if_needed(backup_file)
 
         # Restore database
         shutil.copy2(restore_source, db_path)
-
-        # Cleanup temp file
-        if backup_file.suffix == ".gz":
-            temp_file.unlink()
 
         logger.info("[OK] SQLite database restored successfully")
         return True
@@ -799,6 +818,10 @@ def restore_sqlite(backup_file: Path) -> bool:
     except Exception as e:
         logger.exception(f"Restore failed: {e}")
         return False
+    finally:
+        # The decompressed copy is a plaintext database: never leave it behind.
+        if temp_file is not None:
+            temp_file.unlink(missing_ok=True)
 
 
 def restore_postgresql(
@@ -811,16 +834,9 @@ def restore_postgresql(
     """
     logger.info(f"Restoring PostgreSQL database from: {backup_file}")
 
+    temp_file: Optional[Path] = None
     try:
-        # Decompress if needed
-        if backup_file.suffix == ".gz":
-            temp_file = backup_file.with_suffix("")
-            with gzip.open(backup_file, "rb") as f_in:
-                with open(temp_file, "wb") as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            restore_source = temp_file
-        else:
-            restore_source = backup_file
+        restore_source, temp_file = _decompress_if_needed(backup_file)
 
         # Validate all PostgreSQL parameters to prevent command injection
         # Reuse validation method from DatabaseBackup class
@@ -869,10 +885,6 @@ def restore_postgresql(
             timeout=600,  # 10 minute timeout
         )
 
-        # Cleanup temp file
-        if backup_file.suffix == ".gz":
-            temp_file.unlink()
-
         if result.returncode != 0:
             logger.error(f"pg_restore failed: {result.stderr}")
             return False
@@ -883,6 +895,10 @@ def restore_postgresql(
     except Exception as e:
         logger.exception(f"Restore failed: {e}")
         return False
+    finally:
+        # A failed or rejected restore used to leave the dump here in plaintext.
+        if temp_file is not None:
+            temp_file.unlink(missing_ok=True)
 
 
 def main():

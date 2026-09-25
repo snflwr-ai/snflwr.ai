@@ -51,7 +51,8 @@ def emit(replies_path: str, out_path: str, key_path: str, seed: int) -> None:
     if len(arms) < 2:
         sys.exit("need at least two arms to rate blind")
 
-    items, key = [], {}
+    items: list[dict] = []
+    key: dict[str, dict] = {}
     for arm_index, arm in enumerate(arms):
         label = chr(ord("A") + arm_index)
         for probe_id, reply in sorted(replies[arm].items()):

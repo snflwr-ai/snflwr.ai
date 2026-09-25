@@ -852,25 +852,16 @@ class _SafetyConfig:
         # ⚠️ Deliberately NOT included: "make fun of", "picked on", "left out",
         # "called me names". Every one of those is how a child REPORTS being
         # bullied, and adding them re-creates exactly this defect.
-        "bullying": [
-            "help me bully",
-            "how to bully",
-            "how do i bully",
-            "ways to bully",
-            "i want to bully",
-            "help me harass",
-            "how to harass",
-            "how do i harass",
-            "help me threaten",
-            "how to threaten",
-            "how do i threaten",
-            "help me intimidate",
-            "how to intimidate",
-            "help me humiliate",
-            "how to humiliate",
-            "help me make fun of",
-            "help me tease",
-        ],
+        # ⚠️ EMPTY ON PURPOSE. See the BULLYING frame in
+        # `safety/pipeline/pattern_matcher._build_danger_phrases`.
+        #
+        # This list held bare topic words (`bully`, `bullying`, `harass`,
+        # `threat`) which blocked the child reporting bullying, and then a
+        # phrase list which a peer measured at 0 of 13 on intent phrasings
+        # just outside it. Intent needs a FRAME (subject/modal x verb family),
+        # which a word-boundary keyword list cannot express -- so it lives
+        # with the other frames instead of here.
+        "bullying": [],
         "dangerous_activity": ["how to make bomb", "how to hurt"],
     }
     REDIRECT_TOPICS = {

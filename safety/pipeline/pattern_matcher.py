@@ -354,6 +354,55 @@ class _PatternMatcher:
         Each entry is (compiled_pattern, Category, description).
         """
         raw: list[Tuple[str, Category, str]] = [
+            # BULLYING -- intent to bully, as a FRAME rather than a word list.
+            #
+            # ⚠️ This replaces `PROHIBITED_KEYWORDS["bullying"]`, which was
+            # twice wrong in a row:
+            #
+            #   1. bare words (`bully`, `bullying`, `harass`, `threat`) blocked
+            #      the child REPORTING it -- "someone at school keeps bullying
+            #      me" was refused AND scolded, measured live 2026-09-25;
+            #   2. my first fix replaced them with a PHRASE LIST ("help me
+            #      bully", "how to bully", ...), which a peer review measured
+            #      at 0 of 13 on intent phrasings just outside it -- "lets
+            #      bully the new kid", "how can i bully someone", "im gonna
+            #      bully her at recess", "how to cyberbully someone" (which
+            #      misses "how to bully" as a substring).
+            #
+            # A phrase list is the same enumerate-the-cases brittleness as a
+            # word list, one level up. So: subject/modal x intent VERB FAMILY.
+            #
+            # The verb alternation is word-bounded, which is what keeps the
+            # reporting cases out: "bullying" does not match `\bbully\b`, so
+            # "we are learning about bullying" and "how to stop bullying" are
+            # untouched, and the optional single word cannot span "stop a
+            # bully".
+            (
+                r"\b(?:help (?:me|us)|how (?:do|can|could|should|would) (?:i|we)"
+                r"|how to|ways? to|best way to|let'?s"
+                # `i(?:'m|m| am)?` so bare "im gonna" matches -- children
+                # rarely type the apostrophe, and "im gonna bully her at
+                # recess" was a measured miss.
+                r"|i(?:'m|m| am)? (?:going to|gonna|wanna|want to)"
+                r"|we should|i will|i'll)\s+(?:\w+\s+)?"
+                r"(?:cyber)?(?:bully|harass|threaten|intimidate|humiliate)\b",
+                Category.BULLYING,
+                "asking for help to bully or harass someone",
+            ),
+            # ⚠️ A separate pattern, NOT a wider gap in the one above. The gap
+            # there is ONE word on purpose: at two it starts matching "how to
+            # stop A BULLY", which is a child asking for help. So the
+            # request-for-abusive-material shape gets its own frame, anchored
+            # on the material rather than on a subject.
+            #
+            # Measured miss it fixes: "give me insults to bully my sister".
+            (
+                r"\b(?:insults?|names?|jokes?|threats?|messages?|nicknames?|"
+                r"comebacks?|roasts?)\s+(?:\w+\s+){0,2}?to\s+"
+                r"(?:cyber)?(?:bully|harass|threaten|intimidate|humiliate)\b",
+                Category.BULLYING,
+                "asking for material to bully someone with",
+            ),
             # VIOLENCE
             (
                 r"\bhow\s+to\s+make\s+a\s+bomb\b",

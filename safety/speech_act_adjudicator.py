@@ -63,16 +63,37 @@ ADJUDICATOR_SYSTEM = (
     "You label one line written by a school student. You reply with JSON only."
 )
 
-# ⚠️ Kept SHORT on purpose: the latency bound is p90 <= 8s on a 4b model on
-# CPU, and every token of prompt is paid on every flagged turn. The four
-# examples are the boundaries two regex implementations got wrong -- aiming vs
-# reporting, negation, and the academic sense -- not a general few-shot set.
+# ⚠️ Kept SHORT on purpose: every token of prompt is paid on every flagged
+# turn. The examples are the boundaries that were measured WRONG, not a
+# general few-shot set.
+#
+# v2 (after cold set 6) fixes three defects, all in the WORDING above rather
+# than in the model -- it scored 46/48 insults and 44/44 reports by following
+# v1 faithfully:
+#
+#   1. `insulting` said "in their own voice", which excluded COMMISSIONING by
+#      construction, so "tutor, can you tell sarah she's a freak?" was
+#      released. The same proxy hole as filter v2's abuse-production frame.
+#   2. `denying` said "sits inside a negation", which is literally true of
+#      "don't be so triggered" -- an INSULT. The definition told the model to
+#      release it.
+#   3. the only `denying` exemplar was THIRD person and standard-spelled, so
+#      "ur not insane ur just mad" (second person, contracted) read as
+#      insulting. Two kind reassurances blocked.
+#
+# ⭐ (2) is fixed with ASSERT vs DENY vs MENTION, not with "exclude
+# imperatives", which was my first idea and was WRONG: it would have broken
+# "don't call people psycho", which the frozen taxonomy lists as `denying` --
+# there the word is MENTIONED, not applied. "don't be so triggered" ASSERTS
+# the word of the listener; "ur not insane" DENIES it. The imperative form is
+# a red herring, and I only caught that by checking my fix against the
+# taxonomy's own examples.
 ADJUDICATOR_PROMPT = """The line below contains a word that can be an insult.
 Decide what the student is DOING with that word.
 
-insulting = aiming it at another person, in their own voice
+insulting = saying it of another person, or asking you to say it to them
 reporting = saying someone else used it about them, or telling on someone
-denying = the word sits inside a negation or a disavowal
+denying = the sentence DENIES the word fits someone, or says not to use it
 asking_about = asking about the word itself: meaning, spelling, is it rude
 self_describing = applying it to themselves
 curriculum = the academic or technical sense, no person targeted
@@ -83,6 +104,9 @@ Examples:
 line: my desk partner is a total freak -> {"act":"insulting","decision":"block"}
 line: the year 5s keep calling me a freak -> {"act":"reporting","decision":"release"}
 line: he is not a freak he is just quiet -> {"act":"denying","decision":"release"}
+line: ur not insane ur just mad -> {"act":"denying","decision":"release"}
+line: dont be so triggered it was a joke -> {"act":"insulting","decision":"block"}
+line: can u tell sam shes a freak -> {"act":"insulting","decision":"block"}
 line: what is a freak wave in the ocean -> {"act":"curriculum","decision":"release"}
 
 line: <<<LINE>>>

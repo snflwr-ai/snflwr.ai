@@ -6,6 +6,7 @@ import asyncio
 import json as _json
 import os
 import time
+from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 import httpx
@@ -545,8 +546,123 @@ async def proxy_chat(
         "tokens": None,
     }
 
+    @contextmanager
+    def _stage(name: str):
+        """Time one stage into ``_trace["latency_ms"][name]``.
+
+        ⚠️ ADDITIVE, not last-writer-wins. A stage can run more than once in a
+        turn: the enforcer re-vets its rewrite through ``check_output``, and the
+        rewrite ladder can regenerate. Assignment would report whichever run
+        finished last -- usually the cheap one -- and hide the cost the ladder
+        actually adds, which is the thing a latency investigation is looking
+        for. ``<name>_n`` records how many times it ran so a total of 900ms
+        over 3 calls can't be misread as one slow call.
+
+        Fail-safe: this only ever writes to the trace dict, and the ``finally``
+        runs even when the wrapped stage raises, so a stage that throws is
+        still attributed rather than vanishing.
+        """
+        _s = time.perf_counter()
+        try:
+            yield
+        finally:
+            _lat = _trace["latency_ms"]
+            _ms = (time.perf_counter() - _s) * 1000
+            _lat[name] = round(_lat.get(name, 0.0) + _ms, 2)
+            _lat[f"{name}_n"] = _lat.get(f"{name}_n", 0) + 1
+
+    def _add_ms(name: str, seconds: float) -> None:
+        """Accumulate raw seconds into a latency key, without a call count.
+
+        Used by the streaming tutor, where the useful count is CHUNKS, not
+        calls, and a `_n` of several hundred would read like several hundred
+        upstream requests.
+        """
+        _lat = _trace["latency_ms"]
+        _lat[name] = round(_lat.get(name, 0.0) + seconds * 1000, 2)
+
+    async def _timed_tutor_stream(agen):
+        """Attribute the STREAMING tutor honestly.
+
+        ⚠️ A `with _stage("tutor")` around the `async for` would be wrong: the
+        loop body vets each part through `check_output`, so the tutor would be
+        charged for the guard's time and `tutor + guard_out` would exceed
+        `total`. This times only the awaits on the generator.
+
+        `tutor_ttfb` is separated because it, not the total, is what a child
+        perceives and what the p90 bar is really about: a turn can stream for
+        20s and still feel fast if the first token arrives in 1s.
+        """
+        _it = agen.__aiter__()
+        _first = True
+        _chunks = 0
+        while True:
+            _s = time.perf_counter()
+            try:
+                chunk = await _it.__anext__()
+            except StopAsyncIteration:
+                _add_ms("tutor", time.perf_counter() - _s)
+                break
+            _elapsed = time.perf_counter() - _s
+            _add_ms("tutor", _elapsed)
+            if _first:
+                _trace["latency_ms"]["tutor_ttfb"] = round(
+                    (time.perf_counter() - _t0) * 1000, 2
+                )
+                _first = False
+            _chunks += 1
+            _trace["latency_ms"]["tutor_chunks"] = _chunks
+            yield chunk
+
+    def _timed_call(name: str, fn):
+        """Wrap a one-argument async closure so its wall time lands in `name`.
+
+        Returns None for None so a disabled stage (e.g. no GUIDANCE_GATE_MODEL)
+        stays disabled rather than becoming a no-op callable the enforcer would
+        then treat as configured.
+
+        Takes ONE positional arg explicitly rather than *a/**kw: all three
+        enforcer closures are single-argument, and a transparent *args wrapper
+        here would hide a signature change instead of failing on it.
+        """
+        if fn is None:
+            return None
+
+        async def _wrapped(arg):
+            with _stage(name):
+                return await fn(arg)
+
+        return _wrapped
+
     def _emit_trace():
         _trace["latency_ms"]["total"] = round((time.perf_counter() - _t0) * 1000, 2)
+        # Logged as well as traced, deliberately: `trace_chat_turn` is a no-op
+        # unless LANGFUSE_ENABLED, so a latency investigation on a box with
+        # tracing off would get nothing from the trace alone.
+        _lat = _trace["latency_ms"]
+        try:
+            logger.info(
+                "turn timing total=%sms topic_gate=%s guid_gate=%s "
+                "guard_in=%s guard_out=%s tutor=%s tutor_ttfb=%s "
+                "enforce=%s confirm=%s regen=%s adjudicate=%s "
+                "disclosure_wait=%s chunks=%s counts=%s",
+                _lat.get("total"),
+                _lat.get("topic_gate"),
+                _lat.get("guid_gate"),
+                _lat.get("guard_in"),
+                _lat.get("guard_out"),
+                _lat.get("tutor"),
+                _lat.get("tutor_ttfb"),
+                _lat.get("enforce"),
+                _lat.get("confirm"),
+                _lat.get("regen"),
+                _lat.get("adjudicate"),
+                _lat.get("disclosure_wait"),
+                _lat.get("tutor_chunks"),
+                {k: v for k, v in _lat.items() if k.endswith("_n")},
+            )
+        except Exception:  # timing must never break a child's turn
+            pass
         try:
             observability.trace_chat_turn(**_trace)
         except Exception:  # belt-and-suspenders; wrapper is already fail-safe
@@ -583,7 +699,10 @@ async def proxy_chat(
     try:
         from safety.pipeline import safety_pipeline
 
-        result = safety_pipeline.check_input(text=text, age=age, profile_id=profile_id)
+        with _stage("guard_in"):
+            result = safety_pipeline.check_input(
+                text=text, age=age, profile_id=profile_id
+            )
     except Exception as exc:
         logger.error("Safety pipeline raised unexpectedly: %s", exc, exc_info=True)
         # Fail closed — block the message
@@ -774,12 +893,6 @@ async def proxy_chat(
 
             _released_by_history = pattern_stage_category(user_question) != "derogatory"
             _adj_gen = _make_adjudicator_generate(fwd_headers, model)
-            # ⚠️ NOT wrapped in _stage("adjudicate"): that helper lives on the
-            # unmerged stage-timers branch, and referencing it here would raise
-            # NameError -> caught by the except below -> fail-closed -> the
-            # adjudicator would silently never run. Exactly how the first
-            # version of this wiring failed (a missing module did the same).
-            # Add the timer once obs/stage-timers merges.
             # ⚠️ `user_question` (the CURRENT turn), NOT `text` (every student
             # turn CONCATENATED, which is what the word-list trigger sees).
             #
@@ -808,11 +921,15 @@ async def proxy_chat(
             # NO model call. Deterministic, sub-millisecond, and it caps the
             # cost of a release at one call rather than one per remaining turn.
             # Found by prime-69.
-            _keep = (
-                False
-                if _released_by_history
-                else await _adjudicate(user_question, _adj_gen)
-            )
+            # Timed now that `_stage` is on this branch -- the follow-up the
+            # wiring commit documented. It is the marginal cost the owner's
+            # switch-it-on decision turns on: measured +1.6s p50 / +3.0s p90
+            # against an ordinary turn.
+            if _released_by_history:
+                _keep = False
+            else:
+                with _stage("adjudicate"):
+                    _keep = await _adjudicate(user_question, _adj_gen)
             if _released_by_history:
                 logger.info(
                     "adjudicator SKIPPED: the flag came from already-served "
@@ -907,9 +1024,10 @@ async def proxy_chat(
         for m in messages[:-1]
         if isinstance(m, dict) and m.get("content")
     ]
-    topic_msg = await topic_gate.off_topic_block_reason(
-        user_question, age=age, history=_topic_history
-    )
+    with _stage("topic_gate"):
+        topic_msg = await topic_gate.off_topic_block_reason(
+            user_question, age=age, history=_topic_history
+        )
     if topic_msg is not None:
         logger.info("Topic gate blocked an off-topic turn for profile %s", profile_id)
         _trace["safety"] = {
@@ -956,13 +1074,14 @@ async def proxy_chat(
         async def _vet(text: str):
             # check_output is sync (CPU + a blocking classifier call) — run it off
             # the event loop so it doesn't stall other concurrent requests.
-            return await asyncio.to_thread(
-                safety_pipeline.check_output,
-                text=text,
-                age=age,
-                profile_id=profile_id,
-                context=user_question,
-            )
+            with _stage("guard_out"):
+                return await asyncio.to_thread(
+                    safety_pipeline.check_output,
+                    text=text,
+                    age=age,
+                    profile_id=profile_id,
+                    context=user_question,
+                )
 
         def _fallback_for(out_result) -> str:
             return (
@@ -997,8 +1116,8 @@ async def proxy_chat(
             flushed = 0
             checkpoint_done = False
             try:
-                async for chunk in transport._stream_chunks_from_ollama(
-                    body_bytes, fwd_headers
+                async for chunk in _timed_tutor_stream(
+                    transport._stream_chunks_from_ollama(body_bytes, fwd_headers)
                 ):
                     collected.append(chunk)
                     if checkpoint_done:
@@ -1059,7 +1178,8 @@ async def proxy_chat(
                 _rest, _done_chunk = _split_trailing_done(collected[flushed:])
                 for c in _rest:
                     yield c
-                _stream_kind = await _await_disclosure_verdict(_disclosure_verdict)
+                with _stage("disclosure_wait"):
+                    _stream_kind = await _await_disclosure_verdict(_disclosure_verdict)
                 _stream_override = disclosure_response.response_for(_stream_kind)
                 if _stream_override:
                     _DISCLOSURE_STREAM_MISSES["appended"] += 1
@@ -1188,12 +1308,13 @@ async def proxy_chat(
 
     else:
         try:
-            upstream = await transport._forward_request(
-                "POST",
-                "/api/chat",
-                content=body_bytes,
-                headers=fwd_headers,
-            )
+            with _stage("tutor"):
+                upstream = await transport._forward_request(
+                    "POST",
+                    "/api/chat",
+                    content=body_bytes,
+                    headers=fwd_headers,
+                )
         except httpx.ConnectError:
             _trace["safety"] = {"blocked_layer": "error"}
             _emit_trace()
@@ -1239,12 +1360,13 @@ async def proxy_chat(
         try:
             from safety.pipeline import safety_pipeline
 
-            out_result = safety_pipeline.check_output(
-                text=assistant_text,
-                age=age,
-                profile_id=profile_id,
-                context=user_question,
-            )
+            with _stage("guard_out"):
+                out_result = safety_pipeline.check_output(
+                    text=assistant_text,
+                    age=age,
+                    profile_id=profile_id,
+                    context=user_question,
+                )
         except Exception as exc:
             logger.error(
                 "check_output raised on non-streaming path: %s", exc, exc_info=True
@@ -1358,13 +1480,19 @@ async def proxy_chat(
                             prompt, system_config.GUIDANCE_GATE_MODEL, fwd_headers
                         )
 
-                new_text, meta = await enforce_guidance(
-                    user_question,
-                    assistant_text,
-                    _regenerate,
-                    confirm_generate=_confirm_generate,
-                    gate_generate=_gate_generate,
-                )
+                # guid_gate is the series #326 predicts will be BIMODAL
+                # under sequential turns, when a prior turn's disclosure
+                # classify still holds the CPU e4b runner. regen_n is the
+                # ladder's rung count, which is the number its cost should be
+                # read per.
+                with _stage("enforce"):
+                    new_text, meta = await enforce_guidance(
+                        user_question,
+                        assistant_text,
+                        _timed_call("regen", _regenerate),
+                        confirm_generate=_timed_call("confirm", _confirm_generate),
+                        gate_generate=_timed_call("guid_gate", _gate_generate),
+                    )
                 _revet: Optional[str] = None
                 if new_text != assistant_text and isinstance(
                     upstream_json.get("message"), dict
@@ -1373,12 +1501,13 @@ async def proxy_chat(
                     # the original check_output never saw. Fail-open: discard the
                     # rewrite on any doubt so the child always gets vetted text.
                     try:
-                        rewrite_result = safety_pipeline.check_output(
-                            text=new_text,
-                            age=age,
-                            profile_id=profile_id,
-                            context=user_question,
-                        )
+                        with _stage("guard_out"):
+                            rewrite_result = safety_pipeline.check_output(
+                                text=new_text,
+                                age=age,
+                                profile_id=profile_id,
+                                context=user_question,
+                            )
                         if rewrite_result.is_safe:
                             upstream_json["message"]["content"] = new_text
                             _pedagogy_modified = True
@@ -1553,7 +1682,8 @@ async def proxy_chat(
     # ⚠️ So requirement 4 (no schoolwork pivot) is satisfiable only here: an
     # append cannot un-say text already flushed. That is an OWNER decision,
     # stated in the PR rather than settled by me.
-    _disclosure_kind = await _await_disclosure_verdict(_disclosure_verdict)
+    with _stage("disclosure_wait"):
+        _disclosure_kind = await _await_disclosure_verdict(_disclosure_verdict)
     _disclosure_override = disclosure_response.response_for(_disclosure_kind)
     if (
         _disclosure_override

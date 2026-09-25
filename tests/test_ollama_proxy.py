@@ -1423,7 +1423,15 @@ class TestCrisisEscalation:
             "a blocked crisis message was not typed as a disclosure -- the only "
             f"rows written were {sorted(by_type)}"
         )
-        assert disclosure["severity"] == "major", "below major raises no parent alert"
+        # ⚠️ Was `== "major"` until 2026-09-24. A crisis now escalates at
+        # CRITICAL whatever stage caught it, because `major` selects the
+        # ORDINARY parent email and `critical` selects the URGENT one -- and a
+        # child who phrases ideation softly enough to slip the regex was
+        # getting a routine notice. Asserting "major" here encoded that bug.
+        assert disclosure["severity"] == "critical", (
+            "a crisis must escalate at critical, or the parent gets the "
+            "ordinary email template instead of the urgent one"
+        )
         assert disclosure["metadata"]["blocked"] is True
         assert disclosure["profile_id"] == "profile-sh"
 

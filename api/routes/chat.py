@@ -18,6 +18,7 @@ from config import system_config
 
 _resources = _get_resource_profile()
 from api.middleware.auth import VerifySessionAccess, audit_log, get_current_session
+from api.routes.ollama_proxy.blocks import crisis_escalation_severity
 from core import gpu_placement
 from core.authentication import AuthSession, auth_manager
 from core.coppa_gate import coppa_consent_block_reason
@@ -372,7 +373,15 @@ async def send_chat_message(
                 profile_id=request.profile_id,
                 session_id=session.session_id,
                 incident_type=filter_result.category.value,
-                severity=filter_result.severity.value,
+                # ⚠️ NOT filter_result.severity.value. The semantic classifier
+                # emits MAJOR and never CRITICAL, and `major` selects the
+                # ORDINARY parent email while `critical` selects the URGENT
+                # one -- so a child whose ideation slipped the regex onto the
+                # classifier got a routine notice. This route is mounted at
+                # /api/chat/send (api/server.py), so the gap was live here too.
+                severity=crisis_escalation_severity(
+                    filter_result, request.message, category_describes_child=True
+                ),
                 content_snippet=request.message[:200],
                 metadata={
                     "stage": filter_result.stage,
@@ -619,7 +628,15 @@ async def send_chat_message(
                     profile_id=request.profile_id,
                     session_id=session.session_id,
                     incident_type="unsafe_ai_output",
-                    severity=response_filter.severity.value,
+                    # OUTPUT block: the category describes the MODEL'S text, so
+                    # it must not promote -- an unsafe tutor draft is a model
+                    # defect, not a child in crisis. Only the CHILD's own words
+                    # may raise this to critical.
+                    severity=crisis_escalation_severity(
+                        response_filter,
+                        request.message,
+                        category_describes_child=False,
+                    ),
                     content_snippet=response_text[:200],
                     metadata={
                         "stage": response_filter.stage,

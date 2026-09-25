@@ -6,6 +6,7 @@ import json as _json
 from datetime import datetime, timezone
 from typing import Optional
 
+from safety.pipeline import _looks_like_crisis
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -109,8 +110,63 @@ def _max_severity(a: str, b: Optional[str]) -> str:
     return a if _SEVERITY_RANK.get(a, 0) >= _SEVERITY_RANK.get(b, 0) else b
 
 
+# ⚠️ A crisis must not get a routine parent email because of WHICH STAGE caught
+# it. Measured in production 2026-09-24, right after the batch deploy:
+#
+#   "i want to die"                              -> PATTERN stage  -> CRITICAL -> URGENT email
+#   "i just want to go to sleep and never wake up" -> CLASSIFIER    -> MAJOR    -> ordinary email
+#
+# Both are the same child in the same danger. The classifier emits
+# `Severity.MAJOR` and NOTHING ELSE (7 sites, zero CRITICAL), while the pattern
+# stage can emit CRITICAL -- so a child who phrases ideation softly enough to
+# slip the regex is quietly downgraded to a routine notice.
+#
+# This is exactly #327's lesson one stage further along: there, the crisis TEXT
+# could not depend on the classifier picking the SELF_HARM label; here, the
+# crisis URGENCY cannot depend on which stage did the catching. The rule is on
+# the outcome (is this a crisis?), never on the machinery that noticed.
+# ⚠️⚠️ `child_text` is THE CHILD'S OWN WORDS, never the model's reply, and the
+# distinction is the whole correctness of this function.
+#
+# The first version passed whatever `content_snippet` the caller had. On the two
+# OUTPUT-block paths that snippet is the TUTOR'S draft, so a blocked reply
+# containing "Juliet's suicide" promoted a child who asked "summarize act 5" to
+# a CRITICAL crisis alert. Caught in review, and it is precisely the guard this
+# change claims to protect: promoting everything to critical makes URGENT mean
+# "the model misbehaved", and a parent who learns that stops opening them.
+#
+# `category_describes_child` is the second half. On the input path the
+# classifier's category describes the CHILD'S message, so `self_harm` there is
+# a crisis. On the output path it describes the TUTOR'S draft -- a reply that
+# drifted into method detail on a health question is a model defect, not a
+# child in crisis -- so the label must not promote, and only the child's own
+# words can.
+def crisis_escalation_severity(
+    result, child_text: str = "", *, category_describes_child: bool
+) -> str:
+    """The severity a block should ESCALATE at, independent of which stage caught it.
+
+    Keyword-only and undefaulted on purpose: every call site has to state whose
+    text the category describes, because getting it wrong is silent in both
+    directions -- a missed crisis, or an urgent alert about a set text.
+    """
+    base = str(getattr(getattr(result, "severity", None), "value", "") or "minor")
+    category = str(getattr(getattr(result, "category", None), "value", "") or "")
+    if category_describes_child and category == "self_harm":
+        return "critical"
+    if _looks_like_crisis(child_text):
+        return "critical"
+    return base
+
+
 def _record_safety_incident(
-    profile_id, result, content_snippet: str, send_alert: bool = True
+    profile_id,
+    result,
+    content_snippet: str,
+    send_alert: bool = True,
+    *,
+    child_text: str,
+    category_describes_child: bool,
 ) -> None:
     """Best-effort human-in-the-loop escalation for a blocked student message.
 
@@ -122,6 +178,18 @@ def _record_safety_incident(
     Students reach the model through this proxy (not api/routes/chat.py), so the
     escalation has to live here too. Fail-safe by design: any error is swallowed
     so the child's safe response is always delivered.
+
+    ⚠️ `child_text` and `category_describes_child` are REQUIRED, with no
+    defaults, and that is deliberate. A default would let a future call site
+    compile while silently losing crisis promotion -- the missed-crisis
+    direction -- which is precisely the failure this function exists to stop.
+    Undefaulted, mypy names the site. `send_alert` keeps its default because
+    ITS safe direction is the default (alert unless told otherwise).
+
+    `child_text` is THE CHILD'S OWN WORDS. On an output block the
+    `content_snippet` is the MODEL'S draft, and feeding that to the crisis
+    check promoted a child who asked "summarize act 5" to a CRITICAL alert
+    because the blocked reply said "Juliet's suicide".
 
     ⚠️ `send_alert=False` records the incident WITHOUT alerting, and exists for
     exactly one case: the turn was blocked AND a disclosure was detected, so
@@ -138,7 +206,13 @@ def _record_safety_incident(
             profile_id=profile_id or "unknown",
             session_id=None,
             incident_type=result.category.value,
-            severity=result.severity.value,
+            # NOT result.severity.value, and NOT content_snippet -- on output
+            # blocks that snippet is the MODEL's text. See the helper above.
+            severity=crisis_escalation_severity(
+                result,
+                child_text,
+                category_describes_child=category_describes_child,
+            ),
             content_snippet=(content_snippet or "")[:200],
             metadata={
                 "source": "ollama_proxy",

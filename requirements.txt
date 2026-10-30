@@ -43,7 +43,7 @@ celery==5.4.0                 # Distributed task queue
 redis==5.2.1                  # Redis client for Celery broker
 kombu==5.4.2                  # Messaging library for Celery
 flower==2.0.1                 # Celery monitoring UI
-tornado==6.5.10               # flower's transitive dep; CVE-2026-49853/49855 (fixed 6.5.6), CVE-2026-82397 (fixed 6.5.8)
+tornado==6.6               # flower's transitive dep; CVE-2026-49853/49855 (fixed 6.5.6), CVE-2026-82397 (fixed 6.5.8)
 
 # Logging & Monitoring
 structlog==24.4.0             # Structured logging
